@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/ratchet-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/ratchet-light.svg">
+  <img src="assets/ratchet-light.svg" width="64" height="64" alt="Ratchet">
+</picture>
+
 # Ratchet: the ratchet for agent projects
 
 General rules and templates for long-lived code projects run with AI agents: how decisions are recorded, how questions are asked, how work is reviewed and tested, how secrets are kept out, and how lessons are fed back.
