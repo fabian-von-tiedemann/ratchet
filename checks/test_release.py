@@ -5,18 +5,22 @@
 checks/release.py tags and releases a version from the release workflow
 (D-2026-11-17-release-on-merge, D-2026-11-17-release-links). These tests never reach
 the network: the GitHub API is a fake, given to the script as a function, and the HTTP
-client is given a fake opener. Standard library only.
+client is given a fake opener. The history of main is read from git repositories that the
+tests build in temporary directories. The real repository is never written to. Standard library only.
 """
 
+import hashlib
 import io
 import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 import release
 
@@ -135,12 +139,29 @@ class FakeGitHub:
         return 404, None
 
 
-def publish(text, version="0.4", github=None, sha=SHA):
+def commit_of(version):
+    """A made-up commit at which ratchet.json first named a version, in the histories made up below."""
+    return hashlib.sha1(("the commit that raised the version to " + version).encode("ascii")).hexdigest()
+
+
+def made_up_history(text, version, sha):
+    """A stand-in for the history of main, for the tests of the logic that are not about git.
+
+    This commit names the version, and before it one commit for each older version that has a line
+    in the changelog. The script never builds a history this way: it reads it with git (see MainHistory).
+    """
+    older = set(v for v in re.findall(r"^## ([0-9]+\.[0-9]+) \(", text, re.M)
+                if release.version_key(v) < release.version_key(version))
+    return [(sha, version)] + [(commit_of(v), v) for v in sorted(older, key=release.version_key, reverse=True)]
+
+
+def publish(text, version="0.4", github=None, sha=SHA, history=None):
     """Run the script's publish step on a changelog. Returns (error text or None, output, fake)."""
     github = github if github is not None else FakeGitHub()
+    history = history if history is not None else made_up_history(text, version, sha)
     out = io.StringIO()
     try:
-        release.publish(version, text, REPO, sha, github, out)
+        release.publish(version, text, history, REPO, sha, github, out)
     except release.ReleaseError as error:
         return str(error), out.getvalue(), github
     return None, out.getvalue(), github
@@ -405,6 +426,102 @@ class Publish(unittest.TestCase):
         self.assertIn("GET %s/git/matching-refs/tags/v: the answer is not of the form expected" % PATH, error)
         self.assertEqual(github.writes, [])
 
+    # Round 1 of release-links, finding 3: the answer to the publication is checked, and the list of releases is read to its end.
+
+    def test_an_answer_to_the_publication_that_is_not_a_published_release_fails(self):
+        answers = (
+            lambda data: dict(data, draft=True),
+            lambda data: dict(data, draft=None),
+            lambda data: dict(data, tag_name="v0.5"),
+            lambda data: dict((k, v) for k, v in data.items() if k != "tag_name"),
+            lambda data: [data],
+            lambda data: None,
+        )
+        for index, change in enumerate(answers):
+            class Changed(FakeGitHub):
+                def __call__(self, method, path, body=None):
+                    status, data = FakeGitHub.__call__(self, method, path, body)
+                    if method == "POST" and path == PATH + "/releases":
+                        data = change(data)
+                    return status, data
+            with self.subTest(answer=index):
+                error, out, github = publish(TWO, github=Changed(**DONE_03))
+                self.assertEqual(error, "POST %s/releases: the answer is not a published release for v0.4. Look at the releases by hand." % PATH)
+                self.assertEqual(out, "")
+                self.assertNotIn(("GET", PATH + "/git/ref/tags/v0.4"), [call[:2] for call in github.calls])
+
+    def test_the_list_of_releases_is_read_past_its_first_page(self):
+        # 100 releases of newer versions fill the first page. The release of 0.3 is on the second.
+        newer = [{"tag_name": "v1.%d" % n, "draft": False} for n in range(100)]
+        for releases, pages in ((newer + DONE_03["releases"], 2), (newer[:98] + DONE_03["releases"], 1),
+                                (newer[:99] + DONE_03["releases"], 2),
+                                (newer + newer + DONE_03["releases"], 3), (newer[:50] + DONE_03["releases"] + newer[:50], 2)):
+            with self.subTest(releases=len(releases)):
+                error, _, github = publish(TWO, github=FakeGitHub(tags=DONE_03["tags"], releases=releases))
+                self.assertIsNone(error)
+                read = [path for method, path, _ in github.calls if path.startswith(PATH + "/releases?")]
+                self.assertEqual(read, [PATH + "/releases?per_page=100&page=%d" % n for n in range(1, pages + 1)])
+        # A release for this version on the second page is found, and no second one is made.
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)},
+                            releases=newer + DONE_03["releases"] + [{"tag_name": "v0.4", "draft": False}])
+        error, out, github = publish(TWO, github=github)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [])
+        self.assertIn("v0.4 is tagged at this commit and released. Nothing to do", out)
+
+    def test_a_list_of_releases_with_no_end_fails_and_writes_nothing(self):
+        class Endless(FakeGitHub):
+            def __call__(self, method, path, body=None):
+                if method == "GET" and path.startswith(PATH + "/releases?"):
+                    self.calls.append((method, path, body))
+                    return 200, [{"tag_name": "v9.%d" % n, "draft": False} for n in range(100)]
+                return FakeGitHub.__call__(self, method, path, body)
+        error, _, github = publish(TWO, github=Endless(**DONE_03))
+        self.assertEqual(error, "GET %s/releases: more than 100 pages. Nothing was written." % PATH)
+        self.assertEqual(github.writes, [])
+
+    # Round 1 of release-links, finding 4: the message names the commit whose run to rerun.
+
+    def test_an_older_version_without_a_tag_names_the_first_commit_that_raised_the_version(self):
+        first, then = commit_of("0.4"), "e" * 40
+        history = [(LATER, "0.5"), (then, "0.4"), (first, "0.4"), (EARLIER, "0.3")]
+        error, _, github = publish(THREE, version="0.5", github=FakeGitHub(**DONE_03), sha=LATER, history=history)
+        self.assertEqual(error, "an older version is not finished. 0.4: no tag. Rerun the release run of commit %s, "
+                                "the first commit on main whose ratchet.json names 0.4. Then rerun this run. Nothing was written." % first)
+        self.assertEqual(github.writes, [])
+
+    def test_an_older_version_with_a_tag_names_the_commit_the_tag_points_at(self):
+        # The run of the first commit with 0.4 was replaced, and a later commit with 0.4 made the tag.
+        first, tagged = commit_of("0.4"), "e" * 40
+        history = [(LATER, "0.5"), (tagged, "0.4"), (first, "0.4"), (EARLIER, "0.3")]
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", tagged)}, releases=DONE_03["releases"])
+        error, _, github = publish(THREE, version="0.5", github=github, sha=LATER, history=history)
+        self.assertEqual(error, "an older version is not finished. 0.4: a tag and no published release. Rerun the release run of commit %s, "
+                                "which the tag points at. Then rerun this run. Nothing was written." % tagged)
+        self.assertNotIn(first, error)
+        # That rerun finishes 0.4, and then the run of 0.5 releases 0.5.
+        github.calls = []
+        error, out, github = publish(TWO, github=github, sha=tagged, history=history[1:])
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/releases")])
+        github.calls = []
+        error, out, github = publish(THREE, version="0.5", github=github, sha=LATER, history=history)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
+
+    def test_an_older_version_whose_tag_is_not_a_plain_tag_is_looked_at_by_hand(self):
+        github = FakeGitHub(tags={"0.3": ("tag", EARLIER)})
+        error, _, github = publish(TWO, github=github)
+        self.assertIn("0.3: a tag and no published release. The tag is not a plain tag of a commit: look at it by hand.", error)
+        self.assertEqual(github.writes, [])
+
+    def test_this_version_tagged_at_another_commit_names_that_commit(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)}, releases=DONE_03["releases"])
+        error, _, github = publish(TWO, github=github)
+        self.assertEqual(error, "the tag v0.4 points at another commit than this one, and has no published release. The tag is not moved. "
+                                "Rerun the release run of commit %s, which the tag points at. Nothing was written." % OTHER)
+        self.assertEqual(github.writes, [])
+
     def test_the_version_must_be_the_newest_entry(self):
         error, _, github = publish(TWO, version="0.3")
         self.assertIn("the newest entry in CHANGELOG.md is 0.4, and ratchet.json says 0.3", error)
@@ -522,8 +639,263 @@ def run_main(github, argv=("publish",), environ=None, root=None):
     return code, out.getvalue(), err.getvalue(), opener
 
 
+def git(directory, *args, **kwargs):
+    """Run git in a repository that a test made, with no config of the user and no GIT_ variable of the environment."""
+    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.realpath(directory)),
+               GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid", GIT_COMMITTER_NAME="Test",
+               GIT_COMMITTER_EMAIL="test@example.invalid", LC_ALL="C")
+    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-C", directory] + list(args),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, universal_newlines=True, **kwargs)
+    if result.returncode:
+        raise AssertionError("git %s: %s" % (" ".join(args), result.stderr))
+    return result.stdout.strip()
+
+
+class Checkout:
+    """A git repository in a temporary directory, made by a test, that stands in for a checkout of main.
+
+    Each commit writes ratchet.json, today's with another version, and CHANGELOG.md.
+    """
+
+    def __init__(self):
+        self.directory = tempfile.mkdtemp()
+        with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
+            self.data = json.load(handle)
+        for rule in self.data["rules"]:
+            if "reference_check" in rule:
+                target = os.path.join(self.directory, rule["reference_check"])
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                open(target, "w").close()
+        git(self.directory, "init", "-q")
+
+    def write(self, name, data):
+        with open(os.path.join(self.directory, name), "wb") as handle:
+            handle.write(data)
+
+    def ratchet_json(self, version):
+        return (json.dumps(dict(self.data, version=version), indent=2) + "\n").encode("utf-8")
+
+    def commit(self, version=None, text=None, raw=None, remove=False, message="A commit"):
+        """Commit ratchet.json with this version (or these bytes, or without it) and this changelog. Returns the commit."""
+        if remove:
+            os.remove(os.path.join(self.directory, "ratchet.json"))
+        elif raw is not None:
+            self.write("ratchet.json", raw)
+        elif version is not None:
+            self.write("ratchet.json", self.ratchet_json(version))
+        if text is not None:
+            self.write("CHANGELOG.md", text.encode("utf-8"))
+        git(self.directory, "add", "-A")
+        git(self.directory, "commit", "-q", "--allow-empty", "-m", message)
+        return git(self.directory, "rev-parse", "HEAD")
+
+    def history(self, sha=None):
+        return release.main_history(self.directory, sha or git(self.directory, "rev-parse", "HEAD"))
+
+    def run(self, github, sha=None):
+        return run_main(github, environ=environment(GITHUB_SHA=sha or git(self.directory, "rev-parse", "HEAD")), root=self.directory)
+
+    def close(self):
+        shutil.rmtree(self.directory)
+
+
+class MainHistory(unittest.TestCase):
+    """Round 1 of release-links, finding 1: the versions that must be released come from the history of main, not from the changelog.
+
+    A pull request can edit CHANGELOG.md. It cannot edit a commit that is already on main, because the ruleset
+    on main refuses a force-push and a deletion. So every version that ratchet.json has named on main is read
+    with git from the first-parent history of the commit being released, and each older one needs its tag and its release.
+    """
+
+    def setUp(self):
+        self.checkout = Checkout()
+
+    def tearDown(self):
+        self.checkout.close()
+
+    def test_a_version_on_main_that_was_never_released_fails_although_the_changelog_no_longer_shows_it(self):
+        # 0.4 was merged and never tagged. The pull request of 0.5 takes 0.4's heading out of the exact form, or the entry out.
+        five = "# Changelog\n\n## 0.5 (2026-11-17)\n\nFive.\n\n%s\n\n## 0.3 (2026-11-16)\n\nThree.\n"
+        for hidden in (" ## 0.4 (2026-11-17)\n\nFour.", "- ## 0.4 (2026-11-17)\n\nFour.", "## 0.4  (2026-11-17)\n\nFour.", "Four."):
+            with self.subTest(hidden=hidden):
+                checkout = Checkout()
+                self.addCleanup(checkout.close)
+                checkout.commit("0.3", changelog(("0.3", "Three.")))
+                four = checkout.commit("0.4", changelog(("0.4", "Four."), ("0.3", "Three.")))
+                head = checkout.commit("0.5", five % hidden)
+                github = FakeGitHub(**DONE_03)
+                code, out, err, _ = checkout.run(github, head)
+                self.assertEqual(code, 1)
+                self.assertEqual(err, "release: an older version is not finished. 0.4: no tag. Rerun the release run of commit %s, "
+                                      "the first commit on main whose ratchet.json names 0.4. Then rerun this run. Nothing was written.\n" % four)
+                self.assertEqual(github.writes, [])
+                self.assertNotIn("0.5", github.tags)
+
+    def test_the_same_history_releases_05_once_04_is_released(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        four = self.checkout.commit("0.4", changelog(("0.4", "Four."), ("0.3", "Three.")))
+        head = self.checkout.commit("0.5", THREE)
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", four)},
+                            releases=DONE_03["releases"] + [{"tag_name": "v0.4", "draft": False}])
+        code, out, err, _ = self.checkout.run(github, head)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags["0.5"], ("commit", head))
+
+    def test_the_history_is_every_commit_on_the_first_parent_line_that_holds_ratchet_json(self):
+        self.checkout.write("README.md", b"Before ratchet.json.\n")
+        self.checkout.commit(message="No ratchet.json yet")
+        three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        again = self.checkout.commit(text=changelog(("0.3", "Three, again.")))
+        four = self.checkout.commit("0.4", TWO)
+        self.assertEqual(self.checkout.history(), [(four, "0.4"), (again, "0.3"), (three, "0.3")])
+
+    def test_a_version_only_on_a_branch_merged_into_main_is_not_counted(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        git(self.checkout.directory, "checkout", "-q", "-b", "side")
+        side = self.checkout.commit("0.9", changelog(("0.9", "Nine.")))
+        git(self.checkout.directory, "checkout", "-q", "main")
+        four = self.checkout.commit("0.4", TWO)
+        git(self.checkout.directory, "merge", "-q", "-s", "ours", "--no-ff", "-m", "Merge side, keeping main", "side")
+        merge = git(self.checkout.directory, "rev-parse", "HEAD")
+        history = self.checkout.history()
+        self.assertEqual([v for _, v in history], ["0.4", "0.4", "0.3"])
+        self.assertEqual(history[:2], [(merge, "0.4"), (four, "0.4")])
+        self.assertNotIn(side, [c for c, _ in history])
+
+    def test_a_merge_commit_that_raises_the_version_is_the_first_commit_on_main_with_it(self):
+        three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        git(self.checkout.directory, "checkout", "-q", "-b", "side")
+        self.checkout.commit("0.4", TWO)
+        git(self.checkout.directory, "checkout", "-q", "main")
+        git(self.checkout.directory, "merge", "-q", "--no-ff", "-m", "Merge the pull request of 0.4", "side")
+        merge = git(self.checkout.directory, "rev-parse", "HEAD")
+        head = self.checkout.commit("0.5", THREE)
+        self.assertEqual(self.checkout.history(), [(head, "0.5"), (merge, "0.4"), (three, "0.3")])
+        code, _, err, _ = self.checkout.run(FakeGitHub(**DONE_03))
+        self.assertEqual(code, 1)
+        self.assertIn("0.4: no tag. Rerun the release run of commit %s," % merge, err)
+
+    def test_a_shallow_checkout_fails(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        self.checkout.commit("0.4", TWO)
+        shallow = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, shallow)
+        git(shallow, "clone", "-q", "--depth", "1", "file://" + self.checkout.directory, "copy")
+        copy = os.path.join(shallow, "copy")
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.main_history(copy, git(copy, "rev-parse", "HEAD"))
+        self.assertEqual(str(caught.exception), "the checkout is shallow: the release reads the whole history of main, "
+                                                "so the workflow checks out with fetch-depth: 0. Nothing was written.")
+
+    def test_a_directory_that_is_not_a_repository_fails(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory)
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.main_history(directory, SHA)
+        self.assertIn("git rev-parse: exit", str(caught.exception))
+
+    def test_the_checkout_must_be_at_the_commit_being_released(self):
+        three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        self.checkout.commit("0.4", TWO)
+        for sha in (three, SHA):
+            with self.subTest(sha=sha):
+                with self.assertRaises(release.ReleaseError) as caught:
+                    self.checkout.history(sha)
+                self.assertEqual(str(caught.exception), "the checkout is not at GITHUB_SHA %s. Nothing was written." % sha)
+
+    def test_ratchet_json_at_an_earlier_commit_is_read_strictly(self):
+        good = self.checkout.ratchet_json("0.3")
+        cases = (
+            (good.replace(b'"version": "0.3"', b'"version": "0.3", "version": "0.2"'), "appears twice"),
+            (good.replace(b'"version": "0.3"', b'"version": NaN'), "NaN is not allowed"),
+            (good.replace(b"0.3", b"\xff0.3", 1), "is not valid UTF-8"),
+            (b"\xef\xbb\xbf" + good, "not a valid data file"),
+            (good[:-10], "not a valid data file"),
+            (good.replace(b'"version": "0.3"', b'"version": "0.3.1"'), "has no version of the form MAJOR.MINOR"),
+            (good.replace(b'"version": "0.3"', b'"version": "\xd9\xa0.3"'), "has no version of the form MAJOR.MINOR"),
+            (good.replace(b'"version": "0.3"', b'"version": 0.3'), "has no version of the form MAJOR.MINOR"),
+            (good.replace(b'"version": "0.3"', b'"release": "0.3"'), "has no version of the form MAJOR.MINOR"),
+            (b'["0.3"]\n', "has no version of the form MAJOR.MINOR"),
+        )
+        for raw, problem in cases:
+            with self.subTest(problem=problem, raw=raw[:40]):
+                checkout = Checkout()
+                self.addCleanup(checkout.close)
+                bad = checkout.commit(raw=raw)
+                checkout.commit("0.4", TWO)
+                with self.assertRaises(release.ReleaseError) as caught:
+                    checkout.history()
+                self.assertIn("ratchet.json at commit %s on main" % bad, str(caught.exception))
+                self.assertIn(problem, str(caught.exception))
+                self.assertIn("Nothing was written", str(caught.exception))
+
+    def test_ratchet_json_removed_from_main_and_added_again_fails(self):
+        three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        gone = self.checkout.commit(remove=True)
+        self.checkout.commit("0.4", TWO)
+        with self.assertRaises(release.ReleaseError) as caught:
+            self.checkout.history()
+        self.assertEqual(str(caught.exception), "ratchet.json is missing at commit %s on main, and the earlier commit %s holds it. "
+                                                "Nothing was written." % (gone, three))
+
+    def test_a_version_on_main_newer_than_the_one_being_released_fails(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        five = self.checkout.commit("0.5", THREE)
+        self.checkout.commit("0.4", TWO)
+        github = FakeGitHub(**DONE_03)
+        code, _, err, _ = self.checkout.run(github)
+        self.assertEqual(code, 1)
+        self.assertEqual(err, "release: ratchet.json at commit %s on main names 0.5, newer than 0.4. Nothing was written.\n" % five)
+        self.assertEqual(github.calls, [])
+
+    def test_the_checkout_must_name_the_version_that_its_commit_names(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        head = self.checkout.commit("0.4", TWO)
+        self.checkout.write("ratchet.json", self.checkout.ratchet_json("0.5"))
+        self.checkout.write("CHANGELOG.md", THREE.encode("utf-8"))
+        github = FakeGitHub(**DONE_03)
+        code, _, err, _ = self.checkout.run(github)
+        self.assertEqual(code, 1)
+        self.assertEqual(err, "release: ratchet.json in the checkout names 0.5, and at commit %s it names 0.4. Nothing was written.\n" % head)
+        self.assertEqual(github.calls, [])
+
+    def test_git_variables_of_the_environment_do_not_change_what_is_read(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        four = self.checkout.commit("0.4", TWO)
+        other = Checkout()
+        self.addCleanup(other.close)
+        other.commit("0.9", changelog(("0.9", "Nine.")))
+        variables = {"GIT_DIR": os.path.join(other.directory, ".git"), "GIT_WORK_TREE": other.directory,
+                     "GIT_INDEX_FILE": os.path.join(other.directory, ".git", "index"), "GIT_REPLACE_REF_BASE": "refs/other/"}
+        with mock.patch.dict(os.environ, variables):
+            self.assertEqual([v for _, v in self.checkout.history(four)], ["0.4", "0.3"])
+
+    def test_a_replace_ref_does_not_change_the_history(self):
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        four = self.checkout.commit("0.4", TWO)
+        head = self.checkout.commit("0.5", THREE)
+        # A replace ref swaps the commit of 0.4 for one that names 0.3. git reads it unless it is told not to.
+        git(self.checkout.directory, "checkout", "-q", "--detach", four + "~1")
+        fake = self.checkout.commit("0.3", TWO, message="Not on main")
+        git(self.checkout.directory, "checkout", "-q", "main")
+        git(self.checkout.directory, "replace", four, fake)
+        self.assertEqual([v for _, v in self.checkout.history(head)], ["0.5", "0.4", "0.3"])
+
+
 class Token(unittest.TestCase):
     """The token comes from GITHUB_TOKEN, goes only to api.github.com, and is never printed."""
+
+    @classmethod
+    def setUpClass(cls):
+        # A checkout with today's ratchet.json and CHANGELOG.md, at one commit.
+        cls.checkout = Checkout()
+        with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as handle:
+            cls.checkout.commit(NOW, handle.read())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.checkout.close()
 
     def test_the_token_never_appears_in_output(self):
         scenarios = [
@@ -535,7 +907,7 @@ class Token(unittest.TestCase):
         ]
         for github in scenarios:
             with self.subTest(fail=github.fail):
-                code, out, err, opener = run_main(github)
+                code, out, err, opener = self.checkout.run(github)
                 self.assertNotIn(TOKEN, out + err)
                 self.assertNotIn(TOKEN[4:20], out + err)
                 self.assertNotIn(BODY_MARKER, out + err)
@@ -548,7 +920,7 @@ class Token(unittest.TestCase):
 
     def test_an_error_gives_the_method_the_path_and_the_status(self):
         github = FakeGitHub(fail={("GET", PATH + "/git/matching-refs/tags/v"): 403})
-        code, out, err, _ = run_main(github)
+        code, out, err, _ = self.checkout.run(github)
         self.assertEqual(code, 1)
         self.assertEqual(err, "release: GET %s/git/matching-refs/tags/v: HTTP 403. Nothing was written.\n" % PATH)
 
@@ -602,28 +974,19 @@ class VersionSource(unittest.TestCase):
     VERSION = "9.7"
 
     def setUp(self):
-        self.directory = tempfile.mkdtemp()
-        with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
-            data = json.load(handle)
-        data["version"] = self.VERSION
-        with open(os.path.join(self.directory, "ratchet.json"), "w", encoding="utf-8") as handle:
-            json.dump(data, handle)
-        for rule in data["rules"]:
-            if "reference_check" in rule:
-                target = os.path.join(self.directory, rule["reference_check"])
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                open(target, "w").close()
-        with open(os.path.join(self.directory, "CHANGELOG.md"), "w", encoding="utf-8") as handle:
-            handle.write(changelog((self.VERSION, "The entry for %s." % self.VERSION), ("0.3", "The entry for 0.3.")))
+        self.checkout = Checkout()
+        self.directory = self.checkout.directory
+        self.checkout.commit("0.3", changelog(("0.3", "The entry for 0.3.")))
+        self.head = self.checkout.commit(self.VERSION, changelog((self.VERSION, "The entry for %s." % self.VERSION), ("0.3", "The entry for 0.3.")))
 
     def tearDown(self):
-        shutil.rmtree(self.directory)
+        self.checkout.close()
 
     def test_publish_tags_the_version_in_ratchet_json(self):
         github = FakeGitHub(**DONE_03)
-        code, out, err, _ = run_main(github, root=self.directory)
+        code, out, err, _ = self.checkout.run(github)
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(github.tags[self.VERSION], ("commit", SHA))
+        self.assertEqual(github.tags[self.VERSION], ("commit", self.head))
         self.assertEqual(github.releases[-1]["tag_name"], "v" + self.VERSION)
         self.assertEqual(github.releases[-1]["body"], release_line(self.VERSION))
 
@@ -637,12 +1000,28 @@ class VersionSource(unittest.TestCase):
         with open(os.path.join(self.directory, "CHANGELOG.md"), "w", encoding="utf-8", newline="") as handle:
             handle.write(HOSTILE.replace("0.4", self.VERSION))
         github = FakeGitHub(**DONE_03)
-        code, out, err, _ = run_main(github, root=self.directory)
+        code, out, err, _ = self.checkout.run(github)
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(github.releases[-1]["body"], release_line(self.VERSION))
         out, err = io.StringIO(), io.StringIO()
         code = release.main(["notes", "--repo", REPO], environ={}, opener=None, out=out, err=err, root=self.directory)
         self.assertEqual((code, err.getvalue(), out.getvalue()), (0, "", release_line(self.VERSION) + "\n"))
+
+
+# After CRLF is read as LF: every control character but the tab and LF, and the two line separators of Unicode.
+# A YAML parser may break a line at a lone CR, at NEL (U+0085, among the C1 controls), at U+2028 or at U+2029,
+# where the comparison below does not. Then a line it takes for a comment can hold code.
+WORKFLOW_REFUSED = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+
+
+def workflow_text(data):
+    """The text of a workflow file, read as strict UTF-8, with CRLF read as LF. ValueError on any other line break or control character."""
+    text = data.decode("utf-8", errors="strict").replace("\r\n", "\n")
+    match = WORKFLOW_REFUSED.search(text)
+    if match:
+        raise ValueError("the workflow holds U+%04X at character %d: a control character or a line break other than LF and CRLF"
+                         % (ord(match.group()), match.start()))
+    return text
 
 
 def workflow_code(text):
@@ -661,9 +1040,51 @@ class Workflow(unittest.TestCase):
 
     LIVE = os.path.join(ROOT, ".github", "workflows", "release.yml")
 
-    def lines(self):
+    def data(self):
         with open(self.LIVE, "rb") as handle:
-            return handle.read().decode("utf-8", errors="strict").split("\n")
+            return handle.read()
+
+    def lines(self):
+        return workflow_text(self.data()).split("\n")
+
+    # Round 1 of release-links, finding 2: a lone CR in a comment hid "if: false" from the comparison.
+
+    def test_a_line_break_or_control_character_that_is_not_lf_or_crlf_fails_the_reading(self):
+        live = self.data()
+        self.assertEqual(workflow_text(live), live.decode("utf-8"))
+        anchor = b"jobs:\n  release:\n"
+        self.assertEqual(live.count(anchor), 1)
+        for character in ("\r", "\x00", "\x08", "\x0b", "\x0c", "\x1b", "\x1f", "\x7f", "\x85", "\x9f", "\u2028", "\u2029"):
+            with self.subTest(character=character):
+                hidden = anchor + ("    # review marker%s    if: false\n" % character).encode("utf-8")
+                with self.assertRaises(ValueError) as caught:
+                    workflow_text(live.replace(anchor, hidden))
+                self.assertIn("U+%04X" % ord(character), str(caught.exception))
+        # The reviewer's file, byte for byte: "# review marker", a lone CR, then "if: false" on the job.
+        with self.assertRaises(ValueError):
+            workflow_text(live.replace(b"    timeout-minutes: 5\n", b"    timeout-minutes: 5\n    # review marker\r    if: false\n"))
+        with self.assertRaises(UnicodeDecodeError):
+            workflow_text(live.replace(b"name: release", b"name: release\xff"))
+
+    def test_the_reading_that_the_comparison_uses_refuses_the_reviewers_file(self):
+        # The same lines() that every test of the workflow reads, given the reviewer's file instead of the live one.
+        live = self.data()
+        hostile = live.replace(b"    timeout-minutes: 5\n", b"    timeout-minutes: 5\n    # review marker\r    if: false\n")
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory)
+        path = os.path.join(directory, "release.yml")
+        with open(path, "wb") as handle:
+            handle.write(hostile)
+        with mock.patch.object(self, "LIVE", path):
+            with self.assertRaises(ValueError):
+                self.code()
+
+    def test_crlf_and_the_tab_are_read_and_then_compared(self):
+        live = self.data()
+        self.assertEqual(workflow_text(live.replace(b"\n", b"\r\n")), live.decode("utf-8"))
+        # A tab passes the reading. It is no indentation for the comparison, so the reviewed form does not match.
+        tabbed = workflow_text(live.replace(b"  group: release", b"\tgroup: release"))
+        self.assertIn("\tgroup: release", workflow_code(tabbed))
 
     def test_the_workflow_keeps_its_form(self):
         lines = self.lines()
@@ -677,6 +1098,7 @@ class Workflow(unittest.TestCase):
         self.assertEqual(len(uses), 1)
         self.assertRegex(uses[0], r"^- uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\Z")
         self.assertIn("          persist-credentials: false", lines)
+        self.assertIn("          fetch-depth: 0", lines)
         runs = [l.strip(" ") for l in lines if l.strip(" ").startswith("run:")]
         self.assertEqual(runs, [
             "run: python3 checks/generate.py --check",
@@ -733,6 +1155,11 @@ class Workflow(unittest.TestCase):
         self.assertEqual(self.block("on:"), ["on:", "  push:", "    branches: [main]", "  workflow_dispatch:"])
         self.assertFalse([l for l in self.code() if l.strip(" ").startswith(("if:", "- if:"))])
 
+    def test_the_checkout_holds_the_whole_history_of_main(self):
+        # Round 1 of release-links, finding 1: the script reads every version that main has had, so the clone is not shallow.
+        self.assertEqual(self.block("        with:"), ["        with:", "          fetch-depth: 0", "          persist-credentials: false"])
+        self.assertEqual([l for l in self.code() if "fetch-depth" in l or "filter:" in l or "sparse" in l], ["          fetch-depth: 0"])
+
     def test_a_run_has_a_time_limit(self):
         self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 5"])
 
@@ -770,6 +1197,7 @@ class Workflow(unittest.TestCase):
             "    steps:",
             "      - uses: actions/checkout@<commit> # v<version>",
             "        with:",
+            "          fetch-depth: 0",
             "          persist-credentials: false",
             "      - name: Generated text matches the data files",
             "        run: python3 checks/generate.py --check",

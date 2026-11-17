@@ -91,6 +91,16 @@ class RegistryError(Exception):
 
 def load_json(path):
     """Read a JSON data file strictly: valid UTF-8, no field twice in one object, no NaN or Infinity."""
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read()
+    except OSError as error:
+        raise RegistryError("not a valid data file: %s" % error)
+    return parse_json(data)
+
+
+def parse_json(data):
+    """The bytes of a JSON data file, read strictly as load_json reads a file."""
     def pairs(items):
         result = {}
         for key, value in items:
@@ -103,14 +113,13 @@ def load_json(path):
         raise ValueError("%s is not allowed" % name)
 
     try:
-        with open(path, "rb") as handle:
-            text = handle.read().decode("utf-8", errors="strict")
+        text = data.decode("utf-8", errors="strict")
         return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
     except RecursionError:
         raise RegistryError("not a valid data file: it is nested too deeply")
     except UnicodeDecodeError as error:
         raise RegistryError("not a valid data file: it %s" % not_utf8(error))
-    except (OSError, ValueError) as error:
+    except ValueError as error:
         raise RegistryError("not a valid data file: %s" % error)
 
 

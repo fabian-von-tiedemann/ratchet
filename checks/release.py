@@ -7,8 +7,11 @@
 D-2026-11-17-release-on-merge, D-2026-11-17-release-verbatim and D-2026-11-17-release-links.
 The release text is one fixed line written here, with the version and links to CHANGELOG.md
 and to the files at the tag. Nothing from the changelog is copied. From CHANGELOG.md the script
-reads only which versions have an entry. An older version that is not finished fails the run,
-and the run writes nothing: the maintainer reruns the run of that version.
+reads only which versions have an entry. The versions that must already be released are read
+with git from the history of main, which a pull request cannot edit: every value that version
+in ratchet.json has had on the first-parent history of the commit. An older one that is not
+finished fails the run, and the run writes nothing: the message names the commit whose run the
+maintainer reruns.
 
 publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_REF from the
 environment. The token is sent only to https://api.github.com and is never printed. It
@@ -21,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -44,6 +48,9 @@ REPOSITORY = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_
 # Every path the script sends a request to: under one repository, and nothing that leaves it.
 API_PATH = re.compile(r"^/repos/[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_./?=&-]*\Z")
 PAGES = 100
+HISTORY_FILE = "ratchet.json"
+# A line of git cat-file --batch-check for a file that is there: object, type and size.
+BLOB = re.compile(r"^([0-9a-f]{40}) blob ([0-9]+)\Z")
 
 
 class ReleaseError(Exception):
@@ -82,6 +89,98 @@ def changelog_versions(text):
         if match:
             versions.append(match.group(1))
     return versions
+
+
+def git(root, args, data=None):
+    """What git prints for args, run on the checkout at root, as bytes. ReleaseError when it fails.
+
+    No GIT_ variable of the environment and no system or global config is used, replace refs are
+    not read, and git does not look for a repository above root.
+    """
+    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_NO_REPLACE_OBJECTS="1", GIT_TERMINAL_PROMPT="0",
+               GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.realpath(root)), LC_ALL="C")
+    try:
+        result = subprocess.run(["git", "--no-replace-objects", "-C", root] + list(args), input=data,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        raise ReleaseError("git %s: it could not be run. Nothing was written." % args[0])
+    if result.returncode != 0:
+        raise ReleaseError("git %s: exit %d. Nothing was written." % (args[0], result.returncode))
+    return result.stdout
+
+
+def version_at(commit, data):
+    """The version in the bytes of ratchet.json at a commit, read strictly."""
+    try:
+        value = registry.parse_json(data)
+    except registry.RegistryError as error:
+        raise ReleaseError("ratchet.json at commit %s on main: %s. Nothing was written." % (commit, error))
+    if not (isinstance(value, dict) and isinstance(value.get("version"), str) and registry.VERSION.match(value["version"])):
+        raise ReleaseError("ratchet.json at commit %s on main has no version of the form MAJOR.MINOR. Nothing was written." % commit)
+    return value["version"]
+
+
+def main_history(root, sha):
+    """[(commit, version)] for every commit on the first-parent history of sha whose tree holds ratchet.json, newest first.
+
+    That history is main's as it was when sha was pushed. A pull request adds commits on top of it and cannot
+    change one in it: the ruleset on main refuses a force-push and a deletion. Every commit is read, not only
+    those that git reports as changing the file. The checkout must be at sha and must not be shallow.
+    """
+    if git(root, ["rev-parse", "--is-shallow-repository"]) != b"false\n":
+        raise ReleaseError("the checkout is shallow: the release reads the whole history of main, "
+                           "so the workflow checks out with fetch-depth: 0. Nothing was written.")
+    if git(root, ["rev-parse", "--verify", "HEAD^{commit}"]) != (sha + "\n").encode("ascii"):
+        raise ReleaseError("the checkout is not at GITHUB_SHA %s. Nothing was written." % sha)
+    commits = git(root, ["rev-list", "--first-parent", sha]).decode("ascii", errors="replace").split("\n")
+    if commits[-1] != "" or not all(SHA.match(c) for c in commits[:-1]) or commits[0] != sha:
+        raise ReleaseError("git rev-list: the answer is not a list of commits from %s. Nothing was written." % sha)
+    commits = commits[:-1]
+    answer = git(root, ["cat-file", "--batch-check"], "".join("%s:%s\n" % (c, HISTORY_FILE) for c in commits).encode("ascii"))
+    lines = answer.decode("ascii", errors="replace").split("\n")
+    if len(lines) != len(commits) + 1 or lines[-1] != "":
+        raise ReleaseError("git cat-file: the answer does not have one line for each commit. Nothing was written.")
+    blobs = []
+    for commit, line in zip(commits, lines):
+        match = BLOB.match(line)
+        if match:
+            blobs.append((commit, match.group(1), int(match.group(2))))
+        elif line == "%s:%s missing" % (commit, HISTORY_FILE):
+            blobs.append((commit, None, None))
+        else:
+            raise ReleaseError("ratchet.json at commit %s on main is not a file. Nothing was written." % commit)
+    missing = None
+    for commit, blob, _ in blobs:
+        if blob is None:
+            missing = missing or commit
+        elif missing:
+            raise ReleaseError("ratchet.json is missing at commit %s on main, and the earlier commit %s holds it. "
+                               "Nothing was written." % (missing, commit))
+    unique = []
+    for _, blob, size in blobs:
+        if blob is not None and (blob, size) not in unique:
+            unique.append((blob, size))
+    answer = git(root, ["cat-file", "--batch"], "".join("%s\n" % blob for blob, _ in unique).encode("ascii"))
+    contents = {}
+    at = 0
+    for blob, size in unique:
+        header = ("%s blob %d\n" % (blob, size)).encode("ascii")
+        end = at + len(header) + size
+        if answer[at:at + len(header)] != header or answer[end:end + 1] != b"\n":
+            raise ReleaseError("git cat-file: the answer is not of the form expected. Nothing was written.")
+        contents[blob] = answer[at + len(header):end]
+        at = end + 1
+    if at != len(answer):
+        raise ReleaseError("git cat-file: the answer is not of the form expected. Nothing was written.")
+    versions = {}
+    history = []
+    for commit, blob, _ in blobs:
+        if blob is not None:
+            if blob not in versions:
+                versions[blob] = version_at(commit, contents[blob])
+            history.append((commit, versions[blob]))
+    return history
 
 
 def release_text(version, repo):
@@ -205,25 +304,46 @@ def create_release(api, repo, tag, version, body, sha):
         raise ReleaseError("GET %s: read back, the tag %s does not point at %s. The release was created. Look at it by hand." % (path, tag, sha))
 
 
-def unfinished(versions, version, tags, releases):
-    """Every older version in the changelog that is not finished, with what it lacks."""
+def first_commits(history, version, sha):
+    """{version: the first commit on main whose ratchet.json names it}, after checking the history against this run."""
+    if not history or history[0][0] != sha:
+        raise ReleaseError("ratchet.json is not in commit %s. Nothing was written." % sha)
+    if history[0][1] != version:
+        raise ReleaseError("ratchet.json in the checkout names %s, and at commit %s it names %s. Nothing was written."
+                           % (version, sha, history[0][1]))
+    first = {}
+    for commit, named in history:
+        if version_key(named) > version_key(version):
+            raise ReleaseError("ratchet.json at commit %s on main names %s, newer than %s. Nothing was written." % (commit, named, version))
+        first[named] = commit
+    return first
+
+
+def unfinished(first, version, tags, releases):
+    """Every older version that main has named and that is not finished, with what it lacks and which run to rerun."""
     problems = []
-    for older in sorted(set(versions), key=version_key):
+    for older in sorted(first, key=version_key):
         if version_key(older) >= version_key(version):
             continue
         if older not in tags:
-            problems.append("%s: no tag" % older)
+            problems.append("%s: no tag. Rerun the release run of commit %s, the first commit on main whose ratchet.json names %s."
+                            % (older, first[older], older))
         elif older not in BEFORE_RELEASES and False not in releases.get("v" + older, []):
-            problems.append("%s: a tag and no published release" % older)
+            kind, target = tags[older]
+            if kind == "commit":
+                problems.append("%s: a tag and no published release. Rerun the release run of commit %s, which the tag points at."
+                                % (older, target))
+            else:
+                problems.append("%s: a tag and no published release. The tag is not a plain tag of a commit: look at it by hand." % older)
     return problems
 
 
-def publish(version, text, repo, sha, api, out):
+def publish(version, text, history, repo, sha, api, out):
     """Tag sha as v<version> and release it, or find that it is done. ReleaseError on every fault.
 
-    Only versions up to this one are looked at. Nothing is written before every check has
-    passed, and nothing is written for an older version. A tag is created and never moved,
-    deleted or edited.
+    history is main_history() of sha. Only versions up to this one are looked at. Nothing is
+    written before every check has passed, and nothing is written for an older version. A tag
+    is created and never moved, deleted or edited.
     """
     versions = changelog_versions(text)
     if version not in versions:
@@ -231,6 +351,7 @@ def publish(version, text, repo, sha, api, out):
     newest = max(versions, key=version_key)
     if newest != version:
         raise ReleaseError("the newest entry in CHANGELOG.md is %s, and ratchet.json says %s" % (newest, version))
+    first = first_commits(history, version, sha)
     body = release_text(version, repo)
     tag = "v%s" % version
 
@@ -242,10 +363,9 @@ def publish(version, text, repo, sha, api, out):
     for name in sorted(tags, key=version_key):
         if name not in versions:
             raise ReleaseError("the tag v%s has no entry in CHANGELOG.md. Nothing was written." % name)
-    problems = unfinished(versions, version, tags, releases)
+    problems = unfinished(first, version, tags, releases)
     if problems:
-        raise ReleaseError("an older version is not finished (%s). Rerun the release run of the commit that raised the version "
-                           "to it, then this run. Nothing was written." % "; ".join(problems))
+        raise ReleaseError("an older version is not finished. %s Then rerun this run. Nothing was written." % " ".join(problems))
     mine = releases.get(tag, [])
     if len(mine) > 1:
         raise ReleaseError("there are %d releases for %s. Nothing was written." % (len(mine), tag))
@@ -282,7 +402,7 @@ def publish(version, text, repo, sha, api, out):
                            "The tag is not moved. Nothing was written." % tag)
     if not mine or mine[0]:
         raise ReleaseError("the tag %s points at another commit than this one, and has no published release. The tag is not moved. "
-                           "Rerun the release run of the commit it points at. Nothing was written." % tag)
+                           "Rerun the release run of commit %s, which the tag points at. Nothing was written." % (tag, target))
     path = "/repos/%s/compare/%s...%s" % (repo, target, sha)
     data = request(api, "GET", path, None, 200, "Nothing was written.")
     if not (isinstance(data, dict) and data.get("status") == "ahead"):
@@ -328,7 +448,8 @@ def main(argv=None, environ=None, opener=None, out=None, err=None, root=None):
         sha = environment(environ, "GITHUB_SHA", SHA)
         if environ.get("GITHUB_REF") != MAIN:
             raise ReleaseError("GITHUB_REF is not %s: a release is made only from main" % MAIN)
-        publish(version, read_text(path), repo, sha, github(environ["GITHUB_TOKEN"], opener), out)
+        text = read_text(path)
+        publish(version, text, main_history(root, sha), repo, sha, github(environ["GITHUB_TOKEN"], opener), out)
         return 0
     except ReleaseError as error:
         err.write("release: %s\n" % error)
