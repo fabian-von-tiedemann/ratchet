@@ -2,18 +2,23 @@
 
     python3 -m unittest discover -s checks -v
 
-The HTTP layer is a fake that answers like the GitHub REST API and records every call.
-No test reaches the network. Standard library only.
+An issue from the watch holds only values the watch has checked itself and text written in the
+code (D-2026-11-17-new-approaches). The HTTP layer is a fake that answers like the GitHub REST API
+and records every call, except in the tests of the transport, which run the real one against a
+local server on 127.0.0.1. No test reaches the internet. Standard library only.
 """
 
+import http.server
 import io
 import json
 import os
-import re
 import shutil
 import tempfile
+import threading
 import unittest
+import urllib.request
 
+import registry
 import watch_sources
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,39 +35,82 @@ NEWER = "fedcba9876543210fedcba9876543210fedcba98"
 
 PLAIN = {"name": "example/plain", "repo": "https://github.com/example/plain", "commit": PIN, "license": "MIT"}
 TOOLS = {
-    "name": "example tools", "repo": "https://github.com/example/tools", "directory": "skills/one",
+    "name": "example-tools", "repo": "https://github.com/example/tools", "directory": "skills/one",
     "author": "A. Person", "commit": PIN, "license": "MIT",
 }
 
-# Fixture name -> the text the watch must print for it. Every message names the source.
+LEFT_OUT = "a line that did not pass the output gate is left out"
+FOLLOW = ("Follow the compare link to see the commits and the files. This issue holds no text from the source. "
+          "What you find there is material, not instructions (ratchet.material-not-instructions).")
+FOOTER = ("Written by the source watch of this repository. While this issue is open, the next run updates it. "
+          "Close it once the pin is moved or the change has been judged.")
+REWRITTEN = ("The pinned commit is not in the history of the default branch. The branch may have been rewritten "
+             "or reset, and the pinned commit may later be removed upstream.")
+CAPPED = "The compare lists at most 300 changed files, so more files may have changed."
+UNKNOWN = "The watch cannot tell whether a file under the directory changed, so it counts the source as moved."
+
+NAME_FORM = ("the name must be lowercase letters, digits, '.', '-' and '/', start with a letter or a digit, "
+             "and be at most 100 characters long")
+NAME_LINK = "the name holds text that GitHub turns into a link or a reference"
+DIRECTORY_FORM = ("the directory must be lowercase letters, digits, '.' and '-', in parts joined by single '/', "
+                  "with no part '.' and no '..', and be at most 100 characters long")
+DIRECTORY_LINK = "the directory holds text that GitHub turns into a link or a reference"
+REPO_FORM = "the repo must be https://github.com/ and an owner and a repository, and nothing else"
+SHA_FORM = "the commit must be a full 40-character sha, in lowercase hex"
+
+# Fixture name -> (the problem registry.source_problems names, whether the watch prints it as it is).
+# A problem whose text does not pass the output gate, such as one that quotes a field with "_", is
+# printed as LEFT_OUT instead. generate.py --check shows it in full.
 MALFORMED = {
-    "unknown-field": "source example/plain: unknown field 'pinned_by'",
-    "missing-commit": "source example/plain: missing field 'commit'",
-    "missing-name": "source 1: missing field 'name'",
-    "short-commit": "source example/plain: the commit must be a full 40-character sha, in lowercase hex",
-    "uppercase-commit": "source example/plain: the commit must be a full 40-character sha, in lowercase hex",
-    "commit-line-break": "source example/plain: the commit must be a full 40-character sha, in lowercase hex",
-    "commit-wrong-type": "source example/plain: the commit must be a full 40-character sha, in lowercase hex",
-    "repo-with-text": "source pstack: the repo must be https://github.com/ and an owner and a repository, and nothing else",
-    "repo-not-github": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-http": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-trailing-slash": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-dot-git": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-dots": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-query": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "repo-line-break": "source example/plain: the repo must be https://github.com/ and an owner and a repository",
-    "directory-parent": "source example tools: the directory must be a plain relative path inside the repository",
-    "directory-inner-parent": "source example tools: the directory must be a plain relative path inside the repository",
-    "directory-absolute": "source example tools: the directory must be a plain relative path inside the repository",
-    "directory-trailing-slash": "source example tools: the directory must be a plain relative path inside the repository",
-    "directory-empty": "source example tools: the directory must be a plain relative path inside the repository",
-    "directory-backtick": "source example tools: the directory must be a plain relative path inside the repository",
-    "name-twice": "source example/plain: the name is used twice",
-    "name-empty": "source 1: the name holds no words",
-    "author-not-on-the-list": "source example tools: author holds U+202E, which is not among the characters a value may hold",
-    "license-pipe": "source example/plain: license must be one line, without |",
-    "not-an-object": "source 1: a source must be an object",
-    "not-a-list": "sources must be a list",
+    "unknown-field": ("source example/plain: unknown field 'pinned_by'", False),
+    "missing-commit": ("source example/plain: missing field 'commit'", True),
+    "missing-name": ("source 1: missing field 'name'", True),
+    "short-commit": ("source example/plain: " + SHA_FORM, True),
+    "uppercase-commit": ("source example/plain: " + SHA_FORM, True),
+    "commit-line-break": ("source example/plain: " + SHA_FORM, True),
+    "commit-wrong-type": ("source example/plain: " + SHA_FORM, True),
+    "repo-with-text": ("source pstack: " + REPO_FORM, True),
+    "repo-not-github": ("source example/plain: " + REPO_FORM, True),
+    "repo-http": ("source example/plain: " + REPO_FORM, True),
+    "repo-trailing-slash": ("source example/plain: " + REPO_FORM, True),
+    "repo-dot-git": ("source example/plain: " + REPO_FORM, True),
+    "repo-dots": ("source example/plain: " + REPO_FORM, True),
+    "repo-query": ("source example/plain: " + REPO_FORM, True),
+    "repo-line-break": ("source example/plain: " + REPO_FORM, True),
+    "owner-underscore": ("source example/plain: " + REPO_FORM, True),
+    "directory-parent": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-inner-parent": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-absolute": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-trailing-slash": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-empty": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-backtick": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-double-slash": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-dots-inside": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-dot-part": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-uppercase": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-underscore": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-too-long": ("source example-tools: " + DIRECTORY_FORM, True),
+    "directory-www": ("source example-tools: " + DIRECTORY_LINK, True),
+    "name-twice": ("source example/plain: the name is used twice", True),
+    "name-empty": ("source 1: " + NAME_FORM, True),
+    "name-workflow-command": ("source 1: " + NAME_FORM, True),
+    "name-double-colon": ("source 1: " + NAME_FORM, True),
+    "name-at-sign": ("source 1: " + NAME_FORM, True),
+    "name-hash": ("source 1: " + NAME_FORM, True),
+    "name-angle-bracket": ("source 1: " + NAME_FORM, True),
+    "name-backtick": ("source 1: " + NAME_FORM, True),
+    "name-space": ("source 1: " + NAME_FORM, True),
+    "name-uppercase": ("source 1: " + NAME_FORM, True),
+    "name-underscore": ("source 1: " + NAME_FORM, True),
+    "name-leading-dot": ("source 1: " + NAME_FORM, True),
+    "name-leading-dash": ("source 1: " + NAME_FORM, True),
+    "name-too-long": ("source 1: " + NAME_FORM, True),
+    "name-www": ("source 1: " + NAME_LINK, True),
+    "name-gh-reference": ("source 1: " + NAME_LINK, True),
+    "author-not-on-the-list": ("source example-tools: author holds U+202E, which is not among the characters a value may hold", False),
+    "license-pipe": ("source example/plain: license must be one line, without |", False),
+    "not-an-object": ("source 1: a source must be an object", True),
+    "not-a-list": ("sources must be a list", True),
 }
 
 
@@ -116,10 +164,10 @@ class FakeGitHub:
     def gets(self):
         return [call[1][len(API):] for call in self.calls if call[0] == "GET"]
 
-    def upstream(self, source, head, compare, branch="main"):
+    def upstream(self, source, head, compare, branch="main", info=None):
         """The answers of one source repository."""
         repo = source["repo"][len("https://github.com/"):]
-        self.routes[("GET", "/repos/%s" % repo)] = (200, {"full_name": repo, "default_branch": branch})
+        self.routes[("GET", "/repos/%s" % repo)] = (200, dict(info or {}, full_name=repo, default_branch=branch))
         self.routes[("GET", "/repos/%s/branches/%s" % (repo, branch))] = (200, {"name": branch, "commit": {"sha": head}})
         if compare is not None:
             self.routes[("GET", "/repos/%s/compare/%s...%s" % (repo, source["commit"], head))] = (200, compare)
@@ -159,68 +207,59 @@ def comparison(status, commits, files, ahead=None, behind=0, total=None):
 
 
 def two_commits():
-    return comparison("ahead", [commit(NEWER, "Add a step\n\nLonger text that is never copied."), commit(HEAD, "Fix a typo")],
+    return comparison("ahead", [commit(NEWER, "Add a step\n\nLonger text."), commit(HEAD, "Fix a typo")],
                       [changed("README.md"), changed("docs/guide.md", "added")])
 
 
-def fences(body):
-    """The lines of the body outside fenced code blocks, and the lines inside them, as two lists."""
-    outside, inside, fence = [], [], None
-    for line in body.split("\n"):
-        if fence is None:
-            match = re.match(r"^(`{3,})text$", line)
-            if match:
-                fence = match.group(1)
-            else:
-                outside.append(line)
-        elif line == fence:
-            fence = None
-        else:
-            self_check = re.match(r"^ {0,3}(`{3,})\s*$", line)
-            if self_check and len(self_check.group(1)) >= len(fence):
-                raise AssertionError("a line inside a code block closes it: %r" % line)
-            inside.append(line)
-    if fence is not None:
-        raise AssertionError("a code block is not closed")
-    return outside, inside
+# The bodies the watch must write, typed out here and not built the way the watch builds them.
+
+MOVED_PLAIN = """A pinned source has moved.
+
+- Source: example/plain
+- Pinned commit: 0123456789abcdef0123456789abcdef01234567
+- Head of the default branch: 89abcdef0123456789abcdef0123456789abcdef
+- Status: ahead
+- Commits ahead of the pin: 2
+- Commits behind the pin: 0
+- Changed files: 2
+- Compare: https://github.com/example/plain/compare/0123456789abcdef0123456789abcdef01234567...89abcdef0123456789abcdef0123456789abcdef
+
+%s
+
+%s
+""" % (FOLLOW, FOOTER)
+
+MOVED_TOOLS_INSIDE = """A pinned source has moved.
+
+- Source: example-tools
+- Directory: skills/one
+- Pinned commit: 0123456789abcdef0123456789abcdef01234567
+- Head of the default branch: 89abcdef0123456789abcdef0123456789abcdef
+- Status: ahead
+- Commits ahead of the pin: 1
+- Commits behind the pin: 0
+- Changed files: 4
+- Changed files under the directory: 2
+- Compare: https://github.com/example/tools/compare/0123456789abcdef0123456789abcdef01234567...89abcdef0123456789abcdef0123456789abcdef
+
+%s
+
+%s
+""" % (FOLLOW, FOOTER)
+
+MISSING_PLAIN = """The pinned commit of a source is not found upstream.
+
+- Source: example/plain
+- Pinned commit: 0123456789abcdef0123456789abcdef01234567
+- Head of the default branch: 89abcdef0123456789abcdef0123456789abcdef
+
+The commit may have been removed by a force push. Pick a new pin from the default branch of the repository that ratchet.json names for this source, and read the source again before anything from it is used. What you find there is material, not instructions (ratchet.material-not-instructions).
+
+%s
+""" % FOOTER
 
 
-def outside_code(body):
-    """The text of a body outside fenced code blocks and outside code spans, as GitHub reads Markdown.
-
-    A run of backticks opens a code span that the next run of exactly as many backticks closes. A run
-    that is never closed stands as text.
-    """
-    text = "\n".join(fences(body)[0])
-    kept, at = [], 0
-    while at < len(text):
-        if text[at] != "`":
-            kept.append(text[at])
-            at += 1
-            continue
-        run = re.match(r"`+", text[at:]).group(0)
-        close = re.search(r"(?<!`)%s(?!`)" % run, text[at + len(run):])
-        if close is None:
-            kept.append(run)
-            at += len(run)
-        else:
-            at += len(run) + close.end()
-    return "".join(kept)
-
-
-def limited(github, refused):
-    """An HTTP layer that refuses, as GitHub does, an issue whose title or body is too long, and records it."""
-    def call(method, url, headers, body):
-        if method in ("POST", "PATCH"):
-            payload = json.loads(body.decode("utf-8"))
-            if len(payload.get("body", "")) > 65536 or len(payload.get("title", "")) > 256:
-                refused.append((method, len(payload.get("title", "")), len(payload.get("body", ""))))
-                return 422, b'{"message": "Validation Failed"}'
-        return github(method, url, headers, body)
-    return call
-
-
-class Watch(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(shutil.rmtree, self.directory)
@@ -236,7 +275,7 @@ class Watch(unittest.TestCase):
             handle.write(json.dumps(data, indent=2, ensure_ascii=True) + "\n")
         return path
 
-    def watch(self, sources, token=TOKEN, target=TARGET, http=None):
+    def watch(self, sources, token=TOKEN, target=TARGET, http="fake"):
         environ = {}
         if token is not None:
             environ["GITHUB_TOKEN"] = token
@@ -244,7 +283,7 @@ class Watch(unittest.TestCase):
             environ["GITHUB_REPOSITORY"] = target
         out, err = io.StringIO(), io.StringIO()
         code = watch_sources.main(["--data", self.data(sources)], environ=environ,
-                                  http=http or self.github, stdout=out, stderr=err)
+                                  http=self.github if http == "fake" else http, stdout=out, stderr=err)
         return code, out.getvalue(), err.getvalue()
 
     def assert_no_writes(self):
@@ -257,6 +296,38 @@ class Watch(unittest.TestCase):
         self.assertEqual(len(self.github.issues), 1, self.github.issues)
         return self.github.issues[0]
 
+
+class MalformedSources(Base):
+    """One test per fixture under fixtures/sources/, each loaded from its file."""
+
+    def test_every_fixture_has_an_expectation_and_every_expectation_a_fixture(self):
+        names = sorted(name[:-len(".json")] for name in os.listdir(SOURCES))
+        self.assertEqual(names, sorted(MALFORMED))
+
+    def fails(self, fixture):
+        message, printed = MALFORMED[fixture]
+        with open(os.path.join(SOURCES, fixture + ".json"), encoding="utf-8") as handle:
+            sources = json.load(handle)
+        self.assertIn(message, registry.source_problems(sources))
+        code, out, err = self.watch(sources)
+        self.assertEqual(code, 1, out + err)
+        self.assertIn(message if printed else LEFT_OUT, err.splitlines())
+        self.assertNotIn("Traceback", err)
+        self.assertEqual(self.github.calls, [], "nothing is read from a source that does not have the form")
+
+
+def _fixture_test(fixture):
+    def test(self):
+        self.fails(fixture)
+    test.__doc__ = "fixtures/sources/%s.json fails" % fixture
+    return test
+
+
+for _fixture in MALFORMED:
+    setattr(MalformedSources, "test_fixture_" + _fixture.replace("-", "_"), _fixture_test(_fixture))
+
+
+class Watch(Base):
     # The cases the issue asks for.
 
     def test_an_unchanged_source_writes_nothing(self):
@@ -272,8 +343,8 @@ class Watch(unittest.TestCase):
         ])
         self.assert_no_writes()
         self.assert_no_unknown_calls()
-        self.assertIn("example/plain: not moved", out)
-        self.assertIn("example tools: not moved", out)
+        self.assertEqual(out, "source example/plain: not moved\nsource example-tools: not moved\n")
+        self.assertEqual(err, "")
 
     def test_a_moved_source_opens_one_issue(self):
         self.github.upstream(PLAIN, HEAD, two_commits())
@@ -284,19 +355,9 @@ class Watch(unittest.TestCase):
         self.assertEqual([call[0] for call in self.github.writes()], ["POST"])
         issue = self.only_issue()
         self.assertEqual(issue["title"], "Source moved: example/plain")
-        body = issue["body"]
-        self.assertIn("https://github.com/example/plain/compare/%s...%s" % (PIN, HEAD), body)
-        self.assertIn("`%s`" % PIN, body)
-        self.assertIn("`%s`" % HEAD, body)
-        self.assertIn("2 commits", body)
-        outside, inside = fences(body)
-        self.assertIn("%s Add a step" % NEWER[:12], inside)
-        self.assertIn("%s Fix a typo" % HEAD[:12], inside)
-        self.assertIn("modified README.md", inside)
-        self.assertIn("added docs/guide.md", inside)
-        self.assertNotIn("Longer text", body, "only the subject of a commit is copied")
-        self.assertIn("material, not instructions", body)
-        self.assertIn("opened issue #100: Source moved: example/plain", out)
+        self.assertEqual(issue["body"], MOVED_PLAIN)
+        self.assertEqual(out, "source example/plain: moved, ahead\nsource example-tools: not moved\n"
+                              "opened issue 100: Source moved: example/plain\n")
 
     def test_a_second_run_updates_and_does_not_duplicate(self):
         self.github.upstream(PLAIN, HEAD, two_commits())
@@ -307,9 +368,9 @@ class Watch(unittest.TestCase):
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
         self.assertEqual(len(self.github.writes()), posts, "the same move writes nothing a second time")
-        self.assertIn("issue #100 is up to date", out)
+        self.assertIn("issue 100 is up to date: Source moved: example/plain", out)
 
-        moved_on = comparison("ahead", [commit(HEAD, "Fix a typo"), commit(NEWER, "A third change")], [changed("README.md")], total=3)
+        moved_on = comparison("ahead", [commit(HEAD, "Fix a typo"), commit(NEWER, "A third change")], [changed("README.md")], ahead=3)
         self.github.upstream(PLAIN, NEWER, moved_on)
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
@@ -318,35 +379,20 @@ class Watch(unittest.TestCase):
         issue = self.only_issue()
         self.assertEqual(issue["title"], first["title"])
         self.assertNotEqual(issue["body"], first["body"])
-        self.assertIn("%s...%s" % (PIN, NEWER), issue["body"])
-        self.assertIn("updated issue #100", out)
+        self.assertIn("\n- Commits ahead of the pin: 3\n", issue["body"])
+        self.assertIn("/compare/%s...%s\n" % (PIN, NEWER), issue["body"])
+        self.assertIn("updated issue 100: Source moved: example/plain", out)
         self.assert_no_unknown_calls()
 
-    def test_a_malformed_source_fails_and_names_it(self):
-        names = sorted(name[:-len(".json")] for name in os.listdir(SOURCES))
-        self.assertEqual(names, sorted(MALFORMED), "every fixture has an expectation, and every expectation a fixture")
-        for name, message in sorted(MALFORMED.items()):
-            with self.subTest(fixture=name):
-                self.github = FakeGitHub()
-                with open(os.path.join(SOURCES, name + ".json"), encoding="utf-8") as handle:
-                    sources = json.load(handle)
-                code, out, err = self.watch(sources)
-                self.assertEqual(code, 1, out + err)
-                self.assertIn(message, err)
-                self.assertNotIn("Traceback", err)
-                self.assertEqual(self.github.calls, [], "nothing is read from a source that does not have the form")
-
     def test_the_sources_in_ratchet_json_have_the_form(self):
-        code, out, err = self.watch_real_data_without_network()
-        self.assertEqual(code, 0, err)
-
-    def watch_real_data_without_network(self):
         with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
             sources = json.load(handle)["sources"]
         self.assertTrue(any("directory" in source for source in sources))
+        self.assertEqual(registry.source_problems(sources), [])
         for source in sources:
             self.github.unchanged(source)
-        return self.watch(sources)
+        code, out, err = self.watch(sources)
+        self.assertEqual(code, 0, err)
 
     def test_an_api_error_fails_without_writing(self):
         def status(code, text):
@@ -367,9 +413,9 @@ class Watch(unittest.TestCase):
             "server error": (status(500, b'{"message": "Server Error"}'), "GET /repos/example/tools gave 500"),
             "rate limit": (status(403, b'{"message": "API rate limit exceeded"}'), "GET /repos/example/tools gave 403"),
             "missing repo": (status(404, b'{"message": "Not Found"}'), "GET /repos/example/tools gave 404"),
-            "not json": (unreadable, "is not valid JSON"),
-            "network": (unreachable, "GET /repos/example/tools could not be read: connection refused"),
-            "issue list": (issues_fail, "GET /repos/%s/issues" % TARGET),
+            "not json": (unreadable, "GET /repos/example/tools/compare/%s...%s gave an answer that is not JSON" % (PIN, HEAD)),
+            "network": (unreachable, "GET /repos/example/tools could not be read"),
+            "issue list": (issues_fail, "GET /repos/%s/issues gave 502" % TARGET),
         }
         for name, (fail, message) in cases.items():
             with self.subTest(case=name):
@@ -379,8 +425,7 @@ class Watch(unittest.TestCase):
                 self.github.fail = fail
                 code, out, err = self.watch([PLAIN, TOOLS])
                 self.assertEqual(code, 1, out + err)
-                self.assertIn(message, err)
-                self.assertNotIn("Traceback", err)
+                self.assertEqual(err, message + "\n")
                 self.assert_no_writes()
                 self.assertEqual(self.github.issues, [])
 
@@ -391,10 +436,9 @@ class Watch(unittest.TestCase):
         self.assertEqual(code, 0, err)
         issue = self.only_issue()
         self.assertEqual(issue["title"], "Source pin missing: example/plain")
-        self.assertIn("`%s`" % PIN, issue["body"])
-        self.assertIn("has no commit", issue["body"])
+        self.assertEqual(issue["body"], MISSING_PLAIN)
         self.assertIn("/repos/example/plain/commits/%s" % PIN, self.github.gets())
-        self.assertIn("example/plain: the pinned commit is missing upstream", out)
+        self.assertIn("source example/plain: the pinned commit is missing upstream", out)
 
     def test_a_missing_pin_and_a_move_are_different_issues(self):
         self.github.add_issue("Source moved: example/plain", "an earlier move")
@@ -404,13 +448,14 @@ class Watch(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertEqual([call[0] for call in self.github.writes()], ["POST"])
         self.assertEqual(self.github.issues[0]["body"], "an earlier move")
+        self.assertEqual(self.github.issues[1]["title"], "Source pin missing: example/plain")
 
     def test_a_compare_that_fails_while_the_pin_exists_fails_the_run(self):
         self.github.upstream(PLAIN, HEAD, None)
         self.github.routes[("GET", "/repos/example/plain/commits/%s" % PIN)] = (200, commit(PIN, "The pin"))
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 1, out + err)
-        self.assertIn("source example/plain: the compare gave 404 although the pinned commit exists", err)
+        self.assertEqual(err, "source example/plain: the compare gave 404 although the pinned commit exists\n")
         self.assert_no_writes()
 
     def test_a_directory_source_with_changes_only_outside_its_directory_writes_nothing(self):
@@ -423,9 +468,9 @@ class Watch(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn("/repos/example/tools/compare/%s...%s" % (PIN, HEAD), self.github.gets())
         self.assert_no_writes()
-        self.assertIn("example tools: not moved under skills/one", out)
+        self.assertEqual(out, "source example-tools: not moved under its directory\n")
 
-    def test_a_directory_source_with_a_change_inside_lists_only_those_files(self):
+    def test_a_directory_source_with_a_change_inside_opens_an_issue(self):
         inside = comparison("ahead", [commit(HEAD, "Change one skill")], [
             changed("README.md"), changed("skills/one/SKILL.md"), changed("skills/one-more/a.md"),
             changed("elsewhere/b.md", "renamed", previous="skills/one/b.md"),
@@ -433,71 +478,7 @@ class Watch(unittest.TestCase):
         self.github.upstream(TOOLS, HEAD, inside)
         code, out, err = self.watch([TOOLS])
         self.assertEqual(code, 0, err)
-        body = self.only_issue()["body"]
-        outside_lines, inside_lines = fences(body)
-        self.assertIn("modified skills/one/SKILL.md", inside_lines)
-        self.assertIn("renamed elsewhere/b.md, from skills/one/b.md", inside_lines)
-        self.assertNotIn("modified README.md", inside_lines)
-        self.assertNotIn("modified skills/one-more/a.md", inside_lines)
-        self.assertIn("2 of the 4 changed files are under the directory", body)
-
-    def test_a_commit_subject_or_a_file_name_comes_out_as_inert_text(self):
-        hostile = [
-            "Thanks @someone, fixes #1 and example/other#2, see [here](https://evil.example/x) www.evil.example",
-            "<img src=x onerror=alert(1)> <!-- hidden --> <a href='https://evil.example'>x</a> :tada: ![i](https://evil.example/i.png)",
-            "```` close the fence and ping @someone",
-            "Right‮to left​ and a tab\there and a bell\x07",
-        ]
-        commits = [commit(("%x" % n) * 40, subject + "\n\n@hidden in the body") for n, subject in enumerate(hostile, 1)]
-        files = [changed("docs/@someone.md"), changed("a\n```\n@someone\n.md"), changed("<b>bold</b>.md")]
-        self.github.upstream(PLAIN, HEAD, comparison("ahead", commits, files))
-        code, out, err = self.watch([PLAIN])
-        self.assertEqual(code, 0, err)
-        body = self.only_issue()["body"]
-        outside, inside = fences(body)
-        text_outside = "\n".join(outside)
-        for marker in ("@someone", "@hidden", "#1", "#2", "evil.example", "<img", "<!--", "<a ", "<b>", ":tada:", "```` "):
-            self.assertNotIn(marker, text_outside, marker)
-        self.assertNotIn("@hidden", body)
-        text_inside = "\n".join(inside)
-        self.assertIn("Thanks @someone, fixes #1", text_inside)
-        self.assertIn("Right<U+202E>to left<U+200B> and a tab<U+0009>here and a bell<U+0007>", text_inside)
-        self.assertIn("modified a<U+000A>```<U+000A>@someone<U+000A>.md", text_inside)
-        for character in body:
-            self.assertTrue(character == "\n" or 0x20 <= ord(character) < 0x7f or character in "—–’", repr(character))
-        self.assertNotIn("Thanks @someone", out + err)
-
-    def test_the_token_never_appears_in_output_or_errors(self):
-        def leaky(method, url):
-            if url.endswith("/repos/example/tools"):
-                raise OSError("the request with Authorization: Bearer %s failed" % TOKEN)
-            return None
-
-        def echo(method, url):
-            if url.endswith("/repos/example/tools"):
-                return 401, json.dumps({"message": "Bad credentials: %s" % TOKEN}).encode("utf-8")
-            return None
-
-        for name, fail in (("moved", None), ("leaky library", leaky), ("echoed by the API", echo)):
-            with self.subTest(case=name):
-                self.github = FakeGitHub()
-                self.github.upstream(PLAIN, HEAD, two_commits())
-                self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "x %s" % TOKEN)], [changed("skills/one/%s" % TOKEN)]))
-                self.github.fail = fail
-                code, out, err = self.watch([PLAIN, TOOLS])
-                self.assertTrue(self.github.calls)
-                self.assertTrue(all(call[2].get("Authorization") == "Bearer " + TOKEN for call in self.github.calls),
-                                "the token is sent, so the test can see it if it leaks")
-                self.assertNotIn(TOKEN, out)
-                self.assertNotIn(TOKEN, err)
-                self.assertNotIn(TOKEN[4:], out + err)
-                for issue in self.github.issues:
-                    self.assertNotIn(TOKEN, issue["title"] + issue["body"])
-                if fail is None:
-                    self.assertEqual(code, 0, err)
-                    self.assertEqual(len(self.github.issues), 2)
-                else:
-                    self.assertEqual(code, 1, out + err)
+        self.assertEqual(self.only_issue()["body"], MOVED_TOOLS_INSIDE)
 
     # What the watch does besides, as its documentation says.
 
@@ -505,8 +486,7 @@ class Watch(unittest.TestCase):
         self.github.upstream(PLAIN, HEAD, two_commits())
         code, out, err = self.watch([PLAIN], token=None)
         self.assertEqual(code, 1, out + err)
-        self.assertIn("GITHUB_TOKEN is not set", err)
-        self.assertIn("Source moved: example/plain", err)
+        self.assertEqual(err, "no token is set, so the watch writes nothing\nwould open or update: Source moved: example/plain\n")
         self.assertIn("/repos/example/plain/compare/%s...%s" % (PIN, HEAD), self.github.gets())
         self.assertTrue(all("Authorization" not in call[2] for call in self.github.calls))
         self.assert_no_writes()
@@ -522,63 +502,66 @@ class Watch(unittest.TestCase):
         self.github.upstream(PLAIN, HEAD, two_commits())
         code, out, err = self.watch([PLAIN], token="")
         self.assertEqual(code, 1, out + err)
-        self.assertIn("GITHUB_TOKEN is not set", err)
+        self.assertIn("no token is set, so the watch writes nothing", err)
         self.assertTrue(all("Authorization" not in call[2] for call in self.github.calls))
         self.assert_no_writes()
 
     def test_a_target_that_is_not_owner_and_repo_fails_without_writing(self):
-        for target in (None, "", "example", "example/ratchet/extra", "example/../x", "exa mple/ratchet"):
+        for target in (None, "", "example", "example/ratchet/extra", "example/../x", "exa mple/ratchet", "example/@x"):
             with self.subTest(target=target):
                 self.github = FakeGitHub()
                 self.github.upstream(PLAIN, HEAD, two_commits())
                 code, out, err = self.watch([PLAIN], target=target)
                 self.assertEqual(code, 1, out + err)
-                self.assertIn("GITHUB_REPOSITORY", err)
+                self.assertIn("the target repository is not set, or is not of the form owner/repo", err)
                 self.assert_no_writes()
 
-    def test_a_diverged_or_behind_branch_opens_an_issue(self):
+    def test_a_diverged_or_behind_branch_opens_an_issue_also_with_nothing_under_the_directory(self):
         cases = {
-            "diverged": (comparison("diverged", [commit(HEAD, "Rewritten")], [changed("README.md")], behind=2),
-                         "ahead of the pin by 1 commit and behind it by 2 commits"),
-            "behind": (comparison("behind", [], [changed("README.md", "removed")], behind=3),
-                       "ahead of the pin by 0 commits and behind it by 3 commits"),
+            "diverged": comparison("diverged", [commit(HEAD, "Rewritten")], [changed("README.md")], behind=2),
+            "behind": comparison("behind", [], [changed("README.md", "removed")], behind=3),
         }
-        for name, (answer, words) in cases.items():
+        for name, answer in cases.items():
             with self.subTest(status=name):
                 self.github = FakeGitHub()
                 self.github.upstream(TOOLS, HEAD, answer)
                 code, out, err = self.watch([TOOLS])
                 self.assertEqual(code, 0, err)
                 body = self.only_issue()["body"]
-                self.assertIn("Status: %s" % name, body)
-                self.assertIn(words, body)
-                self.assertIn("The pinned commit is not in the history of the default branch", body)
+                self.assertIn("\n- Status: %s\n" % name, body)
+                self.assertIn("\n- Commits ahead of the pin: %d\n- Commits behind the pin: %d\n"
+                              % (answer["ahead_by"], answer["behind_by"]), body)
+                self.assertIn("\n- Changed files under the directory: 0\n", body)
+                self.assertIn("\n\n%s\n\n" % REWRITTEN, body)
+                self.assertEqual(out, "source example-tools: moved, %s\nopened issue 100: Source moved: example-tools\n" % name)
 
-    def test_lists_that_the_api_caps_say_so(self):
-        commits = [commit("%040x" % n, "Change %d" % n) for n in range(250)]
+    def test_a_capped_file_list_says_so(self):
         files = [changed("file-%d.md" % n) for n in range(300)]
-        self.github.upstream(PLAIN, HEAD, comparison("ahead", commits, files, total=400))
+        self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "Many")], files))
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
         body = self.only_issue()["body"]
-        self.assertIn("400 commits", body)
-        self.assertIn("The API lists 250 of the 400 commits", body)
-        self.assertIn("The API lists at most 300 changed files", body)
-        outside, inside = fences(body)
-        self.assertIn("Change 99", "\n".join(inside))
-        self.assertNotIn("Change 100", "\n".join(inside))
-        self.assertIn("This issue shows the first 100 of the 250 commits", body)
-        self.assertIn("This issue shows the first 150 of the 300 files", body)
-        self.assertIn("300 files changed.", body)
-        self.assertLess(len(body), 65536)
+        self.assertIn("\n- Changed files: 300\n", body)
+        self.assertIn("\n\n%s\n\n" % CAPPED, body)
 
-    def test_a_directory_source_whose_file_list_is_capped_opens_an_issue(self):
+    def test_a_directory_source_whose_capped_file_list_has_nothing_under_it_counts_as_moved(self):
         files = [changed("other/file-%d.md" % n) for n in range(300)]
         self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "Many changes")], files))
         code, out, err = self.watch([TOOLS])
         self.assertEqual(code, 0, err)
         body = self.only_issue()["body"]
-        self.assertIn("none of the files it lists is under the directory", body)
+        self.assertIn("\n- Changed files under the directory: 0\n", body)
+        self.assertIn("\n\n%s\n\n%s\n\n" % (CAPPED, UNKNOWN), body)
+
+    def test_a_directory_source_whose_compare_lists_no_files_counts_as_moved(self):
+        answer = comparison("ahead", [commit(HEAD, "A change")], [])
+        del answer["files"]
+        self.github.upstream(TOOLS, HEAD, answer)
+        code, out, err = self.watch([TOOLS])
+        self.assertEqual(code, 0, err)
+        body = self.only_issue()["body"]
+        self.assertIn("\n- Changed files: not listed by the API\n- Changed files under the directory: not listed by the API\n", body)
+        self.assertIn("\n\n%s\n\n" % UNKNOWN, body)
 
     def test_an_issue_by_someone_else_with_the_same_title_is_not_edited(self):
         self.github.add_issue("Source moved: example/plain", "a stranger's text", login="stranger")
@@ -596,19 +579,21 @@ class Watch(unittest.TestCase):
         self.github.upstream(PLAIN, HEAD, two_commits())
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 1, out + err)
-        self.assertIn("issues #100 and #101 are both open", err)
+        self.assertEqual(err, "issues 100 and 101 are both open with the title Source moved: example/plain. Close one of them\n")
         self.assert_no_writes()
 
     def test_an_answer_of_an_unknown_form_fails_without_writing(self):
         good = two_commits()
         cases = {
             "unknown status": dict(good, status="sideways"),
-            "short sha": dict(good, commits=[commit("abc123", "Short")]),
-            "message not text": dict(good, commits=[commit(HEAD, ["list"])]),
-            "unknown file status": dict(good, files=[changed("README.md", "teleported")]),
-            "count not a number": dict(good, total_commits="2"),
-            "count is a boolean": dict(good, ahead_by=True),
+            "count not a number": dict(good, ahead_by="2"),
+            "count is a boolean": dict(good, behind_by=True),
+            "count below zero": dict(good, ahead_by=-1),
+            "count above the cap": dict(good, ahead_by=10 ** 9),
+            "files not a list": dict(good, files={"README.md": "modified"}),
             "file name not text": dict(good, files=[{"filename": 3, "status": "added"}]),
+            "earlier name not text": dict(good, files=[{"filename": "a", "status": "renamed", "previous_filename": 3}]),
+            "not an object": [good],
         }
         for name, answer in cases.items():
             with self.subTest(case=name):
@@ -616,18 +601,19 @@ class Watch(unittest.TestCase):
                 self.github.upstream(PLAIN, HEAD, answer)
                 code, out, err = self.watch([PLAIN])
                 self.assertEqual(code, 1, out + err)
-                self.assertIn("source example/plain:", err)
-                self.assertNotIn("Traceback", err)
+                self.assertEqual(err, "source example/plain: the compare gave an answer of a form the watch does not know\n")
                 self.assert_no_writes()
 
     def test_a_branch_or_a_head_of_an_unknown_form_fails_without_writing(self):
-        for branch, head in (("main\n", HEAD), ("../main", HEAD), ("ma`in", HEAD), ("main", "HEAD"), ("main", HEAD.upper())):
+        cases = (("main\n", HEAD, "default branch"), ("../main", HEAD, "default branch"), ("ma`in", HEAD, "default branch"),
+                 ("a..b", HEAD, "default branch"), ("main", "HEAD", "head"), ("main", HEAD.upper(), "head"))
+        for branch, head, what in cases:
             with self.subTest(branch=branch, head=head):
                 self.github = FakeGitHub()
                 self.github.upstream(PLAIN, head, two_commits(), branch=branch)
                 code, out, err = self.watch([PLAIN])
                 self.assertEqual(code, 1, out + err)
-                self.assertIn("source example/plain:", err)
+                self.assertEqual(err, "source example/plain: the repository gave a %s of a form the watch does not know\n" % what)
                 self.assert_no_writes()
 
     def test_every_read_comes_before_any_write(self):
@@ -642,7 +628,6 @@ class Watch(unittest.TestCase):
         self.assertEqual(set(methods[first_write:]), {"POST"})
 
     def test_the_pinned_directory_is_written_as_before_in_ratchet_md(self):
-        import registry
         with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
             sources = json.load(handle)["sources"]
         pstack = next(source for source in sources if source["name"] == "pstack")
@@ -650,189 +635,193 @@ class Watch(unittest.TestCase):
         plain = next(source for source in sources if source["name"] == "obra/superpowers")
         self.assertEqual(registry.source_repo_text(plain), "https://github.com/obra/superpowers")
 
+    def test_a_compare_that_disagrees_with_the_head_fails_without_writing(self):
+        cases = {
+            "identical, but the head is not the pin": (HEAD, comparison("identical", [], []), "says identical, but the head is not"),
+            "ahead, but the head is the pin": (PIN, two_commits(), "says ahead, but the head is"),
+        }
+        for name, (head, answer, words) in cases.items():
+            with self.subTest(case=name):
+                self.github = FakeGitHub()
+                self.github.upstream(PLAIN, head, answer)
+                code, out, err = self.watch([PLAIN])
+                self.assertEqual(code, 1, out + err)
+                self.assertEqual(err, "source example/plain: the compare %s the pinned commit\n" % words)
+                self.assert_no_writes()
 
-    # Round 1 of the review. Finding 1: moved means that the head is not the pin.
+    def test_a_directory_source_whose_branch_moved_without_a_changed_file_writes_nothing(self):
+        self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "An empty commit")], []))
+        code, out, err = self.watch([TOOLS])
+        self.assertEqual(code, 0, err)
+        self.assert_no_writes()
+        self.assertEqual(out, "source example-tools: not moved under its directory\n")
+
+    # The findings of the two earlier review rounds. Round 1, finding 1: moved means that the head is not the pin.
 
     def test_an_ahead_compare_with_no_changed_file_is_a_move(self):
         self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "An empty commit")], []))
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
         body = self.only_issue()["body"]
-        self.assertIn("0 files changed", body)
-        self.assertIn("No file differs between the pin and the head", body)
+        self.assertIn("\n- Status: ahead\n- Commits ahead of the pin: 1\n- Commits behind the pin: 0\n- Changed files: 0\n", body)
         self.assertIn("source example/plain: moved, ahead", out)
 
-    def test_a_directory_source_whose_branch_moved_without_a_changed_file_says_so(self):
-        self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "An empty commit")], []))
-        code, out, err = self.watch([TOOLS])
-        self.assertEqual(code, 0, err)
-        self.assert_no_writes()
-        self.assertIn("source example tools: not moved under skills/one: the branch is 1 commit ahead of the pin, "
-                      "and no file differs between the pin and the head", out)
+    # Round 1, finding 2: the size of a body. No list from the API reaches it, so its largest size is small and known.
 
-    def test_a_directory_source_whose_compare_lists_no_files_opens_an_issue(self):
-        answer = comparison("ahead", [commit(HEAD, "A change")], [])
-        del answer["files"]
-        self.github.upstream(TOOLS, HEAD, answer)
-        code, out, err = self.watch([TOOLS])
-        self.assertEqual(code, 0, err)
-        body = self.only_issue()["body"]
-        self.assertIn("The API did not list the changed files. Files under the directory may have changed.", body)
-
-    def test_a_compare_that_disagrees_with_the_head_fails_without_writing(self):
-        cases = {
-            "identical, but the head is not the pin": (HEAD, comparison("identical", [], [])),
-            "ahead, but the head is the pin": (PIN, two_commits()),
-        }
-        for name, (head, answer) in cases.items():
-            with self.subTest(case=name):
-                self.github = FakeGitHub()
-                self.github.upstream(PLAIN, head, answer)
-                code, out, err = self.watch([PLAIN])
-                self.assertEqual(code, 1, out + err)
-                self.assertIn("source example/plain: the compare says", err)
-                self.assert_no_writes()
-
-    # Finding 2: every title and body is built and checked before the first write.
-
-    def worst_case(self):
-        """A plain source and a directory source, each at every cap, with the longest lines the watch writes."""
-        wide = "é€\u0007@`<" * 100
+    def largest(self, status):
+        """A source at every cap: the longest name, directory, owner and repo, the largest counts, 300 files, 250 commits."""
+        name = "n" * 100
+        source = {"name": name, "repo": "https://github.com/%s/%s" % ("o" * 39, "r" * 100), "directory": "d" * 100,
+                  "commit": PIN, "license": "MIT"}
+        wide = "@someone ##[error] ::warning:: <img> `x` " * 200
         commits = [commit("%040x" % n, wide) for n in range(250)]
-        files = [changed("skills/one/" + wide + "%04d" % n, "unchanged", "skills/one/" + wide + "%04d-old" % n)
-                 for n in range(300)]
-        answer = comparison("diverged", commits, files, ahead=250, behind=9, total=4000)
-        plain = dict(PLAIN, name="P" * 4000)
-        tools = dict(TOOLS, name="T" * 4000, directory="skills/one")
-        self.github.upstream(plain, HEAD, answer, branch="b" * 250)
-        self.github.upstream(tools, HEAD, answer, branch="b" * 250)
-        return [plain, tools]
+        files = [changed("other/%s-%d" % (wide, n), "renamed", "elsewhere/" + wide) for n in range(300)]
+        self.github.upstream(source, HEAD, comparison(status, commits, files, ahead=999999999, behind=999999999, total=10 ** 12),
+                             branch="b" * 250)
+        return source
 
-    def test_every_title_and_body_fits_what_github_takes(self):
-        sources = self.worst_case()
-        refused = []
-        code, out, err = self.watch(sources, http=limited(self.github, refused))
-        self.assertEqual(refused, [])
-        self.assertEqual(code, 0, err)
-        self.assertEqual(len(self.github.issues), 2)
-        for issue in self.github.issues:
-            self.assertLessEqual(len(issue["body"].encode("utf-8")), 65536)
-            self.assertLessEqual(len(issue["title"].encode("utf-8")), 256)
-            fences(issue["body"])
+    def test_the_largest_body_is_small_and_holds_nothing_from_the_answer(self):
+        sizes = {}
+        for status in ("ahead", "diverged"):
+            with self.subTest(status=status):
+                self.github = FakeGitHub()
+                code, out, err = self.watch([self.largest(status)])
+                self.assertEqual(code, 0, err)
+                issue = self.only_issue()
+                sizes[status] = len(issue["body"].encode("utf-8"))
+                self.assertEqual(issue["title"], "Source moved: " + "n" * 100)
+                for marker in ("@", "#", "<", "`", "::", "other/", "elsewhere/"):
+                    self.assertNotIn(marker, issue["body"])
+        self.assertEqual(max(sizes.values()), 1336, sizes)
 
-    def test_a_plan_that_breaks_a_limit_writes_nothing(self):
+    # Round 1, finding 3, and round 2, finding 1: a source name with Markdown or a runner command is
+    # refused by its form (the fixtures name-*), and no line that holds one passes the gate.
+
+    def test_the_gate_refuses_every_mark_outside_its_set(self):
+        good = ("Source moved: example/plain", MOVED_PLAIN)
+        self.assertIsNone(watch_sources.check_plan([good], TOKEN))
+        for mark in ("@someone", "#1", "<b>", ">", "[x]", "]", "!", "`x`", "|", "\\", "*", "_", "::", "##[error]",
+                     "www.example.invalid", "gh-12", "\t", "\r", "‮", "é", "%0A", "&amp;", "+", "="):
+            with self.subTest(mark=mark):
+                bad_body = MOVED_PLAIN.replace("- Source: example/plain", "- Source: example/" + mark)
+                with self.assertRaises(watch_sources.WatchError) as raised:
+                    watch_sources.check_plan([good, ("Source moved: example/plain", bad_body)], TOKEN)
+                self.assertEqual(str(raised.exception), "nothing is written:\nplanned issue 2: line 3 of the body does not pass the gate")
+                with self.assertRaises(watch_sources.WatchError):
+                    watch_sources.check_plan([("Source moved: example/" + mark, MOVED_PLAIN)], TOKEN)
+                self.assertIsNotNone(watch_sources.line_problem("source example/" + mark + ": not moved", TOKEN))
+
+    def test_the_gate_refuses_a_line_of_a_kind_the_watch_does_not_write(self):
+        for line in ("Thanks for the fix.", "- Source:", "- Status: sideways", "- Commits ahead of the pin: 1234567890",
+                     "- Pinned commit: " + PIN.upper(), "- Compare: https://github.com/example/plain/compare/%s...%s/x" % (PIN, HEAD),
+                     "- Compare: https://example.invalid/compare/%s...%s" % (PIN, HEAD), " - Source: example/plain"):
+            with self.subTest(line=line):
+                with self.assertRaises(watch_sources.WatchError):
+                    watch_sources.check_plan([("Source moved: example/plain", MOVED_PLAIN.replace(FOOTER, line))], TOKEN)
+        for title in ("Source moved: ", "Source moved:example/plain", "Source moved: Example", "Moved: example/plain",
+                      "Source moved: " + "n" * 101):
+            with self.subTest(title=title):
+                with self.assertRaises(watch_sources.WatchError):
+                    watch_sources.check_plan([(title, MOVED_PLAIN)], TOKEN)
+
+    def test_a_plan_that_fails_the_gate_writes_nothing_at_all(self):
         self.github.upstream(PLAIN, HEAD, two_commits())
-        files = [changed("skills/one/%s-%04d.md" % ("x" * 300, n)) for n in range(300)]
-        self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "Many")], files))
-        refused = []
-        saved = watch_sources.SHOW_FILES, watch_sources.FILE_LENGTH
-        watch_sources.SHOW_FILES, watch_sources.FILE_LENGTH = 300, 1000
+        self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "Change")], [changed("skills/one/a.md")]))
+        built = watch_sources.moved_body
+
+        def broken(source, found):
+            body = built(source, found)
+            return body.replace(FOOTER, "@someone") if source["name"] == "example-tools" else body
+        watch_sources.moved_body = broken
         try:
-            code, out, err = self.watch([PLAIN, TOOLS], http=limited(self.github, refused))
+            code, out, err = self.watch([PLAIN, TOOLS])
         finally:
-            watch_sources.SHOW_FILES, watch_sources.FILE_LENGTH = saved
+            watch_sources.moved_body = built
         self.assertEqual(code, 1, out + err)
-        self.assertIn("nothing is written", err)
-        self.assertIn("Source moved: example tools", err)
-        self.assertIn("65536", err)
-        self.assertEqual(refused, [])
+        self.assertEqual(err, "nothing is written:\nplanned issue 2: line 16 of the body does not pass the gate\n")
         self.assert_no_writes()
 
-    def test_two_sources_whose_titles_come_out_the_same_write_nothing(self):
-        one = dict(PLAIN, name="N" * 300 + " one")
-        two = dict(TOOLS, name="N" * 300 + " two")
-        self.github.upstream(one, HEAD, two_commits())
-        self.github.upstream(two, HEAD, comparison("ahead", [commit(HEAD, "A change")], [changed("skills/one/a.md")]))
-        code, out, err = self.watch([one, two])
-        self.assertEqual(code, 1, out + err)
-        self.assertIn("two issues would have the title", err)
-        self.assert_no_writes()
+    def test_a_printed_line_that_fails_the_gate_is_left_out(self):
+        for text in ("##[error]injected", "::warning file=a::x", "see @someone", "x " + TOKEN, "a\rb", "under_score"):
+            with self.subTest(text=text):
+                stream = io.StringIO()
+                self.assertFalse(watch_sources.emit(stream, "fine line\n" + text, TOKEN))
+                self.assertEqual(stream.getvalue(), "fine line\n" + LEFT_OUT + "\n")
+        stream = io.StringIO()
+        self.assertTrue(watch_sources.emit(stream, "GET /repos/some_owner/a_repo/branches/x_y gave 404", TOKEN))
 
-    # Finding 3: every value that reaches GitHub or a log passes through one renderer.
+    # Round 1, finding 4, and round 2, finding 2: the token, escaped or encoded in an answer, got through.
+    # Now no text from an answer reaches an issue or a printed line, so there is nothing to undo.
 
-    HOSTILE_NAME = ("@someone [click](https://evil.example/x) <img src=x> ![i](https://evil.example/i.png) "
-                    "<!-- c --> fixes #1 and example/other#2 www.evil.example **bold** `code` ::warning file=a::x")
-    MARKERS = ("@someone", "#1", "#2", "evil.example", "<img", "<!--", "](", "**", "::warning")
-
-    def test_a_source_name_is_inert_in_the_title_the_body_and_the_output(self):
-        import registry
-        moved = dict(PLAIN, name=self.HOSTILE_NAME)
-        gone = dict(TOOLS, name=self.HOSTILE_NAME + " gone")
-        self.assertEqual(registry.source_problems([moved, gone]), [], "the names pass the form of a source")
-        self.github.upstream(moved, HEAD, two_commits())
-        self.github.upstream(gone, HEAD, None)
-        self.github.routes[("GET", "/repos/example/tools/commits/%s" % PIN)] = (404, {"message": "Not Found"})
-        code, out, err = self.watch([moved, gone])
+    def test_no_text_from_an_answer_reaches_an_issue_or_a_line(self):
+        hostile = ["##[error]injected", "::warning file=a::x", "@someone", "fixes #1", "[x](https://evil.example)",
+                   "<img src=x>", "www.evil.example", TOKEN, "".join("\\u%04x" % ord(c) for c in TOKEN),
+                   "".join("%%25%02X" % ord(c) for c in TOKEN), "".join("&#%d;" % ord(c) for c in TOKEN)]
+        text = " ".join(hostile)
+        answer = comparison("ahead", [commit(NEWER, text), commit(HEAD, text)],
+                            [changed("README.md", "modified", text), changed(text, "added")])
+        answer.update(message=text, html_url=text, base_commit={"sha": PIN, "commit": {"message": text}})
+        raw = json.dumps(answer).replace(json.dumps(hostile[8])[1:-1], hostile[8])  # leave the \u escapes for json to undo
+        self.github.upstream(PLAIN, HEAD, raw.encode("utf-8"), info={"description": text, "homepage": text})
+        code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
-        self.assertEqual(len(self.github.issues), 2)
-        for issue in self.github.issues:
-            text = outside_code(issue["body"])
-            for marker in self.MARKERS:
-                self.assertNotIn(marker, text, marker)
-            self.assertIn(self.HOSTILE_NAME, issue["body"], "the name is there, inside a code span")
-            for marker in self.MARKERS + ("[", "`", "!", "*", "@", "#", ":warning"):
-                self.assertNotIn(marker, issue["title"][issue["title"].index(":") + 1:], marker)
-        for line in (out + err).splitlines():
-            self.assertRegex(line, r"^[A-Za-z]", "a line the watch prints starts with its own text")
+        issue = self.only_issue()
+        self.assertEqual(issue["title"], "Source moved: example/plain")
+        self.assertEqual(issue["body"], MOVED_PLAIN, "the body is the same as for an answer without that text")
+        self.assertEqual(out, "source example/plain: moved, ahead\nopened issue 100: Source moved: example/plain\n")
+        self.assertEqual(err, "")
 
-    def test_a_line_the_watch_prints_never_starts_with_upstream_text(self):
-        def leaky(method, url):
-            if url.endswith("/repos/example/plain"):
-                raise OSError("refused\n::warning file=a::injected\n##[error]old form")
+    def test_no_text_from_an_error_answer_or_a_network_error_reaches_a_line(self):
+        text = "##[error]x ::warning::y @someone %s %s" % (TOKEN, "".join("%%25%02X" % ord(c) for c in TOKEN))
+
+        def answer(method, url):
+            if url.endswith("/repos/example/tools"):
+                return 401, json.dumps({"message": text}).encode("utf-8")
             return None
-        self.github.fail = leaky
-        code, out, err = self.watch([PLAIN])
-        self.assertEqual(code, 1, out + err)
-        self.assertIn("injected", err)
-        for line in (out + err).splitlines():
-            self.assertRegex(line, r"^[A-Za-z|]", line)
-            self.assertFalse(line.startswith("::") or line.startswith("##"), line)
 
-    def test_only_rendered_values_reach_a_body(self):
-        with self.assertRaises(TypeError):
-            watch_sources.compose("- Source: %s", "@someone")
-        with self.assertRaises(TypeError):
-            watch_sources.compose("- Source: %s", watch_sources.inert("@someone", 100))
-        self.assertEqual(watch_sources.compose("- Source: %s", watch_sources.code("@someone")), "- Source: `@someone`")
-        self.assertEqual(watch_sources.code("a `b` c"), "``a `b` c``")
-        self.assertEqual(watch_sources.code("`b`"), "`` `b` ``")
-        with self.assertRaises(TypeError):
-            watch_sources.fence(["not rendered"])
+        def network(method, url):
+            if url.endswith("/repos/example/tools"):
+                raise OSError(text)
+            return None
 
-    # Finding 4: the token is scrubbed from decoded text, and no body that holds it is written.
-
-    def test_an_escaped_token_in_an_answer_is_scrubbed_after_decoding(self):
-        escaped = "".join("\\u%04x" % ord(c) for c in TOKEN)
-        raw = json.dumps(comparison("ahead", [commit(HEAD, "Echo TOKEN")], [changed("README.md")])).replace("TOKEN", escaped)
-        self.github.upstream(PLAIN, HEAD, raw.encode("ascii"))
-        code, out, err = self.watch([PLAIN])
-        self.assertEqual(code, 0, err)
-        body = self.only_issue()["body"]
-        self.assertNotIn(TOKEN, body)
-        self.assertIn("Echo ***", body)
-
-    def test_a_body_that_holds_the_token_in_a_readable_form_is_not_written(self):
-        forms = {
-            "split by a character off the list": TOKEN[:8] + "​" + TOKEN[8:],
-            "in capitals": TOKEN.upper(),
-            "percent-encoded": "".join("%%%02X" % ord(c) for c in TOKEN),
-            "as HTML entities": "".join("&#%d;" % ord(c) for c in TOKEN),
-            "split by spaces": " ".join(TOKEN),
-            "in capitals and cut, so that only a part is left": "x" * 95 + TOKEN.upper(),
-        }
-        for name, form in forms.items():
-            with self.subTest(form=name):
+        for fail, expected in ((answer, "GET /repos/example/tools gave 401\n"),
+                               (network, "GET /repos/example/tools could not be read\n")):
+            with self.subTest(expected=expected):
                 self.github = FakeGitHub()
                 self.github.upstream(PLAIN, HEAD, two_commits())
-                self.github.upstream(TOOLS, HEAD, comparison("ahead", [commit(HEAD, "Echo " + form)], [changed("skills/one/a.md")]))
+                self.github.fail = fail
                 code, out, err = self.watch([PLAIN, TOOLS])
                 self.assertEqual(code, 1, out + err)
-                self.assertIn("holds the token", err)
-                self.assertIn("Source moved: example tools", err)
+                self.assertEqual(err, expected)
+                self.assertEqual(out, "source example/plain: moved, ahead\n")
                 self.assert_no_writes()
-                self.assertNotIn(TOKEN, out + err)
 
-    # Finding 5: every value read from the API is tried with a value a hard-coded constant would get wrong.
+    def test_an_error_the_watch_does_not_know_prints_only_its_kind_and_line(self):
+        def broken(method, url):
+            raise ValueError("##[error]x " + TOKEN)
+        self.github.fail = broken
+        code, out, err = self.watch([PLAIN])
+        self.assertEqual(code, 1, out + err)
+        self.assertRegex(err, r"\Athe watch stopped on an error it does not know, ValueError at line [0-9]+ of the watch\n\Z")
+
+    def test_the_gate_refuses_the_token_as_it_stands(self):
+        token = "example-plain-token"
+        with self.assertRaises(watch_sources.WatchError):
+            watch_sources.check_plan([("Source moved: " + token, MOVED_PLAIN.replace("example/plain", token))], token)
+        with self.assertRaises(watch_sources.WatchError):
+            watch_sources.check_plan([("Source moved: example/plain", MOVED_PLAIN.replace(FOOTER, "- Source: " + token))], token)
+        self.assertIsNotNone(watch_sources.line_problem("source %s: not moved" % token, token))
+        self.assertIsNone(watch_sources.line_problem("source %s: not moved" % token, None))
+
+    def test_the_token_is_sent_with_every_call_and_never_printed(self):
+        self.github.upstream(PLAIN, HEAD, two_commits())
+        code, out, err = self.watch([PLAIN])
+        self.assertEqual(code, 0, err)
+        self.assertTrue(all(call[2].get("Authorization") == "Bearer " + TOKEN for call in self.github.calls))
+        self.assertTrue(all(call[1].startswith(API + "/") for call in self.github.calls))
+        self.assertNotIn(TOKEN, out + err + self.only_issue()["body"])
+
+    # Round 1, finding 5: no test read a default branch other than "main".
 
     def test_values_read_from_the_api_are_used_and_not_assumed(self):
         other = {"name": "other", "repo": "https://github.com/someone-else/thing", "commit": NEWER, "license": "MIT"}
@@ -844,7 +833,7 @@ class Watch(unittest.TestCase):
         answer = comparison("diverged", [commit(tip, "Rewrite")], [changed("a.md", "renamed", "b.md"), changed("d.md", "copied", "e.md")],
                             ahead=7, behind=3, total=11)
         self.github.upstream(other, tip, answer, branch="trunk/next")
-        self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "One")], [changed("c.md", "removed")]))
+        self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "One")], [changed("c.md", "removed")], ahead=5))
         code, out, err = self.watch([other, PLAIN], target="another-owner/another-repo")
         self.assertEqual(code, 0, err)
         self.assert_no_unknown_calls()
@@ -854,19 +843,106 @@ class Watch(unittest.TestCase):
         self.assertEqual(writes, [("PATCH", "/repos/another-owner/another-repo/issues/4243"),
                                   ("POST", "/repos/another-owner/another-repo/issues")])
         body = self.github.issues[1]["body"]
-        self.assertIn("\n- Repository: https://github.com/someone-else/thing\n", body)
-        self.assertIn("- Default branch: `trunk/next`, at `%s`" % tip, body)
-        self.assertIn("https://github.com/someone-else/thing/compare/%s...%s" % (NEWER, tip), body)
-        self.assertIn("Status: diverged. The branch is ahead of the pin by 7 commits and behind it by 3 commits.", body)
-        self.assertIn("The range holds 11 commits.", body)
-        self.assertIn("The API lists 1 of the 11 commits.", body)
-        self.assertIn("renamed a.md, from b.md", fences(body)[1])
-        self.assertIn("copied d.md, from e.md", fences(body)[1])
-        self.assertIn("%s Rewrite" % tip[:12], fences(body)[1])
+        self.assertIn("\n- Source: other\n- Pinned commit: %s\n- Head of the default branch: %s\n- Status: diverged\n"
+                      "- Commits ahead of the pin: 7\n- Commits behind the pin: 3\n- Changed files: 2\n"
+                      "- Compare: https://github.com/someone-else/thing/compare/%s...%s\n" % (NEWER, tip, NEWER, tip), body)
         plain = self.github.issues[2]["body"]
-        self.assertIn("removed c.md", fences(plain)[1])
-        self.assertIn("updated issue #4243: Source moved: other", out)
-        self.assertIn("opened issue #4244: Source moved: example/plain", out)
+        self.assertIn("\n- Commits ahead of the pin: 5\n- Commits behind the pin: 0\n- Changed files: 1\n", plain)
+        self.assertIn("updated issue 4243: Source moved: other", out)
+        self.assertIn("opened issue 4244: Source moved: example/plain", out)
+
+    # Round 2, finding 3: two names that shared their first 300 characters got one title. A name is now
+    # at most 100 characters (the fixture name-too-long), and a title is the whole name, never cut.
+
+    def test_names_that_share_a_long_start_get_their_own_titles(self):
+        one = dict(PLAIN, name="n" * 99 + "1")
+        two = dict(TOOLS, name="n" * 99 + "2")
+        self.assertEqual(registry.source_problems([one, two]), [])
+        self.github.upstream(one, HEAD, two_commits())
+        self.github.upstream(two, HEAD, comparison("ahead", [commit(HEAD, "A change")], [changed("skills/one/a.md")]))
+        code, out, err = self.watch([one, two])
+        self.assertEqual(code, 0, err)
+        self.assertEqual([issue["title"] for issue in self.github.issues],
+                         ["Source moved: " + "n" * 99 + "1", "Source moved: " + "n" * 99 + "2"])
+
+
+# Round 2, finding 4: the tests stubbed HTTP above the transport, so a redirect that forwarded the token
+# went unseen. These run the real transport against local servers on 127.0.0.1.
+
+class Transport(Base):
+    def serve(self, answer):
+        """A local server that answers every request with answer(handler), and the list of what it was sent."""
+        seen = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.command, self.path, self.headers.get("Authorization")))
+                answer(self)
+
+            do_POST = do_PATCH = do_GET
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server.server_address[1], seen
+
+    def use_api(self, port):
+        saved = watch_sources.API
+        watch_sources.API = "http://127.0.0.1:%d" % port
+        self.addCleanup(setattr, watch_sources, "API", saved)
+
+    @staticmethod
+    def reply(handler, status, body=b"{}", headers=()):
+        handler.send_response(status)
+        for key, value in headers:
+            handler.send_header(key, value)
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    def test_a_redirect_is_not_followed_and_the_token_goes_nowhere_else(self):
+        other, elsewhere = self.serve(lambda handler: self.reply(handler, 200))
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status):
+                port, seen = self.serve(lambda handler, status=status: self.reply(
+                    handler, status, headers=[("Location", "http://127.0.0.1:%d%s" % (other, handler.path))]))
+                self.use_api(port)
+                code, out, err = self.watch([PLAIN], http=None)
+                self.assertEqual(code, 1, out + err)
+                self.assertEqual(err, "GET /repos/example/plain gave %d\n" % status)
+                self.assertEqual(seen, [("GET", "/repos/example/plain", "Bearer " + TOKEN)])
+                self.assertEqual(elsewhere, [], "nothing reaches the address the redirect names")
+
+    def test_the_real_transport_reads_an_answer(self):
+        answers = {"/repos/example/plain": {"default_branch": "main"},
+                   "/repos/example/plain/branches/main": {"commit": {"sha": PIN}},
+                   "/repos/example/plain/compare/%s...%s" % (PIN, PIN): comparison("identical", [], [])}
+        port, seen = self.serve(lambda handler: self.reply(handler, 200, json.dumps(answers[handler.path]).encode("utf-8")))
+        self.use_api(port)
+        code, out, err = self.watch([PLAIN], http=None)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out, "source example/plain: not moved\n")
+        self.assertEqual([path for _, path, _ in seen], list(answers))
+
+    def test_the_transport_sends_nothing_to_another_address(self):
+        port, seen = self.serve(lambda handler: self.reply(handler, 200))
+        for url in ("http://127.0.0.1:%d/repos/example/plain" % port, "http://127.0.0.1:%d/" % port):
+            with self.subTest(url=url):
+                with self.assertRaises(OSError):
+                    watch_sources.urllib_http("GET", url, {"Authorization": "Bearer " + TOKEN}, None)
+        self.assertEqual(seen, [])
+
+    def test_the_redirect_handler_makes_no_new_request(self):
+        request = urllib.request.Request(API + "/repos/example/plain", headers={"Authorization": "Bearer " + TOKEN})
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status):
+                self.assertIsNone(watch_sources.NoRedirects().redirect_request(
+                    request, io.BytesIO(b""), status, "Moved", {}, "https://elsewhere.invalid/x"))
+
 
 if __name__ == "__main__":
     unittest.main()
