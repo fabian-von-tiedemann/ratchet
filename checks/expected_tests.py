@@ -12,15 +12,24 @@ each one, on:
 
 - a fixture that no test loaded
 - a test that loaded a fixture and did not pass: it failed, errored, could not be
-  prepared, was skipped, or was an expected failure or an unexpected success
+  prepared, was skipped, or was an expected failure or an unexpected success, in
+  its body, a subtest, its set-up, its tear-down or a cleanup
+- a test that loaded a fixture and passed, in a class or a module whose set-up or
+  tear-down then errored or skipped
 - a name that a test gave and that is not a fixture
 - a record whose bytes are not the fixture's own, so a name without its content
   does not count
 - a fixtures directory that is missing or holds no fixtures, because a run that
   expects nothing has not shown that everything ran.
 
-The failure is added to the run's result as one more failed test, before unittest
-prints its summary and sets the exit status.
+The comparison does not depend on the tests it watches. Discover collects
+test_0_expected_tests_ran.py first, and its load_tests gives one Comparison: a suite
+that holds no test, so that no filter removes it. When the run reaches it, before any
+other test, it hooks the result's stopTestRun. unittest's runner calls stopTestRun
+after the last test, its tear-down and every class and module tear-down, and before
+it prints the summary and sets the exit status. A FixtureTest hooks it too, for a run
+that does not go through discover. The failure is added to the run's result as one
+more failed test.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -46,6 +55,9 @@ OUTCOMES = (
     ("unexpectedSuccesses", "unexpected success"),
 )
 LEDGERS = "_expected_tests_ledgers"
+# How unittest names the set-up or tear-down of a class or a module that did not pass: "tearDownClass (module.Class)".
+# It is the same on Python 3.9 and 3.12 (unittest.suite._createClassOrModuleLevelException).
+FIXTURE_OUTCOME = re.compile(r"^(setUpClass|tearDownClass|setUpModule|tearDownModule) \(([A-Za-z_][\w.]*)\)\Z")
 
 
 def digest(data):
@@ -125,11 +137,54 @@ def ledger(result, root):
 
 
 class Comparison(unittest.TestSuite):
-    """Stub for the test-first commit. It holds the root and does nothing."""
+    """The comparison for one fixtures directory, as a suite that holds no test.
+
+    When the run reaches it, it hooks the result's stopTestRun, whatever happens to the tests that load
+    fixtures. It holds no test, so a filter such as -k does not remove it, and nothing in it can be skipped.
+    """
 
     def __init__(self, root=FIXTURES):
         super().__init__()
         self.root = root
+
+    def run(self, result, debug=False):
+        if hasattr(result, "stopTestRun"):
+            ledger(result, self.root)
+        return result
+
+
+def load_tests_hook(root=FIXTURES):
+    """A load_tests for the module that discover collects first: it gives the comparison, and nothing else."""
+    def load_tests(loader, tests, pattern):
+        return Comparison(root)
+    return load_tests
+
+
+def fixture_outcomes(result):
+    """([(class or module, what happened)], problems) for each set-up or tear-down of a class or module that did not pass."""
+    found, unknown = [], []
+    for field, outcome in OUTCOMES:
+        for entry in getattr(result, field, ()):
+            test = entry[0] if isinstance(entry, tuple) else entry
+            if isinstance(test, unittest.TestCase):
+                continue
+            description = str(getattr(test, "description", test))
+            match = FIXTURE_OUTCOME.match(description)
+            if match:
+                found.append((match.group(2), "%s %s" % (description, outcome)))
+            else:
+                unknown.append("the run holds an outcome that the check cannot place: %r, %s" % (description, outcome))
+    return found, unknown
+
+
+def placed(records, outcomes):
+    """The records, with a passing test marked as not passed when its class or module did not pass."""
+    result = []
+    for name, test, outcome, sha in records:
+        if outcome == PASSED:
+            outcome = next((what for parent, what in outcomes if test.startswith(parent + ".")), PASSED)
+        result.append((name, test, outcome, sha))
+    return result
 
 
 class _ExpectedTestsRan(unittest.TestCase):
@@ -140,9 +195,9 @@ class _ExpectedTestsRan(unittest.TestCase):
 
 
 def report(result, ledgers):
-    found = []
+    outcomes, found = fixture_outcomes(result)
     for root in sorted(ledgers):
-        found += problems(root, ledgers[root].records())
+        found += problems(root, placed(ledgers[root].records(), outcomes))
     if not found:
         return
     test = _ExpectedTestsRan("test_every_expected_test_ran_and_passed")
