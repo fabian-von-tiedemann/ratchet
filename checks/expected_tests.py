@@ -124,6 +124,14 @@ def ledger(result, root):
     return ledgers.setdefault(root, Ledger(root))
 
 
+class Comparison(unittest.TestSuite):
+    """Stub for the test-first commit. It holds the root and does nothing."""
+
+    def __init__(self, root=FIXTURES):
+        super().__init__()
+        self.root = root
+
+
 class _ExpectedTestsRan(unittest.TestCase):
     """The comparison, as it is shown in the run: one more test, which failed."""
 
