@@ -46,7 +46,7 @@ Translation into English:
 
 - The agent merges with `PUT /repos/OWNER/NAME/pulls/N/merge`, using `merge_method=squash` and `sha` set to the head that both the cross-family review and the code owner approved. GitHub refuses the merge if the head has moved.
 - The agent merges only when the code owner's approval is on that head and `checks` is green.
-- PRs under the docs-only exception of [D-2026-11-17-improvement-loop](D-2026-11-17-improvement-loop.md) need no cross-family review, but still need the code owner's approval.
+- PRs under the docs-only exception of [D-2026-11-17-improvement-loop](D-2026-11-17-improvement-loop.md), which change only files in `decisions/` and `HANDOVER.md` and change no rule, check or register, need no cross-family review, but still need the code owner's approval.
 - The agent still never approves, never tags and never releases by hand.
 - Auto-merge is no longer used.
 - The ruleset is unchanged.
