@@ -321,6 +321,204 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - the first entry in the changelog is not the version in `ratchet.json`
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 
+## release.py
+
+```sh
+python3 checks/release.py notes --repo OWNER/NAME   # print the release text, with no token and no network
+python3 checks/release.py publish                   # tag and release, in the release workflow; only report, on a schedule
+```
+
+This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-links](../decisions/D-2026-11-17-release-links.md), [D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+
+The script reads no Markdown and copies nothing from the changelog. The versions that must already be released come from the history of `main`, read with git, and not from the changelog. It does not try to finish an older version. When anything older is unfinished, the run is red, nothing is written, and the message names the commit whose run the maintainer reruns.
+
+**What it claims, in short** ([D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). It catches mistakes in normal operation, and it fails closed. With the history on `main` intact, a run is green only when it has confirmed, from git and from the answers of the GitHub API, that every version that `ratchet.json` on `main` has named, up to the one in the checkout, has a tag and a published release, and that the tag of the one in the checkout is at this commit or at an earlier commit of it. Every run, whether of a push, by hand or on the schedule, that cannot confirm that is red:
+
+- A scheduled run writes nothing at all.
+- A run of a push or by hand writes nothing when it cannot confirm that every older version is finished, or when any check before its writes fails. Its only writes are the tag and the release of the version in `ratchet.json`, made after every check has passed. If it cannot confirm either one, it is red.
+
+The workflow also runs on a schedule, every day, on the head of `main`, also when nothing is merged. While a version is unfinished, the scheduled run is red each day that GitHub starts it (see "What it does not claim").
+
+Naming the version, the commit and the rerun is best effort. The run names them when it has read what is unfinished, and in the one message after the tag. It is red either way. When the API does not answer, or answers with an error such as HTTP 503, or with something that is not JSON or not of the form expected, before the run has read the tags and the releases, the run is red. It writes nothing, and its message may name only the request that failed. An error the script does not expect before any write is not caught. Python exits with 1, so the run is red and names nothing.
+
+That holds through:
+
+- a run that was cancelled or failed, before or after its tag;
+- a publication that failed: a refused tag, a release that was not created, an answer lost;
+- a changelog that was edited, with an entry taken out or a heading moved out of its form;
+- a merged version left without a tag or a release, for any of these reasons or because a waiting run was replaced by a newer one.
+
+It does not stand against someone who changes the runner's git data, such as a graft, a replace ref, a shallow file, an object store of its own or a forged object, nor against someone who deliberately writes a version in an unusual form. Two cheap barriers stand there anyway, and they are not a claim: every version must have one strict form, and a checkout with any of the first four is refused.
+
+**Why that boundary holds.** Nothing reaches `main` but through a pull request, and every commit on it has passed the code owner's approval and the required job `checks` (`ratchet.checks-owner-read`). The ruleset on `main` refuses a force push and a deletion, so a commit on `main` stays as it was approved. Every run of the release workflow starts from a fresh checkout on a runner of GitHub's, so the git data it reads are the ones the checkout wrote, from `main`, and not ones a person left behind. To change the git data or the version on purpose, someone has to get it past that approval, or turn the ruleset off. The review of the change, not the script, is what stands against that.
+
+**What it claims, in detail.**
+
+- **The release text is one fixed line, written in the script.** For version 0.4 of `OWNER/NAME` it is, exactly: `Ratchet 0.4: see [the changelog entry](https://github.com/OWNER/NAME/blob/v0.4/CHANGELOG.md) and [the files at this tag](https://github.com/OWNER/NAME/tree/v0.4)`. Nothing else is in it. No byte of `CHANGELOG.md` reaches the release, so the release cannot say something other than the entry: it says where the entry is. The links name the file and the tree at the tag, with no anchor, so they do not depend on how GitHub makes the anchor of a heading.
+- **Every version has one form.** Each version the script reads must match `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`: ASCII digits, no leading zero, nothing before or after. That holds for `ratchet.json` in the checkout, `ratchet.json` at each commit on `main`, each tag under `refs/tags/v` (`v` and the version), and each heading of a version in the changelog. Anything else fails the run, and the message names the value, as JSON in ASCII, and where it came from: the checkout, the commit, the tag, or the line of the changelog. Versions are compared only as pairs of integers, so 0.10 is newer than 0.9, and `00.4` never stands beside `0.4`.
+- **From the changelog it reads only which versions have an entry.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8. CRLF is read as LF, and the text is split at LF. A line is the heading of a version only when the whole line matches `^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z`: `[0-9]`, because `\d` in Python matches the digits of every script, and `\Z`, because `$` also matches before a final LF. Every other line is passed over, whatever a reader makes of it.
+- **The version has an entry, and nothing newer has one.** The run fails before any request when no line names the version in `ratchet.json`, or when a line names a newer version.
+- **A checkout that swaps objects or parents is refused.** Before it reads any history, the run fails when the checkout has `.git/info/grafts`, a ref under `refs/replace/`, loose or packed, a `.git/shallow` file, even an empty one, or a `.git/objects/info/alternates` file, even an empty one. git reads a graft as the parents of a commit, a replace ref as another object, a shallow file as the end of the history, and an alternate store as the source of an object the checkout lacks, without checking its hash: each changes what is read, and the tests show it. Beside the refusal, git runs with `GIT_NO_REPLACE_OBJECTS=1`, `--no-replace-objects` and `GIT_GRAFT_FILE` set to an empty file in a directory the script makes for each call, so that the reading ignores grafts and replace refs anyway. A fresh checkout on GitHub has none of these.
+- **The older versions are the ones `main` has had.** Before any request, it reads with git every commit on the first-parent history of `GITHUB_SHA` (`git rev-list --first-parent`) and the bytes of `ratchet.json` in each (`git cat-file`), and reads each as strictly as `registry.py` reads a data file: UTF-8, no field twice, no NaN, and a `version` of the form `MAJOR.MINOR`. Every commit is read, not only those git reports as changing the file. The run fails when the checkout is shallow, when it is not at `GITHUB_SHA`, when `ratchet.json` at `GITHUB_SHA` names another version than the checkout, when a commit names a version newer than the one being released, or when the file is missing at a commit after an earlier commit held it. Commits from before `ratchet.json` existed name no version. git runs with no `GIT_` variable of the environment, no system or global config, no replace refs and no graft file of the checkout, and it does not look for a repository above the checkout.
+- **Every tag has an entry, and every older version is finished.** Before any write, it lists the tags and the releases. A tag `vMAJOR.MINOR` up to this version with no line of its own fails the run, and so does a tag under `refs/tags/v` of another form, which is named. Each version that `ratchet.json` has named on `main` and that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version, what it lacks and the commit whose run to rerun, and writes nothing. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
+- **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request. A scheduled run is on the default branch, `main`, and passes this check like the others.
+- **The event is one of three.** `GITHUB_EVENT_NAME` must be exactly `push`, `workflow_dispatch` or `schedule`, or the run fails before any request. A push and a run by hand write as described below.
+- **A scheduled run writes nothing, and is red on what is unfinished.** It runs the same checks on the head of `main` and reads the same tags and releases. Its API function sends a `GET` and refuses every other request, which is not sent, whatever the logic asks for. When a read fails, it is red as any run is, and its message may name only the request that failed. When the reads are answered and a run of a push would write, it fails instead: for a version with no tag, the message names the version, the head commit, the first commit on `main` whose `ratchet.json` names it, and the rerun; for a tag at the head with no published release, it names the version, the commit the tag points at, and that the release is missing. Every other fault fails as in a run of a push, and writes nothing. On a state where every version is finished, it passes.
+- **Why a scheduled run only reports.** It could also create the release when the tag is at the head of `main`, since that write would be the same as a rerun's. It does not, because that is the safer choice: every write stays tied to an event that a person caused, the push of an approved commit, a rerun or a run by hand. A run that nobody started then never writes a tag or a release, and an error in its logic can at most turn a run red. The cost is one click: the maintainer reruns the run that the message names.
+- **Nothing is written before every check has passed.** The writes are two, in this order: the tag, then the release.
+- **The tag is created at this commit, or not at all.** It is created with `POST /repos/OWNER/NAME/git/refs`, which refuses a ref that exists. Then the release is created for that tag, and the tag is read back. The run fails when the answer to the creation or the tag read back points anywhere but `GITHUB_SHA`.
+- **Every failure after the tag ends in one message.** Once the tag may exist, a failure of any kind, whether no answer, an error the script does not expect, an HTTP error, an answer that is not JSON or an answer of the wrong form, gives one message. It says what failed, then names the version and the commit, says what is missing, and gives the rerun. There are four states, one form each, in `release.py`: the creation of the tag failed in a way that may have written it (`TAG_MAYBE`), the answer to the creation does not confirm the commit (`TAG_ELSEWHERE`), the tag is at the commit and the release is missing or not confirmed (`RELEASE_MISSING`), and the release was created and the tag was not confirmed (`TAG_UNCONFIRMED`). The creation of the release and the read-back are in one `try` that catches every `Exception`. An error the script does not expect is named by its type and the request, and its text is not shown. Only HTTP 422 on the creation of the tag, a ref that exists, still says that nothing was written. A cancelled run is stopped by GitHub and prints nothing. The next scheduled run is red on it, and names it when the API answers.
+- **A tag that exists is never moved, deleted or edited** (`repo.tags-stay`). What the run does with the tag of the version being released:
+
+| The tag for the version | The release for it | What the run does |
+|---|---|---|
+| does not exist | none | creates the tag at `GITHUB_SHA`, then the release, then reads the tag back |
+| does not exist | exists, draft or not | fails and writes nothing |
+| at `GITHUB_SHA` | none | a rerun of this version's run: creates only the release, then reads the tag back |
+| at `GITHUB_SHA` | draft | fails and writes nothing: publish the draft by hand |
+| at `GITHUB_SHA` | published | nothing to do |
+| at an earlier commit of `GITHUB_SHA` | published | nothing to do: this commit does not raise the version |
+| at another commit, or not a plain tag | none, a draft, or a commit that is not earlier | fails and writes nothing |
+| any | two or more | fails and writes nothing |
+
+- **The token.** Only `GITHUB_TOKEN` from the environment is used. It is sent in one header, to `https://api.github.com` only, to paths under `/repos/OWNER/NAME/`, and a redirect is not followed. It is never printed: it is taken out of every message. An error names the method, the path and the status. Nothing from the body of an answer is read for an error or printed, except a version that has matched `MAJOR.MINOR` and a tag name of another form, which is written as JSON in ASCII and cut at 60 characters.
+- **The workflow keeps its reviewed form.** The tests read the workflow as strict UTF-8, read CRLF as LF, and refuse every other control character but the tab and LF, among them a lone CR and NEL, and U+2028 and U+2029: a YAML parser may break a line there where the comparison does not. Then they compare the workflow, without its comments, line for line with the reviewed form, and test each part the design leans on. A line is blank, or a comment, by ASCII rules only: a line that holds a tab or a space that is not ASCII before `#` is kept, and then fails the comparison. The checkout has `fetch-depth: 0`, so that the history of `main` is there to read.
+
+**Against which threat.** Mistakes in normal operation, as above:
+
+- A release that says something other than the entry that was approved. Two review rounds found that a script reading free Markdown could not know what a renderer will show ([D-2026-11-16-strict-forms](../decisions/D-2026-11-16-strict-forms.md)). Now no text is copied, so there is nothing to differ.
+- A version that is merged and left unreleased, or made impossible to release, with no red run: a run that fails or is cancelled after it tags, a waiting run replaced in the concurrency group by a newer one, or a later pull request that takes the version's heading out of the changelog.
+- A release attached to a tag at another commit than the one approved, because the tag appeared between a check and a write.
+- A version hard-coded in the script instead of read from `ratchet.json`.
+- The token sent somewhere else, or shown in a log.
+
+A version written in an odd form by mistake, such as `0.04`, fails the run and is named. The threats that are out of scope are under "What it does not claim".
+
+**Why an edit of the changelog can no longer hide a version.** The versions that must be released are read from commits already on `main`. A pull request adds a commit on top of them and cannot change one of them: the ruleset on `main` refuses a force-push and a deletion, and git names a commit by the hash of its content and of its parents. The first-parent line is the line of `main` itself: a commit on a branch that was merged in is not on it, and the merge commit is. What the script still reads from the changelog can only make a run fail: the version must have an entry, no entry may be newer, and every tag up to the version must have one. A heading taken out of the exact form, or an entry taken out, therefore turns the run red or changes nothing. It never lets a version on `main` through without its tag and its release.
+
+**Why the rerun of this version finishes its release.** A rerun that finds the tag of the version being released at its own `GITHUB_SHA`, with no release, creates the release. This is the version's own run, not an older one. It is safe: the tag is on the commit that was approved, where it would be anyway, so nothing has to move; the text is the fixed line for that version; every older version has passed the check above; and a release created before an answer was lost is found, so no second one is made. Failing there instead would leave no way through the workflow to finish the version.
+
+**When a run is red because something is unfinished.** The message names each version and what it lacks. Then, in this order:
+
+1. Under Actions, open the workflow `release` and find the run of the commit that the message names. If the tag exists, that is the commit the tag points at. It may be a later commit than the first one with the version, when the run of the first was replaced and a later run made the tag. A run of any other commit fails on that tag and writes nothing. If the tag is missing, it is the first commit on `main` at which `ratchet.json` names the version. Choose "Re-run all jobs". It tags that commit if the tag is missing, and creates the release. It ignores the newer versions.
+2. When that run is green, rerun the red run, with "Re-run all jobs".
+3. If the run of step 1 cannot be rerun (GitHub allows a rerun for 30 days, and a run may never have started), and the head of `main` still has that version in `ratchet.json` and its tag is missing or is at the head, start the workflow by hand: Actions → `release` → "Run workflow", on `main`. It takes no input, runs the same three checks, and releases what `ratchet.json` names at the head of `main`. On any other branch it fails before any request.
+4. If neither is possible, the maintainer makes the release by hand for the tag that exists, or the tag by hand on the first commit with the version, with the line that `python3 checks/release.py notes --repo OWNER/NAME` prints at that commit. The workflow never does this.
+
+**Why the concurrency group stays.** It keeps one release run at a time, so that two runs never write at once. A waiting run can still be replaced by a newer one, and the replaced run shows as cancelled. That cannot lose a version without a red run: the newer run checks every older version that `main` has had, and fails and names one without a tag or a published release. The last run in the queue is never replaced. A run that was cancelled can be rerun for its commit, and then the newer one.
+
+A scheduled run is in the same group, `release`, with no expression, so it never runs beside a run that writes. It cannot read a state halfway through a run of a push. When it replaces a waiting run of a push, it is red, and when the API answers it names the version that the replaced run would have released, with no tag or with a tag and no release. When a run of a push replaces a waiting scheduled run, the run of the push does the work, and the next day's scheduled run reads its result.
+
+**The cases.** Each is a test in [test_release.py](test_release.py).
+
+| Case | Result |
+|---|---|
+| The release text for 0.4 of `owner/name`, and for 12.30 | Exactly the fixed line, with no `#` in it |
+| A changelog with a lone carriage return before a second heading, lines of a no-break space, an em space and an ideographic space, a link definition and a comment | The published body is the fixed line, and holds none of those bytes. `publish` and `notes` from a checkout give the same |
+| A line of the exact form | Names a version |
+| Seventeen lines that are not of the exact form: a space or a tab before or inside it, `v0.4`, no date, `###`, `#`, in a block quote or a list item, after a lone carriage return, a no-break space before or after it, digits of another script, a full-width digit, U+2028 after it | Passed over |
+| CRLF | Read as LF |
+| A line of the exact form in a code block | Counted. See the known limits |
+| No line for the version in `ratchet.json`, also when the heading is in one of the seventeen other forms | Fails before any request |
+| A tag for 0.2 and no line for it, also when its heading is in one of the other forms | Fails, writes nothing |
+| Bytes that are not UTF-8 | Fails |
+| Today's `CHANGELOG.md` | Every version from the one in `ratchet.json` down to 0.1 |
+| A new version | The tag, then the release, then the tag read back |
+| An older version without a tag, with a tag and no release, with only a draft, also when nothing is to be released | Fails, names it and what it lacks, writes nothing |
+| 0.1 with its tag and no release, 0.1 with no tag | Passes; fails |
+| 0.4 merged and never tagged, then 0.5 in a real git history, with 0.4's heading after a space, in a list item, with two spaces, or taken out | Fails, names 0.4 and the first commit with it, writes nothing. With 0.4 released, the same history releases 0.5 |
+| A history with commits before `ratchet.json`, and a commit that changes only the changelog | Every commit that holds the file, newest first |
+| A version only on a branch merged into `main` with `-s ours` | Not counted |
+| A merge commit that raises the version | Named as the first commit with it |
+| A shallow clone, a directory that is not a repository, a checkout not at `GITHUB_SHA` | Fails |
+| `ratchet.json` at an earlier commit with a field twice, NaN, bytes that are not UTF-8, a BOM, cut short, a version `0.3.1`, digits of another script, a number, no version, not an object | Fails, names the commit, and the value when there is one |
+| A version `00.4`, `0.04`, `+0.4`, ` 0.4`, `0.4 ` or `٠.٤` in the checkout, at a commit on `main`, or as a tag | Fails, names the value and where it came from: the checkout (also for `notes`), the commit, or the tag. Before any request, or writes nothing |
+| The history 0.3, then 0.4, never tagged, then `00.4` | Fails on `00.4` and writes nothing |
+| A heading `## 00.4 (…)` or `## 0.04 (…)` | Fails, names the line |
+| 0.9, then 0.10, in a real git history | With 0.9 released, releases 0.10. With 0.9 unfinished, fails and names 0.9. Versions compare as pairs of integers |
+| `.git/info/grafts` that makes 0.3 the parent of 0.5 | git reads 0.4 out of the history; the run refuses the file before any request. The reading ignores the file, and `GIT_GRAFT_FILE` from the environment |
+| A replace ref that swaps the commit of 0.4, loose or packed | The reading ignores it; the run refuses it and names the ref |
+| `.git/shallow` naming the commit of 0.4 in a full clone, or empty | git stops the history at 0.4; the run refuses it |
+| `.git/objects/info/alternates` naming a store with other bytes under the name of a blob the checkout lacks, or empty | git reads the other bytes, 0.4 is read as 0.3; the run refuses it |
+| A tag named with the token | Fails; the token is not in the output |
+| `ratchet.json` removed from `main` and added again | Fails, names both commits |
+| A commit on `main` that names a newer version | Fails before any request |
+| A checkout whose `ratchet.json` names another version than its commit | Fails before any request |
+| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_REPLACE_REF_BASE` set to another repository | Change nothing |
+| An older version without a tag | The message names the first commit on `main` whose `ratchet.json` names it |
+| An older version whose tag is at a later commit than the first with it | The message names the commit of the tag, not the first. That rerun finishes it, and then the newer one releases |
+| An older version whose tag is not a plain tag of a commit | The message says to look at it by hand |
+| This version tagged at another commit, with no published release | The message names the commit of the tag |
+| A newer tag, a newer annotated tag, a newer draft | Ignored |
+| A tag up to this version without an entry, a tag that is not a version | Fails, writes nothing |
+| 0.4 fails after its tag, then 0.5 is merged | The run for 0.5 fails, names 0.4 and writes nothing. The rerun for 0.4 creates only its release. The rerun for 0.5 then releases 0.5 |
+| A rerun for 0.4 when `v0.5` exists | Creates the release for 0.4 |
+| A run cancelled right after its tag | A later run on 0.4 and the run for 0.5 fail and write nothing. The rerun of the cancelled run finishes it |
+| A run cancelled right after its tag, and nothing merged after it | The next scheduled run fails, names 0.4, the commit the tag points at and the missing release, and writes nothing. After the rerun, the scheduled run passes and writes nothing |
+| A version with no tag, at its own commit or at a later commit of `main` that keeps it, in a scheduled run | Fails, names the version, the head and the first commit with it, writes nothing |
+| A finished state in a scheduled run: the tag at the head, or at an earlier commit, with its release | Passes, writes nothing |
+| An unfinished older version, a draft, a tag at another commit, a release with no tag, in a scheduled run | Fails as in a run of a push, writes nothing |
+| A read of a scheduled run fails with HTTP 503, 500 or 502, no answer, an answer that is not JSON or one of the wrong form, at the list of tags, the first page of releases or the comparison, with 0.4 cancelled after its tag, never tagged, or released at an earlier commit | Red, sends only `GET`, writes nothing. The message of an HTTP error starts with the request and its status. An error the script does not expect is not caught. When the API answers again, the run names 0.4, or passes on the finished state |
+| `publish` told to report, in each case where a push would write | Fails, says that a scheduled run writes nothing, writes nothing |
+| The API of a scheduled run, asked for a `POST`, `PATCH`, `PUT`, `DELETE` or a `get` in lower case, also through `main()` with a `publish` that writes anyway | Not sent |
+| A push and a run by hand | Tag and release |
+| `GITHUB_EVENT_NAME` missing, empty, `pull_request`, `pull_request_target`, `release`, `Schedule`, or `schedule` with a line feed | Fails before any request |
+| A scheduled run with `GITHUB_REF` not `main`, or missing | Fails before any request |
+| The publication fails with no answer, an error the script does not expect, HTTP 500, an answer that is not JSON or one of the wrong form, after a new tag and on a rerun with the tag | The one message: the version, the commit of the tag, the release missing or not confirmed, the rerun. Then the scheduled run names it, and the rerun creates only the release |
+| The publication reaches GitHub and its answer is lost: no answer, an unexpected error, HTTP 500 | The one message. The scheduled run then passes, and the rerun writes nothing |
+| The read-back of the tag fails in each of the five ways | The one message: the release was created, the tag not confirmed at the commit, the rerun. The rerun writes nothing |
+| The creation of the tag fails with no answer, before or after it reaches GitHub, an unexpected error, HTTP 500, or an answer that is not JSON | The one message: the tag may have been created at the commit, no release, the rerun. The rerun finishes it |
+| The answer to the creation of the tag is of the wrong form | The one message: the tag was created, no release, look at it by hand, then the rerun |
+| `KeyError`, `TypeError`, `ValueError`, `AttributeError`, `IndexError`, `OSError` or a `ReleaseError` raised by the API at each request after the tag | The one message, each time |
+| No answer to a `GET` before the tag | Fails, names the request, says that nothing was written |
+| Each row of the table above | As the table says |
+| A refused ref creation | Fails, writes nothing more |
+| An answer to the creation that puts the tag elsewhere | Fails, creates no release |
+| A tag read back at another commit | Fails |
+| An API error at each of the four requests | Fails with method, path and status, writes nothing more |
+| An answer of the wrong form | Fails, writes nothing |
+| An answer to the publication that is a draft, has `draft` null, names another tag or none, is a list, or is empty | Fails, and the tag is not read back |
+| The release of 0.3 after 100 releases, or between 50 and 50; 98, 99, 100 and 201 releases | Found. Pages are read until one holds fewer than 100 |
+| This version's release on the second page | Found, nothing written |
+| A list of releases with no end | Fails after 100 pages, writes nothing |
+| The version is not the newest entry, or has none | Fails before any request |
+| `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with the fixed line for 9.7, and `notes` prints it |
+| The token in five runs, with an answer that holds it | Never in the output, and sent only to `api.github.com` |
+| No token, a repository, a commit or a branch not of its form | Fails before any request |
+| A path outside the repository, a redirect | Not sent, not followed |
+| `notes` | Needs no token and no network, and prints the fixed line |
+| `.github/workflows/release.yml` | Runs on a push to `main`, on `workflow_dispatch` with no input and on a schedule, with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
+| The concurrency group `release`, with `cancel-in-progress: false` | Exactly that, once |
+| The permissions | `contents: read` at the top and `contents: write` on the job, and no other |
+| The triggers | A push to `main`, `workflow_dispatch` and `schedule`, and no `if:` that could skip the job |
+| The schedule | One cron line, `23 4 * * *`: a fixed minute and hour, and every day of the month, every month and every day of the week. A weekly line fails |
+| `timeout-minutes: 5` on the job | Exactly that, once |
+| The steps | The three checks in order, then the script. No `continue-on-error`, `always()` or `failure()` |
+| The whole workflow, without its comments | The reviewed form line for line, and nothing else. The checkout may move to another pinned commit |
+| A no-break space, an em space, an ideographic space, U+2028 or a tab before `#`, or alone on a line | Kept as code, not read as a comment or a blank line |
+| A lone CR, NUL, backspace, VT, FF, ESC, U+001F, DEL, NEL, U+009F, U+2028 or U+2029 after a comment and before `if: false`, and bytes that are not UTF-8 | The workflow is not read, and the test fails |
+| The workflow with CRLF, a tab in it | Read as with LF; the tab is kept as code |
+| The checkout | `fetch-depth: 0` and `persist-credentials: false`, and no filter or sparse checkout |
+
+**What it does not claim.**
+
+- A line of the exact form counts wherever it stands, also where a renderer does not show it as a heading: in a code block, in an HTML comment. Then the script may take a version for one that has an entry when a reader sees none. No text is copied, so such a line can no longer put text into a release. The most it can do is let a tag or a release through for a version whose entry a reader cannot see, in a pull request the maintainer has approved.
+- A heading a renderer shows in another form, for example after a space or in a list item, is not counted. That fails the run, and never releases anything.
+- It does not check that the entry says anything, that its date is a real date, or that the entries stand in any order.
+- The release page shows no text of the entry. A reader follows the link. The link opens `CHANGELOG.md` at the tag at its top, not at the entry for the version.
+- It does not see branch protection or tag protection. Who may push a tag by hand is a setting of the repository.
+- It does not read the release text back after it is published.
+- It does not make GitHub start a scheduled run. GitHub may start one late, and at times of high load it may drop one. In a public repository, GitHub turns off a scheduled workflow after 60 days with no activity in the repository, and it stays off until someone turns it on again. Within those limits, while a version is unfinished, the scheduled run is red each day. A cancelled run prints nothing itself. The next run is red on it.
+- It does not promise to name the unfinished version ([D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). When the GitHub API is down, or answers a read with an error such as HTTP 503, or with something that is not JSON or not of the form expected, the run is red and writes nothing. Its message may name only the request that failed, and not the version, the commit or the rerun. As long as the API fails that way on the scheduled runs, a version can stay unfinished with no run that names it. Each of those runs is still red.
+- A scheduled run has the same job, and so the same token with `contents: write`, as a run of a push. What keeps it to reading is the script, which sends nothing but a `GET` on a schedule, not the token. A second job with a read-only token would need an `if:` on the event, and the workflow has none.
+- A version may be skipped on purpose, from 0.4 to 0.6, by a pull request that never puts 0.5 in `ratchet.json` on `main`. That is a choice made in a pull request, not a version lost. A version that a pull request names only in its own commits, and that `main` never names, is not counted.
+- Versions from before `ratchet.json` was on `main`, 0.1 and 0.2, are not in that history. Both were tagged by hand. The script checks them only as tags with an entry.
+- It does not stand against someone who changes the runner's git data ([D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md)). It refuses grafts, replace refs, a shallow file and alternates, and nothing more: a forged object written into the checkout's own store, a changed `HEAD` or ref, or a changed `git` binary are not looked for. On a fresh checkout on GitHub there is none, for the reasons under "Why that boundary holds".
+- It does not stand against someone who deliberately writes a version in an unusual form. It refuses every form but one, so such a version makes the run red; a version skipped on purpose, as below, is still possible.
+- It trusts the history of `main` as the ruleset keeps it. An administrator who turns the ruleset off and force-pushes `main` could take a version out of that history.
+- `generate.py` and `check_register.py` read `version` in `ratchet.json` with the older form `^[0-9]+\.[0-9]+$`, so they accept `00.4`. Only the release script refuses it. Making `registry.py` as strict is a proposal (P) in the decision, not done here.
+- A workflow file on another branch can be changed by anyone who can push to it. The check of `GITHUB_REF` stops a mistake, not a change to the workflow or the script.
+
 ## Why JSON
 
 The rules are data that the checks and a project's CI must read. The format was chosen so that the checks need nothing but a Python interpreter:

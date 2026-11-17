@@ -1,0 +1,55 @@
+name: release
+
+# Tags and releases a new version when it reaches main (D-2026-11-17-release-on-merge,
+# D-2026-11-17-release-links). The logic is checks/release.py, tested without network by
+# checks/test_release.py: see checks/README.md. It never moves, deletes or edits a tag (repo.tags-stay).
+# The release text is one fixed line, with links to CHANGELOG.md and to the files at the tag.
+# The older versions are every version that ratchet.json has named on main, read with git from
+# the whole history, so the checkout is not shallow. One that is not finished fails the run, and
+# nothing is written: rerun the run of the commit the message names, then this one.
+# workflow_dispatch takes no input. It releases what ratchet.json names at the head of main,
+# under the same checks, and refuses any other branch.
+# schedule runs every day on the head of main, also when nothing is merged, so that a version left
+# unfinished by the last run, cancelled after its tag for example, is named by a red run within a day.
+# A scheduled run writes nothing: it fails and names the version, the commit of its tag and what is
+# missing, and passes when every version is finished. The script refuses every other event.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
+
+permissions:
+  contents: read
+
+# One release run at a time, so that two runs never write at once. A run that waits is replaced
+# when a newer one is queued. The newer run then fails and names every older version on main that
+# is not finished, so no version is skipped without a red run. A scheduled run is in the same group:
+# when it replaces a waiting run of a push, it fails and names the version that run would have released.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generated text matches the data files
+        run: python3 checks/generate.py --check
+      - name: This repo's own register has not drifted
+        run: python3 checks/check_register.py register.json --markdown REGISTER.md
+      - name: Every check fails on the fixtures it claims to catch
+        run: python3 -m unittest discover -s checks
+      - name: Tag and release the version in ratchet.json, if it is new
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 checks/release.py publish
