@@ -109,6 +109,7 @@ class Runs(FixtureTest):
                     self.assertTrue(os.path.isfile(os.path.join(self.fixture_directory("two"), "three.txt")))
             ''')
         self.assertEqual(code, 0, output)
+        self.assertIn(OK + ". 2 tests, each id once, and 2 fixtures", output)
 
     def test_a_fixture_that_no_test_loads_fails(self):
         output = self.assert_fails('''\
