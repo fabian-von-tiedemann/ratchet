@@ -7,7 +7,7 @@ Last replaced: 2026-11-17, after PR #13 was merged.
 ## What is done
 
 - PR #13 is merged: [D-2026-11-17-new-approaches](decisions/D-2026-11-17-new-approaches.md). PR #10 and PR #12 were each rejected in two review rounds in a row with the same kinds of failure, and the maintainer chose a new approach for each. A PR that adds a rule raises the version and is released on merge.
-- PR #11 is approved by the code owner and waits to be merged. It records [D-2026-11-17-proposals-2-6](decisions/D-2026-11-17-proposals-2-6.md), which says what happens with the proposals in issues #2 to #6. Issue #4 is closed as not planned.
+- PR #11 is approved by the code owner and waits to be merged. It records `D-2026-11-17-proposals-2-6`, which says what happens with the proposals in issues #2 to #6. Issue #4 is closed as not planned.
 
 ## What is running
 
@@ -34,7 +34,7 @@ Each PR below is built in a workspace of its own and is reviewed by a model from
   2. `fabian-agent` has the role Write and no more. Read back 2026-11-17.
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
   4. After the code owner approves, a new push from the agents' account removes the approval.
-- **The agents' account must not merge by hand.** It may turn on auto-merge ([D-2026-11-17-auto-merge](decisions/D-2026-11-17-auto-merge.md), in PR #9). Nothing stops a merge by hand yet.
+- **The agents' account must not merge by hand.** It may turn on auto-merge (`D-2026-11-17-auto-merge`, in PR #9). Nothing stops a merge by hand yet.
 - **`ratchet.protected-main` is not met in this repo** and stays "text only for now". Whether the rule allows administrators to be exempt for a sole owner is an open question.
 - `ratchet.no-secrets` is "text only for now". No secret scan runs here yet.
 
