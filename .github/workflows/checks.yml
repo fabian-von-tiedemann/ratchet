@@ -16,9 +16,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Generated text matches the data files
         run: python3 checks/generate.py --check
       - name: This repo's own register has not drifted
         run: python3 checks/check_register.py register.json --markdown REGISTER.md
       - name: Every check fails on the fixtures it claims to catch
         run: python3 -m unittest discover -s checks -v
+      - name: Released text is as it stood at its tag
+        run: python3 checks/released_text.py
+      - name: Every expected test ran and passed, in a process of its own
+        run: python3 checks/expected_tests.py
