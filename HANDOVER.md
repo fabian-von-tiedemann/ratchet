@@ -11,7 +11,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 ## Who waits on whom
 
 - **Rules that lean on code ownership** wait on the protection of `main`. These are `ratchet.one-approver`, `ratchet.checks-owner-read` and `ratchet.si-maintainer-approves`, which stay "text only for now" in [REGISTER.md](REGISTER.md). They become "built" in a PR of their own, after four steps:
-  1. The protection on `main` shows one required approval, the code owner's review required, approvals dismissed on a new push, and the job `checks` as a required status check. The ruleset that protects `main` is read through `gh api repos/fabian-von-tiedemann/ratchet/rulesets`.
+  1. The protection on `main` shows one required approval, the code owner's review required, approvals dismissed on a new push, and the job `checks` as a required status check. The ruleset that protects `main` is listed by `gh api repos/fabian-von-tiedemann/ratchet/rulesets`, and its rules are read from `gh api repos/fabian-von-tiedemann/ratchet/rulesets/<id>`.
   2. The agents' account has the role Write and no more.
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
   4. After the code owner approves, a new push from the agents' account removes the approval.
@@ -21,7 +21,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 ## Who acts next
 
 - **The maintainer** approves, merges when auto-merge cannot, changes settings, and answers the open issues with the label `question`.
-- **The control room** starts a workspace for each open PR or issue with work left, has every head reviewed by a model from another family, posts the verdict on the PR, and turns on auto-merge when the review passes. It never starts a third round after two rejections of the same kind: it takes a different approach to the maintainer as a decision.
+- **The control room** starts a workspace for each open PR or issue with work left, has every head reviewed by a model from another family (except a PR that changes only decisions and this file, [D-2026-11-17-improvement-loop](decisions/D-2026-11-17-improvement-loop.md)), posts the verdict on the PR, and turns on auto-merge when the review passes. It never starts a third round after two rejections of the same kind: it takes a different approach to the maintainer as a decision.
 
 ## Next step
 
