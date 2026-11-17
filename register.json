@@ -129,9 +129,9 @@
     },
     {
       "key": "repo.agents-own-account",
-      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and may turn on auto-merge for them. It never approves one and never merges one by hand.",
-      "ratchet": "Text only: an account with write access is able to merge by hand once the requirements are met. The protection on `main` only makes sure that the code owner has approved the latest change",
-      "source": "D-2026-11-17-auto-merge"
+      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and never approves one. It merges one, with a squash, only after the code owner has approved its exact head and a reviewer from another model family has passed that head. A pull request that changes only decisions and the handover needs no such reviewer.",
+      "ratchet": "Text only: the protection on `main` refuses a merge unless the code owner has approved the latest change and the job `checks` is green. It cannot see whether the review from another model family passed",
+      "source": "D-2026-11-17-agent-merges-after-approval"
     },
     {
       "key": "repo.standard-library-only",
