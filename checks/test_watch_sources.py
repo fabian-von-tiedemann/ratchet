@@ -952,7 +952,7 @@ class Watch(Base):
 
     def test_a_request_is_built_only_from_checked_values(self):
         good = ["/repos/example/plain/commits/HEAD", "/repos/example/plain/commits/" + PIN,
-                "/repos/example/plain/compare/%s...%s" % (PIN, HEAD), "/repos/o.r/r_e-p.o/commits/HEAD",
+                "/repos/example/plain/compare/%s...%s" % (PIN, HEAD), "/repos/o-r/r_e-p.o/commits/HEAD",
                 "/repos/example/ratchet/issues", "/repos/example/ratchet/issues?state=open&per_page=100&page=10",
                 "/repos/example/ratchet/issues/999999999"]
         bad = ["/repos/example/plain/branches/main", "/repos/example/plain", "/repos/example/plain/commits/main",
@@ -967,8 +967,8 @@ class Watch(Base):
             with self.subTest(path=path):
                 self.github = FakeGitHub()
                 self.github.routes[("GET", path)] = (200, {})
-                self.assertEqual(watch_sources.GitHub(self.github, TOKEN).get(path, "reading a thing"), (200, {}))
-                self.assertEqual(len(self.github.calls), 1)
+                status, _ = watch_sources.GitHub(self.github, TOKEN).get(path, "reading a thing")
+                self.assertEqual((status, [call[1] for call in self.github.calls]), (200, [API + path]))
         for path in bad:
             with self.subTest(path=path):
                 self.github = FakeGitHub()
