@@ -1410,6 +1410,59 @@ class Scheduled(unittest.TestCase):
                 self.assertIn(said, err)
                 self.assertEqual(github.writes, [])
 
+    def test_a_scheduled_run_that_cannot_read_is_red_and_writes_nothing(self):
+        # D-2026-11-17-release-fail-closed: a run that cannot confirm that every version is released is red and writes
+        # nothing. Naming the version is best effort: it needs an answer. Round 2 of the narrowed claim found that a
+        # scheduled run with HTTP 503 on the tag list was red, wrote nothing, and did not name 0.4.
+        tag_list = PATH + "/git/matching-refs/tags/v"
+        page = PATH + "/releases?per_page=100&page=1"
+        head = self.checkout.commit(text=TWO + "\nA later change.\n")
+        released = DONE_03["releases"] + [{"tag_name": "v0.4", "draft": False}]
+        states = (
+            ("cancelled after its tag", self.four, {"0.4": ("commit", self.four)}, DONE_03["releases"], (tag_list, page),
+             "Ratchet 0.4 is not finished: the tag v0.4 points at commit %s" % self.four),
+            ("never tagged", self.four, {}, DONE_03["releases"], (tag_list, page),
+             "Ratchet 0.4 is not finished: there is no tag v0.4 and no release"),
+            ("released at an earlier commit", head, {"0.4": ("commit", self.four)}, released,
+             (tag_list, page, PATH + "/compare/%s...%s" % (self.four, head)), None),
+        )
+        for state, sha, tags, releases, reads, named in states:
+            def fake():
+                return FakeGitHub(tags=dict(DONE_03["tags"], **tags), releases=releases, ancestors=[self.four])
+            for path in reads:
+                for kind in (503, 500, 502, "transport", "not-json", "form", "exception"):
+                    with self.subTest(state=state, path=path, kind=kind):
+                        github = fake()
+                        if isinstance(kind, int):
+                            github.fail[("GET", path)] = kind
+                            opener = FakeOpener(github)
+                        else:
+                            opener = Failing(github, "GET", path, kind)
+                        git(self.checkout.directory, "checkout", "-q", "--detach", sha)
+                        if kind == "exception":
+                            # An error the script does not expect, before any write, is not caught: Python exits with 1.
+                            with self.assertRaises(RuntimeError):
+                                main_with(opener, sha, self.checkout.directory, event="schedule")
+                        else:
+                            code, out, err = main_with(opener, sha, self.checkout.directory, event="schedule")
+                            self.assertEqual((code, out), (1, ""))
+                            self.assertTrue(err.endswith(" Nothing was written.\n"), err)
+                            if isinstance(kind, int):
+                                self.assertTrue(err.startswith("release: GET %s: HTTP %d" % (path, kind)), err)
+                            self.assertNotIn(TOKEN, err)
+                        self.assertEqual(github.writes, [])
+                        self.assertEqual(set(r.get_method() for r in opener.requests), {"GET"})
+            # When the API answers again, the scheduled run names what is unfinished, or passes on a finished state.
+            with self.subTest(state=state, answered=True):
+                github = fake()
+                code, out, err, _ = self.schedule(github, sha)
+                if named is None:
+                    self.assertEqual((code, err), (0, ""))
+                else:
+                    self.assertEqual(code, 1)
+                    self.assertIn(named, err)
+                self.assertEqual(github.writes, [])
+
     def test_a_scheduled_run_sends_no_write_even_if_the_logic_asked_for_one(self):
         github = FakeGitHub(**DONE_03)
         api = release.read_only(github)
