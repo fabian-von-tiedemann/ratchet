@@ -28,13 +28,27 @@ import registry
 API = "https://api.github.com"
 TITLE = "# Changelog"
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
-# What a reader takes for a heading of level one or two, with up to three spaces before it.
-HEADING_LIKE = re.compile(r"^ {0,3}#{1,2}(?:[ \t]|\Z)")
-# What a reader takes for the underline of a heading after a line of text.
-UNDERLINE = re.compile(r"^ {0,3}(?:=+|-+)[ \t]*\Z")
+# A line ends with LF or CRLF. Every other character that a reader could take for the end of a line
+# fails, and so does every other control character than a tab: C0, DEL and C1, U+2028 and U+2029.
+CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
+CONTROL_NAMES = {"\r": "a carriage return without LF", "\x0b": "a vertical tab", "\x0c": "a form feed",
+                 "\x85": "a next line", "\u2028": "a line separator", "\u2029": "a paragraph separator"}
+# What can stand before a block on a line: any spaces and tabs, the > of a block quote, and the marker of
+# a list item. A heading, a code block, HTML or a link definition after any of these is refused.
+CONTAINER = r"(?:[ \t>]|[*+-](?=[ \t]|\Z)|[0-9]{1,9}[.)](?=[ \t]|\Z))*"
+# What a reader takes for a heading of level one or two, anywhere a block can start.
+HEADING_LIKE = re.compile(r"^" + CONTAINER + r"#{1,2}(?:[ \t]|\Z)")
+# What a reader takes for the underline of a heading after a line of text, of any length and in a block quote or a list item.
+UNDERLINE = re.compile(r"^[ \t>]*(?:=+|-+)[ \t]*\Z")
+# An HTML heading of level one or two, anywhere outside a code block, also in a code span.
+HTML_HEADING = re.compile(r"<h[12](?:[\s/>]|\Z)", re.IGNORECASE)
+HTML_LIKE = re.compile(r"^" + CONTAINER + r"<")
+# A blank line holds nothing but spaces and tabs. A no-break space or another space that is not ASCII is text.
+BLANK = " \t"
 FENCE_LIKE = re.compile(r"^ {0,3}(?:```|~~~)")
+FENCE_ANYWHERE = re.compile(r"^" + CONTAINER + r"(?:```|~~~)")
 FENCE_OPEN = re.compile(r"^```[a-z]*\Z")
-LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:")
+LINK_DEFINITION = re.compile(r"^" + CONTAINER + r"\[[^\]]+\]:")
 MARKER = re.compile(r"^<!-- generated:[a-z-]+(?: [a-z0-9-]+)? -->\Z")
 END = "<!-- /generated -->"
 # The one line the script adds to an entry, last, after a blank line.
@@ -89,12 +103,22 @@ def read_text(path):
 def parse_changelog(text):
     """The entries of a changelog, newest first, or ReleaseError with the first fault.
 
-    Only a line "## MAJOR.MINOR (YYYY-MM-DD)" at the start of a line and outside a code
-    block starts an entry. Anything else a reader could take for a heading of that level
-    fails, and so does anything that could hide one: a code block opened in another way
-    than three backticks, a comment, HTML, a link definition, text before the first entry.
+    CRLF is read as LF. Any other character that could end a line, and any other control
+    character than a tab, fails with its line, before anything else is read. Only a line
+    "## MAJOR.MINOR (YYYY-MM-DD)" at the start of a line and outside a code block starts an
+    entry. Anything else a reader could take for a heading of level one or two fails: after
+    spaces or a tab, in a list item or a block quote, made with an underline, or in HTML. So
+    does anything that could hide one: a code block opened in another way than three
+    backticks at the start of a line, a comment, HTML, a link definition, text before the
+    first entry.
     """
     lines = text.replace("\r\n", "\n").split("\n")
+    for number, line in enumerate(lines, 1):
+        found = CONTROL.search(line)
+        if found:
+            character = found.group(0)
+            raise ReleaseError("CHANGELOG.md:%d: %s (U+%04X). A line here ends with LF or CRLF, and the only control character "
+                               "in the text is a tab" % (number, CONTROL_NAMES.get(character, "a control character"), ord(character)))
     if lines[0] != TITLE:
         raise ReleaseError('CHANGELOG.md:1: the first line is "%s"' % TITLE)
     entries = []
@@ -111,7 +135,7 @@ def parse_changelog(text):
                 entries[-1].lines.append(line)
             previous = ""
             continue
-        if FENCE_LIKE.match(line):
+        if FENCE_ANYWHERE.match(line):
             if not FENCE_OPEN.match(line):
                 raise ReleaseError("%s: a code block here opens and closes with ``` at the start of the line, closes with ``` alone" % where)
             fence = True
@@ -127,14 +151,16 @@ def parse_changelog(text):
             entries.append(Entry(version, match.group(2), number, []))
             previous = ""
             continue
-        elif UNDERLINE.match(line) and previous.strip():
+        elif UNDERLINE.match(line) and previous.strip(BLANK):
             raise ReleaseError("%s: a heading made with an underline. Headings here start with ##" % where)
-        elif line.lstrip().startswith("<") and not (MARKER.match(line) or line == END):
+        elif HTML_HEADING.search(line):
+            raise ReleaseError("%s: an HTML heading. Headings here start with ##, and there is no HTML" % where)
+        elif (HTML_LIKE.match(line) or line.lstrip().startswith("<")) and not (MARKER.match(line) or line == END):
             raise ReleaseError("%s: the only comments here are the markers of generated blocks, each alone on its line, and there is no HTML" % where)
         elif LINK_DEFINITION.match(line):
             raise ReleaseError("%s: a link definition. Links here are written inline, so that each entry holds its own" % where)
         if not entries:
-            if line.strip():
+            if line.strip(BLANK):
                 raise ReleaseError("%s: nothing but blank lines may stand before the first entry" % where)
         else:
             entries[-1].lines.append(line)

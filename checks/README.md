@@ -334,7 +334,7 @@ The script does not try to finish an older version, and it does not rewrite the 
 
 **What it claims.**
 
-- **The release text is the entry, verbatim.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8 with CRLF read as LF. An entry starts only at a line `## MAJOR.MINOR (YYYY-MM-DD)` at the start of a line and outside a code block, and ends at the next. The run fails on anything that a reader could take for such a heading and the script would not: a heading of level one or two in another form or with spaces before it, a heading made with an underline, a code block opened in another way than three backticks at the start of a line, a comment that is not the marker of a generated block, HTML, a link definition, text before the first entry. It also fails on two entries for one version, entries that are not newest first, an empty entry, and a newest entry that is not the version in `ratchet.json`. The release text is the lines of the entry exactly as they stand, without the blank lines before and after them, then a blank line and one fixed line written in the script: `The files of this version: [vMAJOR.MINOR](https://github.com/OWNER/NAME/tree/vMAJOR.MINOR)`. No link, no code and no marker in the entry is changed.
+- **The release text is the entry, verbatim.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8 with CRLF read as LF. A carriage return alone fails, with its line named, and so does every other character that a reader could take for the end of a line (form feed, vertical tab, NEL U+0085, U+2028, U+2029) and every other control character than a tab (C0, DEL, C1), in a code block too. An entry starts only at a line `## MAJOR.MINOR (YYYY-MM-DD)` at the start of a line and outside a code block, and ends at the next. The run fails on anything that a reader could take for a heading of level one or two and the script would not: a heading in another form, a heading after spaces or a tab, a heading in a list item or a block quote, a heading made with an underline of any length (also in a list item or a block quote), and an HTML heading `<h1>` or `<h2>` anywhere outside a code block, a code span too. It also fails on anything that could hide one: a code block opened in another way than three backticks at the start of a line, a comment that is not the marker of a generated block, HTML, a link definition (these three also in a list item or a block quote), text before the first entry. It also fails on two entries for one version, entries that are not newest first, an empty entry, and a newest entry that is not the version in `ratchet.json`. The release text is the lines of the entry exactly as they stand, without the blank lines before and after them, then a blank line and one fixed line written in the script: `The files of this version: [vMAJOR.MINOR](https://github.com/OWNER/NAME/tree/vMAJOR.MINOR)`. No link, no code and no marker in the entry is changed.
 - **An unfinished older version stops the run.** Before any write, it lists the tags and the releases. Each version in the changelog that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version and what it lacks, and writes nothing. A tag `vMAJOR.MINOR` up to this version with no entry fails, and so does a tag under `refs/tags/v` of another form. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
 - **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request.
 - **Nothing is written before every check has passed.** The writes are two, in this order: the tag, then the release.
@@ -388,7 +388,17 @@ The script does not try to finish an older version, and it does not rewrite the 
 | A link definition | Fails |
 | Entries that are not newest first, an empty entry, a file that does not start with its title | Fails |
 | CRLF | Read as LF, the same text |
-| A lone carriage return in a heading | Fails |
+| A lone carriage return in a heading, before a heading, before CRLF, in a line and last in the file | Fails, and names the line |
+| A form feed, a vertical tab, NEL, U+2028 or U+2029 between two lines of text | Fails, and names the line |
+| Another control character: C0, DEL or C1, also in a code block | Fails |
+| A tab | Kept, as it stands |
+| A heading after up to three spaces, four spaces, a tab, or spaces and a tab, a tab after `##`, a tab after the date | Fails |
+| A heading in a list item (`-`, `*`, `+`, `1.`, `1)`), in a block quote, in both, in a nested list item, and indented under a list item by four spaces or a tab | Fails |
+| A heading made with an underline of `-` or `=` of any length, after spaces, under a tab, in a block quote or a list item | Fails |
+| A line of a no-break space, an ideographic space or an em space, with an underline under it or before the first entry | Fails: to CommonMark that line is text, not a blank line |
+| An HTML heading `<h1>` or `<h2>` alone, in text, in a list item, in a block quote or in a code span | Fails. In a code block it is code |
+| HTML, a comment, a code block or a link definition in a list item or a block quote | Fails |
+| `#12`, `## ` in the middle of a line, `1.5 ##`, nested lists, a quote with `#`, a dash at the end of a line | Kept, as they stand |
 | Bytes that are not UTF-8 | Fails |
 | An entry with single, double and triple backtick code, a code span over two lines, an odd backtick, links, fenced blocks, markers, tabs and trailing spaces | The release text and the published body are the entry byte for byte, then the fixed line |
 | The 0.3 entry of today's `CHANGELOG.md` | The entry as it stands, then the fixed line. The published `v0.3`, kept under [fixtures/release/](fixtures/release/) as GitHub gave it, was made with the old rewriting: undo its links to the tag and put back the two marker lines, and it is the same |
@@ -413,9 +423,18 @@ The script does not try to finish an older version, and it does not rewrite the 
 | A path outside the repository, a redirect | Not sent, not followed |
 | `notes` | Needs no token and no network |
 | `.github/workflows/release.yml` | Runs on a push to `main` and on `workflow_dispatch` with no input, with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
+| The concurrency group `release`, with `cancel-in-progress: false` | Exactly that, once |
+| The permissions | `contents: read` at the top and `contents: write` on the job, and no other |
+| The triggers | A push to `main` and `workflow_dispatch`, and no `if:` that could skip the job |
+| `timeout-minutes: 5` on the job | Exactly that, once |
+| The steps | The three checks in order, then the script. No `continue-on-error`, `always()` or `failure()` |
+| The whole workflow, without its comments | The reviewed form line for line, and nothing else. The checkout may move to another pinned commit |
+
+**How the heading forms were checked.** Which of these lines CommonMark renders as a heading was checked by hand with cmark-gfm, the reference implementation of GitHub Flavored Markdown, outside the suite: the suite needs nothing but the standard library. A differential run outside the suite also put 360,000 random changelogs, built from these forms, through both the script and cmark-gfm. In every changelog that the script accepted, the headings of level one and two that cmark-gfm rendered were the title and the entries the script found, and no others. It found one more form, a line of a no-break space above an underline, which is now refused and has its test. Against the script as it was before these checks, the same run finds a changelog where the two differ.
 
 **What it does not claim.**
 
+- It reads CommonMark as cmark-gfm does. Another Markdown reader may see a heading where CommonMark sees none, and that is not checked. A no-break space or another space that is not ASCII is text in CommonMark, not a blank: before `##` it is kept, and a line of it is not a blank line. Format characters, such as the marks that change the direction of text, are not refused.
 - It does not see branch protection or tag protection. Who may push a tag by hand is a setting of the repository.
 - It does not read the release text back after it is published.
 - A relative link in an entry, such as a link to the file `RATCHET.md`, is published as it stands, and on the release page GitHub does not resolve it to the file. The fixed line links to the files at the tag. This is the cost of the verbatim text.

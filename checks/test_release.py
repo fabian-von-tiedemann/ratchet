@@ -200,7 +200,102 @@ class ChangelogEntries(unittest.TestCase):
         self.assertEqual([e.version for e in entries], ["0.4", "0.3"])
 
     def test_a_lone_carriage_return_in_a_heading_fails(self):
-        self.fails(TWO.replace("## 0.4 (2026-11-17)", "## 0.4\r(2026-11-17)", 1), 'a heading here is "## MAJOR.MINOR (YYYY-MM-DD)"')
+        self.fails(TWO.replace("## 0.4 (2026-11-17)", "## 0.4\r(2026-11-17)", 1), "CHANGELOG.md:3: a carriage return without LF (U+000D)")
+
+    # Round 1 of the new approach, finding 1. Each way found in which a reader takes a line for a heading of level
+    # one or two, and the script would not start an entry there, fails, and so do the forms next to it. Which of
+    # them CommonMark renders as a heading was checked with cmark-gfm by hand, outside the suite: see checks/README.md.
+
+    def test_a_lone_carriage_return_before_a_heading_fails_with_its_line(self):
+        # The reviewer's case: the text after it would be published as part of 0.4.
+        text = changelog(("0.4", "Four.\n\r## v0.3 (2026-11-17)\n\nTEXT OUTSIDE THE REAL 0.4 ENTRY."), ("0.2", "Two."))
+        self.fails(text, "CHANGELOG.md:6: a carriage return without LF (U+000D)")
+        # A carriage return before CRLF, in a line, and last in the file. A CR that the entry's own LF follows is CRLF.
+        for text, number in ((changelog(("0.4", "Four.\r\r\nFive."), ("0.3", "Three.")), 5),
+                             (changelog(("0.4", "Four.\rFive."), ("0.3", "Three.")), 5), (TWO + "\r", 10)):
+            with self.subTest(text=text):
+                self.fails(text, "CHANGELOG.md:%d: a carriage return without LF" % number)
+
+    def test_a_character_that_a_reader_could_take_for_a_line_break_fails(self):
+        for character, name in (("\r", "a carriage return without LF"), ("\x0c", "a form feed"), ("\x0b", "a vertical tab"),
+                                ("\x85", "a next line"), ("\u2028", "a line separator"), ("\u2029", "a paragraph separator")):
+            with self.subTest(character=character):
+                text = changelog(("0.4", "Four.%s## 0.3 (2026-11-17)%sThree." % (character, character)), ("0.2", "Two."))
+                self.fails(text, "CHANGELOG.md:5: %s (U+%04X)" % (name, ord(character)))
+
+    def test_any_other_control_character_fails_also_in_a_code_block(self):
+        for character in ("\x00", "\x08", "\x1b", "\x1f", "\x7f", "\x80", "\x9b", "\x9f"):
+            for entry in ("Four.%s", "```\ncode%s\n```"):
+                with self.subTest(character=character, entry=entry):
+                    self.fails(changelog(("0.4", entry % character), ("0.3", "Three.")), "a control character (U+%04X)" % ord(character))
+
+    def test_a_tab_is_the_one_control_character_kept(self):
+        entries = release.parse_changelog(changelog(("0.4", "\tA tab, and\ta tab."), ("0.3", "Three.")))
+        self.assertEqual(release.release_text(entries[0], REPO), "\tA tab, and\ta tab.\n\n" + files_line("0.4"))
+
+    def test_a_heading_after_spaces_or_a_tab_fails(self):
+        for line in ("   ## 0.3 (2026-11-17)", "    ## 0.3 (2026-11-17)", "\t## 0.3 (2026-11-17)", " \t## 0.3 (2026-11-17)",
+                     "##\t0.3 (2026-11-17)", "## 0.3 (2026-11-17)\t", "\t# 0.3 (2026-11-17)"):
+            with self.subTest(line=line):
+                self.fails(changelog(("0.4", "Four.\n%s\nThree." % line), ("0.2", "Two.")), "CHANGELOG.md:6: a heading here is")
+
+    def test_a_heading_in_a_list_item_or_a_block_quote_fails(self):
+        for entry in ("- ## 0.3 (2026-11-17)", "* ## 0.3 (2026-11-17)", "+ ## 0.3 (2026-11-17)", "1. ## 0.3 (2026-11-17)",
+                      "1) ## 0.3 (2026-11-17)", "- # 0.3 (2026-11-17)", "-\t## 0.3 (2026-11-17)", "> ## 0.3 (2026-11-17)",
+                      ">## 0.3 (2026-11-17)", "> > ## 0.3 (2026-11-17)", "- > ## 0.3 (2026-11-17)", "> - ## 0.3 (2026-11-17)",
+                      "10. Four.\n\n    ## 0.3 (2026-11-17)", "- Four.\n\n\t## 0.3 (2026-11-17)", "- Four.\n  - ## 0.3 (2026-11-17)"):
+            with self.subTest(entry=entry):
+                self.fails(changelog(("0.4", entry), ("0.2", "Two.")), 'a heading here is "## MAJOR.MINOR (YYYY-MM-DD)"')
+
+    def test_a_heading_made_with_an_underline_of_any_length_or_in_a_container_fails(self):
+        for entry in ("0.3 (2026-11-17)\n-", "0.3 (2026-11-17)\n=", "0.3 (2026-11-17)\n===", "0.3 (2026-11-17)\n   ---  ",
+                      "> 0.3 (2026-11-17)\n> ---", "> 0.3 (2026-11-17)\n>---", "- 0.3 (2026-11-17)\n  ---",
+                      "1. 0.3 (2026-11-17)\n   ===", "- > 0.3 (2026-11-17)\n  > -", "Four.\n0.3 (2026-11-17)\n\t---"):
+            with self.subTest(entry=entry):
+                self.fails(changelog(("0.4", "Four.\n\n" + entry), ("0.2", "Two.")), "a heading made with an underline")
+
+    def test_a_line_of_a_space_that_is_not_ascii_is_text_and_an_underline_under_it_fails(self):
+        # Found by the differential run against cmark-gfm: to CommonMark a no-break space is text, not a blank, so
+        # the three lines "0.3 (2026-11-17)", a no-break space and "=" are a heading of level one.
+        for space in ("\u00a0", "\u3000", "\u2003"):
+            for entry in ("0.3 (2026-11-17)\n%s\n=", "%s\n---", "Four.\n\n0.3 (2026-11-17)\n%s\n-"):
+                with self.subTest(space=space, entry=entry):
+                    self.fails(changelog(("0.4", "Four.\n\n" + entry % space), ("0.2", "Two.")), "a heading made with an underline")
+        self.fails("# Changelog\n\u00a0\n## 0.4 (2026-11-17)\n\nFour.\n", "CHANGELOG.md:2: nothing but blank lines may stand before the first entry")
+
+    def test_an_html_heading_fails_anywhere_outside_a_code_block(self):
+        for entry in ("<h2>0.3 (2026-11-17)</h2>", "Four. <h2>0.3 (2026-11-17)</h2> more.", "Four <H1 id=x>0.3</H1>",
+                      "- <h2>0.3 (2026-11-17)</h2>", "> <h1>0.3</h1>", "`<h2>` in code is refused too."):
+            with self.subTest(entry=entry):
+                self.fails(changelog(("0.4", entry), ("0.2", "Two.")), "CHANGELOG.md:5: ")
+        entries = release.parse_changelog(changelog(("0.4", "```\n<h2>0.3 (2026-11-17)</h2>\n```"), ("0.2", "Two.")))
+        self.assertEqual([e.version for e in entries], ["0.4", "0.2"])
+
+    def test_html_a_code_block_or_a_link_definition_in_a_container_fails(self):
+        for line, message in (("- <details>", "the only comments here"), ("> <!--", "the only comments here"),
+                              ("10. <!--", "the only comments here"), ("- ```", "a code block here opens"),
+                              ("> ~~~", "a code block here opens"), ("1. ```", "a code block here opens"),
+                              ("- [guide]: MIGRATING.md", "a link definition"), ("> [guide]: MIGRATING.md", "a link definition")):
+            with self.subTest(line=line):
+                self.fails(changelog(("0.4", "Four.\n\n%s\n    ## 0.3 (2026-11-17)" % line), ("0.2", "Two.")), "CHANGELOG.md:7: " + message)
+
+    def test_text_that_is_no_heading_is_kept(self):
+        entry = "\n".join([
+            "- Issue #12, PR #9 and #10.",
+            "- #12 was fixed, and > #9 too.",
+            "#9 and #10 at the start of a line, and ##9.",
+            "- A line with ## in the middle, and 1.5 ## after a number.",
+            "- A list item",
+            "  - with a nested item, and `## 0.3 (2026-11-17)` in code.",
+            "> A quote with a #hash.",
+            "",
+            "A dash at the end -",
+            "1. One",
+            "2) Two",
+        ])
+        entries = release.parse_changelog(changelog(("0.4", entry), ("0.3", "Three.")))
+        self.assertEqual([e.version for e in entries], ["0.4", "0.3"])
+        self.assertEqual(release.release_text(entries[0], REPO), entry + "\n\n" + files_line("0.4"))
 
     def test_a_changelog_that_is_not_utf8_fails(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -727,6 +822,91 @@ class Workflow(unittest.TestCase):
         self.assertEqual([l.strip() for l in lines if "${{" in l], ["GITHUB_TOKEN: ${{ github.token }}"])
         self.assertLess(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 checks/release.py publish"))
         self.assertGreater(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 -m unittest discover -s checks"))
+
+    # Round 1 of the new approach, finding 2: each part of the workflow that the design leans on has a test of
+    # its own, and the whole file, without its comments, is the reviewed form and holds nothing else.
+
+    def code(self):
+        """The lines of the workflow that are not blank and not a comment, each as it stands."""
+        return [line for line in self.lines() if line.strip() and not line.lstrip().startswith("#")]
+
+    def block(self, start):
+        """The line start and the lines indented under it."""
+        code = self.code()
+        self.assertEqual(code.count(start), 1, start)
+        index = code.index(start)
+        depth = len(start) - len(start.lstrip())
+        lines = [start]
+        for line in code[index + 1:]:
+            if len(line) - len(line.lstrip()) <= depth:
+                break
+            lines.append(line)
+        return lines
+
+    def test_one_release_run_at_a_time_and_a_running_one_is_never_cancelled(self):
+        self.assertEqual(self.block("concurrency:"), ["concurrency:", "  group: release", "  cancel-in-progress: false"])
+        self.assertEqual([l for l in self.code() if "concurrency" in l or "cancel-in-progress" in l],
+                         ["concurrency:", "  cancel-in-progress: false"])
+
+    def test_the_token_is_read_only_but_in_the_job_that_writes_tags_and_releases(self):
+        self.assertEqual(self.block("permissions:"), ["permissions:", "  contents: read"])
+        self.assertEqual(self.block("    permissions:"), ["    permissions:", "      contents: write"])
+        self.assertEqual([l.strip() for l in self.code() if "permissions" in l or "write" in l or "read-all" in l],
+                         ["permissions:", "permissions:", "contents: write"])
+
+    def test_it_runs_only_on_a_push_to_main_and_by_hand_with_no_input(self):
+        self.assertEqual(self.block("on:"), ["on:", "  push:", "    branches: [main]", "  workflow_dispatch:"])
+        self.assertFalse([l for l in self.code() if l.strip().startswith(("if:", "- if:"))])
+
+    def test_a_run_has_a_time_limit(self):
+        self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 5"])
+
+    def test_the_three_checks_run_in_order_before_the_one_step_that_writes(self):
+        steps = self.block("    steps:")
+        runs = [l.strip() for l in steps if l.strip().startswith(("run:", "- run:"))]
+        self.assertEqual(runs, [
+            "run: python3 checks/generate.py --check",
+            "run: python3 checks/check_register.py register.json --markdown REGISTER.md",
+            "run: python3 -m unittest discover -s checks",
+            "run: python3 checks/release.py publish",
+        ])
+        self.assertFalse([l for l in self.code() if "continue-on-error" in l or "always()" in l or "failure()" in l])
+
+    def test_the_workflow_is_the_reviewed_form_and_holds_nothing_else(self):
+        # The checkout may be moved to another pinned commit. Everything else is as reviewed.
+        code = [re.sub(r"@[0-9a-f]{40} # v[0-9]+(?:\.[0-9]+)*\Z", "@<commit> # v<version>", line) for line in self.code()]
+        self.assertEqual(code, [
+            "name: release",
+            "on:",
+            "  push:",
+            "    branches: [main]",
+            "  workflow_dispatch:",
+            "permissions:",
+            "  contents: read",
+            "concurrency:",
+            "  group: release",
+            "  cancel-in-progress: false",
+            "jobs:",
+            "  release:",
+            "    runs-on: ubuntu-24.04",
+            "    timeout-minutes: 5",
+            "    permissions:",
+            "      contents: write",
+            "    steps:",
+            "      - uses: actions/checkout@<commit> # v<version>",
+            "        with:",
+            "          persist-credentials: false",
+            "      - name: Generated text matches the data files",
+            "        run: python3 checks/generate.py --check",
+            "      - name: This repo's own register has not drifted",
+            "        run: python3 checks/check_register.py register.json --markdown REGISTER.md",
+            "      - name: Every check fails on the fixtures it claims to catch",
+            "        run: python3 -m unittest discover -s checks",
+            "      - name: Tag and release the version in ratchet.json, if it is new",
+            "        env:",
+            "          GITHUB_TOKEN: ${{ github.token }}",
+            "        run: python3 checks/release.py publish",
+        ])
 
 
 if __name__ == "__main__":
