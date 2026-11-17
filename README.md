@@ -17,6 +17,16 @@ Two rows from [RATCHET.md](RATCHET.md), shortened:
 | ratchet.no-secrets | No secrets, tokens or real personal data in the repo or in the chat. | Check: a secret scan in every PR and every night |
 | ratchet.kinds-apart | Keep four kinds of statement apart and label them: decision, proposal, observation and question. | Text only: a check cannot tell a proposal from a decision |
 
+## Whose rules these are
+
+Ratchet is how I, Fabian von Tiedemann, work with AI coding agents. I have written
+it down as rules, each with the check that enforces it, and I keep it up to date as
+I learn what holds and what breaks. This repo follows its own rules: see
+[REGISTER.md](REGISTER.md).
+
+It is open source so that others can use it too. Take the rules that fit your
+project, leave the rest, and send back what you learn: see [Contributing](#contributing).
+
 ## Who it is for
 
 One person who decides, several coding agents, and a repo that has to last. Ratchet assumes issues, pull requests and branch protection, and an agent tool that reads `AGENTS.md`. For a single agent on a short project it is more than you need: take the nine rows under [Start here](#start-here) and stop.

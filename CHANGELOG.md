@@ -35,6 +35,7 @@ Changed:
 - `ratchet.cr-reads-first`: reads "the latest handover", wherever the project keeps it.
 - `ratchet.lesson-names-check`: the rule no longer holds a link, which broke when the row was copied into a register.
 - The contract for the review script moved from `CONTROL-ROOM.md` to `RATCHET.md`, because three core rules depend on it.
+- The README says whose rules these are: the maintainer's own way of working with agents, kept up to date, and open for others to use.
 - The README's shell lines for comparing a copy are replaced by the reference check, and the start is written as steps to run from an empty project.
 - `templates/DECISION.md` asks for the original and a marked translation when the question was put in another language.
 - `templates/AGENTS.md` no longer names one agent tool's directory for skills.
