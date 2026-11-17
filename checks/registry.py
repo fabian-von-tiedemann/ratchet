@@ -61,10 +61,24 @@ TOP_FIELDS = {"version", "date", "start", "parts", "sources", "rules"}
 
 SOURCE_FIELDS = {"name", "repo", "directory", "author", "commit", "license"}
 REQUIRED_SOURCE_FIELDS = {"name", "repo", "commit", "license"}
-# A source repository on GitHub: the address, an owner and a repository, and nothing else.
-GITHUB_REPO = re.compile(r"^https://github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})\Z")
-# A directory in a repository: plain names joined by /, with nothing before the first or after the last.
-SOURCE_DIRECTORY = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\Z")
+# A source repository on GitHub: the address, an owner and a repository, and nothing else. An owner and a
+# repository are written in the characters GitHub allows in them.
+OWNER = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"
+REPOSITORY = r"[A-Za-z0-9._-]{1,100}"
+GITHUB_REPO = re.compile(r"^https://github\.com/(%s)/(%s)\Z" % (OWNER, REPOSITORY))
+# The name of a source goes into the title and the body of an issue as plain text, so it has a narrow form:
+# lowercase letters, digits, ".", "-" and "/", starting with a letter or a digit. It has no "_", because the
+# watch writes no "_" outside a link (an "_" can start emphasis). At most SOURCE_LENGTH characters, so that
+# "Source pin missing: " and the name fit GitHub's 256 characters for a title with room to spare, and the
+# title is never cut.
+SOURCE_LENGTH = 100
+SOURCE_NAME = r"[a-z0-9][a-z0-9./-]{0,%d}" % (SOURCE_LENGTH - 1)
+# A directory in a repository: parts of the same characters but "/", joined by single "/". No part is ".",
+# and no ".." stands anywhere in it.
+SOURCE_DIRECTORY = r"(?=[a-z0-9./-]{1,%d}\Z)[a-z0-9.-]+(?:/[a-z0-9.-]+)*" % SOURCE_LENGTH
+# Text that GitHub turns into a link or a reference although it holds only the characters above: a "www."
+# address and a "GH-" issue reference (GitHub's "Autolinked references and URLs").
+AUTOLINK = re.compile(r"www\.|gh-[0-9]", re.IGNORECASE)
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
 
 TABLE_HEADER = "| Key | Rule | Ratchet | Source |"
@@ -332,10 +346,10 @@ def github_repo(value):
 
 
 def plain_directory(value):
-    """Whether a value is a directory inside a repository: no . or .. part, no / at its ends."""
+    """Whether a value is a directory of the narrow form: no part ".", no "..", no "/" at its ends or twice."""
     return (
-        isinstance(value, str) and bool(SOURCE_DIRECTORY.match(value))
-        and not any(part in (".", "..") for part in value.split("/"))
+        isinstance(value, str) and re.fullmatch(SOURCE_DIRECTORY, value) is not None
+        and ".." not in value and "." not in value.split("/")
     )
 
 
@@ -352,16 +366,18 @@ def source_repo_text(source):
 def source_problems(sources):
     """Why the list of sources breaks its form, as messages that each name the source. Empty if it holds.
 
-    A source has a name, a repo, a commit and a license, and may have a directory and an author. The repo is
-    https://github.com/ with an owner and a repository and nothing else. The directory is a plain path inside
-    the repository. The commit is a full sha in lowercase hex. The other fields are text from the fixed list.
+    A source has a name, a repo, a commit and a license, and may have a directory and an author. The name and
+    the directory have the narrow form above, and the name is used once. The repo is https://github.com/ with
+    an owner and a repository and nothing else. The commit is a full sha in lowercase hex. The author and the
+    license are text from the fixed list.
     """
     if not isinstance(sources, list):
         return ["sources must be a list"]
     problems, names = [], set()
     for number, source in enumerate(sources, 1):
         name = source.get("name") if isinstance(source, dict) else None
-        label = name if isinstance(name, str) and text_problem(name) is None and WORD.search(name) else str(number)
+        good_name = isinstance(name, str) and re.fullmatch(SOURCE_NAME, name) is not None and not AUTOLINK.search(name)
+        label = name if good_name else str(number)
         said = []
         if not isinstance(source, dict):
             said.append("a source must be an object")
@@ -369,18 +385,26 @@ def source_problems(sources):
             said += ["missing field %r" % field for field in sorted(REQUIRED_SOURCE_FIELDS - set(source))]
             said += ["unknown field %r" % field for field in sorted(set(source) - SOURCE_FIELDS)]
             if not said:
-                for field in ("name", "author", "license"):
-                    if field in source and text_problem(source[field]):
-                        said.append("%s %s" % (field, text_problem(source[field])))
-                if not text_problem(name) and not WORD.search(name):
-                    said.append("the name holds no words")
-                elif label in names:
+                if not isinstance(name, str) or re.fullmatch(SOURCE_NAME, name) is None:
+                    said.append("the name must be lowercase letters, digits, '.', '-' and '/', start with a letter "
+                                "or a digit, and be at most %d characters long" % SOURCE_LENGTH)
+                elif AUTOLINK.search(name):
+                    said.append("the name holds text that GitHub turns into a link or a reference")
+                elif name in names:
                     said.append("the name is used twice")
                 names.add(label)
+                for field in ("author", "license"):
+                    if field in source and text_problem(source[field]):
+                        said.append("%s %s" % (field, text_problem(source[field])))
                 if github_repo(source["repo"]) is None:
                     said.append("the repo must be https://github.com/ and an owner and a repository, and nothing else")
-                if "directory" in source and not plain_directory(source["directory"]):
-                    said.append("the directory must be a plain relative path inside the repository")
+                if "directory" in source:
+                    if not plain_directory(source["directory"]):
+                        said.append("the directory must be lowercase letters, digits, '.' and '-', in parts joined by "
+                                    "single '/', with no part '.' and no '..', and be at most %d characters long"
+                                    % SOURCE_LENGTH)
+                    elif AUTOLINK.search(source["directory"]):
+                        said.append("the directory holds text that GitHub turns into a link or a reference")
                 if not isinstance(source["commit"], str) or not COMMIT.match(source["commit"]):
                     said.append("the commit must be a full 40-character sha, in lowercase hex")
                 if not said and text_problem(source_repo_text(source)):

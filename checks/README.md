@@ -159,9 +159,34 @@ python3 checks/watch_sources.py --data ratchet.json
 
 This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [ratchet.json](../ratchet.json) that `RATCHET.md` shows under Sources. Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
 
-**What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API. A source has moved when the head is not the pinned commit. A source that has moved has one open issue, titled `Source moved: <name>`, with the commit range, the number of commits, their first lines and the changed files. A pinned commit that no longer exists upstream has one open issue, titled `Source pin missing: <name>`. A source that has not moved writes nothing. For a source with a directory, a branch that has only moved on, with the pin in its history, counts as a move only if a file under the directory differs between the pin and the head, or if the API does not say which files differ. Every read comes before any write. Then every title and body is built and checked, and only then is anything written. A read that fails, an answer of a form the watch does not know, or a title or body that fails a check, fails the run before anything is written.
+**What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API.
 
-**Against which threat.** A pinned source moves, and nobody notices, so a rule keeps crediting a source that now says something else, or a project keeps copying a skill at a pin that has gone (`ratchet.skills-pinned`). A second threat comes from the text the watch writes: a commit message, a file name or a branch upstream, or a source name in `ratchet.json`, is written so that the issue pings someone, links somewhere, shows HTML or reads as an instruction, or so that a line in the log is read by the runner as a command. A third is the token: a run prints it in a log or an error, or writes it into an issue.
+- A source without a directory has moved when the compare is not `identical`.
+- A source with a directory has moved when at least one changed file is under the directory, or when the compare is `behind` or `diverged`. If the API does not say which files changed, or lists 300 files and none of them under the directory, the watch cannot tell, and counts the source as moved.
+- A source that has moved has one open issue, titled `Source moved: <name>`. A pinned commit that is not found upstream has one open issue, titled `Source pin missing: <name>`. A source that has not moved writes nothing.
+- Every read comes before any write. Then every title and body is built and passes one gate, and only then is anything written. A read that fails, an answer of a form the watch does not know, or a title or body that fails the gate, fails the run before anything is written.
+
+**Against which threat.**
+
+1. A pinned source moves, and nobody notices, so a rule keeps crediting a source that now says something else, or a project keeps copying a skill at a pin that has gone (`ratchet.skills-pinned`).
+2. Text from a source, from an answer of the API or from `ratchet.json` is written so that the issue pings someone, links somewhere, shows HTML or reads as an instruction (`ratchet.material-not-instructions`), or so that a line in the log is read by the runner as a command, such as `::warning::` or `##[error]`.
+3. The token is printed in a log or an error, written into an issue, or sent to another host.
+
+**No text from a source (`D-2026-11-17-new-approaches`, in PR #13).** Two review rounds found text from upstream that escaping did not make inert, and a token that got through an encoding the watch did not undo. So the watch no longer tries to make such text safe. No text from a source, and no text from an answer of the API, reaches an issue, a title or a printed line. An issue holds only these values:
+
+| Value | From | Checked as |
+|---|---|---|
+| Name | `ratchet.json` | The narrow form below |
+| Directory | `ratchet.json` | The narrow form below |
+| Pinned commit | `ratchet.json` | 40 lowercase hex characters |
+| Head of the default branch | The API | 40 lowercase hex characters |
+| Status | The API | One of `identical`, `ahead`, `behind`, `diverged` |
+| Commits ahead and behind | The API | Integers from 0 to 999999999 |
+| Changed files, and those under the directory | Counted by the watch from the API's list | Integers, or "not listed by the API" |
+| Compare link | Owner and repo from `ratchet.json`, and the two shas | `https://github.com/<owner>/<repo>/compare/<pin>...<head>` |
+| Everything else | Fixed English text in the script | Each line exactly |
+
+No commit subject, file name, branch name, author or message is written. The issue tells the reader to follow the compare link to see the commits and the files, and that what they find there is material, not instructions. File names are read only to count those under the directory. The default branch is read only to build the path of the next request.
 
 **The data.** A source has a `name`, a `repo`, a `commit` and a `license`, and may have a `directory` and an `author`:
 
@@ -170,97 +195,92 @@ This is not a reference check for a rule. It is a tool this repo runs on its own
  "author": "Lauren Tan", "commit": "bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7", "license": "MIT"}
 ```
 
-The `repo` is `https://github.com/`, an owner and a repository, and nothing else. The `directory` is a plain path inside the repository: names of ASCII letters, digits, `.`, `_` and `-`, joined by `/`, with no part that is `.` or `..`. The `commit` is a full sha in lowercase hex. The name, the author and the license are text from [the list](#the-characters-a-value-may-hold), and a name is used once. `RATCHET.md` shows the repo, then `, directory` and the directory as code, then the author in brackets after `by`. The generator and the watch read the sources with the same function in [registry.py](registry.py), and the generator fails on the same sources as the watch.
+- **The name** is lowercase letters, digits, `.`, `-` and `/`, starts with a letter or a digit, and is at most 100 characters long. It has no `_`, since the gate allows no `_` outside a link: in Markdown an `_` can start emphasis. 100 characters keep `Source pin missing: ` and the name at 120 characters, well within the 256 that GitHub takes for a title, so a title is never cut. A name that would be longer is refused. A name is used once, so two sources never share a title.
+- **The directory** is parts of lowercase letters, digits, `.` and `-`, joined by single `/`, at most 100 characters. No part is `.`, no `..` stands anywhere in it, and it does not start or end with `/`.
+- **Neither holds `www.` or `GH-` and a digit**, in any case. GitHub makes a link of the one and a reference to an issue of the other, from characters the form allows.
+- **The repo** is `https://github.com/`, an owner and a repository, and nothing else. The owner is letters, digits and `-`, starts with a letter or a digit and is at most 39 characters. The repository is letters, digits, `.`, `_` and `-`, at most 100 characters, not `.` or `..` and not ending in `.git`.
+- **The commit** is a full sha in lowercase hex. The author and the license are text from [the list](#the-characters-a-value-may-hold).
+
+`RATCHET.md` shows the repo, then `, directory` and the directory as code, then the author in brackets after `by`. The generator and the watch read the sources with the same function in [registry.py](registry.py), and the generator fails on the same sources as the watch.
+
+**One gate.** Every planned title and body, and every printed line, passes the same check before it leaves the watch:
+
+- **A grammar of lines.** A title is `Source moved: ` or `Source pin missing: ` and a name of the narrow form. Each line of a body is a blank line, one of the fixed sentences, or one of the lines in the table above, each matched in full by a pattern of its own.
+- **A small set of characters.** Outside a link or a path of the API, a line holds only ASCII letters, digits, the space and `.` `,` `:` `'` `(` `)` `/` `-`. So it holds no `@`, `#`, `<`, `>`, `[`, `]`, `!`, backtick, `|`, `\`, `*`, `_`, line break, control, or any character outside ASCII. Inside a link to `https://github.com/` or a path that starts with `/repos/`, it may also hold `_`, as a repository name may. It never holds `::`, and outside a link never `www.` or `GH-` and a digit.
+- **The token.** No title, body or printed line holds the token as it stands.
+
+If one planned title or body fails, nothing is written. The error names the planned issue and the line, never the text. A printed line that fails is replaced by `a line that did not pass the output gate is left out`. Errors give only the method, a path built from checked values, and the HTTP status as an integer, never anything from the body or the headers of an answer, and never the text of a network error. An error the watch does not know is printed as its kind and the line of the script.
+
+**Why the token needs nothing more.** The earlier version replaced the token in every answer and looked for it behind escapes and encodings, because upstream text went into issues and logs. Now no text from an answer is written anywhere, so a token that an answer holds, in any encoding, has no way out. The only values that are written are checked for a form that a token of GitHub's does not have, and the gate refuses the token as it stands in case one ever did.
+
+**The size of a body.** No list from the API reaches a body, so its size does not depend on the source. The largest body has a name and a directory of 100 characters, an owner of 39 and a repository of 100, nine-digit counts, 300 changed files, all under the directory, and the notes on a `diverged` compare and on a capped list. It is 1390 bytes, and a test builds it. GitHub takes 65536 characters.
+
+**The token and the transport.** The token is read from the environment variable `GITHUB_TOKEN` and from nowhere else. It is sent only to `https://api.github.com`: the transport refuses any other address before it connects. A redirect is not followed. It is an answer of its own, and the run fails on it, so the token is never sent on. Without a token the reads run unauthenticated. If nothing has moved, the run passes. If something would be written, the run fails, names the titles and writes nothing.
 
 **What the run does with each answer.**
 
 | The compare says | What the watch writes |
 |---|---|
 | `identical`, and the head is the pin | Nothing. |
-| `ahead`, for a source with no directory | It opens or updates `Source moved: <name>`, also when no file differs, as after an empty commit or a change that was undone. The issue says that no file differs. |
+| `ahead`, for a source with no directory | It opens or updates `Source moved: <name>`, also when no file differs, as after an empty commit. |
 | `ahead`, with a change under the directory | It opens or updates `Source moved: <name>`. |
-| `ahead`, with changes only outside the directory | Nothing. The run prints that the branch is ahead and that no file under the directory differs. |
-| `ahead`, with no changed file at all, for a source with a directory | Nothing. The tree at the head is the tree at the pin, so nothing under the directory differs. The run prints that the branch is ahead and that no file differs. |
-| `ahead`, with no file under the directory among the 300 the API lists | It opens or updates the issue and says that files under the directory may have changed. |
-| `ahead`, with no list of files at all, for a source with a directory | It opens or updates the issue and says that the API did not list the changed files, so files under the directory may have changed. |
-| `diverged` or `behind` | It opens or updates `Source moved: <name>` whatever the directory, and says that the pinned commit is not in the history of the default branch, which may have been rewritten or reset. A pin off the branch may later be removed upstream. |
+| `ahead`, with changes only outside the directory, or with no changed file | Nothing. The run prints that the source has not moved under its directory. |
+| `ahead`, with 300 files listed and none under the directory, or with no list of files | It opens or updates the issue and says that it cannot tell whether a file under the directory changed. |
+| `diverged` or `behind` | It opens or updates `Source moved: <name>` whatever the directory, and says that the pinned commit is not in the history of the default branch. |
 | `identical` while the head is not the pin, or anything else while the head is the pin | The run fails and writes nothing. |
 | Not found, and the pinned commit is not found | It opens or updates `Source pin missing: <name>`. |
 | Not found, and the pinned commit is found | The run fails. |
-| Any other error, or an answer of a form the watch does not know | The run fails and writes nothing. |
+| Any other error, a redirect, or an answer of a form the watch does not know | The run fails and writes nothing. |
 
 The watch updates only an open issue that it opened itself, as `github-actions[bot]`, with exactly the title. An issue by someone else with the same title is left alone. Two open issues of its own with one title fail the run. When the body would be the same, the watch writes nothing.
 
-**One gate for what is written.** Every value that reaches an issue passes through one renderer, `inert()`, whether it comes from `ratchet.json` or from the API: the name, the branch, the shas, the status, the counts, the commit subjects and the file names. `inert()` keeps a character from [the list](#the-characters-a-value-may-hold) and writes every other one, a line break or a control among them, as `<U+XXXX>`. What it gives is safe only inside code. Around it sit the only ways into a body:
-
-- `code()` writes a value as a code span, fenced by more backticks than any run in it. The name, the directory, the pin, the branch and the head are written so.
-- `fence()` writes lines from `inert()` as a fenced code block, with a fence longer than any run of backticks in it. Every line in a block starts with the short sha of a commit or the status of a file, so no line can close it. The subjects and the file names are written so.
-- `number()` writes a count, `known()` a word from one of the watch's own lists, such as a status, and `link()` a link to a repository on GitHub or to a compare of two full shas in it, and nothing else.
-- `compose()` fills a template of the watch's own with what these give and with nothing else. A plain string is refused with a `TypeError`, and so is every line of a body that `compose()` or `fence()` did not make.
-
-GitHub makes no link, image, HTML, mention or reference of text in code. The issue says that the content is material, not instructions (`ratchet.material-not-instructions`).
-
-A title is not Markdown, but GitHub shows code, references and emoji in one. In a title the name keeps only letters, digits, spaces, `-`, `_` and `/`, and every other character stands as `<U+XXXX>`. A title that would come out the same for two sources fails the run before anything is written.
-
-Every line the watch prints passes through `inert()` too, and starts with a letter. A line that would start with anything else gets `| ` before it, so that no line is read by the runner as a command such as `::warning::`.
-
-**Limits, checked before the first write.** GitHub refuses an issue body of more than 65536 characters and a title of more than 256. The watch counts UTF-8 bytes, which are never fewer than the characters. Before it writes anything, it checks every title and every body against these limits, for a title used twice and for the token, and fails with every problem it finds if one fails. So a run writes all of its issues or none of them, unless GitHub itself fails a write after an earlier one has gone through.
-
-**Where the API caps a list.** The compare lists at most 250 commits and 300 files. Where it lists fewer commits than the range holds, or 300 files, the issue says so. The issue shows at most 100 commits and 150 files, and says so when it shows fewer than the API lists. A subject or a file name is cut at 120 bytes, and a name, a directory or a branch at 200, between two characters, so that no `<U+XXXX>` is cut in two. With these caps no body can take more than about 55000 bytes, and a test builds the largest one.
-
-**The token.** It is read from the environment variable `GITHUB_TOKEN` and from nowhere else. It is sent only to `https://api.github.com`, and a redirect is not followed. No error quotes the body of an answer. The token is replaced by `***` in every answer, both in the raw bytes and in every string of the decoded JSON, where a `\u` escape no longer hides it, and in every line the watch prints. Then no title or body is written, and no line is printed, that holds the token or a part of it in a form the watch can read: as it stands, in other case, split by spaces or other characters, or behind `<U+XXXX>`, backslash, percent or HTML escapes, one inside another too. A part is 12 letters and digits of the token in a row, since a cut can leave part of a token. Without a token the reads run unauthenticated. If nothing has moved, the run passes. If something would be written, the run fails, names the titles and writes nothing.
-
-**The cases.** Each is a test in [test_watch_sources.py](test_watch_sources.py), with the API answered by a fake that records every call. No test reaches the network.
+**The cases.** Each is a test in [test_watch_sources.py](test_watch_sources.py). The API is answered by a fake that records every call, except in the class `Transport`, which runs the real transport against local servers on `127.0.0.1`. No test reaches the internet.
 
 | Test | What is tried | Result |
 |---|---|---|
-| `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Passes, nothing written |
-| `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with the range, the count, the first lines and the files |
-| `test_a_second_run_updates_and_does_not_duplicate` | The same move twice, then a further move. | Nothing written the second time, then the open issue updated |
-| `test_a_malformed_source_fails_and_names_it` | Each source under [fixtures/sources/](fixtures/sources/), among them the old form of the repo, `https://github.com/cursor/plugins, directory` and the rest in one field. | Fails, names the source, reads nothing |
+| `test_fixture_*`, one for each file under [fixtures/sources/](fixtures/sources/) | 49 malformed sources: names with `##[`, `::`, `@`, `#`, `<`, a backtick, a space, a capital, `_`, a leading `.` or `-`, 101 characters, `www.` or `gh-12`; directories with `//`, `..`, a part `.`, a capital, `_`, 101 characters or `www.`; an owner with `_`; and the forms of round 1. | Fails, names the problem, or prints that a line was left out where the problem quotes `_` or `\|`; reads nothing |
 | `test_the_sources_in_ratchet_json_have_the_form` | This repo's own sources. | Passes |
-| `test_an_api_error_fails_without_writing` | An error, a rate limit, a missing repo, an answer that is not JSON, a network failure and a failing list of issues, each at the second source after the first has moved. | Fails, writes nothing |
-| `test_a_missing_pin_gets_its_own_issue`, `test_a_missing_pin_and_a_move_are_different_issues` | The pinned commit is not found upstream. | Its own issue, with its own title |
+| `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Nothing written |
+| `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with exactly the expected body |
+| `test_a_second_run_updates_and_does_not_duplicate` | The same move twice, then a further move. | Nothing written the second time, then the open issue updated |
+| `test_an_api_error_fails_without_writing` | An error, a rate limit, a missing repo, an answer that is not JSON, a network failure and a failing list of issues, at the second source after the first has moved. | Fails with exactly the method, the path and the status; writes nothing |
+| `test_a_missing_pin_gets_its_own_issue`, `test_a_missing_pin_and_a_move_are_different_issues` | The pinned commit is not found upstream. | Its own issue, with exactly the expected body |
 | `test_a_compare_that_fails_while_the_pin_exists_fails_the_run` | The compare is not found, but the pin is. | Fails, writes nothing |
-| `test_a_directory_source_with_changes_only_outside_its_directory_writes_nothing` | Changes beside the directory, in a name that starts like it, and in a directory of the same name elsewhere. | Passes, nothing written |
-| `test_a_directory_source_with_a_change_inside_lists_only_those_files` | Changes inside and outside, and a file renamed out of the directory. | The issue lists only the files under the directory |
-| `test_a_commit_subject_or_a_file_name_comes_out_as_inert_text` | Subjects and file names with `@someone`, `#1`, a reference to another repo, a link, an image, HTML, a comment, an emoji name, backticks that try to close the fence, a line break, a tab, a control and characters that reorder a line. | Each comes out inside a code block, as `<U+XXXX>` where it is off the list |
-| `test_the_token_never_appears_in_output_or_errors` | A run that writes, a network error that quotes the token and an answer that echoes it. | The token is in no output, error or issue |
-| `test_without_a_token_the_reads_run_and_the_writes_are_refused`, `test_an_empty_token_counts_as_no_token` | No token, and an empty one, with a moved source. | Fails, names the title, writes nothing, sends no token |
-| `test_without_a_token_and_nothing_moved_the_run_passes` | No token and nothing moved. | Passes |
+| `test_a_directory_source_with_changes_only_outside_its_directory_writes_nothing` | Changes beside the directory, in a name that starts like it, and in a directory of the same name elsewhere. | Nothing written |
+| `test_a_directory_source_with_a_change_inside_opens_an_issue` | Changes inside and outside, and a file renamed out of the directory. | Exactly the expected body: 4 changed files, 2 under the directory |
+| `test_a_directory_source_whose_branch_moved_without_a_changed_file_writes_nothing` | An empty commit, for a source with a directory. | Nothing written |
+| `test_a_diverged_or_behind_branch_opens_an_issue_also_with_nothing_under_the_directory` | The pinned commit is off the branch. | An issue that says so |
+| `test_a_capped_file_list_says_so`, `test_a_directory_source_whose_capped_file_list_has_nothing_under_it_counts_as_moved`, `test_a_directory_source_whose_compare_lists_no_files_counts_as_moved` | 300 files, and no list of files. | An issue that says what the watch cannot tell |
+| `test_without_a_token_the_reads_run_and_the_writes_are_refused`, `test_an_empty_token_counts_as_no_token`, `test_without_a_token_and_nothing_moved_the_run_passes` | No token, or an empty one. | Fails and names the titles if anything moved, passes if not; sends no token |
 | `test_a_target_that_is_not_owner_and_repo_fails_without_writing` | `GITHUB_REPOSITORY` missing, empty or not of the form owner/repo. | Fails, writes nothing |
-| `test_a_diverged_or_behind_branch_opens_an_issue` | The pinned commit is off the branch. | An issue that says so |
-| `test_lists_that_the_api_caps_say_so`, `test_a_directory_source_whose_file_list_is_capped_opens_an_issue` | 250 of 400 commits and 300 files. | The issue says what is capped |
-| `test_an_issue_by_someone_else_with_the_same_title_is_not_edited` | An issue and a pull request by others with the title. | A new issue, and theirs left alone |
-| `test_two_open_issues_of_its_own_with_one_title_fail_without_writing` | Two open issues of its own with the title. | Fails, writes nothing |
-| `test_an_answer_of_an_unknown_form_fails_without_writing`, `test_a_branch_or_a_head_of_an_unknown_form_fails_without_writing` | An unknown status or file status, a short sha, a count that is text or a boolean, a branch with a line break, `..` or a backtick. | Fails, writes nothing |
+| `test_an_issue_by_someone_else_with_the_same_title_is_not_edited`, `test_two_open_issues_of_its_own_with_one_title_fail_without_writing` | Issues by others, and two of its own, with the title. | Theirs left alone; two of its own fail the run |
+| `test_an_answer_of_an_unknown_form_fails_without_writing`, `test_a_branch_or_a_head_of_an_unknown_form_fails_without_writing` | An unknown status, counts that are text, a boolean, below zero or above the cap, files that are not a list, names that are not text, a branch with a line break, `..` or a backtick, a short or uppercase head. | Fails with a fixed message, writes nothing |
 | `test_every_read_comes_before_any_write` | Two moved sources. | Every read, then both writes |
 | `test_the_pinned_directory_is_written_as_before_in_ratchet_md` | The structured fields. | `RATCHET.md` shows the same repo text as before |
-| `test_an_ahead_compare_with_no_changed_file_is_a_move` | A source with no directory, one empty commit ahead. | An issue that says no file differs |
-| `test_a_directory_source_whose_branch_moved_without_a_changed_file_says_so` | The same for a source with a directory. | Nothing written, and the run says why |
-| `test_a_directory_source_whose_compare_lists_no_files_opens_an_issue` | A compare with no list of files. | An issue that says files under the directory may have changed |
 | `test_a_compare_that_disagrees_with_the_head_fails_without_writing` | `identical` with a head that is not the pin, and `ahead` with a head that is. | Fails, writes nothing |
-| `test_every_title_and_body_fits_what_github_takes` | Two sources at every cap: 250 commits and 300 renamed files with the longest lines, characters off the list and characters of three bytes, a name of 4000 characters and a branch of 250, through a fake that refuses what GitHub refuses. | Both issues written, each body and title within the limits |
-| `test_a_plan_that_breaks_a_limit_writes_nothing` | A first source that fits and a second whose body does not, with the caps raised. | Fails, names the title and the limit, writes nothing, not even the first |
-| `test_two_sources_whose_titles_come_out_the_same_write_nothing` | Two long names that are the same up to where a title cuts them. | Fails, writes nothing |
-| `test_a_source_name_is_inert_in_the_title_the_body_and_the_output` | A name that passes the form of a source, with a mention, a reference, a link, an image, HTML, a comment, emphasis, code and a runner command, in a moved issue and a missing-pin issue. | None of it outside code in a body, none of its marks in a title, every printed line starts with a letter |
-| `test_a_line_the_watch_prints_never_starts_with_upstream_text` | An error whose text holds line breaks and runner commands. | Every printed line starts with a letter or `\| ` |
-| `test_only_rendered_values_reach_a_body` | `compose()` and `fence()` given a plain string, and text from `inert()` outside code. | `TypeError` |
-| `test_an_escaped_token_in_an_answer_is_scrubbed_after_decoding` | The token as `\uXXXX` escapes in a commit subject. | `***` in the issue, no token |
-| `test_a_body_that_holds_the_token_in_a_readable_form_is_not_written` | The token split by a character off the list or by spaces, in capitals, percent-encoded, as HTML entities, and in capitals cut so that a part is left. | Fails, writes nothing, not even the issue of the other source |
-| `test_values_read_from_the_api_are_used_and_not_assumed` | A default branch `trunk/next`, a head, an owner, a repo, a target and issue numbers that no other test uses, counts that differ from one another, and a rename and a copy. | Each value read is the value used, in every read, write, body and printed line |
+| `test_an_ahead_compare_with_no_changed_file_is_a_move` | Round 1, finding 1: a source with no directory, one empty commit ahead. | An issue |
+| `test_the_largest_body_is_small_and_holds_nothing_from_the_answer` | Round 1, finding 2: every value at its cap, with 250 commits and 300 files whose names hold mentions, runner commands, HTML and backticks. | 1390 bytes at most, none of that text in it |
+| `test_the_gate_refuses_every_mark_outside_its_set`, `test_the_gate_refuses_a_line_of_a_kind_the_watch_does_not_write` | Round 1, finding 3: each refused mark in a title, a body and a printed line, and lines and titles of kinds the watch does not write. | Refused, nothing written |
+| `test_a_plan_that_fails_the_gate_writes_nothing_at_all` | A second body that fails the gate. | Fails, names the issue and the line, writes neither issue |
+| `test_no_text_from_an_answer_reaches_an_issue_or_a_line` | Round 1, finding 4, and round 2, finding 2: an answer whose every text field holds mentions, runner commands, a link, HTML, and the token as it stands, as `\u` escapes, percent-encoded twice and as HTML entities. | The body is byte for byte the body of a clean answer; the output holds none of it |
+| `test_no_text_from_an_error_answer_or_a_network_error_reaches_a_line`, `test_an_error_the_watch_does_not_know_prints_only_its_kind_and_line` | The same text in an error answer, a network error and an unknown error. | Exactly the method, the path and the status, or the kind of error and the line |
+| `test_the_gate_refuses_the_token_as_it_stands`, `test_the_token_is_sent_with_every_call_and_never_printed` | A token that would pass the form of a name. | Refused in a title, a body and a printed line |
+| `test_values_read_from_the_api_are_used_and_not_assumed` | Round 1, finding 5: a default branch `trunk/next`, and a head, an owner, a repo, a target, issue numbers and counts that no other test uses. | Each value read is the value used |
+| `test_a_printed_line_that_fails_the_gate_is_left_out` | Round 2, finding 1: printed lines with `##[error]`, `::error::`, `@`, the token, a carriage return and `_`. | Each replaced by the fixed line |
+| `test_names_that_share_a_long_start_get_their_own_titles` | Round 2, finding 3: two names of 100 characters that differ in the last. | Two issues, each titled with the whole name |
+| `test_a_redirect_is_not_followed_and_the_token_goes_nowhere_else` | Round 2, finding 4: the real transport, against a local server that answers 301, 302, 303, 307 or 308 with an address on a second local server. | Fails with the status; the token reached the first server only, and the second got nothing |
+| `test_the_redirect_handler_makes_no_new_request`, `test_the_transport_sends_nothing_to_another_address`, `test_the_real_transport_reads_an_answer` | The redirect handler alone, a local address that is not the API, and a plain run through the real transport. | No new request; refused before connecting; read as through the fake |
 
 **What it does not claim.**
 
-- It does not judge whether a move matters for a rule. That needs a reader, and the issue is material for one.
+- It does not judge whether a move matters for a rule. That needs a reader, and the compare is material for one.
 - It sees only the default branch and only sources on GitHub.
-- The commits it lists for a source with a directory are all the commits in the range, also those that change nothing under it.
 - It recognizes its own issues by the account `github-actions[bot]`. Run with another token, it does not find them and opens new ones.
-- A commit subject that holds the text `<U+0041>` looks the same as one that held the escaped character.
-- That GitHub makes no mention or reference of text in code, and none of a title made of letters, digits, spaces, `-`, `_` and `/`, is how GitHub renders issues today. It has not been tried against a live issue.
-- The limits of 65536 and 256 are those that GitHub's answers to a body or a title that is too long state. They are not in the REST reference, and they have not been tried against a live repository.
 - A run writes all of its issues or none, unless GitHub fails a write after an earlier one went through. Then the issues before it are written and those after it are not, and the next run writes them.
-- It does not find the token in encodings it does not undo, such as base64 or hex, or in a part shorter than 12 letters and digits.
+- GitHub may show a sha in an issue as a link to a commit of this repository, if this repository has one with that sha. That is a link to this repo, not a mention.
+- That GitHub makes no mention, reference or link of a line in the gate's set, other than `www.` and `GH-` and a digit, is how GitHub documents its autolinks today. It has not been tried against a live issue. A repository with custom autolinks of its own may link more.
+- A name or a directory of a source upstream that has a capital or an `_` cannot be watched as it stands. The name is ours to choose; the directory is not.
+- The limit of 65536 is the one GitHub's answer to a body that is too long states. It is not in the REST reference.
 
 ## generate.py
 
