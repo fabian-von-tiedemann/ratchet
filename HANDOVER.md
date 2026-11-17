@@ -15,7 +15,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
   2. The agents' account has the role Write and no more.
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
   4. After the code owner approves, a new push from the agents' account removes the approval.
-- **The agents' account must not merge by hand, and nothing stops it.** The decision `D-2026-11-17-auto-merge` lets it turn on auto-merge. That decision is in PR #9 and is not on `main` yet. The control room turns auto-merge on only after a review from another model family has passed. `repo.agents-own-account` stays text only until a lock has been found and tried.
+- **The agents' account must not merge by hand, and nothing stops it.** The decision `D-2026-11-17-auto-merge` lets it turn on auto-merge. The control room turns auto-merge on only after a review from another model family has passed. `repo.agents-own-account` stays text only until a lock has been found and tried.
 - **A rule whose check is not built** stays "text only for now" in [REGISTER.md](REGISTER.md), and the register says what is missing.
 
 ## Who acts next
