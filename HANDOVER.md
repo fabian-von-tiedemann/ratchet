@@ -11,15 +11,15 @@ Last replaced: 2026-11-17, after PR #13 was merged.
 
 ## What is running
 
-Each PR below is built in a workspace of its own and is reviewed by a model from another family before it is merged. A rebuilt PR starts again at review round 1.
+Each PR below is built in a workspace of its own and is reviewed by a model from another family before it is merged. Proposal (P), not decided by the maintainer: a rebuilt PR starts again at review round 1.
 
 - **PR #9, release on merge.** Rejected in round 1: the changelog entry was found inside fenced code, a queued run could drop a version, and a tag could appear between the check and the release. The logic is moving into a tested script under `checks/`.
-- **PR #10, issue #8, the source watch.** Being rebuilt so that no text from a source or from an API response reaches an issue or a log line.
+- **PR #10, issue #8, the source watch.** Rebuilt at `a0e58a3`, so that no text from a source or from an API response reaches an issue or a log line. It is under review in round 1 of the new approach.
 - **PR #12, issue #2, expected tests ran.** Being rebuilt with the check in a process of its own, outside the tests it watches, and with the version raised to 0.4.
 
 ## What waits on what
 
-- **Workflow files.** The agents' token cannot push files under `.github/workflows/`, on purpose. PR #9, PR #10 and PR #12 each carry the exact content of a workflow file in their description, for the maintainer to add. How that is done is open: see below.
+- **Workflow files.** PR #9, PR #10 and PR #12 each add or change a workflow file. PR #9 holds `.github/workflows/release.yml` in its diff. PR #10 holds `watch-sources.yml` in its description. PR #12's rebuild is to hold the new `checks.yml` in its description. The agents were told that their token cannot push workflow files, but it carries the `workflow` scope, read back on 2026-11-17. How workflow files reach `main` is issue #15.
 - **PR #12 waits on PR #9.** 0.4 is released on merge only when the release workflow is on `main`.
 - **Issues #5 and #6** wait on PR #12. They become two lines in the requirements on the review script, in one PR.
 - **Issue #3** waits on the check of the protection on `main`. Its requirement goes into that check.
@@ -40,11 +40,13 @@ Each PR below is built in a workspace of its own and is reviewed by a model from
 
 ## Next step
 
-Finish PR #9, then PR #10 and PR #12, each through review. Then build #5 and #6 together. After that, the secret scan for this repo.
+Proposal (P), not decided by the maintainer: finish PR #9, then PR #10 and PR #12, each through review. Then build #5 and #6 together. After that, the secret scan for this repo.
 
 ## Open questions
 
-Tracked as issues with the label `question`. Two are for the maintainer now:
+Tracked as issues with the label `question`:
 
-- How workflow files land. Under the ruleset, the maintainer cannot both push the latest change to a PR and approve it.
-- Whether the job `checks` becomes a required status check in `skydd-main`.
+- #15: how workflow files reach `main`.
+- #16: whether the job `checks` becomes a required status check on `main`.
+
+Not yet an issue: how to check decision files and the glossary ([D-2026-11-16-register-only](decisions/D-2026-11-16-register-only.md)). Two attempts to read them as text were reviewed, and both still let text hide. The proposal on the table is a small data part for each decision, checked strictly, with the prose left as prose and outside the check.
