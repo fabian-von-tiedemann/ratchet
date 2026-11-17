@@ -1,1 +1,2 @@
 Skarpt prov prov/skarpt-20261117092829. PR:en stängs och grenen raderas av provet.
+Ny push efter godkännandet.
