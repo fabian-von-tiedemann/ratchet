@@ -118,7 +118,7 @@ def render(data, name, argument, directory):
         return "\n".join(lines)
     if name == "sources":
         lines = ["| Name | Repo | Commit | License |", "|---|---|---|---|"]
-        lines += ["| %s | %s | `%s` | %s |" % (registry.cell(s["name"]), registry.cell(s["repo"]), s["commit"], registry.cell(s["license"])) for s in data["sources"]]
+        lines += ["| %s | %s | `%s` | %s |" % (registry.cell(s["name"]), registry.cell(registry.source_repo_text(s)), s["commit"], registry.cell(s["license"])) for s in data["sources"]]
         return "\n".join(lines)
     raise registry.RegistryError("unknown generated block %r" % name)
 

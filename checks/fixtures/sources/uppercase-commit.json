@@ -1,0 +1,8 @@
+[
+  {
+    "name": "example/plain",
+    "repo": "https://github.com/example/plain",
+    "commit": "0123456789ABCDEF0123456789ABCDEF01234567",
+    "license": "MIT"
+  }
+]

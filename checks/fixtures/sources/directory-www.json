@@ -1,0 +1,10 @@
+[
+  {
+    "name": "example-tools",
+    "repo": "https://github.com/example/tools",
+    "directory": "skills/www.example.invalid",
+    "author": "A. Person",
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "license": "MIT"
+  }
+]
