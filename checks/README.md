@@ -328,14 +328,16 @@ python3 checks/release.py notes --repo OWNER/NAME   # print the release text, wi
 python3 checks/release.py publish                   # tag and release, in the release workflow
 ```
 
-This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-verbatim](../decisions/D-2026-11-17-release-verbatim.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-links](../decisions/D-2026-11-17-release-links.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
 
-The script does not try to finish an older version, and it does not rewrite the entry. When anything older is unfinished, the run is red, nothing is written, and the maintainer reruns the run of that version by hand.
+The script reads no Markdown and copies nothing from the changelog. It does not try to finish an older version. When anything older is unfinished, the run is red, nothing is written, and the maintainer reruns the run of that version by hand.
 
 **What it claims.**
 
-- **The release text is the entry, verbatim.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8 with CRLF read as LF. A carriage return alone fails, with its line named, and so does every other character that a reader could take for the end of a line (form feed, vertical tab, NEL U+0085, U+2028, U+2029) and every other control character than a tab (C0, DEL, C1), in a code block too. An entry starts only at a line `## MAJOR.MINOR (YYYY-MM-DD)` at the start of a line and outside a code block, and ends at the next. The run fails on anything that a reader could take for a heading of level one or two and the script would not: a heading in another form, a heading after spaces or a tab, a heading in a list item or a block quote, a heading made with an underline of any length (also in a list item or a block quote), and an HTML heading `<h1>` or `<h2>` anywhere outside a code block, a code span too. It also fails on anything that could hide one: a code block opened in another way than three backticks at the start of a line, a comment that is not the marker of a generated block, HTML, a link definition (these three also in a list item or a block quote), text before the first entry. It also fails on two entries for one version, entries that are not newest first, an empty entry, and a newest entry that is not the version in `ratchet.json`. The release text is the lines of the entry exactly as they stand, without the blank lines before and after them, then a blank line and one fixed line written in the script: `The files of this version: [vMAJOR.MINOR](https://github.com/OWNER/NAME/tree/vMAJOR.MINOR)`. No link, no code and no marker in the entry is changed.
-- **An unfinished older version stops the run.** Before any write, it lists the tags and the releases. Each version in the changelog that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version and what it lacks, and writes nothing. A tag `vMAJOR.MINOR` up to this version with no entry fails, and so does a tag under `refs/tags/v` of another form. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
+- **The release text is one fixed line, written in the script.** For version 0.4 of `OWNER/NAME` it is, exactly: `Ratchet 0.4: see [the changelog entry](https://github.com/OWNER/NAME/blob/v0.4/CHANGELOG.md) and [the files at this tag](https://github.com/OWNER/NAME/tree/v0.4)`. Nothing else is in it. No byte of `CHANGELOG.md` reaches the release, so the release cannot say something other than the entry: it says where the entry is. The links name the file and the tree at the tag, with no anchor, so they do not depend on how GitHub makes the anchor of a heading.
+- **From the changelog it reads only which versions have an entry.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8. CRLF is read as LF, and the text is split at LF. A line is the heading of a version only when the whole line matches `^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z`: `[0-9]`, because `\d` in Python matches the digits of every script, and `\Z`, because `$` also matches before a final LF. Every other line is passed over, whatever a reader makes of it.
+- **The version has an entry, and nothing newer has one.** The run fails before any request when no line names the version in `ratchet.json`, or when a line names a newer version.
+- **Every tag has an entry, and every older version is finished.** Before any write, it lists the tags and the releases. A tag `vMAJOR.MINOR` up to this version with no line of its own fails the run, and so does a tag under `refs/tags/v` of another form. Each version with a line that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version and what it lacks, and writes nothing. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
 - **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request.
 - **Nothing is written before every check has passed.** The writes are two, in this order: the tag, then the release.
 - **The tag is created at this commit, or not at all.** It is created with `POST /repos/OWNER/NAME/git/refs`, which refuses a ref that exists. Then the release is created for that tag, and the tag is read back. The run fails when the answer to the creation or the tag read back points anywhere but `GITHUB_SHA`.
@@ -353,23 +355,24 @@ The script does not try to finish an older version, and it does not rewrite the 
 | any | two or more | fails and writes nothing |
 
 - **The token.** Only `GITHUB_TOKEN` from the environment is used. It is sent in one header, to `https://api.github.com` only, to paths under `/repos/OWNER/NAME/`, and a redirect is not followed. It is never printed. An error names the method, the path and the status. Nothing from the body of an answer is read for an error or printed, except a version that has matched `MAJOR.MINOR`.
+- **The workflow keeps its reviewed form.** The tests compare the workflow, without its comments, line for line with the reviewed form, and test each part the design leans on. A line is blank, or a comment, by ASCII rules only: a line that holds a tab or a space that is not ASCII before `#` is kept, and then fails the comparison.
 
 **Against which threat.**
 
-- A release that says something other than the entry that was approved: a version heading in a code example that the script takes for the entry, or a link rewritten inside code.
+- A release that says something other than the entry that was approved. Two review rounds found that a script reading free Markdown could not know what a renderer will show ([D-2026-11-16-strict-forms](../decisions/D-2026-11-16-strict-forms.md)). Now no text is copied, so there is nothing to differ.
 - A version that is merged and left unreleased, or made impossible to release, with no red run that says so: a run that fails or is cancelled after it tags, or a waiting run replaced in the concurrency group by a newer one.
 - A release attached to a tag at another commit than the one approved, because the tag appeared between a check and a write.
 - A version hard-coded in the script instead of read from `ratchet.json`.
 - The token sent somewhere else, or shown in a log.
 
-**Why the rerun of this version finishes its release.** A rerun that finds the tag of the version being released at its own `GITHUB_SHA`, with no release, creates the release. This is the version's own run, not an older one. It is safe: the tag is on the commit that was approved, where it would be anyway, so nothing has to move; the text is the entry in the changelog at that same commit, the one that was approved; every older version has passed the check above; and a release created before an answer was lost is found, so no second one is made. Failing there instead would leave no way through the workflow to finish the version.
+**Why the rerun of this version finishes its release.** A rerun that finds the tag of the version being released at its own `GITHUB_SHA`, with no release, creates the release. This is the version's own run, not an older one. It is safe: the tag is on the commit that was approved, where it would be anyway, so nothing has to move; the text is the fixed line for that version; every older version has passed the check above; and a release created before an answer was lost is found, so no second one is made. Failing there instead would leave no way through the workflow to finish the version.
 
 **When a run is red because something is unfinished.** The message names each version and what it lacks. Then, in this order:
 
 1. Under Actions, open the workflow `release` and find the run of the commit that raised the version to the one named: the first commit on `main` at which `ratchet.json` names it. If the tag exists, it points at that commit. Choose "Re-run all jobs". It tags that commit if the tag is missing, and creates the release. It ignores the newer versions.
 2. When that run is green, rerun the red run, with "Re-run all jobs".
 3. If the run of step 1 cannot be rerun (GitHub allows a rerun for 30 days, and a run may never have started), and the head of `main` still has that version in `ratchet.json` and its tag is missing, start the workflow by hand: Actions → `release` → "Run workflow", on `main`. It takes no input, runs the same three checks, and releases what `ratchet.json` names at the head of `main`. On any other branch it fails before any request.
-4. If neither is possible, the maintainer makes the tag or the release by hand, on the commit that raised the version, with the text that `python3 checks/release.py notes --repo OWNER/NAME` prints at that commit. The workflow never does this.
+4. If neither is possible, the maintainer makes the tag or the release by hand, on the commit that raised the version, with the line that `python3 checks/release.py notes --repo OWNER/NAME` prints at that commit. The workflow never does this.
 
 **Why the concurrency group stays.** It keeps one release run at a time, so that two runs never write at once. A waiting run can still be replaced by a newer one, and the replaced run shows as cancelled. That cannot lose a version without a red run: the newer run checks every older version in the changelog, and fails and names one without a tag or a published release. The last run in the queue is never replaced. A run that was cancelled can be rerun for its commit, and then the newer one.
 
@@ -377,31 +380,16 @@ The script does not try to finish an older version, and it does not rewrite the 
 
 | Case | Result |
 |---|---|
-| A heading inside a code block in an entry | Part of that entry |
-| A code block before the first entry, holding a heading | Fails |
-| A code block opened with `~~~`, four backticks, spaces before it or another word after it | Fails |
-| A code block that is never closed | Fails |
-| Two entries for one version | Fails |
-| A heading that is not `## MAJOR.MINOR (YYYY-MM-DD)`, of eleven kinds | Fails |
-| A heading made with an underline | Fails |
-| A comment or HTML that could hide a heading | Fails |
-| A link definition | Fails |
-| Entries that are not newest first, an empty entry, a file that does not start with its title | Fails |
-| CRLF | Read as LF, the same text |
-| A lone carriage return in a heading, before a heading, before CRLF, in a line and last in the file | Fails, and names the line |
-| A form feed, a vertical tab, NEL, U+2028 or U+2029 between two lines of text | Fails, and names the line |
-| Another control character: C0, DEL or C1, also in a code block | Fails |
-| A tab | Kept, as it stands |
-| A heading after up to three spaces, four spaces, a tab, or spaces and a tab, a tab after `##`, a tab after the date | Fails |
-| A heading in a list item (`-`, `*`, `+`, `1.`, `1)`), in a block quote, in both, in a nested list item, and indented under a list item by four spaces or a tab | Fails |
-| A heading made with an underline of `-` or `=` of any length, after spaces, under a tab, in a block quote or a list item | Fails |
-| A line of a no-break space, an ideographic space or an em space, with an underline under it or before the first entry | Fails: to CommonMark that line is text, not a blank line |
-| An HTML heading `<h1>` or `<h2>` alone, in text, in a list item, in a block quote or in a code span | Fails. In a code block it is code |
-| HTML, a comment, a code block or a link definition in a list item or a block quote | Fails |
-| `#12`, `## ` in the middle of a line, `1.5 ##`, nested lists, a quote with `#`, a dash at the end of a line | Kept, as they stand |
+| The release text for 0.4 of `owner/name`, and for 12.30 | Exactly the fixed line, with no `#` in it |
+| A changelog with a lone carriage return before a second heading, lines of a no-break space, an em space and an ideographic space, a link definition and a comment | The published body is the fixed line, and holds none of those bytes. `publish` and `notes` from a checkout give the same |
+| A line of the exact form | Names a version |
+| Seventeen lines that are not of the exact form: a space or a tab before or inside it, `v0.4`, no date, `###`, `#`, in a block quote or a list item, after a lone carriage return, a no-break space before or after it, digits of another script, a full-width digit, U+2028 after it | Passed over |
+| CRLF | Read as LF |
+| A line of the exact form in a code block | Counted. See the known limits |
+| No line for the version in `ratchet.json`, also when the heading is in one of the seventeen other forms | Fails before any request |
+| A tag for 0.2 and no line for it, also when its heading is in one of the other forms | Fails, writes nothing |
 | Bytes that are not UTF-8 | Fails |
-| An entry with single, double and triple backtick code, a code span over two lines, an odd backtick, links, fenced blocks, markers, tabs and trailing spaces | The release text and the published body are the entry byte for byte, then the fixed line |
-| The 0.3 entry of today's `CHANGELOG.md` | The entry as it stands, then the fixed line. The published `v0.3`, kept under [fixtures/release/](fixtures/release/) as GitHub gave it, was made with the old rewriting: undo its links to the tag and put back the two marker lines, and it is the same |
+| Today's `CHANGELOG.md` | Every version from the one in `ratchet.json` down to 0.1 |
 | A new version | The tag, then the release, then the tag read back |
 | An older version without a tag, with a tag and no release, with only a draft, also when nothing is to be released | Fails, names it and what it lacks, writes nothing |
 | 0.1 with its tag and no release, 0.1 with no tag | Passes; fails |
@@ -417,11 +405,11 @@ The script does not try to finish an older version, and it does not rewrite the 
 | An API error at each of the four requests | Fails with method, path and status, writes nothing more |
 | An answer of the wrong form | Fails, writes nothing |
 | The version is not the newest entry, or has none | Fails before any request |
-| `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with that entry, and `notes` prints it |
+| `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with the fixed line for 9.7, and `notes` prints it |
 | The token in five runs, with an answer that holds it | Never in the output, and sent only to `api.github.com` |
 | No token, a repository, a commit or a branch not of its form | Fails before any request |
 | A path outside the repository, a redirect | Not sent, not followed |
-| `notes` | Needs no token and no network |
+| `notes` | Needs no token and no network, and prints the fixed line |
 | `.github/workflows/release.yml` | Runs on a push to `main` and on `workflow_dispatch` with no input, with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
 | The concurrency group `release`, with `cancel-in-progress: false` | Exactly that, once |
 | The permissions | `contents: read` at the top and `contents: write` on the job, and no other |
@@ -429,16 +417,16 @@ The script does not try to finish an older version, and it does not rewrite the 
 | `timeout-minutes: 5` on the job | Exactly that, once |
 | The steps | The three checks in order, then the script. No `continue-on-error`, `always()` or `failure()` |
 | The whole workflow, without its comments | The reviewed form line for line, and nothing else. The checkout may move to another pinned commit |
-
-**How the heading forms were checked.** Which of these lines CommonMark renders as a heading was checked by hand with cmark-gfm, the reference implementation of GitHub Flavored Markdown, outside the suite: the suite needs nothing but the standard library. A differential run outside the suite also put 360,000 random changelogs, built from these forms, through both the script and cmark-gfm. In every changelog that the script accepted, the headings of level one and two that cmark-gfm rendered were the title and the entries the script found, and no others. It found one more form, a line of a no-break space above an underline, which is now refused and has its test. Against the script as it was before these checks, the same run finds a changelog where the two differ.
+| A no-break space, an em space, an ideographic space, U+2028 or a tab before `#`, or alone on a line | Kept as code, not read as a comment or a blank line |
 
 **What it does not claim.**
 
-- It reads CommonMark as cmark-gfm does. Another Markdown reader may see a heading where CommonMark sees none, and that is not checked. A no-break space or another space that is not ASCII is text in CommonMark, not a blank: before `##` it is kept, and a line of it is not a blank line. Format characters, such as the marks that change the direction of text, are not refused.
+- A line of the exact form counts wherever it stands, also where a renderer does not show it as a heading: in a code block, in an HTML comment. Then the script may take a version for one that has an entry when a reader sees none. No text is copied, so such a line can no longer put text into a release. The most it can do is let a tag or a release through for a version whose entry a reader cannot see, in a pull request the maintainer has approved.
+- A heading a renderer shows in another form, for example after a space or in a list item, is not counted. That fails the run, and never releases anything.
+- It does not check that the entry says anything, that its date is a real date, or that the entries stand in any order.
+- The release page shows no text of the entry. A reader follows the link. The link opens `CHANGELOG.md` at the tag at its top, not at the entry for the version.
 - It does not see branch protection or tag protection. Who may push a tag by hand is a setting of the repository.
 - It does not read the release text back after it is published.
-- A relative link in an entry, such as a link to the file `RATCHET.md`, is published as it stands, and on the release page GitHub does not resolve it to the file. The fixed line links to the files at the tag. This is the cost of the verbatim text.
-- The markers of generated blocks are published as they stand. They are HTML comments, which GitHub does not show.
 - A version may be skipped on purpose, from 0.4 to 0.6, by leaving out an entry for 0.5. That is a choice made in a pull request, not a version lost.
 - A workflow file on another branch can be changed by anyone who can push to it. The check of `GITHUB_REF` stops a mistake, not a change to the workflow or the script.
 

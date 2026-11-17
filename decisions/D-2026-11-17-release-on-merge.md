@@ -38,7 +38,7 @@ Translation into English:
 
 ## What follows
 
-- `.github/workflows/release.yml` runs on every push to `main`. It runs the same three checks as the job `checks`, then [checks/release.py](../checks/release.py). The script reads the version in `ratchet.json`. When no tag and no release exist for that version, it creates the tag `vMAJOR.MINOR` on that commit and a release with the changelog entry for the version as its text.
+- `.github/workflows/release.yml` runs on every push to `main`. It runs the same three checks as the job `checks`, then [checks/release.py](../checks/release.py). The script reads the version in `ratchet.json`. When no tag and no release exist for that version, it creates the tag `vMAJOR.MINOR` on that commit and a release for the version. The text of the release is one fixed line that links to the changelog entry, by [D-2026-11-17-release-links](D-2026-11-17-release-links.md).
 - Approving a pull request that raises the version is approving the release. The maintainer still approves every release, through that pull request.
 - An agent still does not tag or release by hand.
 - `repo.tags-stay` holds: the workflow never moves, deletes or edits a tag. When the tag or a release for the version already exists, it writes nothing. What it does in each case is in [checks/README.md](../checks/README.md#releasepy).
@@ -46,8 +46,8 @@ Translation into English:
 Proposals (P): technical choices made within the owner's decision. The owner gave no answer on these, and each is a proposal until the PR is merged. By `ratchet.five-choices` the control room makes technical choices and shows them in the PR.
 
 1. P: A draft release for the version also counts as an existing release. The run then writes nothing and fails, so that the version is published by hand and never gets two releases.
-2. P, replaced by [D-2026-11-17-release-verbatim](D-2026-11-17-release-verbatim.md): the release text is the entry verbatim, then one fixed line that links to the files at the tag. No link is rewritten.
+2. P, replaced by [D-2026-11-17-release-verbatim](D-2026-11-17-release-verbatim.md), and that in turn by [D-2026-11-17-release-links](D-2026-11-17-release-links.md): the release text is one fixed line that links to the changelog entry and to the files at the tag. Nothing from the changelog is copied.
 3. P: The release runs the same three checks as the job `checks` before it tags, so that a version is never tagged on a commit where they fail.
-4. P: The logic is a script under `checks/`, with tests that need no network, and the workflow only calls it. The changelog is read strictly, so that the release text is the entry a reader sees.
+4. P: The logic is a script under `checks/`, with tests that need no network, and the workflow only calls it. From the changelog the script reads only which versions have an entry, from one exact form of line.
 5. P, replaced by [D-2026-11-17-release-verbatim](D-2026-11-17-release-verbatim.md): every run checks that each older version in the changelog has a tag and a published release, and fails, names one that has not and writes nothing, so that no version is skipped without a red run. The maintainer reruns that version's run.
 6. P: The tag is created first, with a request that fails if it exists, then the release, and then the tag is read back. A tag at another commit than the run's is never written to.

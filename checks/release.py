@@ -4,9 +4,11 @@
     python3 checks/release.py notes --repo OWNER/NAME   print the release text, with no token and no network
     python3 checks/release.py publish                   tag and release, in the release workflow
 
-D-2026-11-17-release-on-merge and D-2026-11-17-release-verbatim. The release text is the
-changelog entry as it stands, then one fixed line. An older version that is not finished
-fails the run, and the run writes nothing: the maintainer reruns the run of that version.
+D-2026-11-17-release-on-merge, D-2026-11-17-release-verbatim and D-2026-11-17-release-links.
+The release text is one fixed line written here, with the version and links to CHANGELOG.md
+and to the files at the tag. Nothing from the changelog is copied. From CHANGELOG.md the script
+reads only which versions have an entry. An older version that is not finished fails the run,
+and the run writes nothing: the maintainer reruns the run of that version.
 
 publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_REF from the
 environment. The token is sent only to https://api.github.com and is never printed. It
@@ -26,33 +28,13 @@ import urllib.request
 import registry
 
 API = "https://api.github.com"
-TITLE = "# Changelog"
+# The one form of the heading of a version, matched against a whole line and nothing else. [0-9] and not \d,
+# which in Python matches the digits of every script. \Z and not $, which also matches before a final LF.
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
-# A line ends with LF or CRLF. Every other character that a reader could take for the end of a line
-# fails, and so does every other control character than a tab: C0, DEL and C1, U+2028 and U+2029.
-CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u2028\u2029]")
-CONTROL_NAMES = {"\r": "a carriage return without LF", "\x0b": "a vertical tab", "\x0c": "a form feed",
-                 "\x85": "a next line", "\u2028": "a line separator", "\u2029": "a paragraph separator"}
-# What can stand before a block on a line: any spaces and tabs, the > of a block quote, and the marker of
-# a list item. A heading, a code block, HTML or a link definition after any of these is refused.
-CONTAINER = r"(?:[ \t>]|[*+-](?=[ \t]|\Z)|[0-9]{1,9}[.)](?=[ \t]|\Z))*"
-# What a reader takes for a heading of level one or two, anywhere a block can start.
-HEADING_LIKE = re.compile(r"^" + CONTAINER + r"#{1,2}(?:[ \t]|\Z)")
-# What a reader takes for the underline of a heading after a line of text, of any length and in a block quote or a list item.
-UNDERLINE = re.compile(r"^[ \t>]*(?:=+|-+)[ \t]*\Z")
-# An HTML heading of level one or two, anywhere outside a code block, also in a code span.
-HTML_HEADING = re.compile(r"<h[12](?:[\s/>]|\Z)", re.IGNORECASE)
-HTML_LIKE = re.compile(r"^" + CONTAINER + r"<")
-# A blank line holds nothing but spaces and tabs. A no-break space or another space that is not ASCII is text.
-BLANK = " \t"
-FENCE_LIKE = re.compile(r"^ {0,3}(?:```|~~~)")
-FENCE_ANYWHERE = re.compile(r"^" + CONTAINER + r"(?:```|~~~)")
-FENCE_OPEN = re.compile(r"^```[a-z]*\Z")
-LINK_DEFINITION = re.compile(r"^" + CONTAINER + r"\[[^\]]+\]:")
-MARKER = re.compile(r"^<!-- generated:[a-z-]+(?: [a-z0-9-]+)? -->\Z")
-END = "<!-- /generated -->"
-# The one line the script adds to an entry, last, after a blank line.
-FILES_LINE = "The files of this version: [v%(version)s](https://github.com/%(repo)s/tree/v%(version)s)"
+# The one line of a release, written here. Nothing from CHANGELOG.md is copied into it. The links name
+# the file and the tree at the tag, with no anchor, so they do not depend on how GitHub makes the anchor of a heading.
+RELEASE_LINE = ("Ratchet %(version)s: see [the changelog entry](https://github.com/%(repo)s/blob/v%(version)s/CHANGELOG.md) "
+                "and [the files at this tag](https://github.com/%(repo)s/tree/v%(version)s)")
 # Versions tagged before Ratchet published releases. Each needs its tag and no release.
 BEFORE_RELEASES = ("0.1",)
 MAIN = "refs/heads/main"
@@ -68,22 +50,9 @@ class ReleaseError(Exception):
     """The release cannot be made, or was not finished. The message says what was written."""
 
 
-class Entry:
-    def __init__(self, version, date, line, lines):
-        self.version = version
-        self.date = date
-        self.line = line
-        self.lines = lines
-
-
 def version_key(version):
     major, minor = version.split(".")
     return int(major), int(minor)
-
-
-def read_changelog(path):
-    """The entries of a changelog file. Strict UTF-8, and CRLF read as LF."""
-    return parse_changelog(read_text(path))
 
 
 def read_text(path):
@@ -94,96 +63,30 @@ def read_text(path):
     except OSError:
         raise ReleaseError("%s: the file cannot be read" % os.path.basename(path))
     try:
-        text = data.decode("utf-8", errors="strict")
+        return data.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
         raise ReleaseError("CHANGELOG.md: it %s. Every file a check reads is UTF-8" % registry.not_utf8(error))
-    return text
 
 
-def parse_changelog(text):
-    """The entries of a changelog, newest first, or ReleaseError with the first fault.
+def changelog_versions(text):
+    """The versions that have an entry in a changelog, in the order they stand.
 
-    CRLF is read as LF. Any other character that could end a line, and any other control
-    character than a tab, fails with its line, before anything else is read. Only a line
-    "## MAJOR.MINOR (YYYY-MM-DD)" at the start of a line and outside a code block starts an
-    entry. Anything else a reader could take for a heading of level one or two fails: after
-    spaces or a tab, in a list item or a block quote, made with an underline, or in HTML. So
-    does anything that could hide one: a code block opened in another way than three
-    backticks at the start of a line, a comment, HTML, a link definition, text before the
-    first entry.
+    This reads no Markdown. CRLF is read as LF, the text is split at LF, and a line is the heading
+    of a version only when the whole line is "## MAJOR.MINOR (YYYY-MM-DD)". Every other line is
+    passed over, whatever a reader makes of it. Nothing else in the file is read, and nothing of it
+    reaches the release.
     """
-    lines = text.replace("\r\n", "\n").split("\n")
-    for number, line in enumerate(lines, 1):
-        found = CONTROL.search(line)
-        if found:
-            character = found.group(0)
-            raise ReleaseError("CHANGELOG.md:%d: %s (U+%04X). A line here ends with LF or CRLF, and the only control character "
-                               "in the text is a tab" % (number, CONTROL_NAMES.get(character, "a control character"), ord(character)))
-    if lines[0] != TITLE:
-        raise ReleaseError('CHANGELOG.md:1: the first line is "%s"' % TITLE)
-    entries = []
-    fence = False
-    previous = ""
-    for number, line in enumerate(lines[1:], 2):
-        where = "CHANGELOG.md:%d" % number
-        if fence:
-            if FENCE_LIKE.match(line):
-                if line != "```":
-                    raise ReleaseError("%s: a code block here opens and closes with ``` at the start of the line, closes with ``` alone" % where)
-                fence = False
-            if entries:
-                entries[-1].lines.append(line)
-            previous = ""
-            continue
-        if FENCE_ANYWHERE.match(line):
-            if not FENCE_OPEN.match(line):
-                raise ReleaseError("%s: a code block here opens and closes with ``` at the start of the line, closes with ``` alone" % where)
-            fence = True
-        elif HEADING_LIKE.match(line):
-            match = HEADING.match(line)
-            if not match:
-                raise ReleaseError('%s: a heading here is "## MAJOR.MINOR (YYYY-MM-DD)", found %r' % (where, line))
-            version = match.group(1)
-            if any(e.version == version for e in entries):
-                raise ReleaseError("%s: a second entry for %s" % (where, version))
-            if entries and version_key(version) >= version_key(entries[-1].version):
-                raise ReleaseError("%s: the entries must stand newest first, and %s comes after %s" % (where, version, entries[-1].version))
-            entries.append(Entry(version, match.group(2), number, []))
-            previous = ""
-            continue
-        elif UNDERLINE.match(line) and previous.strip(BLANK):
-            raise ReleaseError("%s: a heading made with an underline. Headings here start with ##" % where)
-        elif HTML_HEADING.search(line):
-            raise ReleaseError("%s: an HTML heading. Headings here start with ##, and there is no HTML" % where)
-        elif (HTML_LIKE.match(line) or line.lstrip().startswith("<")) and not (MARKER.match(line) or line == END):
-            raise ReleaseError("%s: the only comments here are the markers of generated blocks, each alone on its line, and there is no HTML" % where)
-        elif LINK_DEFINITION.match(line):
-            raise ReleaseError("%s: a link definition. Links here are written inline, so that each entry holds its own" % where)
-        if not entries:
-            if line.strip(BLANK):
-                raise ReleaseError("%s: nothing but blank lines may stand before the first entry" % where)
-        else:
-            entries[-1].lines.append(line)
-        previous = line
-    if fence:
-        raise ReleaseError("CHANGELOG.md: a code block is opened and never closed")
-    if not entries:
-        raise ReleaseError("CHANGELOG.md: there is no entry")
-    for entry in entries:
-        if not any(line.strip() for line in entry.lines if not (MARKER.match(line) or line == END)):
-            raise ReleaseError("CHANGELOG.md:%d: the entry for %s is empty" % (entry.line, entry.version))
-    return entries
+    versions = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        match = HEADING.match(line)
+        if match:
+            versions.append(match.group(1))
+    return versions
 
 
-def release_text(entry, repo):
-    """The text of the release: the lines of the entry as they stand, without the blank lines
-    around them, then a blank line and FILES_LINE. Nothing in the entry is changed."""
-    lines = list(entry.lines)
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines) + "\n\n" + FILES_LINE % {"version": entry.version, "repo": repo}
+def release_text(version, repo):
+    """The text of the release: RELEASE_LINE for the version and the repository, and nothing else."""
+    return RELEASE_LINE % {"version": version, "repo": repo}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -302,16 +205,16 @@ def create_release(api, repo, tag, version, body, sha):
         raise ReleaseError("GET %s: read back, the tag %s does not point at %s. The release was created. Look at it by hand." % (path, tag, sha))
 
 
-def unfinished(entries, version, tags, releases):
+def unfinished(versions, version, tags, releases):
     """Every older version in the changelog that is not finished, with what it lacks."""
     problems = []
-    for entry in sorted(entries, key=lambda e: version_key(e.version)):
-        if version_key(entry.version) >= version_key(version):
+    for older in sorted(set(versions), key=version_key):
+        if version_key(older) >= version_key(version):
             continue
-        if entry.version not in tags:
-            problems.append("%s: no tag" % entry.version)
-        elif entry.version not in BEFORE_RELEASES and False not in releases.get("v" + entry.version, []):
-            problems.append("%s: a tag and no published release" % entry.version)
+        if older not in tags:
+            problems.append("%s: no tag" % older)
+        elif older not in BEFORE_RELEASES and False not in releases.get("v" + older, []):
+            problems.append("%s: a tag and no published release" % older)
     return problems
 
 
@@ -322,13 +225,13 @@ def publish(version, text, repo, sha, api, out):
     passed, and nothing is written for an older version. A tag is created and never moved,
     deleted or edited.
     """
-    entries = parse_changelog(text)
-    entry = next((e for e in entries if e.version == version), None)
-    if entry is None:
+    versions = changelog_versions(text)
+    if version not in versions:
         raise ReleaseError("CHANGELOG.md has no entry for %s, the version in ratchet.json" % version)
-    if entries[0].version != version:
-        raise ReleaseError("the newest entry in CHANGELOG.md is %s, and ratchet.json says %s" % (entries[0].version, version))
-    body = release_text(entry, repo)
+    newest = max(versions, key=version_key)
+    if newest != version:
+        raise ReleaseError("the newest entry in CHANGELOG.md is %s, and ratchet.json says %s" % (newest, version))
+    body = release_text(version, repo)
     tag = "v%s" % version
 
     tags = dict((v, target) for v, target in list_tags(api, repo).items() if version_key(v) <= version_key(version))
@@ -336,11 +239,10 @@ def publish(version, text, repo, sha, api, out):
     for name, draft in list_releases(api, repo):
         releases.setdefault(name, []).append(draft)
 
-    known = set(e.version for e in entries)
     for name in sorted(tags, key=version_key):
-        if name not in known:
+        if name not in versions:
             raise ReleaseError("the tag v%s has no entry in CHANGELOG.md. Nothing was written." % name)
-    problems = unfinished(entries, version, tags, releases)
+    problems = unfinished(versions, version, tags, releases)
     if problems:
         raise ReleaseError("an older version is not finished (%s). Rerun the release run of the commit that raised the version "
                            "to it, then this run. Nothing was written." % "; ".join(problems))
@@ -370,7 +272,7 @@ def publish(version, text, repo, sha, api, out):
             out.write("%s is tagged at this commit and released. Nothing to do.\n" % tag)
             return
         # A rerun of this version's own run: the tag is at the approved commit, and the text is
-        # the entry at that commit. Only the release is created.
+        # the fixed line for this version. Only the release is created.
         create_release(api, repo, tag, version, body, sha)
         out.write("The tag %s was already at %s. Released Ratchet %s.\n" % (tag, sha, version))
         return
@@ -416,11 +318,9 @@ def main(argv=None, environ=None, opener=None, out=None, err=None, root=None):
         if args.command == "notes":
             if not REPOSITORY.match(args.repo):
                 raise ReleaseError("--repo is not of the form OWNER/NAME")
-            entries = read_changelog(path)
-            entry = next((e for e in entries if e.version == version), None)
-            if entry is None:
+            if version not in changelog_versions(read_text(path)):
                 raise ReleaseError("CHANGELOG.md has no entry for %s, the version in ratchet.json" % version)
-            out.write(release_text(entry, args.repo) + "\n")
+            out.write(release_text(version, args.repo) + "\n")
             return 0
         if not environ.get("GITHUB_TOKEN"):
             raise ReleaseError("GITHUB_TOKEN is not set")

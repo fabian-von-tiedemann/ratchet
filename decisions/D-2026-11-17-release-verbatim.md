@@ -36,7 +36,9 @@ Translation into English:
 
 ## What follows
 
-- The release text is the version's entry in `CHANGELOG.md`, verbatim, followed by one fixed line that links to the tag. No link in the entry is rewritten.
+As far as the release text goes, this decision is replaced by [D-2026-11-17-release-links](D-2026-11-17-release-links.md): the release links to the changelog entry instead of copying it. The question and the answer above stand as they were given. The rule on unfinished older versions stands.
+
+- Replaced by [D-2026-11-17-release-links](D-2026-11-17-release-links.md): the release text is the version's entry in `CHANGELOG.md`, verbatim, followed by one fixed line that links to the tag. No link in the entry is rewritten.
 - If a version older than the one being released has no tag or no published release, the release run fails and writes nothing. The maintainer restarts that version's run by hand.
 - This replaces technical choices 2 and 5 of [D-2026-11-17-release-on-merge](D-2026-11-17-release-on-merge.md): links are no longer pointed at the tag, and an older version needs a published release as well as a tag.
 
@@ -46,4 +48,4 @@ Proposals (P) made within the decision, shown in PR #9. The owner gave no answer
 2. P: Tags and releases of versions newer than the one in `ratchet.json` at the checked-out commit are ignored, so that a rerun for an older version does not trip over a newer tag.
 3. P: 0.1 needs only its tag. It was tagged before Ratchet published releases, and it has no release.
 4. P: The workflow can also be started by hand, with `workflow_dispatch` and no input, for when a run cannot be rerun. It releases only what `ratchet.json` names at the head of `main`, under the same checks, and fails on any other branch.
-5. P: "Verbatim" keeps the markers of generated blocks in the text. They are HTML comments, which GitHub does not show.
+5. P, replaced by [D-2026-11-17-release-links](D-2026-11-17-release-links.md), which copies no text: "Verbatim" keeps the markers of generated blocks in the text. They are HTML comments, which GitHub does not show.
