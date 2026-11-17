@@ -1,0 +1,30 @@
+# Copy to .github/workflows/ratchet.yml in your project.
+# It runs Ratchet's reference checks against your repo, from Ratchet at the version your register states.
+name: ratchet
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ratchet:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch Ratchet at the version the register states
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fabian-von-tiedemann/ratchet
+          # The full commit sha of the Ratchet tag the register states, not the tag name.
+          ref: <40-character commit sha>
+          path: .ratchet
+          persist-credentials: false
+      - name: The register has not drifted
+        run: python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md
