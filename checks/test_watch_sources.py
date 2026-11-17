@@ -166,11 +166,10 @@ class FakeGitHub:
     def gets(self):
         return [call[1][len(API):] for call in self.calls if call[0] == "GET"]
 
-    def upstream(self, source, head, compare, branch="main", info=None):
-        """The answers of one source repository."""
+    def upstream(self, source, head, compare, info=None):
+        """The answers of one source repository. GitHub resolves HEAD to the head of the default branch."""
         repo = source["repo"][len("https://github.com/"):]
-        self.routes[("GET", "/repos/%s" % repo)] = (200, dict(info or {}, full_name=repo, default_branch=branch))
-        self.routes[("GET", "/repos/%s/branches/%s" % (repo, branch))] = (200, {"name": branch, "commit": {"sha": head}})
+        self.routes[("GET", "/repos/%s/commits/HEAD" % repo)] = (200, dict(info or {}, sha=head))
         if compare is not None:
             self.routes[("GET", "/repos/%s/compare/%s...%s" % (repo, source["commit"], head))] = (200, compare)
 
@@ -338,9 +337,9 @@ class Watch(Base):
         code, out, err = self.watch([PLAIN, TOOLS])
         self.assertEqual(code, 0, err)
         self.assertEqual(self.github.gets(), [
-            "/repos/example/plain", "/repos/example/plain/branches/main",
+            "/repos/example/plain/commits/HEAD",
             "/repos/example/plain/compare/%s...%s" % (PIN, PIN),
-            "/repos/example/tools", "/repos/example/tools/branches/main",
+            "/repos/example/tools/commits/HEAD",
             "/repos/example/tools/compare/%s...%s" % (PIN, PIN),
         ])
         self.assert_no_writes()
@@ -398,26 +397,27 @@ class Watch(Base):
 
     def test_an_api_error_fails_without_writing(self):
         def status(code, text):
-            return lambda method, url: (code, text) if url.endswith("/repos/example/tools") else None
+            return lambda method, url: (code, text) if url.endswith("/repos/example/tools/commits/HEAD") else None
 
         def unreadable(method, url):
             return (200, b"{not json") if "/compare/" in url and "example/tools" in url else None
 
         def unreachable(method, url):
-            if url.endswith("/repos/example/tools"):
+            if url.endswith("/repos/example/tools/commits/HEAD"):
                 raise OSError("connection refused")
             return None
 
         def issues_fail(method, url):
             return (502, b"Bad gateway") if "/repos/%s/issues" % TARGET in url else None
 
+        HEAD_READ = "source example-tools: reading the head of the default branch"
         cases = {
-            "server error": (status(500, b'{"message": "Server Error"}'), "GET /repos/example/tools gave 500"),
-            "rate limit": (status(403, b'{"message": "API rate limit exceeded"}'), "GET /repos/example/tools gave 403"),
-            "missing repo": (status(404, b'{"message": "Not Found"}'), "GET /repos/example/tools gave 404"),
-            "not json": (unreadable, "GET /repos/example/tools/compare/%s...%s gave an answer that is not JSON" % (PIN, HEAD)),
-            "network": (unreachable, "GET /repos/example/tools could not be read"),
-            "issue list": (issues_fail, "GET /repos/%s/issues gave 502" % TARGET),
+            "server error": (status(500, b'{"message": "Server Error"}'), HEAD_READ + " gave 500"),
+            "rate limit": (status(403, b'{"message": "API rate limit exceeded"}'), HEAD_READ + " gave 403"),
+            "missing repo": (status(404, b'{"message": "Not Found"}'), HEAD_READ + " gave 404"),
+            "not json": (unreadable, "source example-tools: comparing the pinned commit with the head gave an answer that is not JSON"),
+            "network": (unreachable, HEAD_READ + " failed before an answer came"),
+            "issue list": (issues_fail, "reading the open issues of the target repository gave 502"),
         }
         for name, (fail, message) in cases.items():
             with self.subTest(case=name):
@@ -606,17 +606,20 @@ class Watch(Base):
                 self.assertEqual(err, "source example/plain: the compare gave an answer of a form the watch does not know\n")
                 self.assert_no_writes()
 
-    def test_a_branch_or_a_head_of_an_unknown_form_fails_without_writing(self):
-        cases = (("main\n", HEAD, "default branch"), ("../main", HEAD, "default branch"), ("ma`in", HEAD, "default branch"),
-                 ("a..b", HEAD, "default branch"), ("main", "HEAD", "head"), ("main", HEAD.upper(), "head"))
-        for branch, head, what in cases:
-            with self.subTest(branch=branch, head=head):
+    def test_a_head_of_an_unknown_form_fails_without_writing(self):
+        for head in ("HEAD", HEAD.upper(), HEAD[:39], HEAD + "0", " " + HEAD[1:], 7, None, [HEAD]):
+            with self.subTest(head=head):
                 self.github = FakeGitHub()
-                self.github.upstream(PLAIN, head, two_commits(), branch=branch)
+                self.github.upstream(PLAIN, head, two_commits())
                 code, out, err = self.watch([PLAIN])
                 self.assertEqual(code, 1, out + err)
-                self.assertEqual(err, "source example/plain: the repository gave a %s of a form the watch does not know\n" % what)
+                self.assertEqual(err, "source example/plain: the repository gave a head of a form the watch does not know\n")
+                self.assertEqual(self.github.gets(), ["/repos/example/plain/commits/HEAD"])
                 self.assert_no_writes()
+        self.github = FakeGitHub()
+        self.github.routes[("GET", "/repos/example/plain/commits/HEAD")] = (200, [{"sha": HEAD}])
+        code, out, err = self.watch([PLAIN])
+        self.assertEqual(err, "source example/plain: the repository gave a head of a form the watch does not know\n")
 
     def test_every_read_comes_before_any_write(self):
         self.github.upstream(PLAIN, HEAD, two_commits())
@@ -678,7 +681,7 @@ class Watch(Base):
         answer = comparison(status, commits, files, ahead=999999999, behind=999999999, total=10 ** 12)
         if files is None:
             del answer["files"]
-        self.github.upstream(source, HEAD, answer, branch="b" * 250)
+        self.github.upstream(source, HEAD, answer)
         return source
 
     def test_the_largest_body_is_small_and_holds_nothing_from_the_answer(self):
@@ -754,8 +757,10 @@ class Watch(Base):
                 stream = io.StringIO()
                 self.assertFalse(watch_sources.emit(stream, "fine line\n" + text, TOKEN))
                 self.assertEqual(stream.getvalue(), "fine line\n" + LEFT_OUT + "\n")
+        # No line names a path any more (round 1 of the new approach, finding 1), so the gate lets none through.
         stream = io.StringIO()
-        self.assertTrue(watch_sources.emit(stream, "GET /repos/some_owner/a_repo/branches/x_y gave 404", TOKEN))
+        self.assertFalse(watch_sources.emit(stream, "GET /repos/some_owner/a_repo/branches/x_y gave 404", TOKEN))
+        self.assertEqual(stream.getvalue(), LEFT_OUT + "\n")
 
     # Round 1, finding 4, and round 2, finding 2: the token, escaped or encoded in an answer, got through.
     # Now no text from an answer reaches an issue or a printed line, so there is nothing to undo.
@@ -769,7 +774,8 @@ class Watch(Base):
                             [changed("README.md", "modified", text), changed(text, "added")])
         answer.update(message=text, html_url=text, base_commit={"sha": PIN, "commit": {"message": text}})
         raw = json.dumps(answer).replace(json.dumps(hostile[8])[1:-1], hostile[8])  # leave the \u escapes for json to undo
-        self.github.upstream(PLAIN, HEAD, raw.encode("utf-8"), info={"description": text, "homepage": text})
+        self.github.upstream(PLAIN, HEAD, raw.encode("utf-8"), info={"commit": {"message": text}, "html_url": text,
+                                                                     "files": [changed(text, "added")]})
         code, out, err = self.watch([PLAIN])
         self.assertEqual(code, 0, err)
         issue = self.only_issue()
@@ -782,17 +788,17 @@ class Watch(Base):
         text = "##[error]x ::warning::y @someone %s %s" % (TOKEN, "".join("%%25%02X" % ord(c) for c in TOKEN))
 
         def answer(method, url):
-            if url.endswith("/repos/example/tools"):
+            if url.endswith("/repos/example/tools/commits/HEAD"):
                 return 401, json.dumps({"message": text}).encode("utf-8")
             return None
 
         def network(method, url):
-            if url.endswith("/repos/example/tools"):
+            if url.endswith("/repos/example/tools/commits/HEAD"):
                 raise OSError(text)
             return None
 
-        for fail, expected in ((answer, "GET /repos/example/tools gave 401\n"),
-                               (network, "GET /repos/example/tools could not be read\n")):
+        head = "source example-tools: reading the head of the default branch"
+        for fail, expected in ((answer, head + " gave 401\n"), (network, head + " failed before an answer came\n")):
             with self.subTest(expected=expected):
                 self.github = FakeGitHub()
                 self.github.upstream(PLAIN, HEAD, two_commits())
@@ -839,12 +845,12 @@ class Watch(Base):
         self.github.add_issue("Source moved: other", "an earlier report")
         answer = comparison("diverged", [commit(tip, "Rewrite")], [changed("a.md", "renamed", "b.md"), changed("d.md", "copied", "e.md")],
                             ahead=7, behind=3, total=11)
-        self.github.upstream(other, tip, answer, branch="trunk/next")
+        self.github.upstream(other, tip, answer)
         self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "One")], [changed("c.md", "removed")], ahead=5))
         code, out, err = self.watch([other, PLAIN], target="another-owner/another-repo")
         self.assertEqual(code, 0, err)
         self.assert_no_unknown_calls()
-        self.assertIn("/repos/someone-else/thing/branches/trunk/next", self.github.gets())
+        self.assertIn("/repos/someone-else/thing/commits/HEAD", self.github.gets())
         self.assertIn("/repos/someone-else/thing/compare/%s...%s" % (NEWER, tip), self.github.gets())
         writes = [(call[0], call[1][len(API):]) for call in self.github.writes()]
         self.assertEqual(writes, [("PATCH", "/repos/another-owner/another-repo/issues/4243"),
@@ -872,6 +878,104 @@ class Watch(Base):
         self.assertEqual([issue["title"] for issue in self.github.issues],
                          ["Source moved: " + "n" * 99 + "1", "Source moved: " + "n" * 99 + "2"])
 
+
+    # Round 1 of the new approach, finding 1: an error printed the request path, and the path held the
+    # default branch that the API gave. A branch can be the token in hex, which passes the gate. Now an
+    # error names the request by a fixed kind and the source's name, and no path holds unchecked text.
+
+    def test_no_error_names_a_path_or_a_value_from_an_answer(self):
+        hidden = TOKEN.encode("utf-8").hex()
+        plain = "source example/plain: "
+        head, compare, pinned = plain + "reading the head of the default branch", plain + "comparing the pinned commit with the head", \
+            plain + "reading the pinned commit"
+
+        def when(test, outcome):
+            def fail(method, url):
+                if test(method, url):
+                    if outcome == "network":
+                        raise OSError("%s %s" % (url, hidden))
+                    return outcome
+                return None
+            return fail
+
+        reads_head = lambda method, url: url.endswith("/commits/HEAD") or "/branches/" in url
+        cases = {
+            "head 404": (when(reads_head, (404, b"{}")), head + " gave 404"),
+            "head 500": (when(reads_head, (500, b"{}")), head + " gave 500"),
+            "head network": (when(reads_head, "network"), head + " failed before an answer came"),
+            "head not json": (when(reads_head, (200, hidden.encode("ascii"))), head + " gave an answer that is not JSON"),
+            "compare 500": (when(lambda method, url: "/compare/" in url, (500, b"{}")), compare + " gave 500"),
+            "compare network": (when(lambda method, url: "/compare/" in url, "network"), compare + " failed before an answer came"),
+            "compare not json": (when(lambda method, url: "/compare/" in url, (200, b"{")), compare + " gave an answer that is not JSON"),
+            "pinned commit 500": (when(lambda method, url: "/compare/" in url, (404, b"{}")), None),
+            "issue list 502": (when(lambda method, url: "/issues?" in url, (502, b"{}")),
+                               "reading the open issues of the target repository gave 502"),
+            "issue list network": (when(lambda method, url: "/issues?" in url, "network"),
+                                   "reading the open issues of the target repository failed before an answer came"),
+            "open 422": (when(lambda method, url: method == "POST", (422, b"{}")), "opening the issue Source moved: example/plain gave 422"),
+            "update 422": (when(lambda method, url: method == "PATCH", (422, b"{}")),
+                           "updating the issue Source moved: example/plain gave 422"),
+            "update network": (when(lambda method, url: method == "PATCH", "network"),
+                               "updating the issue Source moved: example/plain failed before an answer came"),
+        }
+        for name, (fail, expected) in cases.items():
+            with self.subTest(case=name):
+                self.github = FakeGitHub()
+                self.github.first_number = 4242
+                # What a0e58a3 read: the repository, then the branch it names. The branch is the token in hex.
+                self.github.routes[("GET", "/repos/example/plain")] = (200, {"default_branch": hidden})
+                self.github.routes[("GET", "/repos/example/plain/branches/" + hidden)] = (200, {"commit": {"sha": HEAD}})
+                self.github.upstream(PLAIN, HEAD, two_commits())
+                if name.startswith("update"):
+                    self.github.add_issue("Source moved: example/plain", "an earlier report")
+                if name == "pinned commit 500":
+                    self.github.routes[("GET", "/repos/example/plain/commits/" + PIN)] = (500, {"message": hidden})
+                    expected = pinned + " gave 500"
+                self.github.fail = fail
+                code, out, err = self.watch([PLAIN])
+                self.assertEqual(code, 1, out + err)
+                self.assertEqual(err, expected + "\n")
+                for value in (hidden, TOKEN, "/repos", "branches", "HEAD", HEAD, PIN, "4242", "api.github.com"):
+                    self.assertNotIn(value, out + err)
+
+    def test_the_head_is_read_without_the_name_of_the_branch(self):
+        hidden = TOKEN.encode("utf-8").hex()
+        self.github.routes[("GET", "/repos/example/plain")] = (200, {"default_branch": hidden})
+        self.github.routes[("GET", "/repos/example/plain/branches/" + hidden)] = (200, {"commit": {"sha": HEAD}})
+        self.github.upstream(PLAIN, HEAD, two_commits())
+        code, out, err = self.watch([PLAIN])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.github.gets()[:2], ["/repos/example/plain/commits/HEAD",
+                                                  "/repos/example/plain/compare/%s...%s" % (PIN, HEAD)])
+        self.assertEqual([call for call in self.github.calls if hidden in call[1]], [])
+        self.assertEqual(self.only_issue()["body"], MOVED_PLAIN)
+
+    def test_a_request_is_built_only_from_checked_values(self):
+        good = ["/repos/example/plain/commits/HEAD", "/repos/example/plain/commits/" + PIN,
+                "/repos/example/plain/compare/%s...%s" % (PIN, HEAD), "/repos/o.r/r_e-p.o/commits/HEAD",
+                "/repos/example/ratchet/issues", "/repos/example/ratchet/issues?state=open&per_page=100&page=10",
+                "/repos/example/ratchet/issues/999999999"]
+        bad = ["/repos/example/plain/branches/main", "/repos/example/plain", "/repos/example/plain/commits/main",
+               "/repos/example/plain/commits/" + PIN.upper(), "/repos/example/plain/commits/HEAD/../x",
+               "/repos/example/plain/commits/HEAD?x=1", "/repos/example/plain/compare/%s...%s" % (PIN, HEAD[:39]),
+               "/repos/example/plain/compare/%s..%s" % (PIN, HEAD), "/repos/example/ratchet/issues/-1",
+               "/repos/example/ratchet/issues/1234567890", "/repos/example/ratchet/issues/1%0A",
+               "/repos/../plain/commits/HEAD", "/repos/example/../commits/HEAD", "/repos/example/./commits/HEAD",
+               "/repos/example/plain/commits/HEAD\n", "/repos/ex%2Fample/plain/commits/HEAD", "//evil.invalid/x",
+               "/repos/example/ratchet/issues?state=all&per_page=100&page=1", "/repos/_x/plain/commits/HEAD"]
+        for path in good:
+            with self.subTest(path=path):
+                self.github = FakeGitHub()
+                self.github.routes[("GET", path)] = (200, {})
+                self.assertEqual(watch_sources.GitHub(self.github, TOKEN).get(path, "reading a thing"), (200, {}))
+                self.assertEqual(len(self.github.calls), 1)
+        for path in bad:
+            with self.subTest(path=path):
+                self.github = FakeGitHub()
+                with self.assertRaises(watch_sources.WatchError) as raised:
+                    watch_sources.GitHub(self.github, TOKEN).get(path, "source example/plain: reading a thing")
+                self.assertEqual(str(raised.exception), "source example/plain: reading a thing: the watch does not build such a request")
+                self.assertEqual(self.github.calls, [], "nothing is sent")
 
 # Round 2, finding 4: the tests stubbed HTTP above the transport, so a redirect that forwarded the token
 # went unseen. These run the real transport against local servers on 127.0.0.1.
@@ -920,13 +1024,12 @@ class Transport(Base):
                 self.use_api(port)
                 code, out, err = self.watch([PLAIN], http=None)
                 self.assertEqual(code, 1, out + err)
-                self.assertEqual(err, "GET /repos/example/plain gave %d\n" % status)
-                self.assertEqual(seen, [("GET", "/repos/example/plain", "Bearer " + TOKEN)])
+                self.assertEqual(err, "source example/plain: reading the head of the default branch gave %d\n" % status)
+                self.assertEqual(seen, [("GET", "/repos/example/plain/commits/HEAD", "Bearer " + TOKEN)])
                 self.assertEqual(elsewhere, [], "nothing reaches the address the redirect names")
 
     def test_the_real_transport_reads_an_answer(self):
-        answers = {"/repos/example/plain": {"default_branch": "main"},
-                   "/repos/example/plain/branches/main": {"commit": {"sha": PIN}},
+        answers = {"/repos/example/plain/commits/HEAD": {"sha": PIN},
                    "/repos/example/plain/compare/%s...%s" % (PIN, PIN): comparison("identical", [], [])}
         port, seen = self.serve(lambda handler: self.reply(handler, 200, json.dumps(answers[handler.path]).encode("utf-8")))
         self.use_api(port)
@@ -942,6 +1045,39 @@ class Transport(Base):
                 with self.assertRaises(OSError):
                     watch_sources.urllib_http("GET", url, {"Authorization": "Bearer " + TOKEN}, None)
         self.assertEqual(seen, [])
+
+    # Round 1 of the new approach, finding 2: the test above tried only unrelated addresses, so a guard
+    # that compared by prefix, url.startswith(API), passed it and sent the token to api.github.com.evil.invalid.
+
+    def test_the_token_goes_only_to_the_exact_origin_of_the_api(self):
+        opened = []
+
+        class Recorder:
+            def open(self, request, timeout):
+                opened.append((request.full_url, request.get_header("Authorization")))
+                raise OSError("stopped by the test, so that nothing reaches the network")
+
+        saved = watch_sources.urllib.request.build_opener
+        watch_sources.urllib.request.build_opener = lambda *handlers: Recorder()
+        self.addCleanup(setattr, watch_sources.urllib.request, "build_opener", saved)
+        refused = ("https://api.github.com.evil.invalid/", "https://api.github.com.evil.invalid/repos/example/plain",
+                   "https://api.github.com@evil.invalid/", "https://api.github.com:@evil.invalid/",
+                   "https://user@api.github.com/repos/example/plain", "https://user:secret@api.github.com/repos/example/plain",
+                   "https://api.github.com:443/repos/example/plain", "https://api.github.com:8443/repos/example/plain",
+                   "http://api.github.com/repos/example/plain", "https://API.GITHUB.COM/repos/example/plain",
+                   "https://Api.github.com/repos/example/plain", "https://api.github.com./repos/example/plain",
+                   "https://api.github.com%2eevil.invalid/", "https://api.github.com\\@evil.invalid/",
+                   "https://api.github.com", "https://api.github.com?x", "//api.github.com/repos/example/plain",
+                   "ftp://api.github.com/repos/example/plain", "https://api.github.com/repos/example/plain#x")
+        for url in refused:
+            with self.subTest(url=url):
+                with self.assertRaises(OSError) as raised:
+                    watch_sources.urllib_http("GET", url, {"Authorization": "Bearer " + TOKEN}, None)
+                self.assertEqual(str(raised.exception), "the watch only talks to the API")
+        self.assertEqual(opened, [], "the guard refuses before an opener is built")
+        with self.assertRaises(OSError):
+            watch_sources.urllib_http("GET", API + "/repos/example/plain/commits/HEAD", {"Authorization": "Bearer " + TOKEN}, None)
+        self.assertEqual(opened, [(API + "/repos/example/plain/commits/HEAD", "Bearer " + TOKEN)])
 
     def test_the_redirect_handler_makes_no_new_request(self):
         request = urllib.request.Request(API + "/repos/example/plain", headers={"Authorization": "Bearer " + TOKEN})
