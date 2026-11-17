@@ -7,6 +7,7 @@ case needs the tags of this repo and none is skipped where they are missing. The
 guard runs on this repo's own tags in a step of its own in CI. Standard library only.
 """
 
+import io
 import json
 import os
 import re
@@ -16,12 +17,13 @@ import sys
 import tempfile
 import unittest
 
+import release
+import test_release
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 GUARD = "released_text.py"
 OK = "released_text: released text matches its tags"
-# How the release workflow finds the entry of a version (D-2026-11-17-release-on-merge, .github/workflows/release.yml in PR #9).
-RELEASE_ENTRY = r"^## %s \([^)]*\)\n(.*?)(?=^## |\Z)"
 # A changelog of three released versions and one that is not yet released, newest first.
 ENTRIES = {
     "0.1": "## 0.1 (2026-01-01)\n\n- The first rules.\n",
@@ -262,9 +264,11 @@ class Guard(unittest.TestCase):
 class ReleaseSteps(unittest.TestCase):
     """The steps of the release of 0.4 on a copy of this repo, and the state after it.
 
-    The version is already 0.4 in ratchet.json, so a release renames nothing: the release workflow tags the
-    merge and writes the release text from the changelog. The copy gets tags that hold the changelog of each
-    released version as it stands in the copy, which the guard in CI shows to be the changelog at the real tags.
+    The version is already 0.4 in ratchet.json, so a release renames nothing: the release workflow runs
+    checks/release.py, which tags the merge and writes its one fixed line (D-2026-11-17-release-links). Every
+    step is release.py's own code, never a copy of it. The copy gets tags that hold the changelog of each
+    released version as it stands in the copy, which the guard in CI shows to be the changelog at the real tags,
+    and a ratchet.json as main had it: none at v0.1 and v0.2, and one that names 0.3 at v0.3.
     """
 
     def setUp(self):
@@ -283,20 +287,47 @@ class ReleaseSteps(unittest.TestCase):
         return [(text.split(" ", 2)[1], text) for text in texts]
 
     def tag_the_releases_before(self):
-        """Tags for every version before the one being released, oldest first, each with the changelog up to its own entry."""
+        """Tags for every version before the one being released, oldest first, each with the changelog up to its own entry.
+
+        ratchet.json is first on main in 0.3, as in this repo, so the history that release.py reads names 0.3 and 0.4.
+        """
         git(self.copy, "init", "-q")
         entries = self.entries()
         self.assertEqual(entries[0][0], self.version)
         title = self.changelog[:self.changelog.index("## ")]
+        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8", newline="") as handle:
+            data = handle.read()
+        named = '"version": "%s",' % self.version
+        self.assertEqual(data.count(named), 1)
         released = entries[1:]
         for number in range(len(released) - 1, -1, -1):
+            version = released[number][0]
             if number == len(released) - 1:
                 # The tag v0.1 of this repo holds no changelog: 0.1 is first written down in 0.2.
                 os.remove(os.path.join(self.copy, "CHANGELOG.md"))
             else:
                 write(self.copy, "CHANGELOG.md", title + "".join(text for _, text in released[number:]))
-            commit_and_tag(self.copy, "v" + released[number][0])
+            if version in ("0.1", "0.2"):
+                if os.path.exists(os.path.join(self.copy, "ratchet.json")):
+                    os.remove(os.path.join(self.copy, "ratchet.json"))
+            else:
+                write(self.copy, "ratchet.json", data.replace(named, '"version": "%s",' % version))
+            commit_and_tag(self.copy, "v" + version)
         write(self.copy, "CHANGELOG.md", self.changelog)
+        write(self.copy, "ratchet.json", data)
+
+    def github(self):
+        """GitHub as it stands before 0.4: a tag for each older version, and a published release for each but 0.1."""
+        tags = dict((version, ("commit", git(self.copy, "rev-parse", "v%s^{commit}" % version).strip()))
+                    for version, _ in self.entries()[1:])
+        releases = [{"tag_name": "v" + version, "draft": False} for version in tags if version not in release.BEFORE_RELEASES]
+        return test_release.FakeGitHub(tags=tags, releases=releases)
+
+    def publish(self, github, sha, **report):
+        """release.py's publish, on the history of main in the copy, read with git as the release workflow reads it."""
+        out = io.StringIO()
+        release.publish(self.version, self.changelog, release.main_history(self.copy, sha), test_release.REPO, sha, github, out, **report)
+        return out.getvalue()
 
     def test_the_release_of_0_4_finds_its_entry_and_everything_passes_after_it(self):
         self.assertEqual(self.version, "0.4")
@@ -305,20 +336,34 @@ class ReleaseSteps(unittest.TestCase):
             with self.subTest(step=script):
                 code, output = run(script, *args, root=self.copy, cwd=self.copy)
                 self.assertEqual(code, 0, output)
-        # The release text, found as the workflow finds it.
-        found = re.search(RELEASE_ENTRY % re.escape(self.version), self.changelog, re.S | re.M)
-        self.assertIsNotNone(found, "the release workflow finds no entry for %s" % self.version)
-        body = found.group(1)
-        self.assertIn("Ratchet 0.4, computed from `ratchet.json`", body)
-        self.assertIn("ratchet.expected-tests-ran", body)
-        self.assertIn("Added:", body)
-        self.assertNotIn("## ", body)
-        self.assertNotIn("nreleased", self.changelog[:found.end()])
-        # The release: the workflow tags the merge.
+        # The release text, as release.py prints it, with no token and no network.
+        code, output = run("release.py", "notes", "--repo", test_release.REPO, root=self.copy, cwd=self.copy)
+        self.assertEqual((code, output), (0, release.release_text(self.version, test_release.REPO) + "\n"))
+        # release.py reads only the headings of the changelog. It finds this version first, and nothing newer.
+        self.assertEqual(release.changelog_versions(self.changelog), [version for version, _ in self.entries()])
+        # What the entry of 0.4 says: the new rule, and the work merged since 0.3 that 0.4 releases.
+        entry = self.entries()[0][1]
+        for words in ("Ratchet 0.4, computed from `ratchet.json`", "Added:", "`ratchet.expected-tests-ran`", "`checks/expected_tests.py`",
+                      "`checks/released_text.py`", "`checks/watch_sources.py`", "`checks/release.py`", "`.github/workflows/release.yml`"):
+            self.assertIn(words, entry)
+        self.assertNotIn("nreleased", entry)
+        # The release: release.py tags the merge and writes its one line, after every check it makes.
         self.tag_the_releases_before()
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
-        commit_and_tag(self.copy, "v0.4")
+        git(self.copy, "add", "-A")
+        git(self.copy, "commit", "-q", "--allow-empty", "-m", "Merge 0.4")
+        sha = git(self.copy, "rev-parse", "HEAD").strip()
+        github = self.github()
+        self.assertEqual(self.publish(github, sha), "Tagged v0.4 at %s and released Ratchet 0.4.\n" % sha)
+        path = "/repos/%s" % test_release.REPO
+        self.assertEqual(github.writes, [("POST", path + "/git/refs"), ("POST", path + "/releases")])
+        self.assertEqual(github.releases[-1]["body"], release.release_text(self.version, test_release.REPO))
+        git(self.copy, "tag", "v0.4")
+        # The next scheduled run of the release workflow finds every version finished, and writes nothing.
+        writes = list(github.writes)
+        self.assertEqual(self.publish(github, sha, report=True), "v0.4 is tagged at this commit and released. Nothing to do.\n")
+        self.assertEqual(github.writes, writes)
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
         self.assertIn("in 4 tags", output)
