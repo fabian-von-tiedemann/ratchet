@@ -15,13 +15,13 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## What this repo is and is not doing now
 
-- The core, the six parts of [RATCHET.md](RATCHET.md), is frozen. Do not add a rule to it or remove one. A new rule is a proposal (P) for the maintainer and starts as experimental.
+- The core, the six parts of [RATCHET.md](RATCHET.md), is frozen: no rule is added to it or removed from it without the maintainer's decision. A new rule is a proposal (P) for the maintainer and starts as experimental.
 - The work now is turning rules that are text only into reference checks, one at a time, each with a fixture it fails on.
 - The maintainer approves decisions, tags and releases. An agent proposes and opens a PR. It does not tag, release or change the repository's settings.
 
 ## How to change a rule
 
-1. Edit [ratchet.json](ratchet.json). Never edit a rule table by hand.
+1. Edit [ratchet.json](ratchet.json). The rule tables are generated from it.
 2. Run `python3 checks/generate.py`. It rewrites the tables, the count, `templates/register.json`, `REGISTER.md` and the registers under `checks/fixtures/register/`.
 3. If a rule that [register.json](register.json) adopts changed, paste the new entry. `python3 checks/generate.py --entries` followed by the key prints it.
 4. Add the change to [CHANGELOG.md](CHANGELOG.md).
@@ -59,8 +59,8 @@ Show the commands and their results in the PR (`ratchet.evidence-before-done`).
 
 `main` takes changes only through pull requests. A pull request needs the job `checks` green and the approval of the code owner, who is the maintainer ([.github/CODEOWNERS](.github/CODEOWNERS)). Administrators are exempt from the protection, so that the one maintainer can merge their own changes ([D-2026-11-16-code-owner](decisions/D-2026-11-16-code-owner.md)).
 
-Agents contribute through a machine account of their own with write access. It opens pull requests. It must not approve or merge one. That is an instruction and not a lock: an account with write access is able to merge once the requirements are met. What the protection makes sure of is that the code owner has approved the latest change. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given.
+Agents contribute through a machine account of their own with write access. It opens pull requests. It does not approve or merge one. That is an instruction and not a lock: an account with write access is able to merge once the requirements are met. What the protection makes sure of is that the code owner has approved the latest change. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given.
 
-The account is decided and not yet created, and the protection is not yet set. Until both have been read back and tried, [REGISTER.md](REGISTER.md) lists the rules that lean on them as "text only for now", and [HANDOVER.md](HANDOVER.md) names the steps that make them "built".
+The account exists and has the role Write. The protection is the ruleset that guards `main`, which requires the code owner's review and the job `checks` and refuses force pushes and deletion. Both were read back on 2026-11-17. They have not yet been tried with a real pull request. Until they are, [REGISTER.md](REGISTER.md) lists the rules that lean on them as "text only for now", and [HANDOVER.md](HANDOVER.md) names the steps that make them "built".
 
 A published tag is never moved ([D-2026-11-16-tags-stay](decisions/D-2026-11-16-tags-stay.md)).
