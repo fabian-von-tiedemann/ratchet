@@ -6,21 +6,16 @@ the comparison of a generated file with what its data file generates.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
-import hashlib
 import json
 import os
 import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "ratchet.json")
-# The record of every release, next to ratchet.json: see release_state().
-RELEASES = "releases.json"
 
 KEY = re.compile(r"^ratchet\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\Z")
 DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
-SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
-RELEASE_FIELDS = ("version", "date", "changelog", "ratchet")
 MAIL = re.compile(r"[^ ]@[^ ]")
 PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*\Z")
 # Every ASCII punctuation mark, which is what Markdown lets a backslash escape.
@@ -325,87 +320,6 @@ def validate(data, root):
         elif not isinstance(source["commit"], str) or not re.match(r"^[0-9a-f]{40}$", source["commit"]):
             problems.append("source %s: the commit must be a full 40-character sha" % source["name"])
     return problems
-
-
-def digest(text):
-    """The sha256 of a text, as UTF-8. A file is read with read(), so CRLF counts as LF."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def load_releases(path):
-    """Read releases.json strictly. Return its releases, newest first.
-
-    Each release has its version and its date, and the sha256 of its changelog entry, of its
-    ratchet.json, or of both, as they stood at its tag. 0.1 and 0.2 had no ratchet.json.
-    """
-    name = os.path.basename(path)
-    if not os.path.isfile(path):
-        raise RegistryError("%s: the file is missing. It records every release of Ratchet, next to ratchet.json" % name)
-    try:
-        data = load_json(path)
-    except RegistryError as error:
-        raise RegistryError("%s: %s" % (name, error))
-    if not isinstance(data, dict) or set(data) != {"releases"} or not isinstance(data["releases"], list) or not data["releases"]:
-        raise RegistryError('%s: must be one object with one field, "releases", a list of at least one release' % name)
-    problems, seen, previous = [], set(), None
-    for record in data["releases"]:
-        if not isinstance(record, dict):
-            problems.append("a release must be an object")
-            continue
-        label = record.get("version") if isinstance(record.get("version"), str) else "a release"
-        unknown = sorted(set(record) - set(RELEASE_FIELDS))
-        missing = [field for field in ("version", "date") if field not in record]
-        if unknown or missing:
-            problems += ["%s: unknown field %r" % (label, field) for field in unknown]
-            problems += ["%s: missing field %r" % (label, field) for field in missing]
-            continue
-        if not all(isinstance(value, str) for value in record.values()):
-            problems.append("%s: every field must be a string" % label)
-            continue
-        if not VERSION.match(record["version"]):
-            problems.append("version must look like 0.2, found %r" % record["version"])
-            continue
-        if not DATE.match(record["date"]):
-            problems.append("%s: date must look like 2026-01-31" % label)
-        if not ("changelog" in record or "ratchet" in record):
-            problems.append("%s: a release records the sha256 of its changelog entry, of its ratchet.json, or of both" % label)
-        for field in ("changelog", "ratchet"):
-            if field in record and not SHA256.match(record[field]):
-                problems.append("%s: %s must be a sha256 of 64 lowercase hex digits" % (label, field))
-        if label in seen:
-            problems.append("%s is recorded twice" % label)
-        number = tuple(int(part) for part in label.split("."))
-        if previous is not None and number >= previous[0]:
-            problems.append("the releases are listed newest first: %s comes after %s" % (label, previous[1]))
-        seen.add(label)
-        previous = (number, label)
-    if problems:
-        raise RegistryError("\n".join("%s: %s" % (name, problem) for problem in problems))
-    return data["releases"]
-
-
-def release_record(releases, data):
-    """The record of the version that ratchet.json names, or None."""
-    return next((record for record in releases if record["version"] == data["version"]), None)
-
-
-def release_state(data, path=SOURCE):
-    """True when ratchet.json at path is the release it names, byte for byte, and False when it holds changes after it.
-
-    The record is releases.json, next to ratchet.json. Every text that names the version says which.
-    """
-    releases = load_releases(os.path.join(os.path.dirname(os.path.abspath(path)), RELEASES))
-    record = release_record(releases, data)
-    if record is None or "ratchet" not in record:
-        raise RegistryError("%s: there is no record of %s, the version ratchet.json names, with the sha256 of its ratchet.json" % (RELEASES, data["version"]))
-    if record["date"] != data["date"]:
-        raise RegistryError("%s: %s was released on %s, and ratchet.json says %s" % (RELEASES, data["version"], record["date"], data["date"]))
-    return digest(read(path)) == record["ratchet"]
-
-
-def named(data, released):
-    """Ratchet at the version ratchet.json names, as every text names it."""
-    return ("Ratchet %s" if released else "Ratchet %s with unreleased changes") % data["version"]
 
 
 def row(rule):

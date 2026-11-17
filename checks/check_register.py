@@ -50,11 +50,6 @@ ADOPTED = (
     "Ratchet version: %s. The rows below are copied verbatim from Ratchet at that version. "
     "The project chooses which rows it adopts and never rewrites one."
 )
-# When the check runs from a Ratchet whose ratchet.json holds changes after the release it names (registry.release_state).
-ADOPTED_UNRELEASED = (
-    "Ratchet version: %s, with unreleased changes. The rows below are copied verbatim from the Ratchet that the check runs from, "
-    "which holds changes made after that version. The project chooses which rows it adopts and never rewrites one."
-)
 STANDS = (
     'One row for each adopted rule whose ratchet starts with "Check:". The status is "built" or "text only for now". '
     "A built check says where it lives."
@@ -63,10 +58,9 @@ OWN = "Same form as Ratchet's. The keys use the project's own prefix, never `rat
 NO_OWN = "None yet."
 
 
-def check(register, ratchet, released):
-    """Return (problems, summary) for a parsed register.json. released is registry.release_state() of ratchet."""
+def check(register, ratchet):
+    """Return (problems, summary) for a parsed register.json."""
     version = ratchet["version"]
-    ratchet_named = registry.named(ratchet, released)
     if not isinstance(register, dict):
         return ["the register must be one object with the fields %s" % ", ".join(TOP_FIELDS)], None
     problems = ["missing field %r" % field for field in TOP_FIELDS if field not in register]
@@ -81,8 +75,8 @@ def check(register, ratchet, released):
         problems.append("ratchet_version must be exactly a version like %s, found %r" % (version, stated))
     elif stated != version:
         problems.append(
-            "the register follows Ratchet %s, but this check is %s. Run the check from Ratchet at the version the register states"
-            % (stated, ratchet_named)
+            "the register follows Ratchet %s, but this check is Ratchet %s. Run the check from Ratchet at the version the register states"
+            % (stated, version)
         )
     for field in ("adopted", "own"):
         if not isinstance(register[field], list):
@@ -110,7 +104,7 @@ def check(register, ratchet, released):
             problems.append("%s: every field must be a string" % name)
             continue
         if entry["key"] not in by_key:
-            problems.append("%s is not a rule in %s" % (name, ratchet_named))
+            problems.append("%s is not a rule in Ratchet %s" % (name, version))
             continue
         if name in seen:
             problems.append("%s is adopted twice" % name)
@@ -122,7 +116,7 @@ def check(register, ratchet, released):
             if entry[field] != rule[field]:
                 differs = True
                 problems.append(
-                    "the %s of %s differs from %s\n  expected: %s\n  found:    %s" % (field, name, ratchet_named, rule[field], entry[field])
+                    "the %s of %s differs from Ratchet %s\n  expected: %s\n  found:    %s" % (field, name, version, rule[field], entry[field])
                 )
         if differs:
             continue
@@ -170,14 +164,14 @@ def check(register, ratchet, released):
 
     if not register["adopted"] and not problems:
         problems.append("no rules from Ratchet. A register that adopts nothing has nothing to check")
-    summary = "%d rules match %s (%d core, %d experimental). %d name a check: %d built, %d text only for now. %d rules of the project's own." % (
-        len(seen), ratchet_named, core, len(seen) - core, needs, built, needs - built, len(own),
+    summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now. %d rules of the project's own." % (
+        len(seen), version, core, len(seen) - core, needs, built, needs - built, len(own),
     )
     return problems, summary
 
 
-def render(register, released):
-    """The one REGISTER.md that a valid register.json generates. released is registry.release_state() of the Ratchet it follows."""
+def render(register):
+    """The one REGISTER.md that a valid register.json generates."""
     rows = [registry.row(entry) for entry in register["adopted"]]
     stands = [
         "| %s | %s | %s |" % (entry["key"], entry["status"], registry.cell(entry.get("where", "")))
@@ -185,7 +179,7 @@ def render(register, released):
     ]
     lines = [
         "# Register for %s" % registry.cell(register["project"]), "", INTRO, "",
-        "## Rules from Ratchet", "", (ADOPTED if released else ADOPTED_UNRELEASED) % register["ratchet_version"], "",
+        "## Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
         registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [
         "", "## Where each check stands", "", STANDS, "",
         "| Key | Status | Where the check lives |", "|---|---|---|"] + stands + [
@@ -207,7 +201,6 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         ratchet = registry.load(args.source)
-        released = registry.release_state(ratchet, args.source)
         if not os.path.isfile(args.register):
             raise OSError("no such file: %s" % args.register)
     except (registry.RegistryError, OSError) as error:
@@ -218,10 +211,10 @@ def main(argv=None):
     except registry.RegistryError as error:
         problems, summary = [str(error)], None
     else:
-        problems, summary = check(register, ratchet, released)
+        problems, summary = check(register, ratchet)
     problems = ["%s: %s" % (args.register, problem) for problem in problems]
     if not problems:
-        expected = render(register, released)
+        expected = render(register)
         if args.write:
             with open(args.write, "w", encoding="utf-8", newline="") as handle:
                 handle.write(expected)

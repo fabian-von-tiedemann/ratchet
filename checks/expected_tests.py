@@ -1,63 +1,59 @@
-"""Fail the run when a test it expects did not run (ratchet.expected-tests-ran).
+#!/usr/bin/env python3
+"""Fail when a test the suite expects did not run and pass (ratchet.expected-tests-ran).
 
-    python3 -m unittest discover -s checks -v
+    python3 checks/expected_tests.py
 
-The expected tests are read from the fixtures themselves: every file under
-checks/fixtures/ is one fixture, and the run must hold a test that loaded it and
-passed. A test loads a fixture through FixtureTest, never by its path. Each load is
-recorded in a ledger that belongs to the run, with the test and the sha256 of the
-bytes it read, and each test's outcome is recorded when it ends. When the run stops,
-the ledger is compared with the fixtures as they stand, and the run fails, naming
-each one, on:
+Runs the suite in a child process, `checks/suite_runner.py`, which runs
+`unittest discover -s checks` and writes a record of the run to a file in a
+directory that this process makes. Then reads that file strictly, and fails, naming
+each problem, when:
 
-- a fixture that no test loaded
-- a test that loaded a fixture and did not pass: it failed, errored, could not be
-  prepared, was skipped, or was an expected failure or an unexpected success, in
-  its body, a subtest, its set-up, its tear-down or a cleanup
-- a test that loaded a fixture and passed, in a class or a module whose set-up or
-  tear-down then errored or skipped
-- a name that a test gave and that is not a fixture
-- a record whose bytes are not the fixture's own, so a name without its content
-  does not count
-- a fixtures directory that is missing or holds no fixtures, because a run that
-  expects nothing has not shown that everything ran.
+- the child's exit status is not 0, or it was stopped by a signal
+- there is no completion record, because the child exited early, from anywhere, or
+  was killed; or the completion record's counts disagree with the records
+- a test did not pass: it failed, errored, was skipped, was an expected failure or
+  an unexpected success, or started and has no outcome
+- a set-up or tear-down of a class or a module had an outcome of its own
+- a test id ran more than once
+- a fixture under checks/fixtures/ was not loaded, with the bytes it held before the
+  run, by a test that passed; or a fixture changed while the suite ran
+- a record has a form this check does not know.
 
-The comparison does not depend on the tests it watches. Discover collects
-test_0_expected_tests_ran.py first, and its load_tests gives one Comparison: a suite
-that holds no test, so that no filter removes it. When the run reaches it, before any
-other test, it hooks the result's stopTestRun. unittest's runner calls stopTestRun
-after the last test, its tear-down and every class and module tear-down, and before
-it prints the summary and sets the exit status. A FixtureTest hooks it too, for a run
-that does not go through discover. The failure is added to the run's result as one
-more failed test.
+The expected tests are the tests that discover collects, and the expected fixtures
+are the files under checks/fixtures/. The check catches tests dropped by mistake. It
+does not stop test code that defeats it on purpose: that code runs with the same
+rights as the check, and a change to checks/ is read by the maintainer
+(ratchet.checks-owner-read).
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
-import functools
+import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
-import unittest
 
-FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+HERE = os.path.dirname(os.path.abspath(__file__))
+FIXTURES = os.path.join(HERE, "fixtures")
+RUNNER = os.path.join(HERE, "suite_runner.py")
 # A fixture's name: its path under the fixtures directory, with "/" between the parts. No part starts with a dot.
 NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*)*\Z")
+SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
 PASSED = "passed"
-# What the result holds after a test that did not pass, in the order an outcome is named.
-OUTCOMES = (
-    ("errors", "errored"),
-    ("failures", "failed"),
-    ("skipped", "skipped"),
-    ("expectedFailures", "expected failure"),
-    ("unexpectedSuccesses", "unexpected success"),
-)
-LEDGERS = "_expected_tests_ledgers"
-# How unittest names the set-up or tear-down of a class or a module that did not pass: "tearDownClass (module.Class)".
-# It is the same on Python 3.9 and 3.12 (unittest.suite._createClassOrModuleLevelException).
-FIXTURE_OUTCOME = re.compile(r"^(setUpClass|tearDownClass|setUpModule|tearDownModule) \(([A-Za-z_][\w.]*)\)\Z")
+OUTCOMES = (PASSED, "failed", "errored", "skipped", "expected failure", "unexpected success")
+# Every form of record, with its fields. Nothing else is read.
+FORMS = {
+    "start": ("instance", "test"),
+    "outcome": ("instance", "test", "outcome"),
+    "loaded": ("instance", "fixture", "sha256"),
+    "complete": ("tests_run", "outcomes", "loaded"),
+}
+COUNTS = (("tests_run", "tests run", "start"), ("outcomes", "outcomes", "outcome"), ("loaded", "fixtures loaded", "loaded"))
 
 
 def digest(data):
@@ -88,226 +84,210 @@ def fixtures(root):
     return found, problems
 
 
-def problems(root, records):
-    """Why the records of a run do not show every fixture under root loaded by a test that passed.
+def whole(value, least):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= least
 
-    records holds (name, test, outcome, sha256 of the bytes the test read, or None).
-    """
-    found, result = fixtures(root)
-    for name, test, outcome, sha in records:
-        if name not in found:
-            result.append("%s: named by %s, and there is no such fixture" % (name, test))
-        elif sha != found[name]:
-            result.append("%s: named by %s, which did not load it as it stands" % (name, test))
-        elif outcome != PASSED:
-            result.append("%s: loaded by %s, which did not pass: %s" % (name, test, outcome))
-    named = set(record[0] for record in records)
-    for name in sorted(set(found) - named):
-        result.append("%s: no test loads this fixture" % name)
+
+def form_problem(record):
+    """Why a parsed line is not a record of a form this check knows, or None."""
+    if not isinstance(record, dict):
+        return "a record is one JSON object"
+    if "record" not in record:
+        return "a record without its kind"
+    kind = record["record"]
+    if kind not in FORMS:
+        return "an unknown kind of record %r" % (kind,)
+    fields = FORMS[kind]
+    unknown = sorted(set(record) - set(fields) - {"record"})
+    if unknown:
+        return "unknown field %r in a record %s" % (unknown[0], kind)
+    missing = [field for field in fields if field not in record]
+    if missing:
+        return "missing field %r in a record %s" % (missing[0], kind)
+    if "instance" in fields and not whole(record["instance"], 1) and not (kind == "loaded" and record["instance"] is None):
+        return "instance must be a whole number from 1" + (", or null for a load outside any test" if kind == "loaded" else "")
+    if "test" in fields:
+        test = record["test"]
+        if not isinstance(test, str) or not test or any(ord(c) < 32 or ord(c) == 127 for c in test):
+            return "test must be a name of one line"
+    if kind == "outcome" and record["outcome"] not in OUTCOMES:
+        return "outcome must be one of %s" % ", ".join(OUTCOMES)
+    if kind == "loaded":
+        if not isinstance(record["fixture"], str) or not NAME.match(record["fixture"]):
+            return "fixture must be a fixture's name, its path under the fixtures directory"
+        if record["sha256"] is not None and not (isinstance(record["sha256"], str) and SHA256.match(record["sha256"])):
+            return "sha256 must be 64 lowercase hex digits, or null for a fixture that is not there"
+    if kind == "complete":
+        for field in fields:
+            if not whole(record[field], 0):
+                return "%s must be a whole number from 0" % field
+    return None
+
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError("the field %r twice" % key)
+        result[key] = value
     return result
 
 
-class Ledger:
-    """What the tests of one run loaded from one fixtures directory, and how each test ended."""
-
-    def __init__(self, root):
-        self.root = root
-        self.loads = []
-        self.outcomes = {}
-
-    def records(self):
-        return [(name, test, self.outcomes.get(test, "did not end"), sha) for name, test, sha in self.loads]
+def constant(name):
+    raise ValueError("%s is not allowed" % name)
 
 
-def ledger(result, root):
-    """The ledger for root in this run. The first one installs the comparison at the end of the run."""
-    ledgers = getattr(result, LEDGERS, None)
-    if ledgers is None:
-        ledgers = {}
-        setattr(result, LEDGERS, ledgers)
-        stop = result.stopTestRun
-
-        @functools.wraps(stop)
-        def stop_test_run():
-            report(result, ledgers)
-            stop()
-
-        result.stopTestRun = stop_test_run
-    return ledgers.setdefault(root, Ledger(root))
-
-
-class Comparison(unittest.TestSuite):
-    """The comparison for one fixtures directory, as a suite that holds no test.
-
-    When the run reaches it, it hooks the result's stopTestRun, whatever happens to the tests that load
-    fixtures. It holds no test, so a filter such as -k does not remove it, and nothing in it can be skipped.
-    """
-
-    def __init__(self, root=FIXTURES):
-        super().__init__()
-        self.root = root
-
-    def run(self, result, debug=False):
-        if hasattr(result, "stopTestRun"):
-            ledger(result, self.root)
-        return result
-
-
-def load_tests_hook(root=FIXTURES):
-    """A load_tests for the module that discover collects first: it gives the comparison, and nothing else."""
-    def load_tests(loader, tests, pattern):
-        return Comparison(root)
-    return load_tests
-
-
-def fixture_outcomes(result):
-    """([(class or module, what happened)], problems) for each set-up or tear-down of a class or module that did not pass."""
-    found, unknown = [], []
-    for field, outcome in OUTCOMES:
-        for entry in getattr(result, field, ()):
-            test = entry[0] if isinstance(entry, tuple) else entry
-            if isinstance(test, unittest.TestCase):
-                continue
-            description = str(getattr(test, "description", test))
-            match = FIXTURE_OUTCOME.match(description)
-            if match:
-                found.append((match.group(2), "%s %s" % (description, outcome)))
-            else:
-                unknown.append("the run holds an outcome that the check cannot place: %r, %s" % (description, outcome))
-    return found, unknown
-
-
-def placed(records, outcomes):
-    """The records, with a passing test marked as not passed when its class or module did not pass."""
-    result = []
-    for name, test, outcome, sha in records:
-        if outcome == PASSED:
-            outcome = next((what for parent, what in outcomes if test.startswith(parent + ".")), PASSED)
-        result.append((name, test, outcome, sha))
-    return result
-
-
-class _ExpectedTestsRan(unittest.TestCase):
-    """The comparison, as it is shown in the run: one more test, which failed."""
-
-    def test_every_expected_test_ran_and_passed(self):
-        pass
-
-
-def report(result, ledgers):
-    outcomes, found = fixture_outcomes(result)
-    for root in sorted(ledgers):
-        found += problems(root, placed(ledgers[root].records(), outcomes))
-    if not found:
-        return
-    test = _ExpectedTestsRan("test_every_expected_test_ran_and_passed")
-    message = "\n".join(
-        ["Not every expected test ran and passed (ratchet.expected-tests-ran). %d problem(s). "
-         "Every fixture needs a test that loads it through FixtureTest and passes, in the same run:" % len(found)]
-        + ["- " + problem for problem in found]
-    )
-    result.startTest(test)
-    result.addFailure(test, (AssertionError, AssertionError(message), None))
-    result.stopTest(test)
-
-
-def tally(result):
-    return tuple(len(getattr(result, field, ())) for field, _ in OUTCOMES)
-
-
-class FixtureTest(unittest.TestCase):
-    """A test that loads fixtures. Each load is recorded with the test, and counts only if the test passes."""
-
-    fixtures = FIXTURES
-
-    def run(self, result=None):
-        if result is None:
-            result = self.defaultTestResult()
-            result.startTestRun()
-            try:
-                self.run(result)
-            finally:
-                result.stopTestRun()
-            return result
-        self._ledger = ledger(result, self.fixtures)
-        self._started = False
-        name = self._testMethodName
-        method = getattr(self, name)
-
-        @functools.wraps(method)
-        def body(*args, **kwargs):
-            self._started = True
-            return method(*args, **kwargs)
-
-        before = tally(result)
-        setattr(self, name, body)
+def read_records(path):
+    """Return ([(line number, record)], problems) for the records in path, read strictly."""
+    if not os.path.isfile(path):
+        return [], ["the suite wrote no records"]
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return [], ["the records are not valid UTF-8, at byte %d" % error.start]
+    records, problems = [], []
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    elif lines:
+        problems.append("the records, line %d: the record has no line break at its end, so it was cut off" % len(lines))
+    for number, line in enumerate(lines, 1):
         try:
-            return super().run(result)
-        finally:
-            delattr(self, name)
-            grown = [outcome for (_, outcome), old, new in zip(OUTCOMES, before, tally(result)) if new > old]
-            outcome = grown[0] if grown else PASSED
-            if outcome == "errored" and not self._started:
-                outcome = "could not be prepared"
-            self._ledger.outcomes[self.id()] = outcome
+            record = json.loads(line, object_pairs_hook=pairs, parse_constant=constant)
+        except ValueError as error:
+            message = str(error) if str(error).startswith("the field ") else "not one JSON object"
+            problems.append("the records, line %d: not a record the check knows: %s" % (number, message))
+            continue
+        problem = form_problem(record)
+        if problem:
+            problems.append("the records, line %d: not a record the check knows: %s" % (number, problem))
+            continue
+        records.append((number, record))
+    return records, problems
 
-    def _record(self, name, sha):
-        ledger = getattr(self, "_ledger", None)
-        if ledger is None:
-            raise self.failureException("a fixture is loaded while the test runs, not before")
-        ledger.loads.append((name, self.id(), sha))
 
-    def _path(self, name):
-        if not isinstance(name, str) or not NAME.match(name):
-            self._record(str(name), None)
-            raise self.failureException("%r is not a fixture's name: its path under the fixtures directory, with / between the parts" % (name,))
-        return os.path.join(self.fixtures, *name.split("/"))
+def status_problems(status):
+    if status == 0:
+        return []
+    if status < 0:
+        return ["the suite was stopped by signal %d" % -status]
+    return ["the suite exited with status %d" % status]
 
-    def fixture_bytes(self, name):
-        """The bytes of one fixture, by its name under the fixtures directory."""
-        path = self._path(name)
-        if os.path.islink(path) or not os.path.isfile(path):
-            self._record(name, None)
-            raise self.failureException("there is no fixture named %s under %s" % (name, self.fixtures))
-        with open(path, "rb") as handle:
-            data = handle.read()
-        self._record(name, digest(data))
-        return data
 
-    def fixture_text(self, name):
-        """The text of one fixture, read as strict UTF-8."""
-        return self.fixture_bytes(name).decode("utf-8", errors="strict")
+def compare(records, found):
+    """Why the records of a run do not show every test passed once and every fixture loaded by a test that passed.
 
-    def scratch(self):
-        directory = tempfile.mkdtemp(prefix="ratchet-test-")
-        self.addCleanup(shutil.rmtree, directory)
-        return directory
+    found is {name: sha256} of the fixtures as they stood before the run.
+    """
+    problems = []
+    completes = [(number, record) for number, record in records if record["record"] == "complete"]
+    if not completes:
+        problems.append("the suite did not finish: there is no completion record. It exited early, or was stopped")
+    elif len(completes) > 1:
+        problems.append("the suite wrote %d completion records" % len(completes))
+    if completes:
+        first = completes[0][0]
+        for number, record in records:
+            if number > first and record["record"] != "complete":
+                problems.append("the records, line %d: a record follows the completion record" % number)
+        complete = completes[0][1]
+        for field, label, kind in COUNTS:
+            held = sum(1 for _, record in records if record["record"] == kind)
+            if complete[field] != held:
+                problems.append("the completion record counts %d %s, and the records hold %d" % (complete[field], label, held))
+        if complete["tests_run"] == 0:
+            problems.append("the suite ran no tests")
 
-    def fixture_file(self, name):
-        """A copy of one fixture in a scratch directory, under its own name. Returns the copy's path."""
-        data = self.fixture_bytes(name)
-        path = os.path.join(self.scratch(), *name.split("/"))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as handle:
-            handle.write(data)
-        return path
+    tests, outcomes, used, ids = {}, {}, set(), {}
+    loads = []
+    for number, record in records:
+        kind = record["record"]
+        if kind == "start":
+            instance = record["instance"]
+            if instance in used:
+                problems.append("the records, line %d: instance %d started twice" % (number, instance) if instance in tests
+                                else "the records, line %d: instance %d starts after a record of it" % (number, instance))
+                continue
+            used.add(instance)
+            tests[instance] = record["test"]
+            outcomes[instance] = []
+            ids.setdefault(record["test"], []).append(instance)
+        elif kind == "outcome":
+            instance = record["instance"]
+            used.add(instance)
+            if instance not in tests:
+                problems.append("%s: %s, outside any test" % (record["test"], record["outcome"]))
+            elif record["test"] != tests[instance]:
+                problems.append("the records, line %d: the outcome of instance %d names %s, and that instance is %s"
+                                % (number, instance, record["test"], tests[instance]))
+            else:
+                outcomes[instance].append(record["outcome"])
+        elif kind == "loaded":
+            if record["instance"] is not None and record["instance"] not in tests:
+                problems.append("the records, line %d: %s was loaded by instance %d, which never started" % (number, record["fixture"], record["instance"]))
+                continue
+            loads.append(record)
 
-    def fixture_directory(self, name):
-        """A copy of every fixture in a directory, in a scratch directory. Returns the copy's path."""
-        source = self._path(name)
-        names = []
-        if os.path.isdir(source) and not os.path.islink(source):
-            for folder, folders, files in os.walk(source):
-                folders.sort()
-                names += [os.path.relpath(os.path.join(folder, file), self.fixtures).replace(os.sep, "/") for file in sorted(files)]
-        if not names:
-            self._record(name, None)
-            raise self.failureException("there is no directory of fixtures named %s under %s" % (name, self.fixtures))
-        target = os.path.join(self.scratch(), *name.split("/"))
-        for each in names:
-            data = self.fixture_bytes(each)
-            path = os.path.join(target, *each[len(name) + 1:].split("/"))
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "wb") as handle:
-                handle.write(data)
-        return target
+    passed = set()
+    for instance in sorted(tests):
+        got = outcomes[instance]
+        if not got:
+            problems.append("%s: started and has no outcome" % tests[instance])
+        elif set(got) == {PASSED}:
+            passed.add(instance)
+        else:
+            problems.append("%s: %s" % (tests[instance], ", ".join(sorted(set(got) - {PASSED}))))
+    for test, instances in sorted(ids.items()):
+        if len(instances) > 1:
+            problems.append("%s: ran %d times under one id" % (test, len(instances)))
+
+    covered = set()
+    for record in loads:
+        name, instance, sha = record["fixture"], record["instance"], record["sha256"]
+        if instance is None:
+            problems.append("%s: loaded outside any test, so no outcome counts for it" % name)
+        elif name not in found:
+            problems.append("%s: loaded by %s, and there is no such fixture" % (name, tests[instance]))
+        elif sha != found[name]:
+            problems.append("%s: loaded by %s with bytes that are not the fixture's as it stands" % (name, tests[instance]))
+        elif instance in passed:
+            covered.add(name)
+    for name in sorted(set(found) - covered):
+        problems.append("%s: no test that passed loaded it as it stands" % name)
+    return problems
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Run the suite in a process of its own and fail when a test it expects did not run and pass.")
+    parser.add_argument("--start", default=HERE, help=argparse.SUPPRESS)
+    parser.add_argument("--fixtures", default=FIXTURES, help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    before, problems = fixtures(args.fixtures)
+    directory = tempfile.mkdtemp(prefix="ratchet-records-")
+    try:
+        path = os.path.join(directory, "records.jsonl")
+        sys.stdout.flush()
+        status = subprocess.call([sys.executable, RUNNER, "--records", path, "--start", os.path.abspath(args.start)])
+        after, _ = fixtures(args.fixtures)
+        for name in sorted(set(before) | set(after)):
+            if before.get(name) != after.get(name):
+                problems.append("%s: changed while the suite ran" % name)
+        records, found = read_records(path)
+    finally:
+        shutil.rmtree(directory)
+    problems = status_problems(status) + problems + found + compare(records, before)
+    if problems:
+        print("expected_tests: FAIL: %d problem(s). Not every expected test ran and passed (ratchet.expected-tests-ran):" % len(problems))
+        for problem in problems:
+            print("- " + problem)
+        return 1
+    starts = sum(1 for _, record in records if record["record"] == "start")
+    print("expected_tests: every expected test ran and passed. %d tests, each id once, and %d fixtures, each loaded as it stands by a test that passed."
+          % (starts, len(before)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

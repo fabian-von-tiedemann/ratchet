@@ -1,7 +1,0 @@
-{
-  "releases": [
-    {"version": "0.3", "date": "2026-11-16", "changelog": "30f88b503a6e97f55f51e62a75f54e975ad888c143f907f40bbc6633e2096f13", "ratchet": "b4d7be2d0198b8f2502e9adb2a576a441c61864cc9fb4d53bf66ba00fd6aeec8"},
-    {"version": "0.2", "date": "2026-11-16", "changelog": "641af515c3406083ca411b169cc9f333085cd9af2003d890abe308f78e61abff"},
-    {"version": "0.1", "date": "2026-11-16", "changelog": "81d72b1e3137228a792b1fdf0da3c709aa7b706c64f0706d868327d378190f77"}
-  ]
-}

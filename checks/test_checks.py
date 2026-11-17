@@ -5,11 +5,10 @@
 Each fixture under checks/fixtures/ carries one fault, and the test names the
 message the check must give for it. Among them is every way that reviews have
 found to hide something from a check. A test loads a fixture through FixtureTest,
-which copies it into a scratch directory: the run fails if a fixture is not loaded
-by a test that passes (ratchet.expected-tests-ran). Standard library only.
+which copies it into a scratch directory: checks/expected_tests.py fails if a fixture
+is not loaded by a test that passes (ratchet.expected-tests-ran). Standard library only.
 """
 
-import hashlib
 import json
 import os
 import re
@@ -22,7 +21,7 @@ import tempfile
 import unicodedata
 import unittest
 
-from expected_tests import FixtureTest
+from suite_runner import FixtureTest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -362,10 +361,8 @@ class RegisterCheck(FixtureTest):
             json.dump(register, handle, ensure_ascii=False)
         sys.path.insert(0, HERE)
         import check_register
-        import registry
-        released = registry.release_state(registry.load(), registry.SOURCE)
         with open(markdown, "wb") as handle:
-            handle.write(check_register.render(register, released).encode("utf-8").replace("\ufffd".encode("utf-8"), b"\xff"))
+            handle.write(check_register.render(register).encode("utf-8").replace("\ufffd".encode("utf-8"), b"\xff"))
         code, output = run("check_register.py", data, "--markdown", markdown)
         self.assertEqual(code, 1, output)
         self.assertIn(outside("rule", "FFFD"), output)
@@ -699,231 +696,39 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.edit("ratchet.json", '"version": "', '"version": "9')
         self.assert_check_fails("CHANGELOG.md: the first entry must be")
 
-
-# A changelog entry: from its heading to the next heading of the same level, or to the end. Written here a second time.
-ENTRY_HEADING = re.compile(r"^## (Unreleased|([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\))$")
-# How the release workflow finds the entry of a version (D-2026-11-17-release-on-merge).
-RELEASE_ENTRY = r"^## %s \([^)]*\)\n(.*?)(?=^## |\Z)"
-
-
-def changelog_entries(text):
-    """[(heading, text of the entry)], in order. The text holds the heading and runs to the next heading."""
-    starts = [match.start() for match in re.finditer(r"^## ", text, re.M)]
-    return [(text[a:].split("\n", 1)[0], text[a:b]) for a, b in zip(starts, starts[1:] + [len(text)])]
-
-
-def sha256(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def git_show(revision, name):
-    """The text of a file at a revision, or None when git, the revision or the file is not there."""
-    try:
-        result = subprocess.run(["git", "-C", ROOT, "show", "%s:%s" % (revision, name)],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except OSError:
-        return None
-    return result.stdout.decode("utf-8") if result.returncode == 0 else None
-
-
-def released_state(root):
-    """Whether ratchet.json under root is the release it names, read here a second time from releases.json."""
-    with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
-        text = handle.read()
-    data = json.loads(text)
-    with open(os.path.join(root, "releases.json"), encoding="utf-8") as handle:
-        releases = json.load(handle)["releases"]
-    record = next(record for record in releases if record["version"] == data["version"])
-    return data["version"], record.get("ratchet") == sha256(text)
-
-
-class ReleasedText(unittest.TestCase):
-    """No text attributes unreleased content to a released version, and released text stays as it was at its tag."""
-
-    def test_every_released_entry_is_as_it_stood_in_every_tag_that_holds_it(self):
-        current = dict(changelog_entries(read("CHANGELOG.md")))
-        tags = [heading.split()[1] for heading in current if heading != "## Unreleased"]
-        compared = 0
-        for version in tags:
-            text = git_show("v" + version, "CHANGELOG.md")
-            if text is None:
-                continue
-            for heading, entry in changelog_entries(text):
-                with self.subTest(tag="v" + version, entry=heading):
-                    self.assertIn(heading, current)
-                    self.assertEqual(current[heading], entry, "%s differs from the tag v%s" % (heading, version))
-                    compared += 1
-        if not compared:
-            self.skipTest("this checkout holds none of the tags v%s" % ", v".join(tags))
-
-    def test_every_recorded_release_is_its_tag(self):
-        with open(os.path.join(ROOT, "releases.json"), encoding="utf-8") as handle:
-            releases = json.load(handle)["releases"]
-        if git_show("v" + releases[0]["version"], "README.md") is None:
-            self.skipTest("this checkout does not hold the tag v%s" % releases[0]["version"])
-        for record in releases:
-            with self.subTest(version=record["version"]):
-                tag = "v" + record["version"]
-                # The entry as it stood at the first tag whose changelog holds it.
-                texts = [git_show("v" + other["version"], "CHANGELOG.md") for other in reversed(releases)]
-                heading = "## %s (%s)" % (record["version"], record["date"])
-                first = next(dict(changelog_entries(text))[heading] for text in texts if text and heading in dict(changelog_entries(text)))
-                self.assertEqual(record["changelog"], sha256(first))
-                ratchet = git_show(tag, "ratchet.json")
-                if ratchet is None:
-                    self.assertNotIn("ratchet", record)
-                else:
-                    self.assertEqual(record["ratchet"], sha256(ratchet))
-
-    def test_every_block_that_names_the_version_says_whether_it_holds_unreleased_changes(self):
-        version, released = released_state(ROOT)
-        named = ("Ratchet %s, computed from" % version) if released else ("Ratchet %s with unreleased changes, computed from" % version)
-        for name in ("README.md", "RATCHET.md", "SELF-IMPROVEMENT.md"):
-            with self.subTest(document=name):
-                self.assertIn(named, read(name))
-        first = changelog_entries(read("CHANGELOG.md"))[0]
-        if released:
-            self.assertTrue(first[0].startswith("## %s (" % version), first[0])
-        else:
-            self.assertEqual(first[0], "## Unreleased")
-        self.assertIn(named, first[1])
-        if not released:
-            self.assertIn("Version %s, " % version, read("RATCHET.md"))
-            self.assertIn("with unreleased changes. See [CHANGELOG.md]", read("RATCHET.md"))
-            self.assertIn("Ratchet version: %s, with unreleased changes." % version, read("REGISTER.md"))
-            code, output = run("check_register.py", os.path.join(ROOT, "register.json"))
-            self.assertEqual(code, 0, output)
-            self.assertIn("match Ratchet %s with unreleased changes (" % version, output)
-
-
-class Releases(RepoCopy, unittest.TestCase):
-    """The changelog and the release records in a copy of this repo that a test may break."""
-
-    def entries(self):
-        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
-            return changelog_entries(handle.read())
-
-    def release(self, version="0.4", date="2026-12-01"):
-        """The steps of a release PR: rename the entry, bump the version, and record the release."""
-        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
-            old = json.load(handle)
-        self.edit("CHANGELOG.md", "## Unreleased\n", "## %s (%s)\n" % (version, date))
-        self.edit("ratchet.json", '"version": "%s"' % old["version"], '"version": "%s"' % version)
-        self.edit("ratchet.json", '"date": "%s"' % old["date"], '"date": "%s"' % date)
-        self.edit("register.json", '"ratchet_version": "%s"' % old["version"], '"ratchet_version": "%s"' % version)
-        self.edit("README.md", "--branch v%s " % old["version"], "--branch v%s " % version)
-        code, output = run("generate.py", root=self.copy)
-        self.assertEqual(code, 1, output)
-        self.assertIn("releases.json: there is no record of %s" % version, output)
-        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
-            ratchet = sha256(handle.read())
-        entry = self.entries()[0][1]
-        record = {"version": version, "date": date, "changelog": sha256(entry), "ratchet": ratchet}
-        self.assertIn(json.dumps(record), output)
-        self.edit("releases.json", '"releases": [\n', '"releases": [\n    %s,\n' % json.dumps(record))
+    def test_only_the_first_entry_of_the_changelog_is_generated(self):
+        # The count under the released heading of 0.3 was rewritten when every entry was generated.
         code, output = run("generate.py", root=self.copy)
         self.assertEqual(code, 0, output)
+        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertEqual(text, read("CHANGELOG.md"))
+        released = text[text.index("## 0.3 (2026-11-16)"):]
+        self.assertIn("Ratchet 0.3, computed from `ratchet.json`: the core has 35 rules.", released)
+        self.assertIn("Outside the core there are 20 experimental rules: 9 name a check", released)
+
+    def test_a_count_in_a_released_entry_is_not_checked_against_the_data(self):
+        self.edit("CHANGELOG.md", "Outside the core there are 20 experimental rules", "Outside the core there are 19 experimental rules")
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
 
-    def test_a_released_entry_edited_by_hand_fails(self):
-        self.edit("CHANGELOG.md", "- The icon.\n", "- The icons.\n")
-        self.assert_check_fails("CHANGELOG.md: the entry ## 0.2 (2026-11-16) is not as it was released")
-
-    def test_a_line_added_to_the_end_of_the_last_entry_fails(self):
-        self.append("CHANGELOG.md", "- Also this.\n")
-        self.assert_check_fails("CHANGELOG.md: the entry ## 0.1 (2026-11-16) is not as it was released")
-
-    def test_the_count_in_a_released_entry_is_not_regenerated(self):
-        code, output = run("generate.py", root=self.copy)
-        self.assertEqual(code, 0, output)
-        entry = dict(self.entries())["## 0.3 (2026-11-16)"]
-        self.assertIn("Outside the core there are 20 experimental rules: 9 name a check", entry)
-
-    def test_unreleased_changes_under_a_released_heading_fail(self):
-        entries = self.entries()
-        self.assertEqual(entries[0][0], "## Unreleased")
-        self.edit("CHANGELOG.md", entries[0][1], "")
-        self.assert_check_fails('CHANGELOG.md: ratchet.json is not Ratchet 0.3 as released, so the first entry must be "## Unreleased"')
-
-    def test_an_unreleased_entry_without_its_count_fails(self):
-        entry = self.entries()[0][1]
-        block = entry[entry.index("<!-- generated:count -->"):entry.index("<!-- /generated -->") + len("<!-- /generated -->")]
+    def test_a_first_entry_without_its_count_fails(self):
+        text = read("CHANGELOG.md")
+        first = text[:text.index("## 0.3 (")]
+        block = first[first.index("<!-- generated:count -->"):first.index("<!-- /generated -->") + len("<!-- /generated -->")]
         self.edit("CHANGELOG.md", block + "\n", "")
-        self.assert_check_fails("CHANGELOG.md: the first entry must hold exactly these generated blocks, once each: count")
+        self.assert_check_fails("CHANGELOG.md: the first entry must hold exactly these generated blocks, once each: count. Missing: count")
 
-    def test_a_count_in_the_unreleased_entry_edited_by_hand_fails(self):
-        self.edit("CHANGELOG.md", "with unreleased changes, computed", "with no unreleased changes, computed")
+    def test_a_count_in_the_first_entry_edited_by_hand_fails(self):
+        self.edit("CHANGELOG.md", "Ratchet 0.4, computed", "Ratchet 0.4 (almost), computed")
         self.assert_check_fails("CHANGELOG.md: generated text is out of date or was edited by hand")
 
     def test_a_heading_of_another_form_fails(self):
-        for heading in ("## unreleased", "## 0.4", "## 0.4 (soon)", "## 0.3  (2026-11-16)", "## Unreleased (2026-12-01)"):
+        for heading in ("## Unreleased", "## 0.3", "## 0.3 (soon)", "## 0.3  (2026-11-16)"):
             with self.subTest(heading=heading):
                 self.setUp()
-                self.edit("CHANGELOG.md", "## Unreleased\n", heading + "\n")
-                self.assert_check_fails("CHANGELOG.md: %r is not a heading of an entry" % heading)
-
-    def test_an_unreleased_entry_that_is_not_first_fails(self):
-        self.edit("CHANGELOG.md", "## 0.1 (2026-11-16)\n", "## Unreleased\n\n- Nothing.\n\n## 0.1 (2026-11-16)\n")
-        self.assert_check_fails('"## Unreleased" stands only first, and once')
-
-    def test_a_release_without_a_record_fails(self):
-        self.edit("releases.json", '"version": "0.2", "date": "2026-11-16"', '"version": "0.2", "date": "2026-11-15"')
-        self.assert_check_fails("CHANGELOG.md: the released entries must be the records of releases.json, newest first")
-
-    def test_a_record_of_a_form_the_check_does_not_know_fails(self):
-        cases = {
-            "an unknown field": ('"version": "0.2",', '"version": "0.2", "waived": "yes",', "unknown field 'waived'"),
-            "a short digest": ('"changelog": "', '"changelog": "0', "must be a sha256 of 64 lowercase hex digits"),
-            "a version twice": ('"version": "0.2"', '"version": "0.3"', "0.3 is recorded twice"),
-            "a date of another form": ('"date": "2026-11-16", "changelog"', '"date": "16 November", "changelog"', "date must look like 2026-01-31"),
-        }
-        for case, (old, new, message) in cases.items():
-            with self.subTest(case=case):
-                self.setUp()
-                self.edit("releases.json", old, new)
-                self.assert_check_fails("releases.json: ")
-                self.assert_check_fails(message)
-
-    def test_a_missing_record_file_fails(self):
-        os.remove(os.path.join(self.copy, "releases.json"))
-        self.assert_check_fails("releases.json")
-        code, output = run("check_register.py", os.path.join(self.copy, "register.json"), root=self.copy)
-        self.assertEqual(code, 2, output)
-        self.assertIn("releases.json", output)
-
-    def test_the_steps_of_a_release_pass_and_name_no_unreleased_changes(self):
-        self.release()
-        for name in ("README.md", "RATCHET.md", "SELF-IMPROVEMENT.md", "REGISTER.md"):
-            with open(os.path.join(self.copy, name), encoding="utf-8") as handle:
-                text = handle.read()
-            with self.subTest(document=name):
-                self.assertNotIn("with unreleased changes", text)
-        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
-            found = re.search(RELEASE_ENTRY % re.escape("0.4"), handle.read(), re.S | re.M)
-        self.assertIsNotNone(found)
-        count = found.group(1)[found.group(1).index("<!-- generated:count -->"):found.group(1).index("<!-- /generated -->")]
-        self.assertIn("Ratchet 0.4, computed from `ratchet.json`", count)
-        self.assertNotIn("unreleased", count)
-        self.assertIn("ratchet.expected-tests-ran", found.group(1))
-        code, output = run("check_register.py", os.path.join(self.copy, "register.json"), root=self.copy)
-        self.assertEqual(code, 0, output)
-        self.assertIn("match Ratchet 0.4 (", output)
-
-    def test_after_a_release_a_change_to_the_rules_needs_an_unreleased_entry(self):
-        self.release()
-        self.edit("ratchet.json", "Only the owner approves decisions.", "Only the owner approves every decision.")
-        self.edit("register.json", "Only the owner approves decisions.", "Only the owner approves every decision.")
-        code, output = run("generate.py", root=self.copy)
-        self.assertEqual(code, 1, output)
-        self.assertIn('ratchet.json is not Ratchet 0.4 as released, so the first entry must be "## Unreleased"', output)
-        self.edit("CHANGELOG.md", "## 0.4 (2026-12-01)\n", "## Unreleased\n\n<!-- generated:count -->\n<!-- /generated -->\n\nChanged:\n\n- A rule.\n\n## 0.4 (2026-12-01)\n")
-        code, output = run("generate.py", root=self.copy)
-        self.assertEqual(code, 0, output)
-        self.assertEqual(run("generate.py", "--check", root=self.copy)[0], 0)
-        entries = self.entries()
-        self.assertIn("Ratchet 0.4 with unreleased changes, computed", entries[0][1])
-        self.assertIn("Ratchet 0.4, computed", entries[1][1])
+                self.edit("CHANGELOG.md", "## 0.3 (2026-11-16)\n", heading + "\n")
+                self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
 
 
 class CodeOwnership(RepoCopy, unittest.TestCase):

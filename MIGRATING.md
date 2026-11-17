@@ -24,7 +24,7 @@ A register takes Ratchet's wording at the version it states, so these change whe
 
 Run these in the root of your own repo.
 
-1. Fetch Ratchet 0.3 into `.ratchet`, as in the [README](README.md#start-here).
+1. Fetch Ratchet 0.4 into `.ratchet`, as in the [README](README.md#start-here).
 2. Read your old `REGISTER.md` and write down the keys it adopts, the status of each check, and your own rules. Keep the old file under another name until you are done.
 3. Copy the template and write your project's name in it.
 
