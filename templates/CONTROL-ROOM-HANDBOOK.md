@@ -2,7 +2,7 @@
 
 ## Start of a session
 
-1. Read AGENTS.md, the register, this handbook and the latest handover in the status issue (#<n>).
+1. Read AGENTS.md, the register, this handbook and the latest handover.
 2. Check the open PRs, their heads and the state of their reviews.
 3. Check that the runs the workspaces have promised are actually running.
 
@@ -38,7 +38,7 @@
 
 ## Handover
 
-- [ ] Replace the handover in the status issue after every important event: what is running, what waits on what, the next step.
+- [ ] Replace the handover after every important event: what is running, what waits on what, the next step.
 
 ## Schedule
 

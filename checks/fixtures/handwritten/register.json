@@ -1,0 +1,21 @@
+{
+  "project": "a project written by hand",
+  "ratchet_version": "9.9",
+  "adopted": [
+    {
+      "key": "ratchet.example-one",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": "",
+      "status": "built",
+      "where": "`.github/workflows/tests.yml`"
+    },
+    {
+      "key": "ratchet.example-two",
+      "rule": "Prefer the simple solution.",
+      "ratchet": "Text only: simplicity is a judgment",
+      "source": "someone/somewhere `a-skill`"
+    }
+  ],
+  "own": []
+}
