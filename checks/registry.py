@@ -59,6 +59,14 @@ RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "sourc
 REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"}
 TOP_FIELDS = {"version", "date", "start", "parts", "sources", "rules"}
 
+SOURCE_FIELDS = {"name", "repo", "directory", "author", "commit", "license"}
+REQUIRED_SOURCE_FIELDS = {"name", "repo", "commit", "license"}
+# A source repository on GitHub: the address, an owner and a repository, and nothing else.
+GITHUB_REPO = re.compile(r"^https://github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})\Z")
+# A directory in a repository: plain names joined by /, with nothing before the first or after the last.
+SOURCE_DIRECTORY = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\Z")
+COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
+
 TABLE_HEADER = "| Key | Rule | Ratchet | Source |"
 TABLE_RULE = "|---|---|---|---|"
 
@@ -311,14 +319,73 @@ def validate(data, root):
         if key not in keys:
             problems.append("start names %s, which is not a rule" % key)
 
-    for source in data["sources"]:
-        if not isinstance(source, dict) or set(source) != {"name", "repo", "commit", "license"}:
-            problems.append("a source needs exactly name, repo, commit and license: %r" % (source,))
-        elif any(text_problem(source[field]) for field in ("name", "repo", "license")):
-            field = next(field for field in ("name", "repo", "license") if text_problem(source[field]))
-            problems.append("a source: %s %s" % (field, text_problem(source[field])))
-        elif not isinstance(source["commit"], str) or not re.match(r"^[0-9a-f]{40}$", source["commit"]):
-            problems.append("source %s: the commit must be a full 40-character sha" % source["name"])
+    problems.extend(source_problems(data["sources"]))
+    return problems
+
+
+def github_repo(value):
+    """(owner, repository) for the address of a repository on GitHub, or None."""
+    match = GITHUB_REPO.match(value) if isinstance(value, str) else None
+    if not match or match.group(2) in (".", "..") or match.group(2).endswith(".git"):
+        return None
+    return match.group(1), match.group(2)
+
+
+def plain_directory(value):
+    """Whether a value is a directory inside a repository: no . or .. part, no / at its ends."""
+    return (
+        isinstance(value, str) and bool(SOURCE_DIRECTORY.match(value))
+        and not any(part in (".", "..") for part in value.split("/"))
+    )
+
+
+def source_repo_text(source):
+    """The repo of a source as RATCHET.md shows it: the address, then the directory and the author if given."""
+    text = source["repo"]
+    if "directory" in source:
+        text += ", directory `%s`" % source["directory"]
+    if "author" in source:
+        text += " (by %s)" % source["author"]
+    return text
+
+
+def source_problems(sources):
+    """Why the list of sources breaks its form, as messages that each name the source. Empty if it holds.
+
+    A source has a name, a repo, a commit and a license, and may have a directory and an author. The repo is
+    https://github.com/ with an owner and a repository and nothing else. The directory is a plain path inside
+    the repository. The commit is a full sha in lowercase hex. The other fields are text from the fixed list.
+    """
+    if not isinstance(sources, list):
+        return ["sources must be a list"]
+    problems, names = [], set()
+    for number, source in enumerate(sources, 1):
+        name = source.get("name") if isinstance(source, dict) else None
+        label = name if isinstance(name, str) and text_problem(name) is None and WORD.search(name) else str(number)
+        said = []
+        if not isinstance(source, dict):
+            said.append("a source must be an object")
+        else:
+            said += ["missing field %r" % field for field in sorted(REQUIRED_SOURCE_FIELDS - set(source))]
+            said += ["unknown field %r" % field for field in sorted(set(source) - SOURCE_FIELDS)]
+            if not said:
+                for field in ("name", "author", "license"):
+                    if field in source and text_problem(source[field]):
+                        said.append("%s %s" % (field, text_problem(source[field])))
+                if not text_problem(name) and not WORD.search(name):
+                    said.append("the name holds no words")
+                elif label in names:
+                    said.append("the name is used twice")
+                names.add(label)
+                if github_repo(source["repo"]) is None:
+                    said.append("the repo must be https://github.com/ and an owner and a repository, and nothing else")
+                if "directory" in source and not plain_directory(source["directory"]):
+                    said.append("the directory must be a plain relative path inside the repository")
+                if not isinstance(source["commit"], str) or not COMMIT.match(source["commit"]):
+                    said.append("the commit must be a full 40-character sha, in lowercase hex")
+                if not said and text_problem(source_repo_text(source)):
+                    said.append("the repo as RATCHET.md shows it %s" % text_problem(source_repo_text(source)))
+        problems += ["source %s: %s" % (label, problem) for problem in said]
     return problems
 
 
