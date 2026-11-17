@@ -9,18 +9,25 @@ name: release
 # nothing is written: rerun the run of the commit the message names, then this one.
 # workflow_dispatch takes no input. It releases what ratchet.json names at the head of main,
 # under the same checks, and refuses any other branch.
+# schedule runs every day on the head of main, also when nothing is merged, so that a version left
+# unfinished by the last run, cancelled after its tag for example, is named by a red run within a day.
+# A scheduled run writes nothing: it fails and names the version, the commit of its tag and what is
+# missing, and passes when every version is finished. The script refuses every other event.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
 
 permissions:
   contents: read
 
 # One release run at a time, so that two runs never write at once. A run that waits is replaced
 # when a newer one is queued. The newer run then fails and names every older version on main that
-# is not finished, so no version is skipped without a red run.
+# is not finished, so no version is skipped without a red run. A scheduled run is in the same group:
+# when it replaces a waiting run of a push, it fails and names the version that run would have released.
 concurrency:
   group: release
   cancel-in-progress: false

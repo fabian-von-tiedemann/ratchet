@@ -77,8 +77,11 @@ HOSTILE = "\n".join([
 DONE_03 = {"tags": {"0.3": ("commit", EARLIER)}, "releases": [{"tag_name": "v0.3", "draft": False}]}
 
 
-class Cancelled(Exception):
-    """The run is cancelled: the fake stops answering at a chosen request."""
+class Cancelled(BaseException):
+    """The run is cancelled: the fake stops answering at a chosen request.
+
+    A BaseException, as KeyboardInterrupt is: GitHub stops a cancelled run, and the script cannot catch that.
+    """
 
 
 class FakeGitHub:
@@ -156,13 +159,13 @@ def made_up_history(text, version, sha):
     return [(sha, version)] + [(commit_of(v), v) for v in sorted(older, key=release.version_key, reverse=True)]
 
 
-def publish(text, version="0.4", github=None, sha=SHA, history=None):
+def publish(text, version="0.4", github=None, sha=SHA, history=None, report=False):
     """Run the script's publish step on a changelog. Returns (error text or None, output, fake)."""
     github = github if github is not None else FakeGitHub()
     history = history if history is not None else made_up_history(text, version, sha)
     out = io.StringIO()
     try:
-        release.publish(version, text, history, REPO, sha, github, out)
+        release.publish(version, text, history, REPO, sha, github, out, **({"report": True} if report else {}))
     except release.ReleaseError as error:
         return str(error), out.getvalue(), github
     return None, out.getvalue(), github
@@ -389,7 +392,7 @@ class Publish(unittest.TestCase):
     def test_a_tag_whose_target_does_not_match_after_creation_fails(self):
         github = FakeGitHub(moves_tag_to=OTHER, **DONE_03)
         error, _, github = publish(TWO, github=github)
-        self.assertIn("read back, the tag v0.4 does not point at %s" % SHA, error)
+        self.assertEqual(error, tag_unconfirmed("GET %s/git/ref/tags/v0.4: read back, the tag v0.4 does not point at %s" % (PATH, SHA), SHA)[9:-1])
 
     def test_a_created_tag_that_the_answer_puts_elsewhere_gets_no_release(self):
         class Elsewhere(FakeGitHub):
@@ -400,7 +403,9 @@ class Publish(unittest.TestCase):
                 return status, data
         github = Elsewhere(**DONE_03)
         error, _, github = publish(TWO, github=github)
-        self.assertIn("the answer says that the tag v0.4 points at another commit", error)
+        self.assertEqual(error, "POST %s/git/refs: the answer does not say that the tag v0.4 points at %s. Ratchet 0.4 is not finished: "
+                                "the tag v0.4 was created, and there is no release. Look at the tag by hand. If it points at commit %s, "
+                                "rerun the release run of that commit: it creates only the release." % (PATH, SHA, SHA))
         self.assertEqual(github.writes, [("POST", PATH + "/git/refs")])
 
     def test_an_api_error_writes_nothing_more(self):
@@ -447,7 +452,7 @@ class Publish(unittest.TestCase):
                     return status, data
             with self.subTest(answer=index):
                 error, out, github = publish(TWO, github=Changed(**DONE_03))
-                self.assertEqual(error, "POST %s/releases: the answer is not a published release for v0.4. Look at the releases by hand." % PATH)
+                self.assertEqual(error, release_missing("POST %s/releases: the answer is not a published release for v0.4" % PATH, SHA)[9:-1])
                 self.assertEqual(out, "")
                 self.assertNotIn(("GET", PATH + "/git/ref/tags/v0.4"), [call[:2] for call in github.calls])
 
@@ -628,7 +633,7 @@ class FakeOpener:
 
 
 def environment(**changes):
-    environ = {"GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA, "GITHUB_REF": MAIN}
+    environ = {"GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA, "GITHUB_REF": MAIN, "GITHUB_EVENT_NAME": "push"}
     environ.update(changes)
     return dict((k, v) for k, v in environ.items() if v is not None)
 
@@ -1093,6 +1098,374 @@ class Substitutes(unittest.TestCase):
         self.refused("the checkout has .git/objects/info/alternates, which reads objects from another store. Nothing was written.")
 
 
+API_URL = "https://api.github.com"
+KINDS = ("transport", "exception", "http", "not-json", "form")
+
+
+class Failing(FakeOpener):
+    """Fails one request in one way, and answers every other from the fake.
+
+    transport: no answer (urllib's URLError). exception: an error the script does not expect (RuntimeError).
+    http: HTTP 500. not-json: an answer that is not JSON. form: JSON of the wrong form.
+    lost: the request reaches the fake, and then its answer is lost. not-json and form always reach it.
+    """
+
+    def __init__(self, github, method, path, kind, lost=False):
+        FakeOpener.__init__(self, github)
+        self.target, self.kind, self.lost = (method, path), kind, lost
+
+    def open(self, request, timeout=None):
+        method, path = request.get_method(), request.full_url[len(API_URL):]
+        if (method, path) != self.target:
+            return FakeOpener.open(self, request, timeout)
+        self.requests.append(request)
+        body = json.loads(request.data.decode("utf-8")) if request.data else None
+        if self.lost or self.kind in ("not-json", "form"):
+            status, _ = self.github(method, path, body)
+        else:
+            self.github.calls.append((method, path, body))
+            status = 201 if method == "POST" else 200
+        if self.kind == "transport":
+            raise urllib.error.URLError("synthetic: no answer")
+        if self.kind == "exception":
+            raise RuntimeError("synthetic: an error the script does not expect")
+        if self.kind == "http":
+            raise urllib.error.HTTPError(request.full_url, 500, "error", {}, io.BytesIO(TOKEN.encode()))
+        answer = Response(status, None)
+        answer.raw = b"<html>not JSON</html>" if self.kind == "not-json" else b'["not", "an", "object"]'
+        return answer
+
+
+def main_with(opener, sha, root, event="push"):
+    out, err = io.StringIO(), io.StringIO()
+    code = release.main(["publish"], environ=environment(GITHUB_SHA=sha, GITHUB_EVENT_NAME=event), opener=opener,
+                        out=out, err=err, root=root)
+    return code, out.getvalue(), err.getvalue()
+
+
+def release_missing(cause, sha, version="0.4"):
+    """The one message of a failure after the tag is at sha and before its release is confirmed."""
+    return ("release: %s. Ratchet %s is not finished: the tag v%s points at commit %s, and its release is missing or was not confirmed. "
+            "Rerun the release run of commit %s, which the tag points at: it creates the release if it is missing, and writes nothing else.\n"
+            % (cause, version, version, sha, sha))
+
+
+def tag_unconfirmed(cause, sha, version="0.4"):
+    """The one message of a failure after the release is created and before its tag is read back."""
+    return ("release: %s. Ratchet %s is not finished: its release was created, and the tag v%s was not confirmed at commit %s. "
+            "Rerun the release run of commit %s: it writes nothing if the release is there, and it is green only if the tag points at that commit.\n"
+            % (cause, version, version, sha, sha))
+
+
+def tag_maybe(cause, sha, version="0.4"):
+    """The one message of a failure of the creation of the tag that may have created it."""
+    return ("release: %s. Ratchet %s is not finished: the tag v%s may have been created at commit %s, and there is no release. "
+            "Rerun the release run of commit %s: it creates the tag if it is missing, then the release.\n" % (cause, version, version, sha, sha))
+
+
+class AfterTheTag(unittest.TestCase):
+    """Round 1 of the narrowed claim, finding 2: every failure after the tag is created ends in one message.
+
+    It names the version and the commit the tag points at, says what is missing, and gives the rerun.
+    Each kind of failure is tried at each request after the tag: no answer, an error the script does not
+    expect, an HTTP error, an answer that is not JSON, and an answer of the wrong form.
+    """
+
+    def setUp(self):
+        self.checkout = Checkout()
+        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        self.four = self.checkout.commit("0.4", TWO)
+
+    def tearDown(self):
+        self.checkout.close()
+
+    def run_failing(self, github, method, path, kind, lost=False):
+        return main_with(Failing(github, method, path, kind, lost), self.four, self.checkout.directory)
+
+    def schedule(self, github):
+        return main_with(FakeOpener(github), self.four, self.checkout.directory, event="schedule")
+
+    def test_a_failure_of_the_publication_names_the_version_the_commit_and_the_rerun(self):
+        path = PATH + "/releases"
+        causes = {
+            "transport": "POST %s: no answer" % path,
+            "exception": "POST %s: an unexpected error (RuntimeError)" % path,
+            "http": "POST %s: HTTP 500" % path,
+            "not-json": "POST %s: HTTP 201, and the answer is not JSON" % path,
+            "form": "POST %s: the answer is not a published release for v0.4" % path,
+        }
+        for kind in KINDS:
+            for tagged in (False, True):
+                with self.subTest(kind=kind, tagged_before=tagged):
+                    github = FakeGitHub(**DONE_03)
+                    if tagged:
+                        github.tags["0.4"] = ("commit", self.four)
+                    code, out, err = self.run_failing(github, "POST", path, kind)
+                    self.assertEqual((code, out), (1, ""))
+                    self.assertEqual(err, release_missing(causes[kind], self.four))
+                    self.assertEqual(github.tags["0.4"], ("commit", self.four))
+                    self.assertNotIn(TOKEN, err)
+                    if kind in ("not-json", "form"):
+                        continue  # The release reached the fake; the rerun below is for those that did not.
+                    # The next scheduled run names the version, and writes nothing. The rerun finishes it.
+                    github.calls = []
+                    code, out, err = self.schedule(github)
+                    self.assertEqual(code, 1)
+                    self.assertIn("Ratchet 0.4 is not finished: the tag v0.4 points at commit %s" % self.four, err)
+                    self.assertEqual(github.writes, [])
+                    code, out, err, _ = self.checkout.run(github, self.four)
+                    self.assertEqual((code, err), (0, ""))
+                    self.assertEqual(github.writes, [("POST", path)])
+
+    def test_a_publication_whose_answer_is_lost_is_found_by_the_rerun(self):
+        path = PATH + "/releases"
+        for kind in ("transport", "exception", "http"):
+            with self.subTest(kind=kind):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = self.run_failing(github, "POST", path, kind, lost=True)
+                self.assertEqual(code, 1)
+                self.assertIn("Ratchet 0.4 is not finished: the tag v0.4 points at commit %s, and its release is missing or was not confirmed"
+                              % self.four, err)
+                self.assertEqual(len([r for r in github.releases if r["tag_name"] == "v0.4"]), 1)
+                github.calls = []
+                code, out, err = self.schedule(github)
+                self.assertEqual((code, err), (0, ""))
+                code, out, err, _ = self.checkout.run(github, self.four)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(github.writes, [])
+                self.assertIn("v0.4 is tagged at this commit and released. Nothing to do", out)
+
+    def test_a_failure_of_the_read_back_says_that_the_release_was_created(self):
+        path = PATH + "/git/ref/tags/v0.4"
+        causes = {
+            "transport": "GET %s: no answer" % path,
+            "exception": "GET %s: an unexpected error (RuntimeError)" % path,
+            "http": "GET %s: HTTP 500" % path,
+            "not-json": "GET %s: HTTP 200, and the answer is not JSON" % path,
+            "form": "GET %s: read back, the tag v0.4 does not point at %s" % (path, self.four),
+        }
+        for kind in KINDS:
+            with self.subTest(kind=kind):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = self.run_failing(github, "GET", path, kind)
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, tag_unconfirmed(causes[kind], self.four))
+                github.calls = []
+                code, out, err, _ = self.checkout.run(github, self.four)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(github.writes, [])
+
+    def test_a_creation_of_the_tag_that_may_have_written_it_says_so(self):
+        path = PATH + "/git/refs"
+        causes = {
+            "transport": "POST %s: no answer" % path,
+            "exception": "POST %s: an unexpected error (RuntimeError)" % path,
+            "http": "POST %s: HTTP 500" % path,
+            "not-json": "POST %s: HTTP 201, and the answer is not JSON" % path,
+        }
+        for kind, lost in (("transport", False), ("transport", True), ("exception", True), ("http", False), ("not-json", False)):
+            with self.subTest(kind=kind, lost=lost):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = self.run_failing(github, "POST", path, kind, lost)
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, tag_maybe(causes[kind], self.four))
+                github.calls = []
+                code, out, err, _ = self.checkout.run(github, self.four)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(github.tags["0.4"], ("commit", self.four))
+                self.assertEqual(github.releases[-1]["tag_name"], "v0.4")
+
+    def test_an_answer_to_the_creation_of_the_tag_of_the_wrong_form_says_the_tag_was_created(self):
+        github = FakeGitHub(**DONE_03)
+        code, out, err = self.run_failing(github, "POST", PATH + "/git/refs", "form")
+        self.assertEqual(code, 1)
+        self.assertEqual(err, (
+            "release: POST %s/git/refs: the answer does not say that the tag v0.4 points at %s. Ratchet 0.4 is not finished: "
+            "the tag v0.4 was created, and there is no release. Look at the tag by hand. If it points at commit %s, "
+            "rerun the release run of that commit: it creates only the release.\n" % (PATH, self.four, self.four)))
+        self.assertEqual(github.writes, [("POST", PATH + "/git/refs")])
+
+    def test_any_error_raised_after_the_tag_ends_in_the_one_message(self):
+        # The API itself raises, at each request after the tag, an error of each kind the script does not expect.
+        for target in (("POST", PATH + "/releases"), ("GET", PATH + "/git/ref/tags/v0.4")):
+            for exception in (KeyError, TypeError, ValueError, AttributeError, IndexError, OSError, release.ReleaseError):
+                class Raising(FakeGitHub):
+                    def __call__(self, method, path, body=None):
+                        if (method, path) == target:
+                            self.calls.append((method, path, body))
+                            raise exception("synthetic %s" % TOKEN)
+                        return FakeGitHub.__call__(self, method, path, body)
+                with self.subTest(target=target, exception=exception.__name__):
+                    error, out, github = publish(TWO, github=Raising(**DONE_03), sha=SHA)
+                    expected = release_missing if target[0] == "POST" else tag_unconfirmed
+                    # A ReleaseError keeps its own text as the cause. main() takes the token out of it (see Token).
+                    cause = ("synthetic %s" % TOKEN if exception is release.ReleaseError
+                             else "%s %s: an unexpected error (%s)" % (target[0], target[1], exception.__name__))
+                    self.assertEqual(error, expected(cause, SHA)[len("release: "):-1])
+                    self.assertEqual(out, "")
+
+    def test_a_transport_error_before_the_tag_says_that_nothing_was_written(self):
+        # The reviewer's mutation turned the "no answer" of the transport into an exception that is not caught.
+        for method, path in (("GET", PATH + "/git/matching-refs/tags/v"), ("GET", PATH + "/releases?per_page=100&page=1")):
+            with self.subTest(path=path):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = self.run_failing(github, method, path, "transport")
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, "release: %s %s: no answer. Nothing was written.\n" % (method, path))
+                self.assertEqual(github.writes, [])
+
+
+class Scheduled(unittest.TestCase):
+    """Round 1 of the narrowed claim, finding 1: a scheduled run comes even when nothing is merged.
+
+    It runs on the head of main, writes nothing, and fails and names the version when the version
+    in ratchet.json there, or an older one, is not finished. On a finished state it passes.
+    """
+
+    def setUp(self):
+        self.checkout = Checkout()
+        self.three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        self.four = self.checkout.commit("0.4", TWO)
+
+    def tearDown(self):
+        self.checkout.close()
+
+    def schedule(self, github, sha=None):
+        sha = sha or self.four
+        git(self.checkout.directory, "checkout", "-q", "--detach", sha)
+        opener = FakeOpener(github)
+        code, out, err = main_with(opener, sha, self.checkout.directory, event="schedule")
+        return code, out, err, opener
+
+    def test_a_run_cancelled_after_its_tag_is_named_by_the_next_scheduled_run(self):
+        github = FakeGitHub(cancel=("POST", PATH + "/releases"), **DONE_03)
+        with self.assertRaises(Cancelled):
+            self.checkout.run(github, self.four)
+        github.cancel = None
+        github.calls = []
+        code, out, err, opener = self.schedule(github)
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(err, "release: Ratchet 0.4 is not finished: the tag v0.4 points at commit %s, the head of main, and there is no "
+                              "published release. A scheduled run writes nothing. Rerun the release run of commit %s, which the tag "
+                              "points at: it creates only the release.\n" % (self.four, self.four))
+        self.assertEqual(github.writes, [])
+        self.assertEqual(set(r.get_method() for r in opener.requests), {"GET"})
+        # The rerun finishes it, and the next scheduled run passes and writes nothing.
+        code, out, err, _ = self.checkout.run(github, self.four)
+        self.assertEqual((code, err), (0, ""))
+        github.calls = []
+        code, out, err, _ = self.schedule(github)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.writes, [])
+        self.assertIn("v0.4 is tagged at this commit and released. Nothing to do", out)
+
+    def test_a_version_with_no_tag_is_named_and_not_tagged(self):
+        # The run of 0.4 never ran, or was replaced. Later commits keep 0.4. The scheduled run is on the head.
+        head = self.checkout.commit(text=TWO + "\nA later change.\n")
+        for sha in (self.four, head):
+            with self.subTest(head=sha):
+                github = FakeGitHub(**DONE_03)
+                code, out, err, opener = self.schedule(github, sha)
+                self.assertEqual(code, 1)
+                self.assertEqual(err, "release: Ratchet 0.4 is not finished: there is no tag v0.4 and no release, and ratchet.json at the "
+                                      "head of main, commit %s, names 0.4. A scheduled run writes nothing. Rerun the release run of commit "
+                                      "%s, the first commit on main whose ratchet.json names 0.4, or start the workflow by hand on main.\n"
+                                      % (sha, self.four))
+                self.assertEqual(github.writes, [])
+                self.assertNotIn("0.4", github.tags)
+
+    def test_a_finished_state_passes_and_writes_nothing(self):
+        head = self.checkout.commit(text=TWO + "\nA later change.\n")
+        done = dict(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", self.four)},
+                    releases=DONE_03["releases"] + [{"tag_name": "v0.4", "draft": False}], ancestors=[self.four])
+        for sha, said in ((self.four, "v0.4 is tagged at this commit and released. Nothing to do"),
+                          (head, "v0.4 is released at an earlier commit, and this commit does not raise the version. Nothing to do")):
+            with self.subTest(head=sha):
+                github = FakeGitHub(**done)
+                code, out, err, opener = self.schedule(github, sha)
+                self.assertEqual((code, err), (0, ""))
+                self.assertIn(said, out)
+                self.assertEqual(github.writes, [])
+
+    def test_an_unfinished_older_version_is_named(self):
+        five = self.checkout.commit("0.5", THREE)
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", self.four), "0.5": ("commit", five)},
+                            releases=DONE_03["releases"] + [{"tag_name": "v0.5", "draft": False}])
+        code, out, err, _ = self.schedule(github, five)
+        self.assertEqual(code, 1)
+        self.assertIn("0.4: a tag and no published release. Rerun the release run of commit %s, which the tag points at." % self.four, err)
+        self.assertEqual(github.writes, [])
+
+    def test_a_draft_or_a_tag_elsewhere_is_named_and_nothing_written(self):
+        cases = (
+            ({"0.4": ("commit", self.four)}, [{"tag_name": "v0.4", "draft": True}], "a draft release for v0.4 exists"),
+            ({"0.4": ("commit", OTHER)}, [], "the tag v0.4 points at another commit than this one, and has no published release"),
+            ({}, [{"tag_name": "v0.4", "draft": False}], "a release for v0.4 exists, and the tag does not"),
+        )
+        for tags, releases, said in cases:
+            with self.subTest(said=said):
+                github = FakeGitHub(tags=dict(DONE_03["tags"], **tags), releases=DONE_03["releases"] + releases)
+                code, out, err, _ = self.schedule(github)
+                self.assertEqual(code, 1)
+                self.assertIn(said, err)
+                self.assertEqual(github.writes, [])
+
+    def test_a_scheduled_run_sends_no_write_even_if_the_logic_asked_for_one(self):
+        github = FakeGitHub(**DONE_03)
+        api = release.read_only(github)
+        self.assertEqual(api("GET", PATH + "/git/matching-refs/tags/v")[0], 200)
+        for method in ("POST", "PATCH", "PUT", "DELETE", "get"):
+            with self.subTest(method=method):
+                with self.assertRaises(release.ReleaseError) as caught:
+                    api(method, PATH + "/git/refs", {"ref": "refs/tags/v0.4", "sha": SHA})
+                self.assertEqual(str(caught.exception), "%s %s/git/refs: a scheduled run writes nothing, and the request was not sent"
+                                 % (method, PATH))
+        self.assertEqual(github.calls, [("GET", PATH + "/git/matching-refs/tags/v", None)])
+        # The logic of publish, told to report, raises before any write in each case that would write in a push run.
+        for tags, releases in (({}, []), ({"0.4": ("commit", SHA)}, [])):
+            with self.subTest(tags=tags):
+                github = FakeGitHub(tags=dict(DONE_03["tags"], **tags), releases=DONE_03["releases"] + releases)
+                error, _, github = publish(TWO, github=github, report=True)
+                self.assertIn("A scheduled run writes nothing", error)
+                self.assertEqual(github.writes, [])
+
+    def test_main_gives_a_scheduled_run_only_the_read_only_api(self):
+        # Whatever publish asks for in a scheduled run, a write is not sent.
+        def writes_anyway(version, text, history, repo, sha, api, out, report=False):
+            api("POST", PATH + "/git/refs", {"ref": "refs/tags/v0.4", "sha": sha})
+        github = FakeGitHub(**DONE_03)
+        opener = FakeOpener(github)
+        with mock.patch.object(release, "publish", writes_anyway):
+            code, out, err = main_with(opener, self.four, self.checkout.directory, event="schedule")
+        self.assertEqual(code, 1)
+        self.assertEqual(err, "release: POST %s/git/refs: a scheduled run writes nothing, and the request was not sent\n" % PATH)
+        self.assertEqual(opener.requests, [])
+
+    def test_a_push_and_a_run_by_hand_still_write(self):
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = main_with(FakeOpener(github), self.four, self.checkout.directory, event=event)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
+
+    def test_the_event_is_read_strictly_and_a_scheduled_run_is_only_on_main(self):
+        for changes in ({"GITHUB_EVENT_NAME": None}, {"GITHUB_EVENT_NAME": ""}, {"GITHUB_EVENT_NAME": "pull_request"},
+                        {"GITHUB_EVENT_NAME": "pull_request_target"}, {"GITHUB_EVENT_NAME": "Schedule"},
+                        {"GITHUB_EVENT_NAME": "schedule\n"}, {"GITHUB_EVENT_NAME": "release"}):
+            with self.subTest(changes=changes):
+                code, _, err, opener = run_main(FakeGitHub(), environ=environment(**changes))
+                self.assertEqual(code, 1)
+                self.assertEqual(err, "release: GITHUB_EVENT_NAME is not push, workflow_dispatch or schedule\n")
+                self.assertEqual(opener.requests, [])
+        for ref in ("refs/heads/personlig/x", "refs/tags/v0.4", None):
+            with self.subTest(ref=ref):
+                code, _, err, opener = run_main(FakeGitHub(), environ=environment(GITHUB_EVENT_NAME="schedule", GITHUB_REF=ref))
+                self.assertEqual(code, 1)
+                self.assertIn("GITHUB_REF is not refs/heads/main", err)
+                self.assertEqual(opener.requests, [])
+
+
 class Token(unittest.TestCase):
     """The token comes from GITHUB_TOKEN, goes only to api.github.com, and is never printed."""
 
@@ -1299,7 +1672,8 @@ class Workflow(unittest.TestCase):
     def test_the_workflow_keeps_its_form(self):
         lines = self.lines()
         text = "\n".join(lines)
-        self.assertIn("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n", text)
+        self.assertIn("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n  schedule:\n    - cron: \"23 4 * * *\"\n\n"
+                      "permissions:\n  contents: read\n", text)
         self.assertFalse([l for l in lines if "inputs:" in l])
         self.assertEqual([l for l in lines if "contents: write" in l], ["      contents: write"])
         self.assertEqual([l.strip(" ") for l in lines if "runs-on:" in l], ["runs-on: ubuntu-24.04"])
@@ -1361,9 +1735,18 @@ class Workflow(unittest.TestCase):
         self.assertEqual([l.strip(" ") for l in self.code() if "permissions" in l or "write" in l or "read-all" in l],
                          ["permissions:", "permissions:", "contents: write"])
 
-    def test_it_runs_only_on_a_push_to_main_and_by_hand_with_no_input(self):
-        self.assertEqual(self.block("on:"), ["on:", "  push:", "    branches: [main]", "  workflow_dispatch:"])
+    def test_it_runs_only_on_a_push_to_main_by_hand_with_no_input_and_every_day(self):
+        self.assertEqual(self.block("on:"), ["on:", "  push:", "    branches: [main]", "  workflow_dispatch:",
+                                             "  schedule:", '    - cron: "23 4 * * *"'])
         self.assertFalse([l for l in self.code() if l.strip(" ").startswith(("if:", "- if:"))])
+
+    def test_the_schedule_runs_at_least_once_a_day(self):
+        # Round 1 of the narrowed claim, finding 1: a run comes even when nothing is merged. One cron line, with a fixed
+        # minute and hour and every day of the month, every month and every day of the week, so no day is left out.
+        crons = [l.strip(" ") for l in self.code() if "cron" in l]
+        self.assertEqual(len(crons), 1)
+        self.assertRegex(crons[0], r'^- cron: "([0-5]?[0-9]) ([01]?[0-9]|2[0-3]) \* \* \*"\Z')
+        self.assertEqual([l for l in self.code() if "schedule" in l], ["  schedule:"])
 
     def test_the_checkout_holds_the_whole_history_of_main(self):
         # Round 1 of release-links, finding 1: the script reads every version that main has had, so the clone is not shallow.
@@ -1393,6 +1776,8 @@ class Workflow(unittest.TestCase):
             "  push:",
             "    branches: [main]",
             "  workflow_dispatch:",
+            "  schedule:",
+            '    - cron: "23 4 * * *"',
             "permissions:",
             "  contents: read",
             "concurrency:",

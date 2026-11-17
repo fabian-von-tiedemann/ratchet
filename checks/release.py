@@ -20,9 +20,14 @@ data of the runner or deliberately writes a version in an unusual form. Two chea
 anyway: every version has one strict form, and a checkout with grafts, replace refs, a shallow file
 or alternates is refused before any history is read.
 
-publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_REF from the
-environment. The token is sent only to https://api.github.com and is never printed. It
-never moves, deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
+Every failure after the tag is created, of any kind, ends in one message that names the version and
+the commit of the tag, says what is missing, and gives the rerun (finish_release).
+
+publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF and GITHUB_EVENT_NAME from the
+environment. A scheduled run (GITHUB_EVENT_NAME schedule) writes nothing: it fails and names the version
+when the version at the head of main, or an older one, is not finished, and passes when all are.
+The token is sent only to https://api.github.com and is never printed. It never moves,
+deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -54,6 +59,8 @@ RELEASE_LINE = ("Ratchet %(version)s: see [the changelog entry](https://github.c
 # Versions tagged before Ratchet published releases. Each needs its tag and no release.
 BEFORE_RELEASES = ("0.1",)
 MAIN = "refs/heads/main"
+# The events the workflow runs on. A scheduled run only reads (D-2026-11-17-release-narrow-claim, round 1, finding 1).
+EVENTS = ("push", "workflow_dispatch", "schedule")
 TAG_PREFIX = "refs/tags/v"
 SHA = re.compile(r"^[0-9a-f]{40}\Z")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*\Z")
@@ -302,11 +309,30 @@ def github(token, opener=None):
 
 
 def request(api, method, path, body, expected, after):
-    """Make one request. On any other status than the expected one, fail and say what was written."""
-    status, data = api(method, path, body)
+    """Make one request. On no answer, or any other status than the expected one, fail and say what was written.
+
+    With after None, the failure says only the method, the path and what went wrong: finish_release says the rest.
+    """
+    try:
+        status, data = api(method, path, body)
+    except ReleaseError as error:
+        if after is None:
+            raise
+        raise ReleaseError("%s. %s" % (str(error).rstrip("."), after))
     if status != expected:
-        raise ReleaseError("%s %s: HTTP %d. %s" % (method, path, status, after))
+        raise ReleaseError("%s %s: HTTP %d%s" % (method, path, status, "" if after is None else ". " + after))
     return data
+
+
+def read_only(api):
+    """The api of a scheduled run: it sends a GET and refuses every other request, which is not sent."""
+
+    def call(method, path, body=None):
+        if method != "GET":
+            raise ReleaseError("%s %s: a scheduled run writes nothing, and the request was not sent" % (method, path))
+        return api(method, path, body)
+
+    return call
 
 
 def malformed(method, path):
@@ -356,19 +382,68 @@ def points_at(data, ref, sha):
             and data["object"].get("type") == "commit" and data["object"].get("sha") == sha)
 
 
-def create_release(api, repo, tag, version, body, sha):
-    """Create the release for a tag that is at sha, then read the tag back."""
-    path = "/repos/%s/releases" % repo
-    data = request(api, "POST", path, {"tag_name": tag, "name": "Ratchet %s" % version, "body": body,
-                                       "draft": False, "prerelease": False}, 201,
-                   "The tag %s is at %s and has no release. Rerun this run: it finds the tag at this commit and creates only the release." % (tag, sha))
-    if not (isinstance(data, dict) and data.get("tag_name") == tag and data.get("draft") is False):
-        raise ReleaseError("POST %s: the answer is not a published release for %s. Look at the releases by hand." % (path, tag))
+# What is not finished after a failure once the tag may exist, and the rerun that finishes it. One form for each
+# state, filled with the version, the tag and the commit. A failure after the tag ends in one of these, and in nothing else.
+TAG_MAYBE = ("Ratchet %(version)s is not finished: the tag %(tag)s may have been created at commit %(sha)s, and there is no release. "
+             "Rerun the release run of commit %(sha)s: it creates the tag if it is missing, then the release.")
+TAG_ELSEWHERE = ("Ratchet %(version)s is not finished: the tag %(tag)s was created, and there is no release. Look at the tag by hand. "
+                 "If it points at commit %(sha)s, rerun the release run of that commit: it creates only the release.")
+RELEASE_MISSING = ("Ratchet %(version)s is not finished: the tag %(tag)s points at commit %(sha)s, and its release is missing or was "
+                   "not confirmed. Rerun the release run of commit %(sha)s, which the tag points at: it creates the release if it is "
+                   "missing, and writes nothing else.")
+TAG_UNCONFIRMED = ("Ratchet %(version)s is not finished: its release was created, and the tag %(tag)s was not confirmed at commit "
+                   "%(sha)s. Rerun the release run of commit %(sha)s: it writes nothing if the release is there, and it is green only "
+                   "if the tag points at that commit.")
+
+
+def after_tag(state, error, method, path, version, tag, sha):
+    """The one message of a failure once the tag may exist: what failed, then what is not finished and the rerun.
+
+    error is any exception. A ReleaseError says what failed. Any other is named by its type and the request,
+    and its text is not shown.
+    """
+    if isinstance(error, ReleaseError):
+        cause = str(error).rstrip(".")
+    else:
+        cause = "%s %s: an unexpected error (%s)" % (method, path, type(error).__name__)
+    return "%s. %s" % (cause, state % {"version": version, "tag": tag, "sha": sha})
+
+
+def create_tag(api, repo, tag, version, sha):
+    """Create the tag at sha. A refusal writes nothing. Every other failure may have written the tag, and says so."""
     ref = "refs/tags/%s" % tag
-    path = "/repos/%s/git/ref/tags/%s" % (repo, tag)
-    data = request(api, "GET", path, None, 200, "The release for %s was created, and its tag could not be read back." % tag)
+    path = "/repos/%s/git/refs" % repo
+    try:
+        status, data = api("POST", path, {"ref": ref, "sha": sha})
+    except Exception as error:
+        raise ReleaseError(after_tag(TAG_MAYBE, error, "POST", path, version, tag, sha))
+    if status == 422:
+        raise ReleaseError("POST %s: HTTP 422. The tag %s was not created, and nothing was written." % (path, tag))
+    if status != 201:
+        raise ReleaseError(after_tag(TAG_MAYBE, ReleaseError("POST %s: HTTP %d" % (path, status)), "POST", path, version, tag, sha))
     if not points_at(data, ref, sha):
-        raise ReleaseError("GET %s: read back, the tag %s does not point at %s. The release was created. Look at it by hand." % (path, tag, sha))
+        raise ReleaseError(after_tag(TAG_ELSEWHERE, ReleaseError("POST %s: the answer does not say that the tag %s points at %s"
+                                                                 % (path, tag, sha)), "POST", path, version, tag, sha))
+
+
+def finish_release(api, repo, tag, version, body, sha):
+    """Create the release for a tag that is at sha, then read the tag back.
+
+    Every failure here, of any kind, ends in one message (after_tag): no answer, an error the script does not
+    expect, an HTTP error, an answer that is not JSON or not of the form expected. Nothing after the tag exits without it.
+    """
+    state, method, path = RELEASE_MISSING, "POST", "/repos/%s/releases" % repo
+    try:
+        data = request(api, method, path, {"tag_name": tag, "name": "Ratchet %s" % version, "body": body,
+                                           "draft": False, "prerelease": False}, 201, None)
+        if not (isinstance(data, dict) and data.get("tag_name") == tag and data.get("draft") is False):
+            raise ReleaseError("POST %s: the answer is not a published release for %s" % (path, tag))
+        state, method, path = TAG_UNCONFIRMED, "GET", "/repos/%s/git/ref/tags/%s" % (repo, tag)
+        data = request(api, method, path, None, 200, None)
+        if not points_at(data, "refs/tags/%s" % tag, sha):
+            raise ReleaseError("GET %s: read back, the tag %s does not point at %s" % (path, tag, sha))
+    except Exception as error:
+        raise ReleaseError(after_tag(state, error, method, path, version, tag, sha))
 
 
 def first_commits(history, version, sha):
@@ -409,12 +484,14 @@ def unfinished(first, version, tags, releases):
     return problems
 
 
-def publish(version, text, history, repo, sha, api, out):
+def publish(version, text, history, repo, sha, api, out, report=False):
     """Tag sha as v<version> and release it, or find that it is done. ReleaseError on every fault.
 
     history is main_history() of sha. Only versions up to this one are looked at. Nothing is
     written before every check has passed, and nothing is written for an older version. A tag
     is created and never moved, deleted or edited. Versions are compared as version_key, pairs of integers.
+    With report, the run of a schedule, it writes nothing: where a run of a push would write, it fails and names
+    the version, the commit and what is missing.
     """
     this = version_key(checked(version, "ratchet.json in the checkout"))
     entries = [version_key(v) for v in changelog_versions(text)]
@@ -445,14 +522,13 @@ def publish(version, text, history, repo, sha, api, out):
     if this not in tags:
         if mine:
             raise ReleaseError("a release for %s exists, and the tag does not. Publish or remove it by hand. Nothing was written." % tag)
-        ref = "refs/tags/%s" % tag
-        path = "/repos/%s/git/refs" % repo
-        data = request(api, "POST", path, {"ref": ref, "sha": sha}, 201,
-                       "The tag %s was not created, and nothing was written." % tag)
-        if not points_at(data, ref, sha):
-            raise ReleaseError("POST %s: the answer says that the tag %s points at another commit than %s. "
-                               "No release was created. Look at the tag by hand." % (path, tag, sha))
-        create_release(api, repo, tag, version, body, sha)
+        if report:
+            raise ReleaseError("Ratchet %s is not finished: there is no tag %s and no release, and ratchet.json at the head of main, "
+                               "commit %s, names %s. A scheduled run writes nothing. Rerun the release run of commit %s, the first "
+                               "commit on main whose ratchet.json names %s, or start the workflow by hand on main."
+                               % (version, tag, sha, version, first[this], version))
+        create_tag(api, repo, tag, version, sha)
+        finish_release(api, repo, tag, version, body, sha)
         out.write("Tagged %s at %s and released Ratchet %s.\n" % (tag, sha, version))
         return
 
@@ -463,9 +539,13 @@ def publish(version, text, history, repo, sha, api, out):
         if mine:
             out.write("%s is tagged at this commit and released. Nothing to do.\n" % tag)
             return
+        if report:
+            raise ReleaseError("Ratchet %s is not finished: the tag %s points at commit %s, the head of main, and there is no published "
+                               "release. A scheduled run writes nothing. Rerun the release run of commit %s, which the tag points at: "
+                               "it creates only the release." % (version, tag, sha, sha))
         # A rerun of this version's own run: the tag is at the approved commit, and the text is
         # the fixed line for this version. Only the release is created.
-        create_release(api, repo, tag, version, body, sha)
+        finish_release(api, repo, tag, version, body, sha)
         out.write("The tag %s was already at %s. Released Ratchet %s.\n" % (tag, sha, version))
         return
 
@@ -532,8 +612,13 @@ def main(argv=None, environ=None, opener=None, out=None, err=None, root=None):
         sha = environment(environ, "GITHUB_SHA", SHA)
         if environ.get("GITHUB_REF") != MAIN:
             raise ReleaseError("GITHUB_REF is not %s: a release is made only from main" % MAIN)
+        event = environ.get("GITHUB_EVENT_NAME")
+        if event not in EVENTS:
+            raise ReleaseError("GITHUB_EVENT_NAME is not push, workflow_dispatch or schedule")
+        report = event == "schedule"
+        api = github(environ["GITHUB_TOKEN"], opener)
         text = read_text(path)
-        publish(version, text, main_history(root, sha), repo, sha, github(environ["GITHUB_TOKEN"], opener), out)
+        publish(version, text, main_history(root, sha), repo, sha, read_only(api) if report else api, out, report=report)
         return 0
     except ReleaseError as error:
         message = str(error)
