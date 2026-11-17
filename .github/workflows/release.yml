@@ -1,7 +1,9 @@
 name: release
 
 # Tags and releases a new version when it reaches main (D-2026-11-17-release-on-merge).
-# Never moves, deletes or edits a tag (repo.tags-stay): when the tag or a release for the version exists, it does nothing.
+# The logic is checks/release.py, tested without network by checks/test_release.py: see checks/README.md.
+# It never moves, deletes or edits a tag (repo.tags-stay).
+# This file is the same, byte for byte, as checks/fixtures/release/release.yml, and a test compares them.
 
 on:
   push:
@@ -10,6 +12,9 @@ on:
 permissions:
   contents: read
 
+# One release run at a time, so that two runs never write at once. A run that waits is replaced
+# when a newer one is queued. The newer run then fails and names every older version in the
+# changelog that has no tag, so no version is skipped without a red run.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -24,67 +29,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Find the version and whether it is released
-        id: version
+      - name: Generated text matches the data files
+        run: python3 checks/generate.py --check
+      - name: This repo's own register has not drifted
+        run: python3 checks/check_register.py register.json --markdown REGISTER.md
+      - name: Every check fails on the fixtures it claims to catch
+        run: python3 -m unittest discover -s checks
+      - name: Tag and release the version in ratchet.json, if it is new
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(python3 -c 'import json; print(json.load(open("ratchet.json", encoding="utf-8"))["version"])')
-          tag="v$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          set +e
-          git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null
-          found=$?
-          set -e
-          if [ "$found" -eq 0 ]; then
-            echo "The tag $tag exists. Nothing to release."
-            echo "release=no" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$found" -ne 2 ]; then
-            echo "Could not read the tags of origin (git ls-remote exit $found)." >&2
-            exit 1
-          fi
-          releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name')
-          if printf '%s\n' "$releases" | grep -qxF "$tag"; then
-            echo "A release for $tag exists, perhaps as a draft. Nothing to release: publish it by hand."
-            echo "release=no" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "release=yes" >> "$GITHUB_OUTPUT"
-      - name: The checks pass on this commit
-        if: steps.version.outputs.release == 'yes'
-        run: |
-          python3 checks/generate.py --check
-          python3 checks/check_register.py register.json --markdown REGISTER.md
-          python3 -m unittest discover -s checks
-      - name: Write the release text from the changelog
-        if: steps.version.outputs.release == 'yes'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          python3 - > "$RUNNER_TEMP/notes.md" <<'PY'
-          import os, re, sys
-          version = os.environ["VERSION"]
-          repo = os.environ["GITHUB_REPOSITORY"]
-          with open("CHANGELOG.md", encoding="utf-8") as f:
-              text = f.read()
-          entry = re.search(r"^## %s \([^)]*\)\n(.*?)(?=^## |\Z)" % re.escape(version), text, re.S | re.M)
-          if not entry:
-              sys.exit("CHANGELOG.md has no entry for %s" % version)
-          lines = [line for line in entry.group(1).splitlines() if not line.startswith("<!-- ")]
-          base = "https://github.com/%s/blob/v%s/" % (repo, version)
-          body = re.sub(r"\]\(([A-Za-z][A-Za-z0-9_./-]*)(#[A-Za-z0-9-]+)?\)",
-                        lambda m: "](%s%s%s)" % (base, m.group(1), m.group(2) or ""), "\n".join(lines))
-          print(body.strip())
-          PY
-      - name: Tag and release
-        if: steps.version.outputs.release == 'yes'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Ratchet $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 checks/release.py publish
