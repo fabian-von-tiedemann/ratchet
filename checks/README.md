@@ -167,8 +167,34 @@ The reference check for `ratchet.expected-tests-ran`. It is not a script of its 
 
 - **The expected set is the fixtures themselves.** It is read from the directory, not from a list in a test and not from Markdown. Every file is one fixture. A file whose name starts with a dot, or holds a character other than letters, digits, `_`, `.` and `-`, fails, and so does a link.
 - **Every load is recorded.** The record holds the fixture's name, the test and the sha256 of the bytes the test read. It is kept on the run's own result, so a suite run inside a test keeps its own.
-- **Every outcome is recorded.** When a test ends, the record says whether it passed, failed, errored, could not be prepared (an error before its body started, as in `setUp`), was skipped, or was an expected failure or an unexpected success. A load counts only for a test that passed.
-- **The comparison runs when the run stops.** The first `FixtureTest` in a run hooks the result's `stopTestRun`, which unittest's runner calls after the last test and before its summary. The comparison reads every fixture again. A record counts only if its bytes are the fixture's own as it stands then, so a name without its content does not count. Each problem is named in one failed test, `test_every_expected_test_ran_and_passed`.
+- **Every outcome is recorded.** When a test ends, the record says whether it passed, failed, errored, could not be prepared (an error before its body started, as in `setUp`), was skipped, or was an expected failure or an unexpected success. That holds for the body, a subtest, `tearDown` and a cleanup. A load counts only for a test that passed.
+- **A class or a module that did not pass.** unittest records a `setUpClass`, `tearDownClass`, `setUpModule` or `tearDownModule` that errored or skipped under its own name, such as `tearDownClass (test_checks.RegisterCheck)`. A test that passed in that class or module does not count for the fixtures it loaded. An outcome of the run that the check cannot place fails the run.
+- **The comparison runs when the run stops.** It hooks the result's `stopTestRun`, which unittest's runner calls after the last test and before its summary. The comparison reads every fixture again. A record counts only if its bytes are the fixture's own as it stands then, so a name without its content does not count. Each problem is named in one failed test, `test_every_expected_test_ran_and_passed`.
+- **It does not depend on the tests it watches.** [test_0_expected_tests_ran.py](test_0_expected_tests_ran.py) holds nothing but a `load_tests`, which gives one `Comparison`: a suite that holds no test. When the run reaches it, it hooks `stopTestRun` for the directory of fixtures. Every `FixtureTest` hooks it too, for a run that does not go through discover. What happens to the tests that load fixtures, before or after, does not change whether the comparison runs.
+
+**Why it runs, and runs last.** Each step is unittest's own code, the same in Python 3.9 and 3.12:
+
+1. `TestLoader.discover` lists the directory with `sorted(os.listdir(start_dir))` and loads the modules in that order, so `test_0_expected_tests_ran.py` comes before every module whose name starts with `test_` and a letter. A test in `Collected` fails when the comparison is not the first thing discover gives.
+2. `loadTestsFromModule` returns what the module's `load_tests` returns. A filter such as `-k` is applied in `getTestCaseNames`, to the methods of a test class, so it does not reach a suite that holds no test.
+3. `TestSuite.run` calls every child in order. It stops early only when `result.shouldStop` is set, by `-f` after a failure or by `-c` after an interrupt, and neither can happen before the first child. So the comparison is hooked before any test runs.
+4. `TextTestRunner.run` calls `stopTestRun` in a `finally`, after `test(result)` has returned. That is after the last test, its tear-down and the tear-down of the last class and module. Then it prints the errors and the summary, and `unittest.main` exits with `not result.wasSuccessful()`.
+
+**Every way that was tried to keep the comparison from running.** Each is a test that runs `unittest discover` in a process of its own, on a project of `expected_tests.py`, `test_0_expected_tests_ran.py` and the fake tree, and the run must exit 1 and name the fixtures.
+
+| How the tests that load fixtures were kept from running | Test in `Discover` |
+|---|---|
+| A `setUpClass` shared by every `FixtureTest` raises `SkipTest`: the reviewer's probe | `test_a_set_up_shared_by_every_fixture_test_that_skips_exits_nonzero` |
+| A `setUpClass` of the class raises `SkipTest`, or an error | `test_a_class_set_up_that_skips_exits_nonzero`, `test_a_class_set_up_that_errors_names_the_fixtures` |
+| A `setUpModule` raises `SkipTest`, or an error | `test_a_module_set_up_that_skips_exits_nonzero`, `test_a_module_set_up_that_errors_names_the_fixtures` |
+| The class has a skip decorator | `test_a_class_skip_decorator_exits_nonzero` |
+| A `load_tests` in the module drops every test | `test_a_load_tests_hook_that_drops_the_tests_exits_nonzero` |
+| The only module that loads fixtures cannot be imported | `test_the_only_module_that_loads_fixtures_cannot_be_imported` |
+| The module has a name that discover does not collect | `test_a_module_that_discover_does_not_collect_exits_nonzero` |
+| `-k` selects no test that loads fixtures, or only some | `test_a_filter_that_selects_no_test_that_loads_fixtures_exits_nonzero`, `test_a_filter_that_selects_some_of_them_names_the_rest` |
+| `-f` stops the run at a failure before any test that loads fixtures | `test_a_run_that_stops_at_the_first_failure_names_the_rest` |
+| `-c` and an interrupt stop the run before any test that loads fixtures | `test_a_run_interrupted_before_any_fixture_test_names_every_fixture` |
+| A `tearDownModule` raises an error, or `SkipTest`, after the tests passed | `test_a_tear_down_module_that_errors_names_the_fixtures_of_the_module`, `test_a_tear_down_module_that_skips_exits_nonzero` |
+| There is no test at all | `test_the_comparison_alone_exits_nonzero` |
 
 **The cases.** Each is a test in [test_expected_tests.py](test_expected_tests.py). They use a fake tree of two fixtures, [fixtures/tests-ran/tree/](fixtures/tests-ran/tree/), copied into a scratch directory, and give the check either fake results or the results of a small suite run with unittest's own runner.
 
@@ -178,7 +204,15 @@ The reference check for `ratchet.expected-tests-ran`. It is not a script of its 
 | A missing test | A fixture that no test loads. | Fails |
 | A skipped test | The only test for a fixture is skipped, before it loads the fixture or after. | Fails |
 | An erroring test | A test that loaded a fixture raised an error. | Fails |
+| A failing test | A test that loaded a fixture failed. | Fails |
+| An expected failure | A test marked `expectedFailure` loaded a fixture and failed, which by itself does not fail a run. | Fails |
+| An unexpected success | A test marked `expectedFailure` loaded a fixture and passed. | Fails, and names the fixture |
+| A subtest | A subtest of a test that loaded fixtures failed, errored or was skipped. Every fixture of the test is named. | Fails |
 | Not prepared | A `setUp` that loaded a fixture raised an error before the test's body ran. | Fails |
+| A tear-down or a cleanup | `tearDown` or a cleanup failed after the body had loaded a fixture. | Fails |
+| A class or a module | A `setUpClass` skipped or errored, or the class is skipped, so no test loaded the fixtures. A `tearDownClass` or a `tearDownModule` errored or skipped after its tests passed. | Fails |
+| An outcome the check cannot place | The run holds an outcome of a class or a module under a name of another form. | Fails |
+| Without discover | A run with no comparison suite: the first `FixtureTest` hooks the comparison. | Fails |
 | A failure beside a pass | Two tests load a fixture, and one of them fails. | Fails |
 | Only named | A test that names the fixture, or opens its path, without loading it through `FixtureTest`. | Fails |
 | Not as it stands | A record of a fixture without its bytes, with another fixture's bytes, or with bytes the fixture no longer holds when the run stops. | Fails |
@@ -188,14 +222,17 @@ The reference check for `ratchet.expected-tests-ran`. It is not a script of its 
 | A name no test can give | A file whose name starts with a dot. | Fails |
 | A link | A link in the tree. | Fails |
 | A module that cannot be imported | Its tests never run. The run fails on the import, and the fixtures that only it loads are named. | Fails |
-| `unittest discover` | In a process of its own, as CI runs it: exit status 0 for a complete set and 1 for a missing test. | Passes, then fails |
+| `unittest discover` | In a process of its own, as CI runs it: exit status 0 for a complete set and 1 for a missing test, and 1 for every way above of keeping the tests from running. | Passes, then fails |
+| The comparison is collected | Discover over this directory gives the comparison first, also with `-k`. | Passes |
 
 **What it does not claim.**
 
 - It does not see whether a test uses what it loads. A test that loads a fixture and then checks something else, or drops a case it could not prepare after it loaded the fixture, passes. One mutation per case shows that a test uses its fixture (`ratchet.test-can-fail`), and the PR that adds a case shows the mutation.
 - The outcome is a test method's, not a subtest's. A method that loads many fixtures in subtests counts for all of them when it passes, and fails all of them when one subtest fails.
 - A test can still open a fixture by its path. Such a test is not counted, so the fixture stays expected and the run fails unless another test loads it.
-- The comparison runs only in a run that holds a `FixtureTest`. When every module that holds one fails to import, the run fails on the import errors, not on this check. It runs under unittest's own runner, and another runner needs a check of its own.
+- It is a part of the run, and code in the run can switch it off: a test that replaces the result's `stopTestRun` or empties the ledger. Removing or renaming `test_0_expected_tests_ran.py` is a change to `checks/` that the maintainer reads (`ratchet.checks-owner-read`), and the tests in `Collected` fail without it.
+- It relies on unittest's runner and on discover. A run of one module without discover, such as `python3 -m unittest test_checks`, holds no comparison suite: the first `FixtureTest` that runs hooks it, and if none runs, nothing compares. So does a pattern given with `-p` that does not match `test_0_expected_tests_ran.py`. Another runner, such as pytest, needs a check of its own.
+- It reads how unittest names a class or a module that did not pass, `tearDownClass (module.Class)`. That name is unittest's own and the same in 3.9 and 3.12. A name of another form fails the run rather than being passed over.
 - A run of part of the suite, with `-k` or a single module, fails on purpose: it did not run every expected test.
 - A fixture is a file. A fixture that is a directory, such as `register/md-missing`, is expected as the files it holds. That it holds no `REGISTER.md` is the test's to check.
 
@@ -216,8 +253,29 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - a file it reads is not valid UTF-8
 - a markdown file in the root, in `templates/` or in `checks/` mentions a key that is not a rule
 - such a file links to a local file that does not exist, with an inline link or with a link definition at the start of a line. Links to the web and links inside a page are not followed.
-- the first entry in the changelog is not the version in `ratchet.json`
+- the first entry in the changelog is not the version in `ratchet.json`, or `## Unreleased` and then that version
+- a released entry of the changelog is not as it was released: see below
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
+
+**Released text stays as it was released.** [releases.json](../releases.json) records every release: its version, its date, and the sha256 of its changelog entry and of its `ratchet.json` as they stood at its tag. 0.1 and 0.2 had no `ratchet.json`. It is read strictly, newest first, and every released entry of the changelog must be one of its records, in the same order.
+
+- **The state.** When `ratchet.json` is, byte for byte, the release it names, every text that names the version names it alone. When it holds changes after that release, the count, the version in `RATCHET.md` and the version line of a register say "with unreleased changes", and `check_register.py` says so in what it prints. The register check reads `releases.json` next to the `ratchet.json` it runs from.
+- **The changelog.** An entry is headed `## Unreleased` or `## <version> (<date>)`, and nothing else. When `ratchet.json` holds changes after its release, the first entry must be `## Unreleased`. It may stand first at other times too, for changes that are not to the rules. Only the first entry is generated, when it is `## Unreleased` or the entry of the version being released. Every entry after it is never rewritten, and its sha256 must be the one in `releases.json`.
+- **A release.** A release PR renames `## Unreleased` to `## <version> (<date>)`, sets the version and the date in `ratchet.json`, the version in `register.json` and the fetch command in the README, and runs the generator. The generator then fails once, and prints the record of the new release to add as the first line of `releases.json`. The release workflow finds the entry by `^## <version> \(`. A test runs these steps on a copy of the repo.
+- **What the tags show.** CI checks out one commit without tags, so the check in CI compares the changelog with `releases.json`. Two tests compare the changelog and `releases.json` with the tags themselves, where the checkout holds them, as it does locally after `git fetch --tags`. In a checkout without the tags they are skipped, and say so.
+
+| Case | Result |
+|---|---|
+| A word changed in a released entry, or a line added at the end of the last one | Fails |
+| The generator runs: the count in a released entry stays as it was released | Passes |
+| `ratchet.json` holds changes after its release, and the changelog has no `## Unreleased` | Fails |
+| `## Unreleased` without its count, with its count edited by hand, or not first | Fails |
+| A heading of another form, such as `## 0.4` or `## unreleased` | Fails |
+| A released entry with no record, or a record with no entry | Fails |
+| A record with a field the check does not know, a short sha256, a version twice or another form of date | Fails |
+| No `releases.json` | Fails, in the generator and in the register check |
+| The steps of a release on a copy of the repo | Passes, and no generated text says "with unreleased changes" |
+| A change to the rules after that release, first without `## Unreleased`, then with it | Fails, then passes |
 
 ## Why JSON
 

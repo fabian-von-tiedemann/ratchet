@@ -12,6 +12,12 @@ in the markdown files, templates/register.json and the registers under
 checks/fixtures/register/. From register.json: REGISTER.md. Which blocks each file
 must hold is listed in required_blocks().
 
+From releases.json: whether ratchet.json is the release it names, or holds changes
+after it. Every text that names the version says which. In CHANGELOG.md only the first
+entry is generated, when it is "## Unreleased" or the entry of the version being
+released. Every released entry stays as it stood at its tag: its sha256 is recorded
+in releases.json and checked.
+
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
@@ -37,6 +43,9 @@ KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 NOT_KEYS = {"json"}
+# The heading of a changelog entry. The release workflow finds an entry by "^## <version> \(".
+UNRELEASED = "## Unreleased"
+HEADING = re.compile(r"^## (?:Unreleased|([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\))\Z")
 # Files that record history verbatim are not checked for mentions of keys that no longer exist.
 HISTORY = ("CHANGELOG.md",)
 # The only lines that may start with "<" in a file that holds generated blocks.
@@ -74,33 +83,38 @@ def table(rules):
     return "\n".join([registry.TABLE_HEADER, registry.TABLE_RULE] + [registry.row(rule) for rule in rules])
 
 
-def count_text(data):
+def count_text(data, released):
     numbers = registry.counts(data)
     core, extra = numbers["core"], numbers["experimental"]
     return (
-        "Ratchet %s, computed from `ratchet.json`: the core has %d rules. %d name a check and %d are text only (%d%%). "
+        "%s, computed from `ratchet.json`: the core has %d rules. %d name a check and %d are text only (%d%%). "
         "Ratchet ships a reference check for %d of the %d. Outside the core there are %d experimental rules: "
         "%d name a check and %d are text only. They are not counted in the share. "
         "The share counts what kind of ratchet a rule has, not whether a project has built the check: "
         "a project's register says that, and Ratchet's own is REGISTER.md."
         % (
-            data["version"], core["rules"], core["enforced"], core["text_only"], numbers["text_only_percent"],
+            registry.named(data, released), core["rules"], core["enforced"], core["text_only"], numbers["text_only_percent"],
             core["reference_checks"], core["enforced"], extra["rules"], extra["enforced"], extra["text_only"],
         )
     )
 
 
-def render(data, name, argument, directory):
-    """The text of one generated block. directory is where the document lives, relative to the root."""
+def render(data, name, argument, directory, state):
+    """The text of one generated block. directory is where the document lives, relative to the root.
+
+    state["rules"] is whether ratchet.json is the release it names. state["all"] is whether nothing at all
+    has changed since: the rules are the release and the changelog has no "## Unreleased" entry.
+    """
     if name == "table":
         rules = [rule for rule in data["rules"] if rule["part"] == argument]
         if not rules:
             raise registry.RegistryError("no rules in part %r" % argument)
         return table(rules)
     if name == "version":
-        return "Version %s, %s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], data["date"])
+        changes = "" if state["all"] else ", with unreleased changes"
+        return "Version %s, %s%s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], data["date"], changes)
     if name == "count":
-        return count_text(data)
+        return count_text(data, state["rules"])
     if name == "start":
         return ", ".join("`%s`" % key for key in data["start"])
     if name == "reference-checks":
@@ -155,7 +169,7 @@ def swap(text, old, new):
     return text.replace(old, new)
 
 
-def fixtures(data):
+def fixtures(data, released):
     """A clean project copy and one copy per fault the register check claims to catch.
 
     Returns {path under checks/fixtures/register: text}. A fixture whose fault is in the
@@ -166,7 +180,7 @@ def fixtures(data):
     clean["project"] = "the example project"
     clean["own"] = [dict(OWN_RULE_EXAMPLE)]
     text = dump(clean)
-    markdown = check_register.render(clean)
+    markdown = check_register.render(clean, released)
     adopted = clean["adopted"]
     enforced = next(n for n, e in enumerate(adopted) if "status" in e)
     plain = next(n for n, e in enumerate(adopted) if "status" not in e)
@@ -204,7 +218,7 @@ def fixtures(data):
     ]
     escaped["adopted"][enforced].update(status="built", where="<details>`checks/run.sh`</details> [x](https://example.invalid/`)<!-- hidden -->`z")
     result["escaped/register.json"] = dump(escaped)
-    result["escaped/REGISTER.md"] = check_register.render(escaped)
+    result["escaped/REGISTER.md"] = check_register.render(escaped, released)
     # Latin letters outside ASCII and every mark outside ASCII that a value may hold. The file holds them as themselves.
     latin = copy.deepcopy(clean)
     latin["project"] = "the \u00e9xample project"
@@ -214,7 +228,7 @@ def fixtures(data):
         dict(OWN_RULE_EXAMPLE, key="example.marks", rule="\u00a1Yes! \u00bfNo? A dash \u2013 and a longer one \u2014 then \u00a7 5, 20 \u00b0, \u00a3 5, \u20ac 5 and a\u00b7b."),
     ]
     result["latin/register.json"] = dump(latin, escaped=False)
-    result["latin/REGISTER.md"] = check_register.render(latin)
+    result["latin/REGISTER.md"] = check_register.render(latin, released)
     # What a site may read as a reference to a person, an issue or a commit. A value may hold it, and it is written as text.
     references = copy.deepcopy(clean)
     references["own"] = [
@@ -224,7 +238,7 @@ def fixtures(data):
         dict(OWN_RULE_EXAMPLE, key="example.commit", rule="Every release names 0123abc and 0123456789abcdef0123456789abcdef01234567."),
     ]
     result["references/register.json"] = dump(references)
-    result["references/REGISTER.md"] = check_register.render(references)
+    result["references/REGISTER.md"] = check_register.render(references, released)
     faults = {
         "changed-row": lambda r: r["adopted"][enforced].update(rule=soft(r["adopted"][enforced]["rule"])),
         "changed-ratchet": lambda r: r["adopted"][enforced].update(ratchet="Check: a reminder in the working rules"),
@@ -391,23 +405,120 @@ def structure_problems(name, text):
     return problems
 
 
-def expected_files(data, root):
+def changelog_entries(text):
+    """[(heading, start, end)] for each entry of a changelog: from a line that starts with "## " to the next one, or to the end."""
+    starts = [match.start() for match in re.finditer(r"^## ", text, re.M)]
+    return [(text[start:].split("\n", 1)[0], start, end) for start, end in zip(starts, starts[1:] + [len(text)])]
+
+
+def version_heading(data):
+    return "## %s (%s)" % (data["version"], data["date"])
+
+
+def generated_end(text, data, state):
+    """Where the generated part of CHANGELOG.md ends: after the first entry if it is "## Unreleased" or the version
+    being released, and before it otherwise. Every entry after that is released text and is never rewritten."""
+    entries = changelog_entries(text)
+    if not entries:
+        return len(text)
+    heading, start, end = entries[0]
+    if heading == UNRELEASED or (state["rules"] and heading == version_heading(data)):
+        return end
+    return start
+
+
+def release_state(data, root):
+    """Return (releases, the record of the version ratchet.json names or None, state, problems).
+
+    A version with no record is the release being made: its text is written as released, and the run fails
+    with the record to add.
+    """
+    releases = registry.load_releases(os.path.join(root, registry.RELEASES))
+    record = registry.release_record(releases, data)
+    problems = []
+    rules = True
+    if record is not None:
+        if "ratchet" not in record:
+            problems.append("%s: the record of %s has no sha256 of its ratchet.json" % (registry.RELEASES, data["version"]))
+        if record["date"] != data["date"]:
+            problems.append("%s: %s was released on %s, and ratchet.json says %s" % (registry.RELEASES, data["version"], record["date"], data["date"]))
+        rules = registry.digest(read(os.path.join(root, "ratchet.json"))) == record.get("ratchet")
+    changelog = read(os.path.join(root, "CHANGELOG.md")) or ""
+    entries = changelog_entries(changelog)
+    pending = bool(entries) and entries[0][0] == UNRELEASED
+    return releases, record, {"rules": rules, "all": rules and not pending}, problems
+
+
+def changelog_problems(data, root, text, releases, record, state):
+    """Problems with the entries of the changelog as it will be written, and with their records in releases.json."""
+    problems = []
+    entries = changelog_entries(text)
+    headings = [heading for heading, _, _ in entries]
+    for heading in headings:
+        if not HEADING.match(heading):
+            problems.append('CHANGELOG.md: %r is not a heading of an entry. An entry is headed "## Unreleased" or "## <version> (<date>)", such as "## 0.4 (2026-12-01)"' % heading)
+    unreleased = [number for number, heading in enumerate(headings) if heading == UNRELEASED]
+    if unreleased not in ([], [0]):
+        problems.append('CHANGELOG.md: "## Unreleased" stands only first, and once')
+    elif not state["rules"] and unreleased != [0]:
+        problems.append(
+            'CHANGELOG.md: ratchet.json is not Ratchet %s as released, so the first entry must be "## Unreleased", with the changes made since. '
+            "A released entry stays as it stood at its tag" % data["version"]
+        )
+    released = []
+    for heading, start, end in entries:
+        match = HEADING.match(heading)
+        if match and match.group(1):
+            released.append((match.group(1), match.group(2), heading, text[start:end]))
+    recorded = [(release["version"], release["date"]) for release in releases]
+    if record is not None and [(version, date) for version, date, _, _ in released] != recorded:
+        problems.append(
+            "CHANGELOG.md: the released entries must be the records of releases.json, newest first. Entries: %s. Records: %s"
+            % (", ".join("%s (%s)" % (v, d) for v, d, _, _ in released) or "none", ", ".join("%s (%s)" % pair for pair in recorded))
+        )
+    by_version = dict((release["version"], release) for release in releases)
+    for version, date, heading, entry in released:
+        release = by_version.get(version)
+        if release is None or release["date"] != date:
+            continue
+        if "changelog" not in release:
+            problems.append("%s: %s records no sha256 of its changelog entry" % (registry.RELEASES, version))
+        elif registry.digest(entry) != release["changelog"]:
+            problems.append(
+                'CHANGELOG.md: the entry %s is not as it was released: its sha256 is %s, and %s records %s. '
+                'A released entry stays as it stood at its tag: write a change under "## Unreleased"'
+                % (heading, registry.digest(entry), registry.RELEASES, release["changelog"])
+            )
+    if record is None:
+        entry = next((text[start:end] for heading, start, end in entries if heading == version_heading(data)), "")
+        hint = {"version": data["version"], "date": data["date"], "changelog": registry.digest(entry),
+                "ratchet": registry.digest(read(os.path.join(root, "ratchet.json")))}
+        problems.append(
+            '%s: there is no record of %s, the version ratchet.json names. A release PR adds it as the first release, '
+            'once the entry "%s" is written: %s' % (registry.RELEASES, data["version"], version_heading(data), json.dumps(hint))
+        )
+    elif releases[0] is not record:
+        problems.append("%s: the newest release is %s, and ratchet.json names %s" % (registry.RELEASES, releases[0]["version"], data["version"]))
+    return problems
+
+
+def expected_files(data, root, state):
     """Return ({path: (current text or None, expected text)}, problems)."""
     result = {}
     problems = []
     whole = {os.path.join(root, "templates", "register.json"): dump(register_template(data))}
-    for name, text in fixtures(data).items():
+    for name, text in fixtures(data, state["rules"]).items():
         whole[os.path.join(root, "checks", "fixtures", "register", *name.split("/"))] = text
 
     try:
         register = registry.load_json(os.path.join(root, "register.json"))
-        found, _ = check_register.check(register, data)
+        found, _ = check_register.check(register, data, state["rules"])
     except registry.RegistryError as error:
         found = [str(error)]
     if found:
         problems += ["register.json: %s" % problem for problem in found]
     else:
-        whole[os.path.join(root, "REGISTER.md")] = check_register.render(register)
+        whole[os.path.join(root, "REGISTER.md")] = check_register.render(register, state["rules"])
 
     for path, text in whole.items():
         result[path] = (read_bytes(path) if isinstance(text, bytes) else read(path), text)
@@ -420,24 +531,32 @@ def expected_files(data, root):
         if current is None:
             problems.append("%s: the file is missing. It must hold the generated blocks: %s" % (name, ", ".join(required[name])))
             continue
-        blocks = list(BLOCK.finditer(current))
-        starts, ends = current.count(START), current.count(END)
+        # In the changelog only the first entry is generated, and only while it is not released text.
+        if name == "CHANGELOG.md":
+            cut = generated_end(current, data, state)
+            live, released = current[:cut], current[cut:]
+            holder = "%s: the first entry" % name
+            expects = bool(changelog_entries(live))
+        else:
+            live, released, holder, expects = current, "", name, True
+        blocks = list(BLOCK.finditer(live))
+        starts, ends = live.count(START), live.count(END)
         if not (starts == ends == len(blocks)):
             problems.append(
                 "%s: the markers of the generated blocks are broken: %d start, %d end, %d complete blocks" % (name, starts, ends, len(blocks))
             )
         found = sorted(("%s %s" % (m.group(2), m.group(3) or "")).strip() for m in blocks)
-        if found != required.get(name, []):
+        if expects and found != required.get(name, []):
             missing = sorted(set(required.get(name, [])) - set(found))
             extra = sorted(block for block in found if block not in required.get(name, []) or found.count(block) > 1)
             problems.append(
-                "%s: must hold exactly these generated blocks, once each: %s. Missing: %s. Not expected: %s"
-                % (name, ", ".join(required.get(name, [])) or "none", ", ".join(missing) or "none", ", ".join(sorted(set(extra))) or "none")
+                "%s must hold exactly these generated blocks, once each: %s. Missing: %s. Not expected: %s"
+                % (holder if name == "CHANGELOG.md" else holder + ":", ", ".join(required.get(name, [])) or "none", ", ".join(missing) or "none", ", ".join(sorted(set(extra))) or "none")
             )
         if name in required:
             problems += structure_problems(name, current)
         directory = os.path.dirname(name)
-        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory) + "\n" + m.group(5), current)
+        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory, state) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
     return result, problems
 
@@ -469,11 +588,11 @@ def consistency_problems(data, root):
                 if link_problem(path, target):
                     problems.append("%s:%d: the link to %s leads nowhere" % (name, number, target))
 
-    heading = "## %s (%s)" % (data["version"], data["date"])
+    heading = version_heading(data)
     changelog = read(os.path.join(root, "CHANGELOG.md")) or ""
-    first = next((line.strip() for line in changelog.splitlines() if line.startswith("## ")), None)
+    first = next((line.strip() for line in changelog.splitlines() if line.startswith("## ") and line.strip() != UNRELEASED), None)
     if first != heading:
-        problems.append('CHANGELOG.md: the first entry must be "%s", found %r' % (heading, first))
+        problems.append('CHANGELOG.md: the first entry must be "%s", or "## Unreleased" and then it. Found %r' % (heading, first))
 
     pinned = "--branch v%s " % data["version"]
     if pinned not in (read(os.path.join(root, "README.md")) or ""):
@@ -496,19 +615,22 @@ def main(argv=None):
     root = os.path.abspath(args.root)
     try:
         data = registry.load(os.path.join(root, "ratchet.json"))
+        releases, record, state, problems = release_state(data, root)
         if args.entries:
             by_key = registry.rules_by_key(data)
             unknown = [key for key in args.entries if key not in by_key]
             if unknown:
-                print("generate: not a rule in Ratchet %s: %s" % (data["version"], ", ".join(unknown)), file=sys.stderr)
+                print("generate: not a rule in %s: %s" % (registry.named(data, state["rules"]), ", ".join(unknown)), file=sys.stderr)
                 return 2
             print(",\n".join(json.dumps(entry(by_key[key]), indent=2, ensure_ascii=False) for key in args.entries))
             return 0
         if args.count:
-            print(count_text(data))
+            print(count_text(data, state["rules"]))
             return 0
-        files, problems = expected_files(data, root)
-        problems += consistency_problems(data, root)
+        files, found = expected_files(data, root, state)
+        problems += found + consistency_problems(data, root)
+        changelog = files[os.path.join(root, "CHANGELOG.md")][1] if os.path.join(root, "CHANGELOG.md") in files else ""
+        problems += changelog_problems(data, root, changelog, releases, record, state)
     except registry.RegistryError as error:
         print("generate: %s" % error, file=sys.stderr)
         return 1
@@ -546,7 +668,7 @@ def main(argv=None):
     if problems:
         print("FAIL: %d problem(s) in the hand-written text" % len(problems))
         return 1
-    print(count_text(data))
+    print(count_text(data, state["rules"]))
     return 0
 
 

@@ -4,7 +4,7 @@ Every rule in force in this project. This file takes precedence over all other t
 
 ## Rules from Ratchet
 
-Ratchet version: 0.3. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.3, with unreleased changes. The rows below are copied verbatim from the Ratchet that the check runs from, which holds changes made after that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
@@ -36,9 +36,9 @@ One row for each adopted rule whose ratchet starts with "Check:". The status is 
 | ratchet.glossary | text only for now |  |
 | ratchet.checks-owner-read | text only for now | Pending setup\, as for `ratchet.one-approver`\. The code owner owns every path\, the checks included |
 | ratchet.no-secrets | text only for now |  |
-| ratchet.si-version | text only for now | `checks/generate.py --check` compares the version with the first changelog entry\. It does not read the tags |
+| ratchet.si-version | text only for now | `checks/generate.py --check` compares the version with the first released changelog entry and with `releases.json`\, and fails when a released entry changes\. It does not read the tags |
 | ratchet.si-maintainer-approves | text only for now | Pending setup\, as for `ratchet.one-approver` |
-| ratchet.expected-tests-ran | built | `checks/expected_tests.py`\, run by `.github/workflows/checks.yml` in the step that runs `python3 -m unittest discover -s checks` |
+| ratchet.expected-tests-ran | built | `checks/expected_tests.py`\, collected by discover from `checks/test_0_expected_tests_ran.py` and run by `.github/workflows/checks.yml` in the step that runs `python3 -m unittest discover -s checks` |
 
 ## The project's own rules
 

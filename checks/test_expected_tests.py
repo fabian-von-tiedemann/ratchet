@@ -122,6 +122,19 @@ class FakeResults(FixtureTest):
             ["'two/.hidden': is not a name a test can load. A fixture is named by letters, digits, _ . and -, and does not start with a dot"],
         )
 
+    def test_an_outcome_of_a_class_or_module_is_placed_and_one_the_check_does_not_know_fails(self):
+        result = unittest.TestResult()
+        holder = unittest.suite._ErrorHolder
+        result.errors.append((holder("tearDownClass (fake.Inner)"), "boom"))
+        result.skipped.append((holder("tearDownModule (fake)"), "not today"))
+        result.errors.append((holder("something else (fake)"), "boom"))
+        found, unknown = expected_tests.fixture_outcomes(result)
+        self.assertEqual(found, [("fake.Inner", "tearDownClass (fake.Inner) errored"), ("fake", "tearDownModule (fake) skipped")])
+        self.assertEqual(unknown, ["the run holds an outcome that the check cannot place: 'something else (fake)', errored"])
+        records = [("one.json", "fake.Inner.test_a", "passed", ONE), ("two/three.txt", "fake.Other.test_b", "passed", THREE),
+                   ("one.json", "fake.Innermost.test_c", "passed", ONE)]
+        self.assertEqual(expected_tests.placed(records, found[:1]), [records[0][:2] + ("tearDownClass (fake.Inner) errored", ONE)] + records[1:])
+
     @unittest.skipUnless(hasattr(os, "symlink"), "the system has no links")
     def test_a_link_in_the_tree_fails(self):
         os.symlink(os.path.join(self.root, "one.json"), os.path.join(self.root, "link.json"))

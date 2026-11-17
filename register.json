@@ -85,7 +85,7 @@
       "ratchet": "Check: the changelog has an entry for every tag",
       "source": "",
       "status": "text only for now",
-      "where": "`checks/generate.py --check` compares the version with the first changelog entry. It does not read the tags"
+      "where": "`checks/generate.py --check` compares the version with the first released changelog entry and with `releases.json`, and fails when a released entry changes. It does not read the tags"
     },
     {
       "key": "ratchet.si-maintainer-approves",
@@ -101,7 +101,7 @@
       "ratchet": "Check: at the end of every run, the expected tests read from the source are compared with the tests that ran and passed, and the run fails on each one that did not. It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
       "source": "",
       "status": "built",
-      "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in the step that runs `python3 -m unittest discover -s checks`"
+      "where": "`checks/expected_tests.py`, collected by discover from `checks/test_0_expected_tests_ran.py` and run by `.github/workflows/checks.yml` in the step that runs `python3 -m unittest discover -s checks`"
     }
   ],
   "own": [

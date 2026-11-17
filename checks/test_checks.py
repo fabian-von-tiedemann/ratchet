@@ -362,8 +362,10 @@ class RegisterCheck(FixtureTest):
             json.dump(register, handle, ensure_ascii=False)
         sys.path.insert(0, HERE)
         import check_register
+        import registry
+        released = registry.release_state(registry.load(), registry.SOURCE)
         with open(markdown, "wb") as handle:
-            handle.write(check_register.render(register).encode("utf-8").replace("\ufffd".encode("utf-8"), b"\xff"))
+            handle.write(check_register.render(register, released).encode("utf-8").replace("\ufffd".encode("utf-8"), b"\xff"))
         code, output = run("check_register.py", data, "--markdown", markdown)
         self.assertEqual(code, 1, output)
         self.assertIn(outside("rule", "FFFD"), output)
@@ -866,7 +868,7 @@ class Releases(RepoCopy, unittest.TestCase):
         self.assert_check_fails('"## Unreleased" stands only first, and once')
 
     def test_a_release_without_a_record_fails(self):
-        self.edit("releases.json", '"version": "0.2"', '"version": "0.0"')
+        self.edit("releases.json", '"version": "0.2", "date": "2026-11-16"', '"version": "0.2", "date": "2026-11-15"')
         self.assert_check_fails("CHANGELOG.md: the released entries must be the records of releases.json, newest first")
 
     def test_a_record_of_a_form_the_check_does_not_know_fails(self):
@@ -892,15 +894,17 @@ class Releases(RepoCopy, unittest.TestCase):
 
     def test_the_steps_of_a_release_pass_and_name_no_unreleased_changes(self):
         self.release()
-        for name in ("README.md", "RATCHET.md", "SELF-IMPROVEMENT.md", "REGISTER.md", "CHANGELOG.md"):
+        for name in ("README.md", "RATCHET.md", "SELF-IMPROVEMENT.md", "REGISTER.md"):
             with open(os.path.join(self.copy, name), encoding="utf-8") as handle:
                 text = handle.read()
             with self.subTest(document=name):
-                self.assertNotIn("unreleased", text.lower().replace("## unreleased", ""))
+                self.assertNotIn("with unreleased changes", text)
         with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
             found = re.search(RELEASE_ENTRY % re.escape("0.4"), handle.read(), re.S | re.M)
         self.assertIsNotNone(found)
-        self.assertIn("Ratchet 0.4, computed from `ratchet.json`", found.group(1))
+        count = found.group(1)[found.group(1).index("<!-- generated:count -->"):found.group(1).index("<!-- /generated -->")]
+        self.assertIn("Ratchet 0.4, computed from `ratchet.json`", count)
+        self.assertNotIn("unreleased", count)
         self.assertIn("ratchet.expected-tests-ran", found.group(1))
         code, output = run("check_register.py", os.path.join(self.copy, "register.json"), root=self.copy)
         self.assertEqual(code, 0, output)
@@ -909,6 +913,7 @@ class Releases(RepoCopy, unittest.TestCase):
     def test_after_a_release_a_change_to_the_rules_needs_an_unreleased_entry(self):
         self.release()
         self.edit("ratchet.json", "Only the owner approves decisions.", "Only the owner approves every decision.")
+        self.edit("register.json", "Only the owner approves decisions.", "Only the owner approves every decision.")
         code, output = run("generate.py", root=self.copy)
         self.assertEqual(code, 1, output)
         self.assertIn('ratchet.json is not Ratchet 0.4 as released, so the first entry must be "## Unreleased"', output)

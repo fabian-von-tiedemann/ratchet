@@ -1,9 +1,26 @@
 # Changelog
 
+## Unreleased
+
+<!-- generated:count -->
+Ratchet 0.3 with unreleased changes, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+Added:
+
+- `ratchet.expected-tests-ran`, experimental, in a new part of `SELF-IMPROVEMENT.md` for rules promoted from projects: a suite of tests made from a source fails when a test it expects did not run. Its reference check, `checks/expected_tests.py`, fails this repo's suite unless every file under `checks/fixtures/` was loaded by a test that passed in the same run. The comparison is collected from `checks/test_0_expected_tests_ran.py` and runs whatever happens to the tests that load fixtures.
+- An entry "Unreleased" at the top of the changelog, for changes that are not yet released. A release renames it to the version and its date.
+- `releases.json`: for every release, the sha256 of its changelog entry and of its `ratchet.json`, as they stood at its tag. `checks/generate.py --check` fails when a released entry is changed, and when `ratchet.json` holds changes after the release it names and the changelog has no entry "Unreleased".
+
+Changed:
+
+- Every generated text that names the version says when `ratchet.json` holds changes after that release: the count, the version in `RATCHET.md` and the version line of a register say "with unreleased changes" until the next release.
+- The tests in `checks/test_checks.py` load their fixtures through `FixtureTest`.
+
 ## 0.3 (2026-11-16)
 
 <!-- generated:count -->
-Ratchet 0.3, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.3, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 20 experimental rules: 9 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 In 0.1 and in 0.2, counted the same way: `RATCHET.md` had 35 rules, 14 named a check and 21 were text only (60%). Ratchet shipped no check.
