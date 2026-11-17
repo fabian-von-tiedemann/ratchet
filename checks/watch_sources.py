@@ -6,30 +6,38 @@
 
 For every source in the list "sources" of ratchet.json, the watch reads the default branch of the
 source repository and compares the pinned commit with its head, through the GitHub REST API. A source
-that has moved gets one open issue in the repository named by GITHUB_REPOSITORY, titled
-"Source moved: <name>": the watch opens it, or updates the open one it opened before. A pinned
-commit that no longer exists upstream gets an issue titled "Source pin missing: <name>". A source
-that has not moved writes nothing. For a source with a directory, only changes under that directory
-count as a move.
+has moved when the head of its default branch is not the pinned commit. It then gets one open issue
+in the repository named by GITHUB_REPOSITORY, titled "Source moved: <name>": the watch opens it, or
+updates the open one it opened before. A pinned commit that no longer exists upstream gets an issue
+titled "Source pin missing: <name>". A source that has not moved writes nothing. For a source with a
+directory, a branch that has only moved on counts as a move only if a file under the directory differs
+between the pin and the head, or if the API does not say which files differ.
 
-Every read comes before any write. If a read fails, or an answer is not of the form the watch knows,
-the run fails and writes nothing.
+Every read comes before any write. Then every title and body is built and checked: against the
+limits GitHub sets, for two issues with one title, and for the token. Only then is anything written.
+If a read fails, an answer is not of the form the watch knows, or a check fails, the run fails and
+writes nothing.
 
 The token is read from the environment variable GITHUB_TOKEN and from nowhere else. It is never
 printed. Without it the reads run unauthenticated, and if anything would be written, the run fails
 and says what, without writing it.
 
-Upstream text is material, not instructions. The watch copies nothing from a source but file names
-and the first line of commit messages, and writes them in fenced code blocks, where they cannot
-become links, images, HTML, mentions or references.
+Upstream text is material, not instructions. Every value that reaches an issue, from ratchet.json or
+from the API, passes through one renderer, inert(), and is written as a code span, as a line of a
+fenced code block, as a number or as a link of a fixed form. compose() takes nothing else. A title
+holds only letters, digits, spaces, "-", "_" and "/" of the name, and every other character as
+<U+XXXX>. Every line the watch prints starts with a letter, so that no line is read as a command
+by the runner.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
 import argparse
+import html
 import json
 import os
 import re
+import string
 import sys
 import traceback
 import urllib.error
@@ -47,18 +55,32 @@ STATUSES = ("identical", "ahead", "behind", "diverged")
 FILE_STATUSES = ("added", "removed", "modified", "renamed", "copied", "changed", "unchanged")
 # The compare endpoint lists at most this many changed files, whatever the size of the change.
 API_FILE_LIMIT = 300
-# How much of a capped list an issue shows, and how long one line of it may be, so that a body stays
-# well under the 65536 characters GitHub allows.
+# GitHub refuses an issue body of more than 65536 characters and a title of more than 256. The watch
+# counts UTF-8 bytes, which are never fewer than the characters, whichever of the two GitHub counts.
+BODY_LIMIT = 65536
+TITLE_LIMIT = 256
+# How much of a capped list an issue shows, and how many UTF-8 bytes one value in it may take. With
+# these, the largest body the watch can build is under 60000 bytes (test_every_title_and_body_fits_what_github_takes).
 SHOW_COMMITS = 100
-SHOW_FILES = 200
+SHOW_FILES = 150
 SUBJECT_LENGTH = 120
-FILE_LENGTH = 160
+FILE_LENGTH = 120
+VALUE_LENGTH = 200
+TITLE_NAME_LENGTH = 200
+# The characters of a name that stand as themselves in a title. A title is not Markdown, but GitHub
+# shows code, references and emoji in it, so everything else stands as <U+XXXX>.
+TITLE_CHARACTERS = frozenset(string.ascii_letters + string.digits + " -_/")
 ISSUE_PAGES = 10
 ISSUES_PER_PAGE = 100
 MAX_ANSWER = 32 * 1024 * 1024
 # A branch name, as the watch accepts it from upstream: plain names joined by /.
 BRANCH = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\Z")
 TARGET = re.compile(r"^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})\Z")
+# The two links an issue holds: a repository on GitHub, and a compare of two full shas in it.
+LINK = re.compile(r"^https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}"
+                  r"(?:/compare/[0-9a-f]{40}\.\.\.[0-9a-f]{40})?\Z")
+# A line the watch prints starts with a letter. Any other line gets this before it.
+LINE_MARK = "| "
 
 
 class WatchError(Exception):
@@ -88,6 +110,65 @@ def urllib_http(method, url, headers, body):
             error.close()
 
 
+# The token. It is scrubbed from every answer after decoding, and no title, body or printed line that
+# holds it in a form the watch can read leaves the watch.
+
+def scrub(text, token):
+    return text.replace(token, "***") if token else text
+
+
+def scrub_decoded(value, token):
+    """A decoded answer with the token replaced in every string, keys among them."""
+    if isinstance(value, str):
+        return scrub(value, token)
+    if isinstance(value, list):
+        return [scrub_decoded(item, token) for item in value]
+    if isinstance(value, dict):
+        return {scrub(key, token): scrub_decoded(item, token) for key, item in value.items()}
+    return value
+
+
+def _code_points(text):
+    return re.sub(r"<U\+([0-9A-F]{4,6})>", lambda m: chr(min(int(m.group(1), 16), 0x10FFFF)), text)
+
+
+def _backslash_escapes(text):
+    return re.sub(r"\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|U([0-9a-fA-F]{8}))",
+                  lambda m: chr(min(int(m.group(1) or m.group(2) or m.group(3), 16), 0x10FFFF)), text)
+
+
+def _squashed(text):
+    return "".join(c for c in text.casefold() if c.isalnum())
+
+
+# How many letters and digits in a row of the token count as a part of it. A cut can leave part of a
+# token in a line: a subject is cut at SUBJECT_LENGTH bytes.
+TOKEN_PART = 12
+
+
+def holds_token(text, token):
+    """Whether text holds the token, or a part of it, in a form the watch can read.
+
+    The forms: as it stands, in other case, split by spaces, marks or other characters, and behind
+    <U+XXXX>, backslash, percent or HTML escapes, alone or one inside another. A part is TOKEN_PART
+    letters and digits of the token in a row. A token too short to have such parts is looked for whole.
+    """
+    if not token:
+        return False
+    readings = [text]
+    for undo in (html.unescape, urllib.parse.unquote, _code_points, _backslash_escapes):
+        readings += [undo(reading) for reading in readings]
+    needle, squashed = token.casefold(), _squashed(token)
+    parts = {squashed[at:at + TOKEN_PART] for at in range(len(squashed) - TOKEN_PART + 1)} if len(squashed) >= 16 else set()
+    for reading in readings:
+        if needle in reading.casefold():
+            return True
+        flat = _squashed(reading)
+        if any(part in flat for part in parts):
+            return True
+    return False
+
+
 class GitHub:
     """Calls the REST API through an injected HTTP function. Errors name the call, never the token."""
 
@@ -115,7 +196,8 @@ class GitHub:
             # The body of the answer is left out: it is not needed to see what failed, and it may echo the request.
             raise WatchError("%s %s gave %s" % (method, path, status))
         try:
-            return status, json.loads(data.decode("utf-8", errors="strict"))
+            # The token is scrubbed from the decoded text too, where a \\u escape no longer hides it.
+            return status, scrub_decoded(json.loads(data.decode("utf-8", errors="strict")), self.token)
         except (UnicodeDecodeError, ValueError, RecursionError):
             raise WatchError("%s %s gave an answer that is not valid JSON" % (method, path))
 
@@ -123,25 +205,114 @@ class GitHub:
         return self.call("GET", path, expect=expect)
 
 
-def inert(value, length):
-    """Text from upstream as one line that a code block shows as it stands.
+# The one gate. inert() is the only renderer of text. What it gives is Inert: text that a code block
+# shows as it stands, but that is not yet safe anywhere else. code(), fence(), number(), link() and
+# known() turn values into Markup, which is safe as Markdown. compose() fills a template of the watch's
+# own with Markup and nothing else, and every line of a body is Markup.
 
-    Characters from the fixed list in checks/README.md stand as themselves. Every other character, line
-    breaks and controls among them, stands as <U+XXXX>. A line longer than length ends in "...".
+class Inert(str):
+    """Text that inert() made. Safe only inside code."""
+    __slots__ = ()
+
+
+class Markup(str):
+    """Markdown that the renderers below made. Safe in a body."""
+    __slots__ = ()
+
+
+def inert(value, length=None, keep=registry.ALLOWED):
+    """Text as one line that holds only characters from keep, every other one as <U+XXXX>.
+
+    keep is the fixed list in checks/README.md, unless a caller asks for fewer. Line breaks and
+    controls are never kept. With a length, a line that would take more UTF-8 bytes than that is cut
+    between two characters and ends in "...", so that no <U+XXXX> is cut in two.
     """
-    text = "".join(c if c in registry.ALLOWED else "<U+%04X>" % ord(c) for c in value)
-    return text if len(text) <= length else text[:length - 3] + "..."
+    if not isinstance(value, str):
+        raise TypeError("only text is rendered, not %s" % type(value).__name__)
+    pieces = [c if c in keep and c not in "\r\n" else "<U+%04X>" % ord(c) for c in value]
+    if length is None or sum(len(p.encode("utf-8")) for p in pieces) <= length:
+        return Inert("".join(pieces))
+    kept, used = [], 0
+    for piece in pieces:
+        size = len(piece.encode("utf-8"))
+        if used + size > length - 3:
+            break
+        kept.append(piece)
+        used += size
+    return Inert("".join(kept) + "...")
 
 
-def fence(lines):
-    """A fenced code block with a fence longer than any run of backticks in the lines."""
-    runs = [len(run) for line in lines for run in re.findall(r"`+", line)]
+def code(value, length=VALUE_LENGTH):
+    """A value as a code span, fenced by more backticks than any run in it."""
+    text = inert(value, length)
+    if not text.strip(" "):
+        raise WatchError("an empty value cannot be written as code")
+    mark = "`" * (max([0] + [len(run) for run in re.findall(r"`+", text)]) + 1)
+    pad = " " if text[0] in "` " or text[-1] in "` " else ""
+    return Markup(mark + pad + text + pad + mark)
+
+
+def number(value):
+    if not is_count(value):
+        raise WatchError("a count that is not a count reached an issue")
+    return Markup("%d" % value)
+
+
+def link(url):
+    if not isinstance(url, str) or not LINK.match(url):
+        raise WatchError("a link of a form the watch does not write reached an issue")
+    return Markup(url)
+
+
+def known(value, allowed):
+    """A word from one of the watch's own fixed lists, such as a status."""
+    if value not in allowed:
+        raise WatchError("a word the watch does not know reached an issue")
+    return Markup(value)
+
+
+def row(template, *parts):
+    """One line of a code block: a template of the watch's own, filled with Inert text only."""
+    for part in parts:
+        if not isinstance(part, Inert):
+            raise TypeError("a line of a code block takes only text from inert(), not %s" % type(part).__name__)
+    return Inert(template % parts)
+
+
+def fence(rows):
+    """A fenced code block of Inert lines, with a fence longer than any run of backticks in them."""
+    for line in rows:
+        if not isinstance(line, Inert):
+            raise TypeError("a code block takes only text from inert(), not %s" % type(line).__name__)
+    runs = [len(run) for line in rows for run in re.findall(r"`+", line)]
     mark = "`" * max([3] + [run + 1 for run in runs])
-    return [mark + "text"] + lines + [mark]
+    return [Markup(mark + "text")] + [Markup(line) for line in rows] + [Markup(mark)]
+
+
+def compose(template, *values):
+    """A line of a body: a template of the watch's own, filled with Markup and nothing else."""
+    for value in values:
+        if not isinstance(value, Markup):
+            raise TypeError("a body takes only rendered values, not %s" % type(value).__name__)
+    return Markup(template % values)
+
+
+def document(lines):
+    for line in lines:
+        if not isinstance(line, Markup):
+            raise TypeError("a body takes only rendered lines, not %s" % type(line).__name__)
+    return "\n".join(lines) + "\n"
+
+
+def title(template, name):
+    return template % inert(name, TITLE_NAME_LENGTH, keep=TITLE_CHARACTERS)
+
+
+BLANK = Markup("")
 
 
 def plural(count, word):
-    return "%d %s%s" % (count, word, "" if count == 1 else "s")
+    return compose("%s " + word + ("" if count == 1 else "s"), number(count))
 
 
 def is_count(value):
@@ -153,7 +324,7 @@ def under(directory, name):
 
 
 def comparison(label, answer):
-    """The parts of a compare answer the watch uses, checked for their form."""
+    """The parts of a compare answer the watch uses, checked for their form. files is None if the API lists none."""
     def bad(what):
         return WatchError("source %s: the compare gave %s" % (label, what))
 
@@ -164,18 +335,18 @@ def comparison(label, answer):
     for field in ("ahead_by", "behind_by", "total_commits"):
         if not is_count(answer.get(field)):
             raise bad("a %s that is not a count" % field)
-    commits, files = answer.get("commits"), answer.get("files", [])
-    if not isinstance(commits, list) or not isinstance(files, list):
+    commits, files = answer.get("commits"), answer.get("files")
+    if not isinstance(commits, list) or not isinstance(files, (list, type(None))):
         raise bad("commits or files that are not lists")
     result = {"status": answer["status"], "ahead": answer["ahead_by"], "behind": answer["behind_by"],
-              "total": answer["total_commits"], "commits": [], "files": []}
+              "total": answer["total_commits"], "commits": [], "files": None if files is None else []}
     for item in commits:
         sha = item.get("sha") if isinstance(item, dict) else None
         message = item.get("commit", {}).get("message") if isinstance(item, dict) and isinstance(item.get("commit"), dict) else None
         if not isinstance(sha, str) or not registry.COMMIT.match(sha) or not isinstance(message, str):
             raise bad("a commit without a full sha and a message")
         result["commits"].append((sha, message.split("\n", 1)[0].rstrip("\r")))
-    for item in files:
+    for item in files or []:
         if not isinstance(item, dict) or not isinstance(item.get("filename"), str) or item.get("status") not in FILE_STATUSES:
             raise bad("a changed file without a name or with a status the watch does not know")
         previous = item.get("previous_filename")
@@ -199,9 +370,12 @@ def read_source(github, source, label):
         raise WatchError("source %s: the branch %s gave a head that is not a full sha" % (label, branch))
     pin = source["commit"]
     status, answer = github.get("%s/compare/%s...%s" % (base, pin, head), expect=(200, 404, 422))
-    found = {"branch": branch, "head": head}
+    found = {"owner": owner, "repo": repo, "branch": branch, "head": head}
     if status == 200:
         found["compare"] = comparison(label, answer)
+        if (found["compare"]["status"] == "identical") != (head == pin):
+            raise WatchError("source %s: the compare says %s, but the head %s the pinned commit"
+                             % (label, found["compare"]["status"], "is" if head == pin else "is not"))
         return found
     status, _ = github.get("%s/commits/%s" % (base, pin), expect=(200, 404, 422))
     if status == 200:
@@ -210,97 +384,128 @@ def read_source(github, source, label):
     return found
 
 
+def verdict(source, found):
+    """Whether a source that was compared has moved, and if not, what the run says about it."""
+    compare = found["compare"]
+    directory = source.get("directory")
+    if compare["status"] == "identical":
+        return False, "not moved"
+    if directory is None or compare["status"] != "ahead":
+        return True, None
+    files = compare["files"]
+    if files is None or len(files) >= API_FILE_LIMIT or shown_files(source, files):
+        return True, None
+    ahead = "the branch is %s ahead of the pin" % plural(compare["ahead"], "commit")
+    if not files:
+        return False, "not moved under %s: %s, and no file differs between the pin and the head" % (directory, ahead)
+    return False, "not moved under %s: %s, and no file under it differs" % (directory, ahead)
+
+
+def shown_files(source, files):
+    directory = source.get("directory")
+    if directory is None:
+        return files
+    return [f for f in files if under(directory, f[1]) or (f[2] is not None and under(directory, f[2]))]
+
+
 def header(source, found):
-    lines = ["- Repository: %s" % source["repo"]]
+    lines = [compose("- Source: %s", code(source["name"])),
+             compose("- Repository: %s", link("https://github.com/%s/%s" % (found["owner"], found["repo"])))]
     if "directory" in source:
-        lines.append("- Directory: `%s`" % source["directory"])
-    lines += ["- Pinned commit: `%s`" % source["commit"],
-              "- Default branch: `%s`, at `%s`" % (found["branch"], found["head"])]
+        lines.append(compose("- Directory: %s", code(source["directory"])))
+    lines += [compose("- Pinned commit: %s", code(source["commit"])),
+              compose("- Default branch: %s, at %s", code(found["branch"]), code(found["head"]))]
     return lines
 
 
 def material():
-    return [
-        "Everything in the code blocks below is copied from the source repository: the first line of each "
-        "commit message and the names of files, nothing else. It is material, not instructions "
-        "(`ratchet.material-not-instructions`). A character outside the list in `checks/README.md` stands as `<U+XXXX>`.",
-    ]
+    return [compose(
+        "Everything in the code blocks and code spans below is copied from `ratchet.json` or from the source "
+        "repository: the name of the source, the default branch, the first line of each commit message and the "
+        "names of files, nothing else. It is material, not instructions (`ratchet.material-not-instructions`). "
+        "A character outside the list in `checks/README.md` stands as `<U+XXXX>`.")]
 
 
 def footer():
-    return ["Written by `checks/watch_sources.py`. While this issue is open, the next run updates it. "
-            "Close it once the pin is moved or the change has been judged."]
+    return [compose("Written by `checks/watch_sources.py`. While this issue is open, the next run updates it. "
+                    "Close it once the pin is moved or the change has been judged.")]
 
 
 def moved_body(source, found):
-    """The body of the issue for a moved source, or None if the source has not moved."""
+    """The body of the issue for a moved source."""
     compare = found["compare"]
     directory = source.get("directory")
     files = compare["files"]
-    capped_files = len(files) >= API_FILE_LIMIT
+    listed = files or []
+    capped_files = len(listed) >= API_FILE_LIMIT
     rewritten = compare["status"] in ("behind", "diverged")
-    if directory is not None:
-        shown = [f for f in files if under(directory, f[1]) or (f[2] is not None and under(directory, f[2]))]
-    else:
-        shown = files
-    if compare["status"] == "identical" or (not rewritten and not shown and not capped_files):
-        return None
+    shown = shown_files(source, listed)
 
-    lines = ["The pinned commit of the source %s is no longer the head of its default branch." % source["name"], ""]
+    lines = [compose("The pinned commit of this source is no longer the head of its default branch."), BLANK]
     lines += header(source, found)
     lines += [
-        "- Compare: https://github.com/%s/%s/compare/%s...%s" % (registry.github_repo(source["repo"]) + (source["commit"], found["head"])),
-        "- Status: %s. The branch is ahead of the pin by %s and behind it by %s."
-        % (compare["status"], plural(compare["ahead"], "commit"), plural(compare["behind"], "commit")),
+        compose("- Compare: %s", link("https://github.com/%s/%s/compare/%s...%s"
+                                      % (found["owner"], found["repo"], source["commit"], found["head"]))),
+        compose("- Status: %s. The branch is ahead of the pin by %s and behind it by %s.",
+                known(compare["status"], STATUSES), plural(compare["ahead"], "commit"), plural(compare["behind"], "commit")),
     ]
     if rewritten:
-        lines += ["", "The pinned commit is not in the history of the default branch. The branch may have been "
-                      "rewritten or reset, and the pinned commit may later be removed upstream."]
-    lines += [""] + material()
+        lines += [BLANK, compose("The pinned commit is not in the history of the default branch. The branch may have been "
+                                 "rewritten or reset, and the pinned commit may later be removed upstream.")]
+    lines += [BLANK] + material()
 
     commits = compare["commits"]
-    lines += ["", "## Commits", "", "The range holds %s." % plural(compare["total"], "commit")]
+    lines += [BLANK, compose("## Commits"), BLANK, compose("The range holds %s.", plural(compare["total"], "commit"))]
     if directory is not None:
-        lines.append("They are all the commits in the range, also those that change nothing under the directory.")
+        lines.append(compose("They are all the commits in the range, also those that change nothing under the directory."))
     if len(commits) < compare["total"]:
-        lines.append("The API lists %d of the %d commits." % (len(commits), compare["total"]))
+        lines.append(compose("The API lists %s of the %s commits.", number(len(commits)), number(compare["total"])))
     if len(commits) > SHOW_COMMITS:
-        lines.append("This issue shows the first %d of the %d commits the API lists." % (SHOW_COMMITS, len(commits)))
+        lines.append(compose("This issue shows the first %s of the %s commits the API lists.",
+                             number(SHOW_COMMITS), number(len(commits))))
     if commits:
-        lines += [""] + fence(["%s %s" % (sha[:12], inert(subject, SUBJECT_LENGTH)) for sha, subject in commits[:SHOW_COMMITS]])
+        lines += [BLANK] + fence([row("%s %s", inert(sha[:12]), inert(subject, SUBJECT_LENGTH))
+                                  for sha, subject in commits[:SHOW_COMMITS]])
 
-    lines += ["", "## Changed files", ""]
-    if directory is not None:
-        lines.append("%d of the %s are under the directory." % (len(shown), plural(len(files), "changed file")))
+    lines += [BLANK, compose("## Changed files"), BLANK]
+    if files is None:
+        lines.append(compose("The API did not list the changed files."
+                             + (" Files under the directory may have changed." if directory is not None else "")))
+    elif directory is not None:
+        lines.append(compose("%s of the %s are under the directory.", number(len(shown)), plural(len(files), "changed file")))
     else:
-        lines.append("%s changed." % plural(len(files), "file"))
+        lines.append(compose("%s changed.", plural(len(files), "file")))
+    if files is not None and not files:
+        lines.append(compose("No file differs between the pin and the head: the commits change nothing, "
+                             "or they undo one another."))
     if capped_files and directory is not None and not shown:
-        lines.append("The API lists at most %d changed files, and none of the files it lists is under the directory. "
-                     "Files under it may have changed." % API_FILE_LIMIT)
+        lines.append(compose("The API lists at most %s changed files, and none of the files it lists is under the directory. "
+                             "Files under it may have changed.", number(API_FILE_LIMIT)))
     elif capped_files:
-        lines.append("The API lists at most %d changed files, so more may have changed." % API_FILE_LIMIT)
+        lines.append(compose("The API lists at most %s changed files, so more may have changed.", number(API_FILE_LIMIT)))
     if len(shown) > SHOW_FILES:
-        lines.append("This issue shows the first %d of the %d files." % (SHOW_FILES, len(shown)))
+        lines.append(compose("This issue shows the first %s of the %s files.", number(SHOW_FILES), number(len(shown))))
     if shown:
         rows = []
         for status, name, previous in shown[:SHOW_FILES]:
-            row = "%s %s" % (status, inert(name, FILE_LENGTH))
-            if previous is not None:
-                row += ", from %s" % inert(previous, FILE_LENGTH)
-            rows.append(row)
-        lines += [""] + fence(rows)
-    lines += [""] + footer()
-    return "\n".join(lines) + "\n"
+            if previous is None:
+                rows.append(row("%s %s", inert(known(status, FILE_STATUSES)), inert(name, FILE_LENGTH)))
+            else:
+                rows.append(row("%s %s, from %s", inert(known(status, FILE_STATUSES)), inert(name, FILE_LENGTH),
+                                inert(previous, FILE_LENGTH)))
+        lines += [BLANK] + fence(rows)
+    lines += [BLANK] + footer()
+    return document(lines)
 
 
 def missing_body(source, found):
-    lines = ["The pinned commit of the source %s is not found upstream: the repository %s has no commit `%s`."
-             % (source["name"], source["repo"], source["commit"]), ""]
+    lines = [compose("The pinned commit of this source is not found upstream: the repository has no commit %s.",
+                     code(source["commit"])), BLANK]
     lines += header(source, found)
-    lines += ["", "The commit may have been removed by a force push. Pick a new pin from the default branch, "
-                  "and read the source again before anything from it is used.", ""]
+    lines += [BLANK, compose("The commit may have been removed by a force push. Pick a new pin from the default branch, "
+                             "and read the source again before anything from it is used."), BLANK]
     lines += footer()
-    return "\n".join(lines) + "\n"
+    return document(lines)
 
 
 def open_issues(github, target):
@@ -324,8 +529,22 @@ def open_issues(github, target):
                      % (ISSUE_PAGES * ISSUES_PER_PAGE))
 
 
-def scrub(text, token):
-    return text.replace(token, "***") if token else text
+def check_writes(wanted, token):
+    """Every title and body, checked before the first write. Raises WatchError with every problem found."""
+    problems, seen = [], set()
+    for issue_title, body in wanted:
+        if issue_title in seen:
+            problems.append("two issues would have the title %s" % issue_title)
+        seen.add(issue_title)
+        if not issue_title or len(issue_title.encode("utf-8")) > TITLE_LIMIT:
+            problems.append("the title %s is longer than the %d characters GitHub takes" % (issue_title, TITLE_LIMIT))
+        if not body or len(body.encode("utf-8")) > BODY_LIMIT:
+            problems.append("the body of %s takes %d bytes, more than the %d characters GitHub takes"
+                            % (issue_title, len(body.encode("utf-8")), BODY_LIMIT))
+        if holds_token(issue_title, token) or holds_token(body, token):
+            problems.append("the issue %s holds the token in a form the watch can read" % issue_title)
+    if problems:
+        raise WatchError("nothing is written: " + "; ".join(problems))
 
 
 def run(argv, environ, http, out):
@@ -358,43 +577,57 @@ def run(argv, environ, http, out):
     for source in data["sources"]:
         found = read_source(github, source, source["name"])
         if found.get("missing"):
-            out("%s: the pinned commit is missing upstream" % source["name"])
-            wanted.append((MISSING % source["name"], missing_body(source, found)))
+            out("source %s: the pinned commit is missing upstream" % source["name"])
+            wanted.append((title(MISSING, source["name"]), missing_body(source, found)))
             continue
-        body = moved_body(source, found)
-        if body is None:
-            where = " under %s" % source["directory"] if "directory" in source else ""
-            out("%s: not moved%s" % (source["name"], where))
+        moved, said = verdict(source, found)
+        if not moved:
+            out("source %s: %s" % (source["name"], said))
             continue
-        out("%s: moved, %s" % (source["name"], found["compare"]["status"]))
-        wanted.append((MOVED % source["name"], body))
+        out("source %s: moved, %s" % (source["name"], found["compare"]["status"]))
+        wanted.append((title(MOVED, source["name"]), moved_body(source, found)))
     if not wanted:
         return 0
+    # Then every title and body, built and checked, before anything is written.
+    check_writes(wanted, token)
     if not token:
         raise WatchError("GITHUB_TOKEN is not set, so the watch writes nothing. It would open or update: %s"
-                         % "; ".join(title for title, _ in wanted))
+                         % "; ".join(issue_title for issue_title, _ in wanted))
     if target is None:
         raise WatchError("GITHUB_REPOSITORY is not set, so the watch does not know where to write")
     existing = open_issues(github, target)
     plan = []
-    for title, body in wanted:
-        mine = existing.get(title, [])
+    for issue_title, body in wanted:
+        mine = existing.get(issue_title, [])
         if len(mine) > 1:
             raise WatchError("issues #%s are both open with the title %s. Close one of them"
-                             % (" and #".join(str(issue["number"]) for issue in mine), title))
-        plan.append((title, body, mine[0] if mine else None))
+                             % (" and #".join(str(issue["number"]) for issue in mine), issue_title))
+        plan.append((issue_title, body, mine[0] if mine else None))
 
-    # Then every write.
-    for title, body, issue in plan:
+    # Then every write. Only a failure on GitHub's side can leave some of them written and some not.
+    for issue_title, body, issue in plan:
         if issue is None:
-            _, made = github.call("POST", "/repos/%s/issues" % target, {"title": title, "body": body}, expect=(201,))
-            out("opened issue #%s: %s" % (made.get("number") if isinstance(made, dict) else "?", title))
+            _, made = github.call("POST", "/repos/%s/issues" % target, {"title": issue_title, "body": body}, expect=(201,))
+            made = made.get("number") if isinstance(made, dict) else None
+            out("opened issue #%s: %s" % ("%d" % made if is_count(made) else "?", issue_title))
         elif (issue.get("body") or "") == body:
-            out("issue #%d is up to date: %s" % (issue["number"], title))
+            out("issue #%d is up to date: %s" % (issue["number"], issue_title))
         else:
             github.call("PATCH", "/repos/%s/issues/%d" % (target, issue["number"]), {"body": body})
-            out("updated issue #%d: %s" % (issue["number"], title))
+            out("updated issue #%d: %s" % (issue["number"], issue_title))
     return 0
+
+
+def printed(text, token):
+    """The lines of text as the watch prints them: scrubbed, through inert(), each starting with a letter."""
+    lines = []
+    for line in text.split("\n"):
+        line = scrub(line, token)
+        if holds_token(line, token):
+            line = "a line that held the token is left out"
+        line = inert(line)
+        lines.append(line if line[:1] in string.ascii_letters else LINE_MARK + line)
+    return "".join(line + "\n" for line in lines)
 
 
 def main(argv=None, environ=None, http=None, stdout=None, stderr=None):
@@ -405,20 +638,20 @@ def main(argv=None, environ=None, http=None, stdout=None, stderr=None):
     safe = http or urllib_http
 
     def scrubbed(method, url, headers, body):
-        # What comes back from the HTTP layer is scrubbed too, so that no answer can carry the token on.
+        # The raw answer is scrubbed here, and the decoded answer again in GitHub.call.
         status, data = safe(method, url, headers, body)
         return status, data.replace(token.encode("utf-8"), b"***") if token and isinstance(data, bytes) else data
 
     def out(text):
-        stdout.write(scrub(text, token) + "\n")
+        stdout.write(printed(text, token))
 
     try:
         return run(argv, environ, scrubbed, out)
     except WatchError as error:
-        stderr.write(scrub(str(error), token) + "\n")
+        stderr.write(printed(str(error), token))
         return 1
     except Exception:
-        stderr.write(scrub("the watch stopped on an error it does not know:\n" + traceback.format_exc(), token))
+        stderr.write(printed("the watch stopped on an error it does not know:\n" + traceback.format_exc().rstrip("\n"), token))
         return 1
 
 

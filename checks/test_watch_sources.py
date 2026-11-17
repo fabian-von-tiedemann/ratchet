@@ -568,7 +568,8 @@ class Watch(unittest.TestCase):
         self.assertIn("Change 99", "\n".join(inside))
         self.assertNotIn("Change 100", "\n".join(inside))
         self.assertIn("This issue shows the first 100 of the 250 commits", body)
-        self.assertIn("This issue shows the first 200 of the 300 files", body)
+        self.assertIn("This issue shows the first 150 of the 300 files", body)
+        self.assertIn("300 files changed.", body)
         self.assertLess(len(body), 65536)
 
     def test_a_directory_source_whose_file_list_is_capped_opens_an_issue(self):
@@ -817,6 +818,7 @@ class Watch(unittest.TestCase):
             "percent-encoded": "".join("%%%02X" % ord(c) for c in TOKEN),
             "as HTML entities": "".join("&#%d;" % ord(c) for c in TOKEN),
             "split by spaces": " ".join(TOKEN),
+            "in capitals and cut, so that only a part is left": "x" * 95 + TOKEN.upper(),
         }
         for name, form in forms.items():
             with self.subTest(form=name):
@@ -839,7 +841,7 @@ class Watch(unittest.TestCase):
         self.github.first_number = 4242
         self.github.add_issue("an issue by someone else", "theirs", login="stranger")
         self.github.add_issue("Source moved: other", "an earlier report")
-        answer = comparison("diverged", [commit(tip, "Rewrite")], [changed("a.md", "renamed", "b.md")],
+        answer = comparison("diverged", [commit(tip, "Rewrite")], [changed("a.md", "renamed", "b.md"), changed("d.md", "copied", "e.md")],
                             ahead=7, behind=3, total=11)
         self.github.upstream(other, tip, answer, branch="trunk/next")
         self.github.upstream(PLAIN, HEAD, comparison("ahead", [commit(HEAD, "One")], [changed("c.md", "removed")]))
@@ -852,13 +854,14 @@ class Watch(unittest.TestCase):
         self.assertEqual(writes, [("PATCH", "/repos/another-owner/another-repo/issues/4243"),
                                   ("POST", "/repos/another-owner/another-repo/issues")])
         body = self.github.issues[1]["body"]
-        self.assertIn("https://github.com/someone-else/thing", body)
+        self.assertIn("\n- Repository: https://github.com/someone-else/thing\n", body)
         self.assertIn("- Default branch: `trunk/next`, at `%s`" % tip, body)
         self.assertIn("https://github.com/someone-else/thing/compare/%s...%s" % (NEWER, tip), body)
         self.assertIn("Status: diverged. The branch is ahead of the pin by 7 commits and behind it by 3 commits.", body)
         self.assertIn("The range holds 11 commits.", body)
         self.assertIn("The API lists 1 of the 11 commits.", body)
         self.assertIn("renamed a.md, from b.md", fences(body)[1])
+        self.assertIn("copied d.md, from e.md", fences(body)[1])
         self.assertIn("%s Rewrite" % tip[:12], fences(body)[1])
         plain = self.github.issues[2]["body"]
         self.assertIn("removed c.md", fences(plain)[1])
