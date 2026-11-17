@@ -30,7 +30,11 @@ ENTRIES = {
     "0.4": "## 0.4 (2026-04-01)\n\n<!-- generated:count -->\nFour rules.\n<!-- /generated -->\n\n",
 }
 TITLE = "# Changelog\n\n"
-RATCHET = '{\n  "version": "%s",\n  "rules": []\n}\n'
+# A ratchet.json that registry.validate accepts: the guard reads it as strictly as every other check does.
+RATCHET = '{\n  "version": "%s",\n  "date": "2026-01-01",\n  "start": [],\n  "parts": [],\n  "sources": [],\n  "rules": []\n}\n'
+# One rule, with the part it is in, in place of the empty lists.
+A_RULE = ('"parts": [{"id": "core", "file": "RATCHET.md", "title": "The core"}],\n  "sources": [],\n  "rules": [{"key": "ratchet.new", '
+          '"part": "core", "status": "core", "enforcement": "text-only", "rule": "A new rule.", "ratchet": "Text only, as a test.", "source": ""}]')
 
 
 def changelog(*versions):
@@ -187,7 +191,8 @@ class Guard(unittest.TestCase):
 
     def test_the_rules_of_a_released_version_changed_fails(self):
         write(self.root, "CHANGELOG.md", changelog("0.3", "0.2", "0.1"))
-        write(self.root, "ratchet.json", RATCHET.replace("[]", '[{"key": "ratchet.new"}]') % "0.3")
+        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "sources": [],\n  "rules": []', A_RULE) % "0.3")
+        self.assertIn("ratchet.new", open(os.path.join(self.root, "ratchet.json"), encoding="utf-8").read())
         self.assert_fails("ratchet.json: names 0.3, which is released, and is not as it stood at the tag v0.3. A change to the rules raises the version")
 
     def test_a_released_version_whose_tag_holds_no_ratchet_json_fails(self):
@@ -196,10 +201,36 @@ class Guard(unittest.TestCase):
         self.assert_fails("ratchet.json: names 0.2, which is released, and the tag v0.2 holds no ratchet.json")
 
     def test_a_ratchet_json_that_cannot_be_read_fails(self):
-        for text, problem in (("{", "ratchet.json: not a valid data file"), ('{"version": 4}\n', "ratchet.json: the version must look like 0.4")):
+        for text, problem in (("{", "ratchet.json: not a valid data file"), (RATCHET.replace('"%s"', "4"), "ratchet.json: version must look like 0.2")):
             with self.subTest(text=text):
                 write(self.root, "ratchet.json", text)
                 self.assert_fails(problem)
+
+    def test_a_ratchet_json_that_is_not_strict_fails(self):
+        # Finding 4 of review round 1 of the new approach: plain json.loads took a field twice, an unknown field and NaN.
+        valid = RATCHET % "0.4"
+        cases = {
+            "the probe of the review": ('{"version":"0.3","version":"0.4","unknown":true,"rules":NaN}\n',
+                                        "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
+            "a field twice": (valid.replace('"date"', '"version": "0.4",\n  "date"'),
+                              "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
+            "an unknown field": (valid.replace('"date"', '"unknown": true,\n  "date"'), "ratchet.json: unknown field 'unknown'"),
+            "a missing field": (valid.replace('  "start": [],\n', ""), "ratchet.json: missing field 'start'"),
+            "NaN": (valid.replace('"rules": []', '"rules": NaN'), "ratchet.json: not a valid data file: NaN is not allowed"),
+            "Infinity": (valid.replace('"rules": []', '"rules": Infinity'), "ratchet.json: not a valid data file: Infinity is not allowed"),
+            "nested too deeply": (valid.replace('"rules": []', '"rules": ' + "[" * 100000 + "]" * 100000),
+                                  "ratchet.json: not a valid data file: it is nested too deeply"),
+            "a list at the top": ("[]\n", "ratchet.json: the top level must be an object"),
+        }
+        for case, (text, problem) in cases.items():
+            with self.subTest(case=case):
+                write(self.root, "ratchet.json", text)
+                self.assert_fails(problem)
+
+    def test_a_ratchet_json_that_is_not_utf8_fails(self):
+        with open(os.path.join(self.root, "ratchet.json"), "wb") as handle:
+            handle.write((RATCHET % "0.4").encode("utf-8").replace(b"2026", b"2\xff026", 1))
+        self.assert_fails("ratchet.json: is not valid UTF-8")
 
     def test_a_tag_of_another_form_fails(self):
         for tag in ("v0.4-rc1", "latest", "0.3", "v0.3.1"):

@@ -318,6 +318,132 @@ class Runs(FixtureTest):
             ''', "the suite was stopped by signal %d" % 9, NOT_FINISHED)
         self.assertIn("test_inner.Killed.test_killed: started and has no outcome", output)
 
+    def test_an_interruption_under_the_ctrl_c_handler_fails(self):
+        # The probe of review round 1 of the new approach: 2 tests collected, 1 ran, and the run exited 0.
+        output = self.assert_fails('''\
+            unittest.installHandler()
+
+
+            class Loads(Base):
+                def test_a_interrupted(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+                    os.kill(os.getpid(), signal.SIGINT)
+
+                def test_b_never_runs(self):
+                    pass
+            ''', "test_inner.Loads.test_b_never_runs: collected and did not run")
+        self.assertNotIn("the suite exited with status", output, "the child exited 0")
+        self.assertNotIn(NOT_FINISHED, output, "the run returned and wrote its completion record")
+
+    def test_a_keyboard_interrupt_raised_in_a_test_fails(self):
+        self.assert_fails('''\
+            class Loads(Base):
+                def test_a_interrupted(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+                    raise KeyboardInterrupt
+
+                def test_b_never_runs(self):
+                    pass
+            ''', NOT_FINISHED, "test_inner.Loads.test_a_interrupted: started and has no outcome",
+            "test_inner.Loads.test_b_never_runs: collected and did not run", ONE_MISSING, THREE_MISSING)
+
+    def test_a_run_told_to_stop_fails(self):
+        output = self.assert_fails('''\
+            class Loads(Base):
+                def run(self, result=None):
+                    outcome = super().run(result)
+                    result.stop()
+                    return outcome
+
+                def test_a_stops(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+
+                def test_b_never_runs(self):
+                    pass
+            ''', "test_inner.Loads.test_b_never_runs: collected and did not run")
+        self.assertNotIn("the suite exited with status", output, "the child exited 0")
+
+    def test_failfast_after_a_failure_fails_for_the_tests_it_did_not_run(self):
+        self.assert_fails('''\
+            class Loads(Base):
+                def run(self, result=None):
+                    result.failfast = True
+                    return super().run(result)
+
+                def test_a_fails(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+                    self.fail("first")
+
+                def test_b_never_runs(self):
+                    pass
+            ''', "test_inner.Loads.test_a_fails: failed", "test_inner.Loads.test_b_never_runs: collected and did not run")
+
+    def test_a_skip_in_set_up_fails(self):
+        self.assert_fails('''\
+            class Loads(Base):
+                def setUp(self):
+                    self.skipTest("not prepared")
+
+                def test_one(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+            ''', "test_inner.Loads.test_one: skipped", ONE_MISSING, THREE_MISSING)
+
+    def test_a_test_that_ran_and_was_not_collected_fails(self):
+        output = self.assert_fails('''\
+            class Extra(Base):
+                def extra(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+
+
+            class Loads(Base):
+                def run(self, result=None):
+                    Extra("extra").run(result)
+                    return super().run(result)
+
+                def test_one(self):
+                    pass
+            ''', "test_inner.Extra.extra: ran and was not collected", ONE_MISSING, THREE_MISSING)
+        self.assertNotIn("the suite exited with status", output, "the child exited 0")
+
+    def test_a_second_pass_of_one_instance_fails(self):
+        # Finding 6 of review round 1 of the new approach: two success records for one instance were one pass.
+        output = self.assert_fails('''\
+            class Loads(Base):
+                def run(self, result=None):
+                    outcome = super().run(result)
+                    result.addSuccess(self)
+                    return outcome
+
+                def test_one(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+            ''', "a second outcome of test_inner.Loads.test_one", ONE_MISSING, THREE_MISSING)
+        self.assertNotIn("the suite exited with status", output, "the child exited 0")
+
+    def test_a_fixture_changed_after_it_was_loaded_fails(self):
+        # Finding 5 of review round 1 of the new approach: no test turned red when this comparison was removed.
+        cases = {
+            "appended to": ('open(os.path.join(FIXTURES, "one.json"), "a").write(" ")', "one.json: changed while the suite ran"),
+            "removed": ('os.remove(os.path.join(FIXTURES, "one.json"))', "one.json: changed while the suite ran"),
+            "added": ('open(os.path.join(FIXTURES, "four.txt"), "w").write("four\\n")', "four.txt: changed while the suite ran"),
+        }
+        for case, (change, problem) in cases.items():
+            with self.subTest(case=case):
+                self.tree = self.fixture_directory(TREE)
+                self.assert_fails('''\
+            class Loads(Base):
+                def test_both(self):
+                    self.fixture_bytes("one.json")
+                    self.fixture_bytes("two/three.txt")
+                    %s
+            ''' % change, problem)
+
     def test_a_fixture_loaded_outside_a_test_fails(self):
         self.assert_fails('''\
             class Loads(Base):
@@ -380,13 +506,14 @@ class Records(FixtureTest):
         self.found = {"one.json": ONE, "two/three.txt": THREE}
 
     def lines(self):
-        """The records of a complete run in which test_both loads both fixtures and passes."""
+        """The records of a complete run in which test_both is collected, loads both fixtures and passes."""
         return [
+            {"record": "collected", "instance": 1, "test": "test_inner.Loads.test_both"},
             {"record": "start", "instance": 1, "test": "test_inner.Loads.test_both"},
             {"record": "loaded", "instance": 1, "fixture": "one.json", "sha256": ONE},
             {"record": "loaded", "instance": 1, "fixture": "two/three.txt", "sha256": THREE},
-            {"record": "outcome", "instance": 1, "test": "test_inner.Loads.test_both", "outcome": "passed"},
-            {"record": "complete", "tests_run": 1, "outcomes": 1, "loaded": 2},
+            {"record": "outcome", "instance": 1, "test": "test_inner.Loads.test_both", "outcomes": ["passed"]},
+            {"record": "complete", "collected": 1, "tests_run": 1, "outcomes": 1, "loaded": 2},
         ]
 
     def problems(self, lines=None, raw=None, status=0):
@@ -400,6 +527,7 @@ class Records(FixtureTest):
     def assert_problem(self, problem, lines=None, raw=None, status=0):
         found = self.problems(lines, raw, status)
         self.assertTrue(any(problem in each for each in found), "%r not in %r" % (problem, found))
+        return found
 
     def test_a_complete_run_passes(self):
         self.assertEqual(self.problems(), [])
@@ -409,18 +537,23 @@ class Records(FixtureTest):
         cases = {
             "an unknown kind": ({"record": "waived"}, "an unknown kind of record 'waived'"),
             "no kind": ({"instance": 1}, "a record without its kind"),
-            "an unknown field": (dict(base[3], waived="yes"), "unknown field 'waived'"),
-            "a missing field": ({"record": "outcome", "instance": 1, "outcome": "passed"}, "missing field 'test'"),
-            "an instance that is true": (dict(base[3], instance=True), "instance must be a whole number from 1"),
-            "an instance that is text": (dict(base[3], instance="1"), "instance must be a whole number from 1"),
-            "an instance of zero": (dict(base[0], instance=0), "instance must be a whole number from 1"),
-            "an instance with a fraction": (dict(base[1], instance=1.0), "instance must be a whole number from 1"),
-            "an unknown outcome": (dict(base[3], outcome="waived"), "outcome must be one of"),
-            "a short sha256": (dict(base[1], sha256=ONE[:-1]), "sha256 must be 64 lowercase hex digits"),
-            "a sha256 in capitals": (dict(base[1], sha256=ONE.upper()), "sha256 must be 64 lowercase hex digits"),
-            "a fixture outside the tree": (dict(base[1], fixture="../one.json"), "fixture must be a fixture's name"),
-            "a test without a name": (dict(base[0], test=""), "test must be a name of one line"),
-            "a count that is negative": (dict(base[4], loaded=-1), "loaded must be a whole number from 0"),
+            "an unknown field": (dict(base[4], waived="yes"), "unknown field 'waived'"),
+            "a missing field": ({"record": "outcome", "instance": 1, "outcomes": ["passed"]}, "missing field 'test'"),
+            "an instance that is true": (dict(base[4], instance=True), "instance must be a whole number from 1"),
+            "an instance that is text": (dict(base[4], instance="1"), "instance must be a whole number from 1"),
+            "an instance of zero": (dict(base[1], instance=0), "instance must be a whole number from 1"),
+            "a collected instance of null": (dict(base[0], instance=None), "instance must be a whole number from 1"),
+            "an instance with a fraction": (dict(base[2], instance=1.0), "instance must be a whole number from 1"),
+            "an unknown outcome": (dict(base[4], outcomes=["waived"]), "outcomes must be a list of one or more of"),
+            "no outcomes": (dict(base[4], outcomes=[]), "outcomes must be a list of one or more of"),
+            "outcomes as text": (dict(base[4], outcomes="passed"), "outcomes must be a list of one or more of"),
+            "a short sha256": (dict(base[2], sha256=ONE[:-1]), "sha256 must be 64 lowercase hex digits"),
+            "a sha256 in capitals": (dict(base[2], sha256=ONE.upper()), "sha256 must be 64 lowercase hex digits"),
+            "a fixture outside the tree": (dict(base[2], fixture="../one.json"), "fixture must be a fixture's name"),
+            "a test without a name": (dict(base[1], test=""), "test must be a name of one line"),
+            "a test with a lone surrogate": (dict(base[0], test="test_\ud800"), "test must be a name of one line"),
+            "a count that is negative": (dict(base[5], loaded=-1), "loaded must be a whole number from 0"),
+            "a count of collected tests that is true": (dict(base[5], collected=True), "collected must be a whole number from 0"),
             "a list": ([1, 2], "a record is one JSON object"),
         }
         for case, (line, problem) in cases.items():
@@ -433,11 +566,21 @@ class Records(FixtureTest):
 
     def test_a_field_twice_in_one_record_fails(self):
         raw = b'{"record": "start", "instance": 1, "test": "a.b", "test": "c.d"}\n'
-        self.assert_problem("line 1: not a record the check knows: the field 'test' twice", raw=raw)
+        self.assert_problem("line 1: not a record the check knows: the field 'test' appears twice in one object", raw=raw)
+
+    def test_a_constant_that_is_not_json_fails(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                raw = ('{"record": "complete", "collected": %s, "tests_run": 1, "outcomes": 1, "loaded": 2}\n' % constant).encode("ascii")
+                self.assert_problem("line 1: not a record the check knows: %s is not allowed" % constant, raw=raw)
+
+    def test_a_line_nested_too_deeply_fails(self):
+        raw = b"[" * 100000 + b"]" * 100000 + b"\n"
+        self.assert_problem("line 1: not a record the check knows: it is nested too deeply", raw=raw)
 
     def test_a_record_cut_off_at_its_end_fails(self):
         raw = "".join(json.dumps(line) + "\n" for line in self.lines()).encode("utf-8")[:-1]
-        self.assert_problem("line 5: the record has no line break at its end, so it was cut off", raw=raw)
+        self.assert_problem("line 6: the record has no line break at its end, so it was cut off", raw=raw)
 
     def test_an_empty_line_fails(self):
         raw = "".join(json.dumps(line) + "\n" for line in self.lines()).encode("utf-8").replace(b"\n", b"\n\n", 1)
@@ -457,13 +600,13 @@ class Records(FixtureTest):
 
     def test_a_record_after_the_completion_record_fails(self):
         lines = self.lines()
-        self.assert_problem("line 5: a record follows the completion record", lines[:3] + lines[4:] + lines[3:4])
+        self.assert_problem("line 6: a record follows the completion record", lines[:4] + lines[5:] + lines[4:5])
 
     def test_two_completion_records_fail(self):
         self.assert_problem("the suite wrote 2 completion records", self.lines() + self.lines()[-1:])
 
     def test_counts_that_disagree_with_the_records_fail(self):
-        for field, label in (("tests_run", "tests run"), ("outcomes", "outcomes"), ("loaded", "fixtures loaded")):
+        for field, label in (("collected", "tests collected"), ("tests_run", "tests run"), ("outcomes", "outcomes"), ("loaded", "fixtures loaded")):
             with self.subTest(field=field):
                 lines = self.lines()
                 lines[-1][field] += 1
@@ -473,35 +616,70 @@ class Records(FixtureTest):
         self.assert_problem("the suite exited with status 1", status=1)
         self.assert_problem("the suite was stopped by signal 15", status=-15)
 
+    def test_a_collected_test_that_did_not_run_fails(self):
+        # Finding 1 of review round 1 of the new approach: 2 collected, 1 ran, and the counts agreed with the records.
+        lines = self.lines()
+        lines.insert(1, {"record": "collected", "instance": 2, "test": "test_inner.Loads.test_other"})
+        lines[-1]["collected"] = 2
+        self.assert_problem("test_inner.Loads.test_other: collected and did not run", lines)
+
+    def test_a_test_that_ran_and_was_not_collected_fails(self):
+        lines = self.lines()
+        lines[0]["instance"] = 2
+        lines[0]["test"] = "test_inner.Loads.test_other"
+        found = self.assert_problem("test_inner.Loads.test_both: ran and was not collected", lines)
+        self.assertIn("test_inner.Loads.test_other: collected and did not run", found)
+        self.assertIn(ONE_MISSING, found, "a test that was not collected covers no fixture")
+
+    def test_a_test_collected_twice_fails(self):
+        lines = self.lines()
+        lines.insert(1, dict(lines[0]))
+        lines[-1]["collected"] = 2
+        self.assert_problem("line 2: instance 1 collected twice", lines)
+
+    def test_a_test_collected_after_the_run_started_fails(self):
+        lines = self.lines()
+        lines.insert(2, {"record": "collected", "instance": 2, "test": "test_inner.Loads.test_late"})
+        lines[-1]["collected"] = 2
+        self.assert_problem("line 3: a test collected after the run started", lines)
+
+    def test_a_start_of_another_test_than_its_collected_instance_fails(self):
+        lines = self.lines()
+        lines[1]["test"] = "test_inner.Loads.test_other"
+        lines[4]["test"] = "test_inner.Loads.test_other"
+        found = self.assert_problem("line 2: the start of instance 1 names test_inner.Loads.test_other, and that instance is test_inner.Loads.test_both", lines)
+        self.assertIn(ONE_MISSING, found)
+
     def test_an_instance_started_twice_fails(self):
         lines = self.lines()
-        self.assert_problem("line 2: instance 1 started twice", lines[:1] + lines[:1] + lines[1:])
+        self.assert_problem("line 3: instance 1 started twice", lines[:2] + lines[1:2] + lines[2:])
 
     def test_an_outcome_of_another_test_than_its_instance_fails(self):
         lines = self.lines()
-        lines[3]["test"] = "test_inner.Loads.test_other"
-        self.assert_problem("line 4: the outcome of instance 1 names test_inner.Loads.test_other, and that instance is test_inner.Loads.test_both", lines)
+        lines[4]["test"] = "test_inner.Loads.test_other"
+        self.assert_problem("line 5: the outcome of instance 1 names test_inner.Loads.test_other, and that instance is test_inner.Loads.test_both", lines)
 
     def test_a_passing_outcome_outside_any_test_fails(self):
         lines = self.lines()
-        lines.insert(4, {"record": "outcome", "instance": 2, "test": "setUpClass (test_inner.Loads)", "outcome": "passed"})
+        lines.insert(5, {"record": "outcome", "instance": 2, "test": "setUpClass (test_inner.Loads)", "outcomes": ["passed"]})
         lines[-1]["outcomes"] = 2
         self.assert_problem("setUpClass (test_inner.Loads): passed, outside any test", lines)
 
     def test_a_load_by_an_instance_that_never_started_fails(self):
         lines = self.lines()
-        lines[1]["instance"] = 7
-        self.assert_problem("line 2: one.json was loaded by instance 7, which never started", lines)
+        lines[2]["instance"] = 7
+        self.assert_problem("line 3: one.json was loaded by instance 7, which never started", lines)
 
     def test_a_passing_test_does_not_cover_for_one_that_failed_on_the_same_fixture(self):
         lines = self.lines()
-        lines[3]["outcome"] = "failed"
-        lines[4:4] = [
+        lines[4]["outcomes"] = ["failed"]
+        lines[1:1] = [{"record": "collected", "instance": 2, "test": "test_inner.Loads.test_again"}]
+        lines[6:6] = [
             {"record": "start", "instance": 2, "test": "test_inner.Loads.test_again"},
             {"record": "loaded", "instance": 2, "fixture": "one.json", "sha256": ONE},
-            {"record": "outcome", "instance": 2, "test": "test_inner.Loads.test_again", "outcome": "passed"},
+            {"record": "outcome", "instance": 2, "test": "test_inner.Loads.test_again", "outcomes": ["passed"]},
         ]
-        lines[-1].update(tests_run=2, outcomes=2, loaded=3)
+        lines[-1].update(collected=2, tests_run=2, outcomes=2, loaded=3)
         found = self.problems(lines)
         self.assertIn("test_inner.Loads.test_both: failed", found)
         self.assertIn(THREE_MISSING, found)
@@ -509,15 +687,32 @@ class Records(FixtureTest):
 
     def test_a_pass_and_another_outcome_of_one_instance_is_not_a_pass(self):
         lines = self.lines()
-        lines.insert(4, {"record": "outcome", "instance": 1, "test": "test_inner.Loads.test_both", "outcome": "errored"})
-        lines[-1]["outcomes"] = 2
+        lines[4]["outcomes"] = ["passed", "errored"]
         found = self.problems(lines)
         self.assertIn("test_inner.Loads.test_both: errored", found)
         self.assertIn(ONE_MISSING, found)
 
+    def test_two_passes_in_one_outcome_are_not_a_pass(self):
+        lines = self.lines()
+        lines[4]["outcomes"] = ["passed", "passed"]
+        found = self.problems(lines)
+        self.assertIn("test_inner.Loads.test_both: passed 2 times in one run of the test", found)
+        self.assertIn(ONE_MISSING, found)
+
+    def test_a_second_outcome_record_of_one_instance_fails(self):
+        # Finding 6 of review round 1 of the new approach: two success records for one instance were accepted.
+        for second in (["passed"], ["failed"]):
+            with self.subTest(second=second):
+                lines = self.lines()
+                lines.insert(5, dict(lines[4], outcomes=second))
+                lines[-1]["outcomes"] = 2
+                found = self.assert_problem("line 6: a second outcome of test_inner.Loads.test_both, instance 1. A test has exactly one", lines)
+                self.assertIn(ONE_MISSING, found)
+                self.assertIn(THREE_MISSING, found)
+
     def test_a_fixture_that_does_not_exist_fails(self):
         lines = self.lines()
-        lines[1]["fixture"] = "gone.json"
+        lines[2]["fixture"] = "gone.json"
         self.assert_problem("gone.json: loaded by test_inner.Loads.test_both, and there is no such fixture", lines)
 
 
