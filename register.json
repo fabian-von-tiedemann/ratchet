@@ -129,9 +129,9 @@
     },
     {
       "key": "repo.agents-own-account",
-      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and must not approve or merge one.",
-      "ratchet": "Text only: an account with write access is able to merge once the requirements are met. The protection on `main` only makes sure that the code owner has approved the latest change",
-      "source": "D-2026-11-16-code-owner"
+      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and may turn on auto-merge for them. It never approves one and never merges one by hand.",
+      "ratchet": "Text only: an account with write access is able to merge by hand once the requirements are met. The protection on `main` only makes sure that the code owner has approved the latest change",
+      "source": "D-2026-11-17-auto-merge"
     },
     {
       "key": "repo.standard-library-only",

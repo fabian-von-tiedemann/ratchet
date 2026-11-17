@@ -17,7 +17,7 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 
 - The core, the six parts of [RATCHET.md](RATCHET.md), is frozen. Do not add a rule to it or remove one. A new rule is a proposal (P) for the maintainer and starts as experimental.
 - The work now is turning rules that are text only into reference checks, one at a time, each with a fixture it fails on.
-- The maintainer approves decisions, tags and releases. An agent proposes and opens a PR. It does not tag, release or change the repository's settings.
+- The maintainer approves decisions and releases. An agent proposes and opens a PR. It does not tag, release or change the repository's settings. A release is made by the workflow [release.yml](.github/workflows/release.yml) when the maintainer has approved a PR that raises the version ([D-2026-11-17-release-on-merge](decisions/D-2026-11-17-release-on-merge.md)).
 
 ## How to change a rule
 
@@ -59,7 +59,7 @@ Show the commands and their results in the PR (`ratchet.evidence-before-done`).
 
 `main` takes changes only through pull requests. A pull request needs the job `checks` green and the approval of the code owner, who is the maintainer ([.github/CODEOWNERS](.github/CODEOWNERS)). Administrators are exempt from the protection, so that the one maintainer can merge their own changes ([D-2026-11-16-code-owner](decisions/D-2026-11-16-code-owner.md)).
 
-Agents contribute through a machine account of their own with write access. It opens pull requests. It must not approve or merge one. That is an instruction and not a lock: an account with write access is able to merge once the requirements are met. What the protection makes sure of is that the code owner has approved the latest change. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given.
+Agents contribute through a machine account of their own with write access. It opens pull requests and may turn on auto-merge for them, so that a pull request is merged as soon as the code owner approves it and the checks are green. It never approves one and never merges one by hand ([D-2026-11-17-auto-merge](decisions/D-2026-11-17-auto-merge.md)). That is an instruction and not a lock: an account with write access is able to merge by hand once the requirements are met. What the protection makes sure of is that the code owner has approved the latest change. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given.
 
 The account is decided and not yet created, and the protection is not yet set. Until both have been read back and tried, [REGISTER.md](REGISTER.md) lists the rules that lean on them as "text only for now", and [HANDOVER.md](HANDOVER.md) names the steps that make them "built".
 
