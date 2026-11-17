@@ -1068,7 +1068,9 @@ class Transport(Base):
                    "https://Api.github.com/repos/example/plain", "https://api.github.com./repos/example/plain",
                    "https://api.github.com%2eevil.invalid/", "https://api.github.com\\@evil.invalid/",
                    "https://api.github.com", "https://api.github.com?x", "//api.github.com/repos/example/plain",
-                   "ftp://api.github.com/repos/example/plain", "https://api.github.com/repos/example/plain#x")
+                   "ftp://api.github.com/repos/example/plain", "https://api.github.com/repos/example/plain#x",
+                   "https://api.\tgithub.com/repos/example/plain", "https://api.github.com\n/repos/example/plain",
+                   " https://api.github.com/repos/example/plain", "https://api.github.com/repos/example/plain\u00e9")
         for url in refused:
             with self.subTest(url=url):
                 with self.assertRaises(OSError) as raised:

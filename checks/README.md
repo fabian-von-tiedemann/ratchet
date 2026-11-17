@@ -159,7 +159,7 @@ python3 checks/watch_sources.py --data ratchet.json
 
 This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [ratchet.json](../ratchet.json) that `RATCHET.md` shows under Sources. Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
 
-**What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API.
+**What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API. It reads the head as `commits/HEAD`, which GitHub resolves to the head of the default branch, so it never reads the name of the branch.
 
 - A source without a directory has moved when the compare is not `identical`.
 - A source with a directory has moved when at least one changed file is under the directory, or when the compare is `behind` or `diverged`. If the API does not say which files changed, or lists 300 files and none of them under the directory, the watch cannot tell, and counts the source as moved.
@@ -186,7 +186,20 @@ This is not a reference check for a rule. It is a tool this repo runs on its own
 | Compare link | Owner and repo from `ratchet.json`, and the two shas | `https://github.com/<owner>/<repo>/compare/<pin>...<head>` |
 | Everything else | Fixed English text in the script | Each line exactly |
 
-No commit subject, file name, branch name, author or message is written. The issue tells the reader to follow the compare link to see the commits and the files, and that what they find there is material, not instructions. File names are read only to count those under the directory. The default branch is read only to build the path of the next request.
+No commit subject, file name, branch name, author or message is written. The issue tells the reader to follow the compare link to see the commits and the files, and that what they find there is material, not instructions. File names are read only to count those under the directory. The name of the default branch is not read at all.
+
+**No path in an error, and no unchecked value in a path.** An error names the request by a fixed kind written in the script and, where there is one, the source's name or the title, for example `source pstack: reading the head of the default branch gave 404`. It gives the HTTP status as an integer. It never names a path or an address. Every path is built from values of a strict form, and the transport sends no other:
+
+| Request | Its kind in an error | The values in its path, and their form |
+|---|---|---|
+| `GET /repos/<owner>/<repo>/commits/HEAD` | `source <name>: reading the head of the default branch` | Owner and repo from `ratchet.json`, and the fixed `HEAD` |
+| `GET /repos/<owner>/<repo>/compare/<pin>...<head>` | `source <name>: comparing the pinned commit with the head` | The pin from `ratchet.json`; the head from the API, checked as 40 lowercase hex characters first |
+| `GET /repos/<owner>/<repo>/commits/<pin>` | `source <name>: reading the pinned commit` | The pin, 40 lowercase hex characters |
+| `GET /repos/<target>/issues?state=open&per_page=100&page=<n>` | `reading the open issues of the target repository` | `GITHUB_REPOSITORY`, checked as owner/repo; integers |
+| `POST /repos/<target>/issues` | `opening the issue <title>` | The target |
+| `PATCH /repos/<target>/issues/<number>` | `updating the issue <title>` | The target; the number from the API, checked as an integer from 0 to 999999999 first |
+
+Before it sends a request, the watch matches its path in full against one of these forms. A path of any other form fails the run with `<kind>: the watch does not build such a request`, and nothing is sent. Only the issue numbers that the watch opened or updated are printed, as integers.
 
 **The data.** A source has a `name`, a `repo`, a `commit` and a `license`, and may have a `directory` and an `author`:
 
@@ -206,16 +219,18 @@ No commit subject, file name, branch name, author or message is written. The iss
 **One gate.** Every planned title and body, and every printed line, passes the same check before it leaves the watch:
 
 - **A grammar of lines.** A title is `Source moved: ` or `Source pin missing: ` and a name of the narrow form. Each line of a body is a blank line, one of the fixed sentences, or one of the lines in the table above, each matched in full by a pattern of its own.
-- **A small set of characters.** Outside a link or a path of the API, a line holds only ASCII letters, digits, the space and `.` `,` `:` `'` `(` `)` `/` `-`. So it holds no `@`, `#`, `<`, `>`, `[`, `]`, `!`, backtick, `|`, `\`, `*`, `_`, line break, control, or any character outside ASCII. Inside a link to `https://github.com/` or a path that starts with `/repos/`, it may also hold `_`, as a repository name may. It never holds `::`, and outside a link never `www.` or `GH-` and a digit.
+- **A small set of characters.** Outside a link, a line holds only ASCII letters, digits, the space and `.` `,` `:` `'` `(` `)` `/` `-`. So it holds no `@`, `#`, `<`, `>`, `[`, `]`, `!`, backtick, `|`, `\`, `*`, `_`, line break, control, or any character outside ASCII. Inside a link to `https://github.com/`, it may also hold `_`, as a repository name may. No printed line names a path, so a path is not let through. A line never holds `::`, and outside a link never `www.` or `GH-` and a digit.
 - **The token.** No title, body or printed line holds the token as it stands.
 
-If one planned title or body fails, nothing is written. The error names the planned issue and the line, never the text. A printed line that fails is replaced by `a line that did not pass the output gate is left out`. Errors give only the method, a path built from checked values, and the HTTP status as an integer, never anything from the body or the headers of an answer, and never the text of a network error. An error the watch does not know is printed as its kind and the line of the script.
+If one planned title or body fails, nothing is written. The error names the planned issue and the line, never the text. A printed line that fails is replaced by `a line that did not pass the output gate is left out`. Errors give only the kind of the request and the HTTP status as an integer, never a path, never anything from the body or the headers of an answer, and never the text of a network error. An error the watch does not know is printed as its kind and the line of the script.
+
+The gate cannot tell a token that is encoded, for example in hex, from a sha or a name. That is why nothing from an answer may reach a line, a path in an error included, and not a reason to undo encodings.
 
 **Why the token needs nothing more.** The earlier version replaced the token in every answer and looked for it behind escapes and encodings, because upstream text went into issues and logs. Now no text from an answer is written anywhere, so a token that an answer holds, in any encoding, has no way out. The only values that are written are checked for a form that a token of GitHub's does not have, and the gate refuses the token as it stands in case one ever did.
 
 **The size of a body.** No list from the API reaches a body, so its size does not depend on the source. The largest body has a name and a directory of 100 characters, an owner of 39 and a repository of 100, nine-digit counts, 300 changed files, all under the directory, and the notes on a `diverged` compare and on a capped list. It is 1390 bytes, and a test builds it. GitHub takes 65536 characters.
 
-**The token and the transport.** The token is read from the environment variable `GITHUB_TOKEN` and from nowhere else. It is sent only to `https://api.github.com`: the transport refuses any other address before it connects. A redirect is not followed. It is an answer of its own, and the run fails on it, so the token is never sent on. Without a token the reads run unauthenticated. If nothing has moved, the run passes. If something would be written, the run fails, names the titles and writes nothing.
+**The token and the transport.** The token is read from the environment variable `GITHUB_TOKEN` and from nowhere else. It is sent only to `https://api.github.com`: the transport refuses an address before it connects unless it is printable ASCII, since `urllib.parse` drops tabs and line breaks that `urllib.request` keeps, and unless, split with `urllib.parse`, the scheme is `https`, the netloc (the host and the port as written, and any userinfo) is exactly `api.github.com`, the path starts with `/` and there is no fragment. It never compares by prefix, so `https://api.github.com.evil.invalid/`, `https://api.github.com@evil.invalid/`, `https://user@api.github.com/`, `https://api.github.com:443/`, `http://api.github.com/` and `https://API.GITHUB.COM/` are all refused. A redirect is not followed. It is an answer of its own, and the run fails on it, so the token is never sent on. Without a token the reads run unauthenticated. If nothing has moved, the run passes. If something would be written, the run fails, names the titles and writes nothing.
 
 **What the run does with each answer.**
 
@@ -243,7 +258,7 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 | `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Nothing written |
 | `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with exactly the expected body |
 | `test_a_second_run_updates_and_does_not_duplicate` | The same move twice, then a further move. | Nothing written the second time, then the open issue updated |
-| `test_an_api_error_fails_without_writing` | An error, a rate limit, a missing repo, an answer that is not JSON, a network failure and a failing list of issues, at the second source after the first has moved. | Fails with exactly the method, the path and the status; writes nothing |
+| `test_an_api_error_fails_without_writing` | An error, a rate limit, a missing repo, an answer that is not JSON, a network failure and a failing list of issues, at the second source after the first has moved. | Fails with exactly the kind of the request and the status; writes nothing |
 | `test_a_missing_pin_gets_its_own_issue`, `test_a_missing_pin_and_a_move_are_different_issues` | The pinned commit is not found upstream. | Its own issue, with exactly the expected body |
 | `test_a_compare_that_fails_while_the_pin_exists_fails_the_run` | The compare is not found, but the pin is. | Fails, writes nothing |
 | `test_a_directory_source_with_changes_only_outside_its_directory_writes_nothing` | Changes beside the directory, in a name that starts like it, and in a directory of the same name elsewhere. | Nothing written |
@@ -254,7 +269,7 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 | `test_without_a_token_the_reads_run_and_the_writes_are_refused`, `test_an_empty_token_counts_as_no_token`, `test_without_a_token_and_nothing_moved_the_run_passes` | No token, or an empty one. | Fails and names the titles if anything moved, passes if not; sends no token |
 | `test_a_target_that_is_not_owner_and_repo_fails_without_writing` | `GITHUB_REPOSITORY` missing, empty or not of the form owner/repo. | Fails, writes nothing |
 | `test_an_issue_by_someone_else_with_the_same_title_is_not_edited`, `test_two_open_issues_of_its_own_with_one_title_fail_without_writing` | Issues by others, and two of its own, with the title. | Theirs left alone; two of its own fail the run |
-| `test_an_answer_of_an_unknown_form_fails_without_writing`, `test_a_branch_or_a_head_of_an_unknown_form_fails_without_writing` | An unknown status, counts that are text, a boolean, below zero or above the cap, files that are not a list, names that are not text, a branch with a line break, `..` or a backtick, a short or uppercase head. | Fails with a fixed message, writes nothing |
+| `test_an_answer_of_an_unknown_form_fails_without_writing`, `test_a_head_of_an_unknown_form_fails_without_writing` | An unknown status, counts that are text, a boolean, below zero or above the cap, files that are not a list, names that are not text; a head that is `HEAD`, uppercase, 39 or 41 characters, a number, missing or a list. | Fails with a fixed message, writes nothing; nothing is read after a bad head |
 | `test_every_read_comes_before_any_write` | Two moved sources. | Every read, then both writes |
 | `test_the_pinned_directory_is_written_as_before_in_ratchet_md` | The structured fields. | `RATCHET.md` shows the same repo text as before |
 | `test_a_compare_that_disagrees_with_the_head_fails_without_writing` | `identical` with a head that is not the pin, and `ahead` with a head that is. | Fails, writes nothing |
@@ -263,18 +278,22 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 | `test_the_gate_refuses_every_mark_outside_its_set`, `test_the_gate_refuses_a_line_of_a_kind_the_watch_does_not_write` | Round 1, finding 3: each refused mark in a title, a body and a printed line, and lines and titles of kinds the watch does not write. | Refused, nothing written |
 | `test_a_plan_that_fails_the_gate_writes_nothing_at_all` | A second body that fails the gate. | Fails, names the issue and the line, writes neither issue |
 | `test_no_text_from_an_answer_reaches_an_issue_or_a_line` | Round 1, finding 4, and round 2, finding 2: an answer whose every text field holds mentions, runner commands, a link, HTML, and the token as it stands, as `\u` escapes, percent-encoded twice and as HTML entities. | The body is byte for byte the body of a clean answer; the output holds none of it |
-| `test_no_text_from_an_error_answer_or_a_network_error_reaches_a_line`, `test_an_error_the_watch_does_not_know_prints_only_its_kind_and_line` | The same text in an error answer, a network error and an unknown error. | Exactly the method, the path and the status, or the kind of error and the line |
+| `test_no_text_from_an_error_answer_or_a_network_error_reaches_a_line`, `test_an_error_the_watch_does_not_know_prints_only_its_kind_and_line` | The same text in an error answer, a network error and an unknown error. | Exactly the kind of the request and the status, or the kind of error and the line |
 | `test_the_gate_refuses_the_token_as_it_stands`, `test_the_token_is_sent_with_every_call_and_never_printed` | A token that would pass the form of a name. | Refused in a title, a body and a printed line |
-| `test_values_read_from_the_api_are_used_and_not_assumed` | Round 1, finding 5: a default branch `trunk/next`, and a head, an owner, a repo, a target, issue numbers and counts that no other test uses. | Each value read is the value used |
-| `test_a_printed_line_that_fails_the_gate_is_left_out` | Round 2, finding 1: printed lines with `##[error]`, `::error::`, `@`, the token, a carriage return and `_`. | Each replaced by the fixed line |
+| `test_values_read_from_the_api_are_used_and_not_assumed` | Round 1, finding 5: a head, an owner, a repo, a target, issue numbers and counts that no other test uses. The head is read as `commits/HEAD`, so there is no branch name to assume. | Each value read is the value used |
+| `test_a_printed_line_that_fails_the_gate_is_left_out` | Round 2, finding 1: printed lines with `##[error]`, `::error::`, `@`, the token, a carriage return and `_`, and a line that names a path with `_`. | Each replaced by the fixed line |
 | `test_names_that_share_a_long_start_get_their_own_titles` | Round 2, finding 3: two names of 100 characters that differ in the last. | Two issues, each titled with the whole name |
+| `test_no_error_names_a_path_or_a_value_from_an_answer` | Round 1 of the new approach, finding 1: a repository whose default branch is the token in hex, and each request in turn failing with a status, a network error or an answer that is not JSON: the head, the compare, the pinned commit, the list of issues, opening and updating. | Exactly the kind and the status; no path, no sha, no issue number, no `HEAD`, and neither the token nor its hex |
+| `test_the_head_is_read_without_the_name_of_the_branch` | The same repository, moved. | Reads `commits/HEAD` and then the compare, and no request holds the branch |
+| `test_a_request_is_built_only_from_checked_values` | Paths of every form the watch builds, and 19 it does not: the repository alone, a branch, `main`, an owner with `_`, an uppercase or short sha, `..` instead of `...`, `HEAD/../x`, a query, an issue number below zero, of ten digits or with `%0A`, `..` or `.` as a part, a line break, a percent-encoded `/`, `//evil.invalid` and another query on the issues. | The first sent; each of the others fails with the kind, and nothing is sent |
 | `test_a_redirect_is_not_followed_and_the_token_goes_nowhere_else` | Round 2, finding 4: the real transport, against a local server that answers 301, 302, 303, 307 or 308 with an address on a second local server. | Fails with the status; the token reached the first server only, and the second got nothing |
 | `test_the_redirect_handler_makes_no_new_request`, `test_the_transport_sends_nothing_to_another_address`, `test_the_real_transport_reads_an_answer` | The redirect handler alone, a local address that is not the API, and a plain run through the real transport. | No new request; refused before connecting; read as through the fake |
+| `test_the_token_goes_only_to_the_exact_origin_of_the_api` | Round 1 of the new approach, finding 2: 23 addresses near the API, among them `api.github.com.evil.invalid`, `api.github.com@evil.invalid`, a userinfo part, the ports 443 and 8443, `http`, capitals, a trailing dot, a percent-encoded dot, a backslash, no path, a fragment, another scheme, a tab, a line break, a leading space and a character outside ASCII, with an opener that records what reaches it. | Each refused before an opener is built; the API itself reaches the opener with the token |
 
 **What it does not claim.**
 
 - It does not judge whether a move matters for a rule. That needs a reader, and the compare is material for one.
-- It sees only the default branch and only sources on GitHub.
+- It sees only the default branch and only sources on GitHub. It takes the default branch to be what GitHub resolves `HEAD` to, as it did for the sources here and for a repository whose default branch is `master` when this was written.
 - It recognizes its own issues by the account `github-actions[bot]`. Run with another token, it does not find them and opens new ones.
 - A run writes all of its issues or none, unless GitHub fails a write after an earlier one went through. Then the issues before it are written and those after it are not, and the next run writes them.
 - GitHub may show a sha in an issue as a link to a commit of this repository, if this repository has one with that sha. That is a link to this repo, not a mention.

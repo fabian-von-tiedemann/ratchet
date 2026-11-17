@@ -20,9 +20,14 @@ written here. Every title, body and printed line passes one gate first: a gramma
 a small fixed set of characters, and a check for the token. Every read comes before any write, and nothing
 is written if one planned title or body fails the gate.
 
+An error names the request by a fixed kind and the source's name, and gives the HTTP status as an integer.
+It never names a path: every path is built from values checked for a strict form, and the head of the
+default branch is read as commits/HEAD, so the name of the branch is never read at all.
+
 The token is read from the environment variable GITHUB_TOKEN and from nowhere else, and is sent only to
-https://api.github.com. A redirect is not followed. Without a token the reads run unauthenticated, and if
-anything would be written, the run fails and names the titles, without writing them.
+the origin https://api.github.com, compared exactly and never by prefix. A redirect is not followed. Without
+a token the reads run unauthenticated, and if anything would be written, the run fails and names the titles,
+without writing them.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -34,6 +39,7 @@ import string
 import sys
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import registry
@@ -53,11 +59,19 @@ BODY_LIMIT = 65536
 ISSUE_PAGES = 10
 ISSUES_PER_PAGE = 100
 MAX_ANSWER = 32 * 1024 * 1024
-# A branch name, as the watch accepts it from upstream to build a request path: plain names joined by /.
-BRANCH = re.compile(r"[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*")
 TARGET = re.compile(r"(%s)/(%s)" % (registry.OWNER, registry.REPOSITORY))
 SHA = r"[0-9a-f]{40}"
 COUNT = r"[0-9]{1,9}"
+# Every request path the watch builds, each value in it of a checked form. HEAD is resolved by GitHub to
+# the head of the default branch, so no path holds the name of a branch. Any other path is not sent.
+_REPO_PATH = r"/repos/%s/(?!\.\.?/)%s" % (registry.OWNER, registry.REPOSITORY)
+PATHS = [re.compile(_REPO_PATH + rest) for rest in (
+    r"/commits/(?:HEAD|%s)" % SHA,
+    r"/compare/%s\.\.\.%s" % (SHA, SHA),
+    r"/issues",
+    r"/issues\?state=open&per_page=[0-9]{1,3}&page=[0-9]{1,2}",
+    r"/issues/" + COUNT,
+)]
 
 
 class WatchError(Exception):
@@ -73,9 +87,22 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def is_api(url):
+    """Whether url is a path on the exact origin of API. urllib.parse splits it, and the scheme and the netloc,
+    which holds the host and the port as written and any userinfo, must equal those of API. Never by prefix.
+    urlsplit drops tabs and line breaks and urllib.request does not, so a url must be printable ASCII first."""
+    if any(not "!" <= character <= "~" for character in url):
+        return False
+    try:
+        parts, api = urllib.parse.urlsplit(url), urllib.parse.urlsplit(API)
+    except ValueError:
+        return False
+    return parts.scheme == api.scheme and parts.netloc == api.netloc and parts.path.startswith("/") and not parts.fragment
+
+
 def urllib_http(method, url, headers, body):
     """The HTTP layer: (status, bytes). A network failure, or an address that is not the API, raises OSError."""
-    if not url.startswith(API + "/"):
+    if not is_api(url):
         raise OSError("the watch only talks to the API")
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
@@ -89,13 +116,17 @@ def urllib_http(method, url, headers, body):
 
 
 class GitHub:
-    """Calls the REST API through an injected HTTP function. An error names the call and the status, and nothing else."""
+    """Calls the REST API through an injected HTTP function. An error names the kind of the call, as the caller
+    wrote it, and the status, and nothing else: no path, no URL, and nothing from the answer."""
 
     def __init__(self, http, token):
         self.http = http
         self.token = token
 
-    def call(self, method, path, payload=None, expect=(200,)):
+    def call(self, method, path, what, payload=None, expect=(200,)):
+        """what is fixed text and the source's name or the title, such as "source pstack: reading the pinned commit"."""
+        if not any(form.fullmatch(path) for form in PATHS):
+            raise WatchError("%s: the watch does not build such a request" % what)
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -107,29 +138,27 @@ class GitHub:
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        # Every value in the path is checked before it is built, and the query is left out of an error.
-        said = "%s %s" % (method, path.split("?", 1)[0])
         try:
             status, data = self.http(method, API + path, headers, body)
         except OSError:
-            raise WatchError("%s could not be %s" % (said, "read" if method == "GET" else "sent"))
+            raise WatchError("%s failed before an answer came" % what)
         if status not in expect:
-            raise WatchError("%s gave %d" % (said, status))
+            raise WatchError("%s gave %d" % (what, status))
         try:
             return status, json.loads(data.decode("utf-8", errors="strict"))
         except (UnicodeDecodeError, ValueError, RecursionError):
-            raise WatchError("%s gave an answer that is not JSON" % said)
+            raise WatchError("%s gave an answer that is not JSON" % what)
 
-    def get(self, path, expect=(200,)):
-        return self.call("GET", path, expect=expect)
+    def get(self, path, what, expect=(200,)):
+        return self.call("GET", path, what, expect=expect)
 
 
 # The gate. Every title, body and printed line passes it before it leaves the watch.
 
-# The characters a title, a line of a body or a printed line may hold outside a link or a path of the API.
+# The characters a title, a line of a body or a printed line may hold outside a link.
 SAFE = frozenset(string.ascii_letters + string.digits + " .,:'()/-")
-# A link to GitHub, or a path of the API. Inside one, "_" may stand too, as in a repository name.
-URL = re.compile(r"(?:https://github\.com|/repos)/[A-Za-z0-9._/-]+")
+# A link to GitHub. Inside one, "_" may stand too, as in a repository name. No printed line names a path.
+URL = re.compile(r"https://github\.com/[A-Za-z0-9._/-]+")
 NO_TARGET = "the target repository is not set, or is not of the form owner/repo"
 LEFT_OUT = "a line that did not pass the output gate is left out"
 
@@ -233,24 +262,22 @@ def read_source(github, source):
     name = source["name"]
     owner, repo = registry.github_repo(source["repo"])
     base = "/repos/%s/%s" % (owner, repo)
-    _, info = github.get(base)
-    branch = info.get("default_branch") if isinstance(info, dict) else None
-    if not isinstance(branch, str) or not BRANCH.fullmatch(branch) or ".." in branch:
-        raise WatchError("source %s: the repository gave a default branch of a form the watch does not know" % name)
-    _, tip = github.get("%s/branches/%s" % (base, branch))
-    head = tip.get("commit", {}).get("sha") if isinstance(tip, dict) and isinstance(tip.get("commit"), dict) else None
+    # GitHub resolves HEAD to the head of the default branch, so the name of the branch is never read.
+    _, tip = github.get(base + "/commits/HEAD", "source %s: reading the head of the default branch" % name)
+    head = tip.get("sha") if isinstance(tip, dict) else None
     if not isinstance(head, str) or not re.fullmatch(SHA, head):
         raise WatchError("source %s: the repository gave a head of a form the watch does not know" % name)
     pin = source["commit"]
     found = {"owner": owner, "repo": repo, "head": head}
-    status, answer = github.get("%s/compare/%s...%s" % (base, pin, head), expect=(200, 404, 422))
+    status, answer = github.get("%s/compare/%s...%s" % (base, pin, head),
+                                "source %s: comparing the pinned commit with the head" % name, expect=(200, 404, 422))
     if status == 200:
         found["compare"] = comparison(name, answer)
         if (found["compare"]["status"] == "identical") != (head == pin):
             raise WatchError("source %s: the compare says %s, but the head %s the pinned commit"
                              % (name, found["compare"]["status"], "is" if head == pin else "is not"))
         return found
-    status, _ = github.get("%s/commits/%s" % (base, pin), expect=(200, 404, 422))
+    status, _ = github.get("%s/commits/%s" % (base, pin), "source %s: reading the pinned commit" % name, expect=(200, 404, 422))
     if status == 200:
         raise WatchError("source %s: the compare gave 404 although the pinned commit exists" % name)
     found["missing"] = True
@@ -330,15 +357,16 @@ def missing_body(source, found):
 def open_issues(github, target):
     """The open issues in the target repository that the watch opened, by title. Pull requests are left out."""
     found = {}
+    what = "reading the open issues of the target repository"
     for page in range(1, ISSUE_PAGES + 1):
-        _, issues = github.get("/repos/%s/issues?state=open&per_page=%d&page=%d" % (target, ISSUES_PER_PAGE, page))
+        _, issues = github.get("/repos/%s/issues?state=open&per_page=%d&page=%d" % (target, ISSUES_PER_PAGE, page), what)
         if not isinstance(issues, list):
-            raise WatchError("GET /repos/%s/issues gave an answer of a form the watch does not know" % target)
+            raise WatchError("%s gave an answer of a form the watch does not know" % what)
         for issue in issues:
             if not isinstance(issue, dict) or not is_count(issue.get("number")) or not isinstance(issue.get("title"), str) \
                     or not isinstance(issue.get("user"), dict) or not isinstance(issue["user"].get("login"), str) \
                     or not isinstance(issue.get("body") or "", str):
-                raise WatchError("GET /repos/%s/issues gave an issue of a form the watch does not know" % target)
+                raise WatchError("%s gave an issue of a form the watch does not know" % what)
             if "pull_request" in issue or issue["user"]["login"] != ISSUE_AUTHOR:
                 continue
             found.setdefault(issue["title"], []).append(issue)
@@ -408,13 +436,14 @@ def run(argv, environ, http, out):
     # Then every write. Only a failure on GitHub's side can leave some of them written and some not.
     for title, body, issue in writes:
         if issue is None:
-            _, made = github.call("POST", "/repos/%s/issues" % target, {"title": title, "body": body}, expect=(201,))
+            _, made = github.call("POST", "/repos/%s/issues" % target, "opening the issue " + title,
+                                  {"title": title, "body": body}, expect=(201,))
             number = made.get("number") if isinstance(made, dict) else None
             out(("opened issue %d: %s" % (number, title)) if is_count(number) else "opened an issue: " + title)
         elif (issue.get("body") or "") == body:
             out("issue %d is up to date: %s" % (issue["number"], title))
         else:
-            github.call("PATCH", "/repos/%s/issues/%d" % (target, issue["number"]), {"body": body})
+            github.call("PATCH", "/repos/%s/issues/%d" % (target, issue["number"]), "updating the issue " + title, {"body": body})
             out("updated issue %d: %s" % (issue["number"], title))
     return 0
 
