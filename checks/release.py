@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Tag and release the version in ratchet.json, from the release workflow (D-2026-11-17-release-on-merge).
+"""Tag and release the version in ratchet.json, from the release workflow.
 
     python3 checks/release.py notes --repo OWNER/NAME   print the release text, with no token and no network
     python3 checks/release.py publish                   tag and release, in the release workflow
 
-publish reads GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_SHA from the environment. The
-token is sent only to https://api.github.com and is never printed. It never moves,
-deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
+D-2026-11-17-release-on-merge and D-2026-11-17-release-verbatim. The release text is the
+changelog entry as it stands, then one fixed line. An older version that is not finished
+fails the run, and the run writes nothing: the maintainer reruns the run of that version.
+
+publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_REF from the
+environment. The token is sent only to https://api.github.com and is never printed. It
+never moves, deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -33,8 +37,11 @@ FENCE_OPEN = re.compile(r"^```[a-z]*\Z")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:")
 MARKER = re.compile(r"^<!-- generated:[a-z-]+(?: [a-z0-9-]+)? -->\Z")
 END = "<!-- /generated -->"
-# A link to a file in the repo, which the release text points at the file in the tag.
-LOCAL_LINK = re.compile(r"\]\(([A-Za-z][A-Za-z0-9_./-]*)(#[A-Za-z0-9-]+)?\)")
+# The one line the script adds to an entry, last, after a blank line.
+FILES_LINE = "The files of this version: [v%(version)s](https://github.com/%(repo)s/tree/v%(version)s)"
+# Versions tagged before Ratchet published releases. Each needs its tag and no release.
+BEFORE_RELEASES = ("0.1",)
+MAIN = "refs/heads/main"
 TAG_REF = re.compile(r"^refs/tags/v([0-9]+\.[0-9]+)\Z")
 SHA = re.compile(r"^[0-9a-f]{40}\Z")
 REPOSITORY = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*\Z")
@@ -62,6 +69,11 @@ def version_key(version):
 
 def read_changelog(path):
     """The entries of a changelog file. Strict UTF-8, and CRLF read as LF."""
+    return parse_changelog(read_text(path))
+
+
+def read_text(path):
+    """The text of a file, read as strict UTF-8."""
     try:
         with open(path, "rb") as handle:
             data = handle.read()
@@ -71,7 +83,7 @@ def read_changelog(path):
         text = data.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
         raise ReleaseError("CHANGELOG.md: it %s. Every file a check reads is UTF-8" % registry.not_utf8(error))
-    return parse_changelog(text)
+    return text
 
 
 def parse_changelog(text):
@@ -138,27 +150,14 @@ def parse_changelog(text):
 
 
 def release_text(entry, repo):
-    """The text of the release: the entry, without the markers of generated blocks, and with
-    links to files in the repo pointing at the files in the tag. Code is left as it stands."""
-    base = "https://github.com/%s/blob/v%s/" % (repo, entry.version)
-    lines = []
-    fence = False
-    for line in entry.lines:
-        if FENCE_LIKE.match(line):
-            fence = not fence
-        elif not fence:
-            if MARKER.match(line) or line == END:
-                continue
-            parts = line.split("`")
-            for index in range(0, len(parts), 2):
-                parts[index] = LOCAL_LINK.sub(lambda m: "](%s%s%s)" % (base, m.group(1), m.group(2) or ""), parts[index])
-            line = "`".join(parts)
-        lines.append(line)
+    """The text of the release: the lines of the entry as they stand, without the blank lines
+    around them, then a blank line and FILES_LINE. Nothing in the entry is changed."""
+    lines = list(entry.lines)
     while lines and not lines[0].strip():
         lines.pop(0)
     while lines and not lines[-1].strip():
         lines.pop()
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n\n" + FILES_LINE % {"version": entry.version, "repo": repo}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -267,7 +266,7 @@ def create_release(api, repo, tag, version, body, sha):
     path = "/repos/%s/releases" % repo
     data = request(api, "POST", path, {"tag_name": tag, "name": "Ratchet %s" % version, "body": body,
                                        "draft": False, "prerelease": False}, 201,
-                   "The tag %s is at %s and has no release. Re-run this run: it finds the tag at this commit and creates only the release." % (tag, sha))
+                   "The tag %s is at %s and has no release. Rerun this run: it finds the tag at this commit and creates only the release." % (tag, sha))
     if not (isinstance(data, dict) and data.get("tag_name") == tag and data.get("draft") is False):
         raise ReleaseError("POST %s: the answer is not a published release for %s. Look at the releases by hand." % (path, tag))
     ref = "refs/tags/%s" % tag
@@ -277,10 +276,24 @@ def create_release(api, repo, tag, version, body, sha):
         raise ReleaseError("GET %s: read back, the tag %s does not point at %s. The release was created. Look at it by hand." % (path, tag, sha))
 
 
+def unfinished(entries, version, tags, releases):
+    """Every older version in the changelog that is not finished, with what it lacks."""
+    problems = []
+    for entry in sorted(entries, key=lambda e: version_key(e.version)):
+        if version_key(entry.version) >= version_key(version):
+            continue
+        if entry.version not in tags:
+            problems.append("%s: no tag" % entry.version)
+        elif entry.version not in BEFORE_RELEASES and False not in releases.get("v" + entry.version, []):
+            problems.append("%s: a tag and no published release" % entry.version)
+    return problems
+
+
 def publish(version, text, repo, sha, api, out):
     """Tag sha as v<version> and release it, or find that it is done. ReleaseError on every fault.
 
-    Nothing is written before every check has passed. A tag is created and never moved,
+    Only versions up to this one are looked at. Nothing is written before every check has
+    passed, and nothing is written for an older version. A tag is created and never moved,
     deleted or edited.
     """
     entries = parse_changelog(text)
@@ -292,23 +305,25 @@ def publish(version, text, repo, sha, api, out):
     body = release_text(entry, repo)
     tag = "v%s" % version
 
-    tags = list_tags(api, repo)
-    releases = [draft for name, draft in list_releases(api, repo) if name == tag]
+    tags = dict((v, target) for v, target in list_tags(api, repo).items() if version_key(v) <= version_key(version))
+    releases = {}
+    for name, draft in list_releases(api, repo):
+        releases.setdefault(name, []).append(draft)
 
     known = set(e.version for e in entries)
     for name in sorted(tags, key=version_key):
         if name not in known:
             raise ReleaseError("the tag v%s has no entry in CHANGELOG.md. Nothing was written." % name)
-    missing = sorted((e.version for e in entries[1:] if e.version not in tags), key=version_key)
-    if missing:
-        names = missing[0] if len(missing) == 1 else ", ".join(missing[:-1]) + " and " + missing[-1]
-        raise ReleaseError("%s %s an entry in CHANGELOG.md and no tag. Re-run the release run of the commit that raised the version, "
-                           "then this one. Nothing was written." % (names, "has" if len(missing) == 1 else "have"))
-    if len(releases) > 1:
-        raise ReleaseError("there are %d releases for %s. Nothing was written." % (len(releases), tag))
+    problems = unfinished(entries, version, tags, releases)
+    if problems:
+        raise ReleaseError("an older version is not finished (%s). Rerun the release run of the commit that raised the version "
+                           "to it, then this run. Nothing was written." % "; ".join(problems))
+    mine = releases.get(tag, [])
+    if len(mine) > 1:
+        raise ReleaseError("there are %d releases for %s. Nothing was written." % (len(mine), tag))
 
     if version not in tags:
-        if releases:
+        if mine:
             raise ReleaseError("a release for %s exists, and the tag does not. Publish or remove it by hand. Nothing was written." % tag)
         ref = "refs/tags/%s" % tag
         path = "/repos/%s/git/refs" % repo
@@ -323,18 +338,23 @@ def publish(version, text, repo, sha, api, out):
 
     kind, target = tags[version]
     if kind == "commit" and target == sha:
-        if releases and releases[0]:
+        if mine and mine[0]:
             raise ReleaseError("a draft release for %s exists. Publish it by hand. Nothing was written." % tag)
-        if releases:
+        if mine:
             out.write("%s is tagged at this commit and released. Nothing to do.\n" % tag)
             return
+        # A rerun of this version's own run: the tag is at the approved commit, and the text is
+        # the entry at that commit. Only the release is created.
         create_release(api, repo, tag, version, body, sha)
         out.write("The tag %s was already at %s. Released Ratchet %s.\n" % (tag, sha, version))
         return
 
-    if kind != "commit" or not releases or releases[0]:
-        raise ReleaseError("the tag %s points at another commit than this one, and has no published release. "
+    if kind != "commit":
+        raise ReleaseError("the tag %s points at another commit than this one: it is not a plain tag of a commit. "
                            "The tag is not moved. Nothing was written." % tag)
+    if not mine or mine[0]:
+        raise ReleaseError("the tag %s points at another commit than this one, and has no published release. The tag is not moved. "
+                           "Rerun the release run of the commit it points at. Nothing was written." % tag)
     path = "/repos/%s/compare/%s...%s" % (repo, target, sha)
     data = request(api, "GET", path, None, 200, "Nothing was written.")
     if not (isinstance(data, dict) and data.get("status") == "ahead"):
@@ -350,8 +370,9 @@ def environment(environ, name, form):
     return value
 
 
-def main(argv=None, environ=None, opener=None, out=None, err=None):
+def main(argv=None, environ=None, opener=None, out=None, err=None, root=None):
     environ = os.environ if environ is None else environ
+    root = root or registry.ROOT
     out = out or sys.stdout
     err = err or sys.stderr
     parser = argparse.ArgumentParser(description="Tag and release the version in ratchet.json.")
@@ -362,10 +383,10 @@ def main(argv=None, environ=None, opener=None, out=None, err=None):
     args = parser.parse_args(argv)
     try:
         try:
-            version = registry.load(os.path.join(registry.ROOT, "ratchet.json"))["version"]
+            version = registry.load(os.path.join(root, "ratchet.json"))["version"]
         except registry.RegistryError as error:
             raise ReleaseError(str(error))
-        path = os.path.join(registry.ROOT, "CHANGELOG.md")
+        path = os.path.join(root, "CHANGELOG.md")
         if args.command == "notes":
             if not REPOSITORY.match(args.repo):
                 raise ReleaseError("--repo is not of the form OWNER/NAME")
@@ -379,13 +400,9 @@ def main(argv=None, environ=None, opener=None, out=None, err=None):
             raise ReleaseError("GITHUB_TOKEN is not set")
         repo = environment(environ, "GITHUB_REPOSITORY", REPOSITORY)
         sha = environment(environ, "GITHUB_SHA", SHA)
-        with open(path, "rb") as handle:
-            data = handle.read()
-        try:
-            text = data.decode("utf-8", errors="strict")
-        except UnicodeDecodeError as error:
-            raise ReleaseError("CHANGELOG.md: it %s. Every file a check reads is UTF-8" % registry.not_utf8(error))
-        publish(version, text, repo, sha, github(environ["GITHUB_TOKEN"], opener), out)
+        if environ.get("GITHUB_REF") != MAIN:
+            raise ReleaseError("GITHUB_REF is not %s: a release is made only from main" % MAIN)
+        publish(version, read_text(path), repo, sha, github(environ["GITHUB_TOKEN"], opener), out)
         return 0
     except ReleaseError as error:
         err.write("release: %s\n" % error)

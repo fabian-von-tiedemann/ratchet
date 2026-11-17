@@ -2,15 +2,17 @@
 
     python3 -m unittest discover -s checks -v
 
-checks/release.py tags and releases a version from the release workflow. These tests
-never reach the network: the GitHub API is a fake, given to the script as a function,
-and the HTTP client is given a fake opener. Standard library only.
+checks/release.py tags and releases a version from the release workflow
+(D-2026-11-17-release-on-merge, D-2026-11-17-release-verbatim). These tests never reach
+the network: the GitHub API is a fake, given to the script as a function, and the HTTP
+client is given a fake opener. Standard library only.
 """
 
 import io
 import json
 import os
 import re
+import shutil
 import tempfile
 import unittest
 import urllib.error
@@ -24,15 +26,23 @@ REPO = "fabian-von-tiedemann/ratchet"
 SHA = "a" * 40
 OTHER = "b" * 40
 EARLIER = "c" * 40
+LATER = "d" * 40
 TOKEN = "ghs_THISISNOTAREALTOKEN0123456789abcdef"
 BODY_MARKER = "BODY-FROM-THE-RESPONSE"
 PATH = "/repos/%s" % REPO
+MAIN = "refs/heads/main"
 with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as _handle:
     NOW = json.load(_handle)["version"]
 with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as _handle:
     # The older versions in today's changelog, read another way than the script reads them.
     OLDER = [v for v in re.findall(r"^## ([0-9]+\.[0-9]+) \(", _handle.read(), re.M) if v != NOW]
 TAGGED = dict((v, ("commit", EARLIER)) for v in OLDER)
+RELEASED = [{"tag_name": "v" + v, "draft": False} for v in OLDER]
+
+
+def files_line(version):
+    """The fixed last line, written out here and not taken from the script."""
+    return "The files of this version: [v%s](https://github.com/%s/tree/v%s)" % (version, REPO, version)
 
 
 def changelog(*entries):
@@ -44,6 +54,12 @@ def changelog(*entries):
 
 
 TWO = changelog(("0.4", "The entry for 0.4."), ("0.3", "The entry for 0.3."))
+THREE = changelog(("0.5", "The entry for 0.5."), ("0.4", "The entry for 0.4."), ("0.3", "The entry for 0.3."))
+DONE_03 = {"tags": {"0.3": ("commit", EARLIER)}, "releases": [{"tag_name": "v0.3", "draft": False}]}
+
+
+class Cancelled(Exception):
+    """The run is cancelled: the fake stops answering at a chosen request."""
 
 
 class FakeGitHub:
@@ -51,14 +67,17 @@ class FakeGitHub:
 
     tags: {version: (object type, sha)}. releases: [{"tag_name": ..., "draft": ...}].
     fail: {(method, path): status} answers that request with that status.
+    cancel: a (method, path) at which the run is cancelled before the request is answered.
+    ancestors: the commits that are earlier commits of every head.
     """
 
-    def __init__(self, tags=None, releases=None, fail=None, ancestors=(), moves_tag_to=None):
+    def __init__(self, tags=None, releases=None, fail=None, ancestors=(), moves_tag_to=None, cancel=None):
         self.tags = dict(tags or {})
         self.releases = [dict(r) for r in (releases or [])]
         self.fail = dict(fail or {})
         self.ancestors = set(ancestors)
         self.moves_tag_to = moves_tag_to
+        self.cancel = cancel
         self.calls = []
 
     @property
@@ -71,6 +90,8 @@ class FakeGitHub:
 
     def __call__(self, method, path, body=None):
         self.calls.append((method, path, body))
+        if (method, path) == self.cancel:
+            raise Cancelled()
         if (method, path) in self.fail:
             return self.fail[(method, path)], None
         if method == "GET" and path == PATH + "/git/matching-refs/tags/v":
@@ -96,16 +117,16 @@ class FakeGitHub:
             return (200, self.ref(version)) if version in self.tags else (404, None)
         if method == "GET" and path.startswith(PATH + "/compare/"):
             base, head = path[len(PATH + "/compare/"):].split("...")
-            return 200, {"status": "ahead" if base in self.ancestors and head == SHA else "diverged"}
+            return 200, {"status": "ahead" if base in self.ancestors and base != head else "diverged"}
         return 404, None
 
 
-def publish(text, version="0.4", github=None):
+def publish(text, version="0.4", github=None, sha=SHA):
     """Run the script's publish step on a changelog. Returns (error text or None, output, fake)."""
     github = github if github is not None else FakeGitHub()
     out = io.StringIO()
     try:
-        release.publish(version, text, REPO, SHA, github, out)
+        release.publish(version, text, REPO, sha, github, out)
     except release.ReleaseError as error:
         return str(error), out.getvalue(), github
     return None, out.getvalue(), github
@@ -124,7 +145,7 @@ class ChangelogEntries(unittest.TestCase):
         entries = release.parse_changelog(text)
         self.assertEqual([e.version for e in entries], ["0.4", "0.3"])
         notes = release.release_text(entries[0], REPO)
-        self.assertEqual(notes, "Before.\n\n```\n## 0.3 (2026-11-17)\n\nTEXT FROM CODE EXAMPLE\n```\n\nAfter.")
+        self.assertEqual(notes, "Before.\n\n```\n## 0.3 (2026-11-17)\n\nTEXT FROM CODE EXAMPLE\n```\n\nAfter.\n\n" + files_line("0.4"))
 
     def test_a_fenced_heading_before_the_first_entry_fails(self):
         text = "# Changelog\n\n```\n## 0.4 (2026-11-17)\n\nTEXT FROM CODE EXAMPLE\n```\n" + TWO[len("# Changelog\n"):]
@@ -175,7 +196,7 @@ class ChangelogEntries(unittest.TestCase):
             with open(path, "wb") as handle:
                 handle.write(TWO.replace("\n", "\r\n").encode("utf-8"))
             entries = release.read_changelog(path)
-        self.assertEqual(release.release_text(entries[0], REPO), "The entry for 0.4.")
+        self.assertEqual(release.release_text(entries[0], REPO), "The entry for 0.4.\n\n" + files_line("0.4"))
         self.assertEqual([e.version for e in entries], ["0.4", "0.3"])
 
     def test_a_lone_carriage_return_in_a_heading_fails(self):
@@ -190,69 +211,145 @@ class ChangelogEntries(unittest.TestCase):
                 release.read_changelog(path)
         self.assertIn("is not valid UTF-8, at byte", str(caught.exception))
 
-    def test_links_point_at_the_files_in_the_tag_and_code_is_left_alone(self):
-        entry = release.parse_changelog(changelog(("0.4", "See [the guide](MIGRATING.md#start), `[x](y)` and [web](https://example.invalid/a).")))[0]
-        self.assertEqual(
-            release.release_text(entry, REPO),
-            "See [the guide](https://github.com/%s/blob/v0.4/MIGRATING.md#start), `[x](y)` and [web](https://example.invalid/a)." % REPO,
-        )
-
-    def test_the_03_entry_gives_the_text_of_the_existing_release_for_v03(self):
-        with open(os.path.join(HERE, "fixtures", "release", "v0.3.json"), encoding="utf-8") as handle:
-            published = json.load(handle)
-        entries = release.read_changelog(os.path.join(ROOT, "CHANGELOG.md"))
-        entry = next(e for e in entries if e.version == "0.3")
-        # GitHub keeps a release text written in its form with CRLF and two line endings at the end.
-        self.assertEqual(release.release_text(entry, REPO), published["body"].replace("\r\n", "\n").rstrip("\n"))
-        self.assertEqual(published["tag_name"], "v0.3")
-
     def test_todays_changelog_is_read_without_a_fault(self):
         entries = release.read_changelog(os.path.join(ROOT, "CHANGELOG.md"))
         self.assertEqual([e.version for e in entries], [NOW] + OLDER)
         self.assertEqual([e.version for e in entries][-3:], ["0.3", "0.2", "0.1"])
 
 
+# An entry with every form of code and link that round 2 found rewritten, and generated-block markers.
+VERBATIM = "\n".join([
+    "<!-- generated:count -->",
+    "Counted from `ratchet.json`, see [RATCHET.md](RATCHET.md#the-core-is-frozen).",
+    "<!-- /generated -->",
+    "",
+    "Single: `[a](RATCHET.md)`. Double: ``[b](MIGRATING.md) with a ` inside``. Triple: ```[c](x.md)```.",
+    "A span over two lines: ``[d](GLOSSARY.md)",
+    "[e](checks/README.md)`` and after it [f](decisions/D-2026-11-16-scope.md) and [web](https://example.invalid/a).",
+    "An odd backtick ` and then [g](HANDOVER.md).",
+    "",
+    "```",
+    "[h](REGISTER.md)",
+    "## 0.3 (2026-11-17)",
+    "```",
+    "",
+    "```sh",
+    "python3 checks/release.py notes --repo OWNER/NAME   ",
+    "```",
+    "",
+    "- A list item with [i](templates/DECISION.md) and trailing spaces  ",
+    "\tA tab, **bold** and _emphasis_.",
+])
+
+
+class VerbatimText(unittest.TestCase):
+    """The release text is the entry exactly as it stands, then one fixed line (D-2026-11-17-release-verbatim)."""
+
+    def test_the_release_text_is_the_entry_byte_for_byte(self):
+        text = changelog(("0.4", VERBATIM), ("0.3", "Old."))
+        entry = release.parse_changelog(text)[0]
+        self.assertEqual(release.release_text(entry, REPO).encode("utf-8"), (VERBATIM + "\n\n" + files_line("0.4")).encode("utf-8"))
+
+    def test_the_published_body_is_the_entry_byte_for_byte(self):
+        error, _, github = publish(changelog(("0.4", VERBATIM), ("0.3", "Old.")), github=FakeGitHub(**DONE_03))
+        self.assertIsNone(error)
+        self.assertEqual(github.releases[-1]["body"], VERBATIM + "\n\n" + files_line("0.4"))
+
+    def test_crlf_in_the_entry_gives_the_same_text(self):
+        text = changelog(("0.4", VERBATIM), ("0.3", "Old.")).replace("\n", "\r\n")
+        entry = release.parse_changelog(text)[0]
+        self.assertEqual(release.release_text(entry, REPO), VERBATIM + "\n\n" + files_line("0.4"))
+
+    def test_the_03_entry_differs_from_the_published_v03_only_in_what_the_old_script_rewrote(self):
+        with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as handle:
+            whole = handle.read()
+        # The 0.3 entry, cut out another way than the script cuts it.
+        raw = whole.split("## 0.3 (2026-11-16)\n", 1)[1].split("\n## 0.2 (", 1)[0].strip("\n")
+        entry = next(e for e in release.read_changelog(os.path.join(ROOT, "CHANGELOG.md")) if e.version == "0.3")
+        self.assertEqual(release.release_text(entry, REPO), raw + "\n\n" + files_line("0.3"))
+        with open(os.path.join(HERE, "fixtures", "release", "v0.3.json"), encoding="utf-8") as handle:
+            published = json.load(handle)
+        self.assertEqual(published["tag_name"], "v0.3")
+        # The published v0.3 was written by hand with the old rewriting: links pointed at the tag and
+        # the two marker lines were taken out. Undone, it is the entry as it stands.
+        old = published["body"].replace("\r\n", "\n").rstrip("\n").replace("https://github.com/%s/blob/v0.3/" % REPO, "")
+        self.assertEqual(old, "\n".join(l for l in raw.split("\n") if not l.startswith("<!-- ")))
+
+
 class Publish(unittest.TestCase):
     """Tag and release are created in order, checked, and never written over."""
 
     def test_a_new_version_is_tagged_at_this_commit_and_released(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}])
-        error, out, github = publish(TWO, github=github)
+        error, out, github = publish(TWO, github=FakeGitHub(**DONE_03))
         self.assertIsNone(error)
         self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
         self.assertEqual(github.calls[-3][2], {"ref": "refs/tags/v0.4", "sha": SHA})
-        self.assertEqual(github.calls[-2][2], {"tag_name": "v0.4", "name": "Ratchet 0.4", "body": "The entry for 0.4.",
+        self.assertEqual(github.calls[-2][2], {"tag_name": "v0.4", "name": "Ratchet 0.4",
+                                               "body": "The entry for 0.4.\n\n" + files_line("0.4"),
                                                "draft": False, "prerelease": False})
         self.assertEqual(github.calls[-1][:2], ("GET", PATH + "/git/ref/tags/v0.4"))
         self.assertIn("Tagged v0.4 at %s and released Ratchet 0.4" % SHA, out)
 
     def test_an_older_version_without_a_tag_fails_and_is_named(self):
         text = changelog(("0.5", "Five."), ("0.4", "Four."), ("0.3", "Three."), ("0.2", "Two."))
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)})
+        github = FakeGitHub(**DONE_03)
         error, _, github = publish(text, version="0.5", github=github)
-        self.assertIn("0.2 and 0.4 have an entry in CHANGELOG.md and no tag", error)
+        self.assertIn("0.2: no tag", error)
+        self.assertIn("0.4: no tag", error)
+        self.assertIn("Nothing was written", error)
         self.assertEqual(github.writes, [])
 
-    def test_an_older_version_without_a_tag_fails_also_when_nothing_is_to_be_released(self):
-        github = FakeGitHub(tags={"0.4": ("commit", EARLIER)}, releases=[{"tag_name": "v0.4", "draft": False}], ancestors=[EARLIER])
+    def test_an_older_version_with_a_tag_and_no_release_fails_and_is_named(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)})
         error, _, github = publish(TWO, github=github)
-        self.assertIn("0.3 has an entry in CHANGELOG.md and no tag", error)
+        self.assertIn("0.3: a tag and no published release", error)
         self.assertEqual(github.writes, [])
 
-    def test_a_tag_without_an_entry_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.9": ("commit", EARLIER)})
+    def test_an_older_version_with_only_a_draft_fails_and_is_named(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": True}])
         error, _, github = publish(TWO, github=github)
-        self.assertIn("the tag v0.9 has no entry in CHANGELOG.md", error)
+        self.assertIn("0.3: a tag and no published release", error)
+        self.assertEqual(github.writes, [])
+
+    def test_an_unfinished_older_version_fails_also_when_nothing_is_to_be_released(self):
+        github = FakeGitHub(tags={"0.4": ("commit", EARLIER), "0.3": ("commit", EARLIER)},
+                            releases=[{"tag_name": "v0.4", "draft": False}], ancestors=[EARLIER])
+        error, _, github = publish(TWO, github=github)
+        self.assertIn("0.3: a tag and no published release", error)
+        self.assertEqual(github.writes, [])
+
+    def test_a_version_from_before_releases_needs_only_its_tag(self):
+        self.assertEqual(release.BEFORE_RELEASES, ("0.1",))
+        text = changelog(("0.4", "Four."), ("0.3", "Three."), ("0.1", "One."))
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.1": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}])
+        error, _, github = publish(text, github=github)
+        self.assertIsNone(error)
+        github = FakeGitHub(**DONE_03)
+        error, _, github = publish(text, github=github)
+        self.assertIn("0.1: no tag", error)
+        self.assertEqual(github.writes, [])
+
+    def test_newer_tags_and_releases_are_ignored(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.5": ("commit", LATER), "0.9": ("tag", LATER)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.5", "draft": True}])
+        error, out, github = publish(TWO, github=github)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
+
+    def test_a_tag_without_an_entry_fails_up_to_this_version(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.2": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}])
+        error, _, github = publish(TWO, github=github)
+        self.assertIn("the tag v0.2 has no entry in CHANGELOG.md", error)
         self.assertEqual(github.writes, [])
 
     def test_a_tag_that_is_not_a_version_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4-rc": ("commit", EARLIER)})
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4-rc": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("a tag under refs/tags/v is not of the form vMAJOR.MINOR", error)
         self.assertEqual(github.writes, [])
 
     def test_a_tag_at_this_commit_without_a_release_gets_only_its_release(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)})
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)}, releases=[{"tag_name": "v0.3", "draft": False}])
         error, out, github = publish(TWO, github=github)
         self.assertIsNone(error)
         self.assertEqual(github.writes, [("POST", PATH + "/releases")])
@@ -260,27 +357,29 @@ class Publish(unittest.TestCase):
         self.assertIn("The tag v0.4 was already at %s. Released Ratchet 0.4" % SHA, out)
 
     def test_a_tag_at_this_commit_with_a_draft_writes_nothing_and_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)}, releases=[{"tag_name": "v0.4", "draft": True}])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": True}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("a draft release for v0.4 exists", error)
         self.assertEqual(github.writes, [])
 
     def test_a_tag_at_this_commit_with_a_published_release_is_done(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)}, releases=[{"tag_name": "v0.4", "draft": False}])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": False}])
         error, out, github = publish(TWO, github=github)
         self.assertIsNone(error)
         self.assertEqual(github.writes, [])
         self.assertIn("v0.4 is tagged at this commit and released. Nothing to do", out)
 
     def test_a_draft_without_a_tag_writes_nothing_and_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, releases=[{"tag_name": "v0.4", "draft": True}])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": True}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("a release for v0.4 exists, and the tag does not", error)
         self.assertEqual(github.writes, [])
 
     def test_two_releases_for_one_tag_fail(self):
         github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", SHA)},
-                            releases=[{"tag_name": "v0.4", "draft": False}, {"tag_name": "v0.4", "draft": True}])
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": False}, {"tag_name": "v0.4", "draft": True}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("2 releases for v0.4", error)
         self.assertEqual(github.writes, [])
@@ -288,40 +387,43 @@ class Publish(unittest.TestCase):
     def test_a_tag_at_another_commit_without_a_published_release_writes_nothing_and_fails(self):
         for releases in ([], [{"tag_name": "v0.4", "draft": True}]):
             with self.subTest(releases=releases):
-                github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)}, releases=releases, ancestors=[OTHER])
+                github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)},
+                                    releases=[{"tag_name": "v0.3", "draft": False}] + releases, ancestors=[OTHER])
                 error, _, github = publish(TWO, github=github)
                 self.assertIn("the tag v0.4 points at another commit than this one", error)
                 self.assertEqual(github.writes, [])
 
     def test_a_tag_at_another_commit_that_is_not_earlier_writes_nothing_and_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)}, releases=[{"tag_name": "v0.4", "draft": False}])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": False}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("the tag v0.4 points at a commit that is not an earlier commit of this one", error)
         self.assertEqual(github.writes, [])
 
     def test_an_annotated_tag_writes_nothing_and_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("tag", SHA)}, releases=[{"tag_name": "v0.4", "draft": False}])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("tag", SHA)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": False}])
         error, _, github = publish(TWO, github=github)
         self.assertIn("the tag v0.4 points at another commit than this one", error)
         self.assertEqual(github.writes, [])
 
     def test_a_version_released_at_an_earlier_commit_is_done(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)}, releases=[{"tag_name": "v0.4", "draft": False}],
-                            ancestors=[OTHER])
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", OTHER)},
+                            releases=[{"tag_name": "v0.3", "draft": False}, {"tag_name": "v0.4", "draft": False}], ancestors=[OTHER])
         error, out, github = publish(TWO, github=github)
         self.assertIsNone(error)
         self.assertEqual(github.writes, [])
         self.assertIn("v0.4 is released at an earlier commit, and this commit does not raise the version. Nothing to do", out)
 
     def test_a_refused_ref_creation_writes_nothing_more(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, fail={("POST", PATH + "/git/refs"): 422})
+        github = FakeGitHub(fail={("POST", PATH + "/git/refs"): 422}, **DONE_03)
         error, _, github = publish(TWO, github=github)
         self.assertIn("POST %s/git/refs: HTTP 422" % PATH, error)
         self.assertIn("The tag v0.4 was not created, and nothing was written", error)
         self.assertEqual(github.writes, [("POST", PATH + "/git/refs")])
 
     def test_a_tag_whose_target_does_not_match_after_creation_fails(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, moves_tag_to=OTHER)
+        github = FakeGitHub(moves_tag_to=OTHER, **DONE_03)
         error, _, github = publish(TWO, github=github)
         self.assertIn("read back, the tag v0.4 does not point at %s" % SHA, error)
 
@@ -332,7 +434,7 @@ class Publish(unittest.TestCase):
                 if method == "POST" and path.endswith("/git/refs"):
                     data = dict(data, object={"type": "commit", "sha": OTHER})
                 return status, data
-        github = Elsewhere(tags={"0.3": ("commit", EARLIER)})
+        github = Elsewhere(**DONE_03)
         error, _, github = publish(TWO, github=github)
         self.assertIn("the answer says that the tag v0.4 points at another commit", error)
         self.assertEqual(github.writes, [("POST", PATH + "/git/refs")])
@@ -346,22 +448,11 @@ class Publish(unittest.TestCase):
         }
         for (method, path), writes in cases.items():
             with self.subTest(method=method, path=path):
-                github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, fail={(method, path): 500})
+                github = FakeGitHub(fail={(method, path): 500}, **DONE_03)
                 error, _, github = publish(TWO, github=github)
                 self.assertIn("%s %s: HTTP 500" % (method, path), error)
                 self.assertEqual(github.writes, writes)
                 self.assertEqual(github.calls[-1][:2], (method, path))
-
-    def test_a_failed_release_after_the_tag_says_how_to_finish(self):
-        github = FakeGitHub(tags={"0.3": ("commit", EARLIER)}, fail={("POST", PATH + "/releases"): 500})
-        error, _, github = publish(TWO, github=github)
-        self.assertIn("The tag v0.4 is at %s and has no release. Re-run this run" % SHA, error)
-        # The re-run finds the tag at this commit and creates only the release.
-        del github.fail[("POST", PATH + "/releases")]
-        github.calls = []
-        error, _, github = publish(TWO, github=github)
-        self.assertIsNone(error)
-        self.assertEqual(github.writes, [("POST", PATH + "/releases")])
 
     def test_an_answer_of_the_wrong_form_fails(self):
         class Odd(FakeGitHub):
@@ -381,6 +472,66 @@ class Publish(unittest.TestCase):
         error, _, github = publish(changelog(("0.3", "Three.")))
         self.assertIn("CHANGELOG.md has no entry for 0.4", error)
         self.assertEqual(github.calls, [])
+
+
+class Unfinished(unittest.TestCase):
+    """Round 2, finding 1: an unfinished version stops every later run, and its own rerun finishes it."""
+
+    SHA4 = SHA
+    SHA5 = LATER
+
+    def test_a_failed_publication_of_04_stops_05_and_a_rerun_of_04_finishes(self):
+        github = FakeGitHub(fail={("POST", PATH + "/releases"): 500}, **DONE_03)
+        error, _, github = publish(TWO, github=github, sha=self.SHA4)
+        self.assertIn("POST %s/releases: HTTP 500" % PATH, error)
+        self.assertEqual(github.tags["0.4"], ("commit", self.SHA4))
+        del github.fail[("POST", PATH + "/releases")]
+        # 0.5 is merged. Its run fails, names 0.4, and writes nothing.
+        github.calls = []
+        error, _, github = publish(THREE, version="0.5", github=github, sha=self.SHA5)
+        self.assertIn("0.4: a tag and no published release", error)
+        self.assertIn("Nothing was written", error)
+        self.assertEqual(github.writes, [])
+        self.assertNotIn("0.5", github.tags)
+        # The maintainer reruns the run of 0.4. It finishes 0.4 and only 0.4.
+        github.calls = []
+        error, out, github = publish(TWO, github=github, sha=self.SHA4)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/releases")])
+        self.assertEqual(github.releases[-1]["tag_name"], "v0.4")
+        # Then the run of 0.5 is rerun, and releases 0.5.
+        github.calls = []
+        error, out, github = publish(THREE, version="0.5", github=github, sha=self.SHA5)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
+
+    def test_a_rerun_of_04_is_not_stopped_by_a_tag_for_05(self):
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4": ("commit", self.SHA4), "0.5": ("commit", self.SHA5)},
+                            releases=[{"tag_name": "v0.3", "draft": False}])
+        error, _, github = publish(TWO, github=github, sha=self.SHA4)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/releases")])
+
+    def test_a_run_cancelled_right_after_tagging_stops_every_later_run(self):
+        github = FakeGitHub(cancel=("POST", PATH + "/releases"), **DONE_03)
+        with self.assertRaises(Cancelled):
+            publish(TWO, github=github, sha=self.SHA4)
+        self.assertEqual(github.tags["0.4"], ("commit", self.SHA4))
+        github.cancel = None
+        # A later merge that keeps 0.4 fails, and so does the merge of 0.5. Neither writes.
+        for text, version in ((TWO, "0.4"), (THREE, "0.5")):
+            with self.subTest(version=version):
+                github.calls = []
+                error, _, github = publish(text, version=version, github=github, sha=self.SHA5)
+                self.assertIsNotNone(error)
+                self.assertIn("Nothing was written", error)
+                self.assertEqual(github.writes, [])
+        self.assertIn("0.4: a tag and no published release", error)
+        # The rerun of the cancelled run finishes it.
+        github.calls = []
+        error, _, github = publish(TWO, github=github, sha=self.SHA4)
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/releases")])
 
 
 class Response:
@@ -416,27 +567,33 @@ class FakeOpener:
         return Response(status, data)
 
 
+def environment(**changes):
+    environ = {"GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA, "GITHUB_REF": MAIN}
+    environ.update(changes)
+    return dict((k, v) for k, v in environ.items() if v is not None)
+
+
+def run_main(github, argv=("publish",), environ=None, root=None):
+    opener = FakeOpener(github)
+    out, err = io.StringIO(), io.StringIO()
+    code = release.main(list(argv), environ=environ if environ is not None else environment(), opener=opener, out=out, err=err, root=root)
+    return code, out.getvalue(), err.getvalue(), opener
+
+
 class Token(unittest.TestCase):
     """The token comes from GITHUB_TOKEN, goes only to api.github.com, and is never printed."""
 
-    def run_main(self, github, argv=("publish",), environ=None):
-        opener = FakeOpener(github)
-        environ = environ if environ is not None else {"GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA}
-        out, err = io.StringIO(), io.StringIO()
-        code = release.main(list(argv), environ=environ, opener=opener, out=out, err=err)
-        return code, out.getvalue(), err.getvalue(), opener
-
     def test_the_token_never_appears_in_output(self):
         scenarios = [
-            FakeGitHub(tags=TAGGED),
-            FakeGitHub(tags=TAGGED, fail={("POST", PATH + "/git/refs"): 422}),
-            FakeGitHub(tags=TAGGED, fail={("POST", PATH + "/releases"): 500}),
+            FakeGitHub(tags=TAGGED, releases=RELEASED),
+            FakeGitHub(tags=TAGGED, releases=RELEASED, fail={("POST", PATH + "/git/refs"): 422}),
+            FakeGitHub(tags=TAGGED, releases=RELEASED, fail={("POST", PATH + "/releases"): 500}),
             FakeGitHub(fail={("GET", PATH + "/git/matching-refs/tags/v"): 401}),
-            FakeGitHub(tags=dict(TAGGED, **{NOW: ("commit", OTHER)})),
+            FakeGitHub(tags=dict(TAGGED, **{NOW: ("commit", OTHER)}), releases=RELEASED),
         ]
         for github in scenarios:
             with self.subTest(fail=github.fail):
-                code, out, err, opener = self.run_main(github)
+                code, out, err, opener = run_main(github)
                 self.assertNotIn(TOKEN, out + err)
                 self.assertNotIn(TOKEN[4:20], out + err)
                 self.assertNotIn(BODY_MARKER, out + err)
@@ -447,35 +604,27 @@ class Token(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("the tag v%s points at another commit than this one" % NOW, err)
 
-    def test_a_publish_reads_the_version_from_ratchet_json(self):
-        github = FakeGitHub(tags=TAGGED)
-        code, out, err, opener = self.run_main(github)
-        self.assertEqual((code, err), (0, ""))
-        self.assertEqual(github.calls[-2][2]["tag_name"], "v" + NOW)
-        self.assertIn("Tagged v%s at %s and released Ratchet %s" % (NOW, SHA, NOW), out)
-
     def test_an_error_gives_the_method_the_path_and_the_status(self):
         github = FakeGitHub(fail={("GET", PATH + "/git/matching-refs/tags/v"): 403})
-        code, out, err, _ = self.run_main(github)
+        code, out, err, _ = run_main(github)
         self.assertEqual(code, 1)
         self.assertEqual(err, "release: GET %s/git/matching-refs/tags/v: HTTP 403. Nothing was written.\n" % PATH)
 
     def test_no_token_no_run(self):
-        for environ in ({"GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA},
-                        {"GITHUB_TOKEN": "", "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA}):
-            with self.subTest(environ=environ):
-                code, _, err, opener = self.run_main(FakeGitHub(), environ=environ)
+        for token in (None, ""):
+            with self.subTest(token=token):
+                code, _, err, opener = run_main(FakeGitHub(), environ=environment(GITHUB_TOKEN=token))
                 self.assertEqual(code, 1)
                 self.assertIn("GITHUB_TOKEN is not set", err)
                 self.assertEqual(opener.requests, [])
 
-    def test_the_repository_and_the_commit_are_read_strictly(self):
+    def test_the_repository_the_commit_and_the_branch_are_read_strictly(self):
         for name, value in (("GITHUB_REPOSITORY", "owner/repo/../other"), ("GITHUB_REPOSITORY", "https://example.invalid/x"),
-                            ("GITHUB_SHA", "A" * 40), ("GITHUB_SHA", SHA[:39]), ("GITHUB_SHA", SHA + "\n")):
+                            ("GITHUB_SHA", "A" * 40), ("GITHUB_SHA", SHA[:39]), ("GITHUB_SHA", SHA + "\n"),
+                            ("GITHUB_REF", None), ("GITHUB_REF", "refs/heads/personlig/x"), ("GITHUB_REF", "refs/tags/v0.4"),
+                            ("GITHUB_REF", MAIN + "\n")):
             with self.subTest(name=name, value=value):
-                environ = {"GITHUB_TOKEN": TOKEN, "GITHUB_REPOSITORY": REPO, "GITHUB_SHA": SHA}
-                environ[name] = value
-                code, _, err, opener = self.run_main(FakeGitHub(), environ=environ)
+                code, _, err, opener = run_main(FakeGitHub(), environ=environment(**{name: value}))
                 self.assertEqual(code, 1)
                 self.assertIn("%s is not" % name, err)
                 self.assertEqual(opener.requests, [])
@@ -505,26 +654,61 @@ class Token(unittest.TestCase):
         entry = release.read_changelog(os.path.join(ROOT, "CHANGELOG.md"))[0]
         self.assertEqual(entry.version, NOW)
         self.assertEqual(out.getvalue(), release.release_text(entry, REPO) + "\n")
-        self.assertIn("https://github.com/%s/blob/v%s/" % (REPO, NOW), out.getvalue())
+        self.assertTrue(out.getvalue().endswith(files_line(NOW) + "\n"))
+
+
+class VersionSource(unittest.TestCase):
+    """Round 2, finding 3: the version is read from ratchet.json at the checked-out commit, never written in the code."""
+
+    VERSION = "9.7"
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["version"] = self.VERSION
+        with open(os.path.join(self.directory, "ratchet.json"), "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        for rule in data["rules"]:
+            if "reference_check" in rule:
+                target = os.path.join(self.directory, rule["reference_check"])
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                open(target, "w").close()
+        with open(os.path.join(self.directory, "CHANGELOG.md"), "w", encoding="utf-8") as handle:
+            handle.write(changelog((self.VERSION, "The entry for %s." % self.VERSION), ("0.3", "The entry for 0.3.")))
+
+    def tearDown(self):
+        shutil.rmtree(self.directory)
+
+    def test_publish_tags_the_version_in_ratchet_json(self):
+        github = FakeGitHub(**DONE_03)
+        code, out, err, _ = run_main(github, root=self.directory)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags[self.VERSION], ("commit", SHA))
+        self.assertEqual(github.releases[-1]["tag_name"], "v" + self.VERSION)
+        self.assertEqual(github.releases[-1]["body"], "The entry for %s.\n\n%s" % (self.VERSION, files_line(self.VERSION)))
+
+    def test_notes_give_the_entry_for_the_version_in_ratchet_json(self):
+        out, err = io.StringIO(), io.StringIO()
+        code = release.main(["notes", "--repo", REPO], environ={}, opener=None, out=out, err=err, root=self.directory)
+        self.assertEqual((code, err.getvalue()), (0, ""))
+        self.assertEqual(out.getvalue(), "The entry for %s.\n\n%s\n" % (self.VERSION, files_line(self.VERSION)))
 
 
 class Workflow(unittest.TestCase):
-    """The release workflow is thin, and it is the copy that was read with this script."""
+    """The release workflow is thin, and keeps the form that was reviewed."""
 
-    COPY = os.path.join(HERE, "fixtures", "release", "release.yml")
     LIVE = os.path.join(ROOT, ".github", "workflows", "release.yml")
 
     def lines(self):
-        with open(self.COPY, "rb") as handle:
+        with open(self.LIVE, "rb") as handle:
             return handle.read().decode("utf-8", errors="strict").split("\n")
-
-    def test_the_workflow_is_the_copy_read_with_this_script(self):
-        with open(self.COPY, "rb") as copy, open(self.LIVE, "rb") as live:
-            self.assertEqual(live.read(), copy.read(), ".github/workflows/release.yml differs from checks/fixtures/release/release.yml")
 
     def test_the_workflow_keeps_its_form(self):
         lines = self.lines()
-        self.assertIn("permissions:\n  contents: read\n", "\n".join(lines))
+        text = "\n".join(lines)
+        self.assertIn("on:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\npermissions:\n  contents: read\n", text)
+        self.assertFalse([l for l in lines if "inputs:" in l])
         self.assertEqual([l for l in lines if "contents: write" in l], ["      contents: write"])
         self.assertEqual([l.strip() for l in lines if "runs-on:" in l], ["runs-on: ubuntu-24.04"])
         self.assertEqual([l.strip() for l in lines if "timeout-minutes:" in l], ["timeout-minutes: 5"])

@@ -177,21 +177,24 @@ python3 checks/release.py notes --repo OWNER/NAME   # print the release text, wi
 python3 checks/release.py publish                   # tag and release, in the release workflow
 ```
 
-This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-verbatim](../decisions/D-2026-11-17-release-verbatim.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+
+The script does not try to finish an older version, and it does not rewrite the entry. When anything older is unfinished, the run is red, nothing is written, and the maintainer reruns the run of that version by hand.
 
 **What it claims.**
 
-- **The release text is exactly the entry.** It reads the version from `ratchet.json`, strictly, and `CHANGELOG.md` as strict UTF-8 with CRLF read as LF. An entry starts only at a line `## MAJOR.MINOR (YYYY-MM-DD)` at the start of a line and outside a code block, and ends at the next. The run fails on anything that a reader could take for such a heading and the script would not: a heading of level one or two in another form or with spaces before it, a heading made with an underline, a code block opened in another way than three backticks at the start of a line, a comment that is not the marker of a generated block, HTML, a link definition, text before the first entry. It also fails on two entries for one version, entries that are not newest first, an empty entry, and a newest entry that is not the version in `ratchet.json`. The release text is the entry without the markers of generated blocks, with each link to a file in the repo pointing at the file in the tag. Code is left as it stands.
-- **No version is skipped.** On every run, also when there is nothing to release, it lists the tags and compares them with the changelog. An older version with an entry and no tag fails the run, and the run names it. A tag `vMAJOR.MINOR` with no entry fails, and so does a tag under `refs/tags/v` of another form.
+- **The release text is the entry, verbatim.** It reads the version from `ratchet.json` at the checked-out commit, strictly, and `CHANGELOG.md` as strict UTF-8 with CRLF read as LF. An entry starts only at a line `## MAJOR.MINOR (YYYY-MM-DD)` at the start of a line and outside a code block, and ends at the next. The run fails on anything that a reader could take for such a heading and the script would not: a heading of level one or two in another form or with spaces before it, a heading made with an underline, a code block opened in another way than three backticks at the start of a line, a comment that is not the marker of a generated block, HTML, a link definition, text before the first entry. It also fails on two entries for one version, entries that are not newest first, an empty entry, and a newest entry that is not the version in `ratchet.json`. The release text is the lines of the entry exactly as they stand, without the blank lines before and after them, then a blank line and one fixed line written in the script: `The files of this version: [vMAJOR.MINOR](https://github.com/OWNER/NAME/tree/vMAJOR.MINOR)`. No link, no code and no marker in the entry is changed.
+- **An unfinished older version stops the run.** Before any write, it lists the tags and the releases. Each version in the changelog that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version and what it lacks, and writes nothing. A tag `vMAJOR.MINOR` up to this version with no entry fails, and so does a tag under `refs/tags/v` of another form. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
+- **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request.
 - **Nothing is written before every check has passed.** The writes are two, in this order: the tag, then the release.
 - **The tag is created at this commit, or not at all.** It is created with `POST /repos/OWNER/NAME/git/refs`, which refuses a ref that exists. Then the release is created for that tag, and the tag is read back. The run fails when the answer to the creation or the tag read back points anywhere but `GITHUB_SHA`.
-- **A tag that exists is never moved, deleted or edited** (`repo.tags-stay`). What the run does with it:
+- **A tag that exists is never moved, deleted or edited** (`repo.tags-stay`). What the run does with the tag of the version being released:
 
 | The tag for the version | The release for it | What the run does |
 |---|---|---|
 | does not exist | none | creates the tag at `GITHUB_SHA`, then the release, then reads the tag back |
 | does not exist | exists, draft or not | fails and writes nothing |
-| at `GITHUB_SHA` | none | a re-run: creates only the release, then reads the tag back |
+| at `GITHUB_SHA` | none | a rerun of this version's run: creates only the release, then reads the tag back |
 | at `GITHUB_SHA` | draft | fails and writes nothing: publish the draft by hand |
 | at `GITHUB_SHA` | published | nothing to do |
 | at an earlier commit of `GITHUB_SHA` | published | nothing to do: this commit does not raise the version |
@@ -202,14 +205,22 @@ This one checks no rule in a register. It is the script that the release workflo
 
 **Against which threat.**
 
-- A changelog in which a reader sees one entry and the script another, so that the release says something other than what was approved: for example a version heading in a code example.
-- A version that is merged and never released, with no run that shows it: for example a waiting run replaced in the concurrency group by a newer one.
+- A release that says something other than the entry that was approved: a version heading in a code example that the script takes for the entry, or a link rewritten inside code.
+- A version that is merged and left unreleased, or made impossible to release, with no red run that says so: a run that fails or is cancelled after it tags, or a waiting run replaced in the concurrency group by a newer one.
 - A release attached to a tag at another commit than the one approved, because the tag appeared between a check and a write.
+- A version hard-coded in the script instead of read from `ratchet.json`.
 - The token sent somewhere else, or shown in a log.
 
-**When the release fails after the tag was created.** The run fails, and says that the tag is at `GITHUB_SHA` and has no release. That is safe: the tag is on the commit that was approved, where it would be anyway, and nothing has to be moved. A re-run of the same run finds the tag at its commit, and creates only the release. If the release was in fact created and the answer was lost, the re-run finds it and creates no second one. Until then every later run fails, because the version is tagged at another commit than its own and has no published release.
+**Why the rerun of this version finishes its release.** A rerun that finds the tag of the version being released at its own `GITHUB_SHA`, with no release, creates the release. This is the version's own run, not an older one. It is safe: the tag is on the commit that was approved, where it would be anyway, so nothing has to move; the text is the entry in the changelog at that same commit, the one that was approved; every older version has passed the check above; and a release created before an answer was lost is found, so no second one is made. Failing there instead would leave no way through the workflow to finish the version.
 
-**Why the concurrency group stays.** It keeps one release run at a time, so that two runs never write at once. A waiting run can still be replaced by a newer one, and the replaced run shows as cancelled. That cannot lose a version without a red run: the newer run checks every older version in the changelog, and fails and names one without a tag. The last run in the queue is never replaced. A run that was cancelled can be re-run for its commit, and then the newer one.
+**When a run is red because something is unfinished.** The message names each version and what it lacks. Then, in this order:
+
+1. Under Actions, open the workflow `release` and find the run of the commit that raised the version to the one named: the first commit on `main` at which `ratchet.json` names it. If the tag exists, it points at that commit. Choose "Re-run all jobs". It tags that commit if the tag is missing, and creates the release. It ignores the newer versions.
+2. When that run is green, rerun the red run, with "Re-run all jobs".
+3. If the run of step 1 cannot be rerun (GitHub allows a rerun for 30 days, and a run may never have started), and the head of `main` still has that version in `ratchet.json` and its tag is missing, start the workflow by hand: Actions → `release` → "Run workflow", on `main`. It takes no input, runs the same three checks, and releases what `ratchet.json` names at the head of `main`. On any other branch it fails before any request.
+4. If neither is possible, the maintainer makes the tag or the release by hand, on the commit that raised the version, with the text that `python3 checks/release.py notes --repo OWNER/NAME` prints at that commit. The workflow never does this.
+
+**Why the concurrency group stays.** It keeps one release run at a time, so that two runs never write at once. A waiting run can still be replaced by a newer one, and the replaced run shows as cancelled. That cannot lose a version without a red run: the newer run checks every older version in the changelog, and fails and names one without a tag or a published release. The last run in the queue is never replaced. A run that was cancelled can be rerun for its commit, and then the newer one.
 
 **The cases.** Each is a test in [test_release.py](test_release.py).
 
@@ -228,30 +239,38 @@ This one checks no rule in a register. It is the script that the release workflo
 | CRLF | Read as LF, the same text |
 | A lone carriage return in a heading | Fails |
 | Bytes that are not UTF-8 | Fails |
-| Links to files, in text and in code | Point at the tag in text, stand as they are in code |
-| The 0.3 entry of today's `CHANGELOG.md` | The text of the published release for `v0.3`, kept under [fixtures/release/](fixtures/release/) as GitHub gave it |
+| An entry with single, double and triple backtick code, a code span over two lines, an odd backtick, links, fenced blocks, markers, tabs and trailing spaces | The release text and the published body are the entry byte for byte, then the fixed line |
+| The 0.3 entry of today's `CHANGELOG.md` | The entry as it stands, then the fixed line. The published `v0.3`, kept under [fixtures/release/](fixtures/release/) as GitHub gave it, was made with the old rewriting: undo its links to the tag and put back the two marker lines, and it is the same |
 | A new version | The tag, then the release, then the tag read back |
-| An older version without a tag, also when nothing is to be released | Fails, names it, writes nothing |
-| A tag without an entry, a tag that is not a version | Fails, writes nothing |
+| An older version without a tag, with a tag and no release, with only a draft, also when nothing is to be released | Fails, names it and what it lacks, writes nothing |
+| 0.1 with its tag and no release, 0.1 with no tag | Passes; fails |
+| A newer tag, a newer annotated tag, a newer draft | Ignored |
+| A tag up to this version without an entry, a tag that is not a version | Fails, writes nothing |
+| 0.4 fails after its tag, then 0.5 is merged | The run for 0.5 fails, names 0.4 and writes nothing. The rerun for 0.4 creates only its release. The rerun for 0.5 then releases 0.5 |
+| A rerun for 0.4 when `v0.5` exists | Creates the release for 0.4 |
+| A run cancelled right after its tag | A later run on 0.4 and the run for 0.5 fail and write nothing. The rerun of the cancelled run finishes it |
 | Each row of the table above | As the table says |
 | A refused ref creation | Fails, writes nothing more |
 | An answer to the creation that puts the tag elsewhere | Fails, creates no release |
 | A tag read back at another commit | Fails |
 | An API error at each of the four requests | Fails with method, path and status, writes nothing more |
-| A failed release after the tag | Fails and says so, and a re-run creates only the release |
 | An answer of the wrong form | Fails, writes nothing |
 | The version is not the newest entry, or has none | Fails before any request |
+| `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with that entry, and `notes` prints it |
 | The token in five runs, with an answer that holds it | Never in the output, and sent only to `api.github.com` |
-| No token, a repository or a commit not of its form | Fails before any request |
+| No token, a repository, a commit or a branch not of its form | Fails before any request |
 | A path outside the repository, a redirect | Not sent, not followed |
 | `notes` | Needs no token and no network |
-| `.github/workflows/release.yml` | The same, byte for byte, as [fixtures/release/release.yml](fixtures/release/release.yml), with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
+| `.github/workflows/release.yml` | Runs on a push to `main` and on `workflow_dispatch` with no input, with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
 
 **What it does not claim.**
 
 - It does not see branch protection or tag protection. Who may push a tag by hand is a setting of the repository.
 - It does not read the release text back after it is published.
+- A relative link in an entry, such as a link to the file `RATCHET.md`, is published as it stands, and on the release page GitHub does not resolve it to the file. The fixed line links to the files at the tag. This is the cost of the verbatim text.
+- The markers of generated blocks are published as they stand. They are HTML comments, which GitHub does not show.
 - A version may be skipped on purpose, from 0.4 to 0.6, by leaving out an entry for 0.5. That is a choice made in a pull request, not a version lost.
+- A workflow file on another branch can be changed by anyone who can push to it. The check of `GITHUB_REF` stops a mistake, not a change to the workflow or the script.
 
 ## Why JSON
 
