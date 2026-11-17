@@ -11,8 +11,11 @@ each problem, when:
 - the child's exit status is not 0, or it was stopped by a signal
 - there is no completion record, because the child exited early, from anywhere, or
   was killed; or the completion record's counts disagree with the records
+- a test that was collected did not run, because the run was interrupted, told to
+  stop or stopped at the first failure; or a test ran that was not collected
 - a test did not pass: it failed, errored, was skipped, was an expected failure or
   an unexpected success, or started and has no outcome
+- a test has a second outcome record: each instance has exactly one
 - a set-up or tear-down of a class or a module had an outcome of its own
 - a test id ran more than once
 - a fixture under checks/fixtures/ was not loaded, with the bytes it held before the
@@ -30,13 +33,14 @@ Standard library only. Run on Python 3.9 and 3.12.
 
 import argparse
 import hashlib
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+
+import registry
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
@@ -48,12 +52,14 @@ PASSED = "passed"
 OUTCOMES = (PASSED, "failed", "errored", "skipped", "expected failure", "unexpected success")
 # Every form of record, with its fields. Nothing else is read.
 FORMS = {
+    "collected": ("instance", "test"),
     "start": ("instance", "test"),
-    "outcome": ("instance", "test", "outcome"),
+    "outcome": ("instance", "test", "outcomes"),
     "loaded": ("instance", "fixture", "sha256"),
-    "complete": ("tests_run", "outcomes", "loaded"),
+    "complete": ("collected", "tests_run", "outcomes", "loaded"),
 }
-COUNTS = (("tests_run", "tests run", "start"), ("outcomes", "outcomes", "outcome"), ("loaded", "fixtures loaded", "loaded"))
+COUNTS = (("collected", "tests collected", "collected"), ("tests_run", "tests run", "start"), ("outcomes", "outcomes", "outcome"),
+          ("loaded", "fixtures loaded", "loaded"))
 
 
 def digest(data):
@@ -108,10 +114,12 @@ def form_problem(record):
         return "instance must be a whole number from 1" + (", or null for a load outside any test" if kind == "loaded" else "")
     if "test" in fields:
         test = record["test"]
-        if not isinstance(test, str) or not test or any(ord(c) < 32 or ord(c) == 127 for c in test):
+        if not isinstance(test, str) or not test or any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in test):
             return "test must be a name of one line"
-    if kind == "outcome" and record["outcome"] not in OUTCOMES:
-        return "outcome must be one of %s" % ", ".join(OUTCOMES)
+    if kind == "outcome":
+        outcomes = record["outcomes"]
+        if not isinstance(outcomes, list) or not outcomes or any(not isinstance(each, str) or each not in OUTCOMES for each in outcomes):
+            return "outcomes must be a list of one or more of %s" % ", ".join(OUTCOMES)
     if kind == "loaded":
         if not isinstance(record["fixture"], str) or not NAME.match(record["fixture"]):
             return "fixture must be a fixture's name, its path under the fixtures directory"
@@ -122,19 +130,6 @@ def form_problem(record):
             if not whole(record[field], 0):
                 return "%s must be a whole number from 0" % field
     return None
-
-
-def pairs(items):
-    result = {}
-    for key, value in items:
-        if key in result:
-            raise ValueError("the field %r twice" % key)
-        result[key] = value
-    return result
-
-
-def constant(name):
-    raise ValueError("%s is not allowed" % name)
 
 
 def read_records(path):
@@ -155,9 +150,13 @@ def read_records(path):
         problems.append("the records, line %d: the record has no line break at its end, so it was cut off" % len(lines))
     for number, line in enumerate(lines, 1):
         try:
-            record = json.loads(line, object_pairs_hook=pairs, parse_constant=constant)
+            record = registry.strict_loads(line)
+        except RecursionError:
+            problems.append("the records, line %d: not a record the check knows: it is nested too deeply" % number)
+            continue
         except ValueError as error:
-            message = str(error) if str(error).startswith("the field ") else "not one JSON object"
+            # The strict reader's own problems name what is wrong. Any other is a line that is not JSON.
+            message = str(error) if str(error).startswith("the field ") or str(error).endswith(" is not allowed") else "not one JSON object"
             problems.append("the records, line %d: not a record the check knows: %s" % (number, message))
             continue
         problem = form_problem(record)
@@ -200,43 +199,71 @@ def compare(records, found):
         if complete["tests_run"] == 0:
             problems.append("the suite ran no tests")
 
-    tests, outcomes, used, ids = {}, {}, set(), {}
+    # collected: instance -> test, before the run. tests: instance -> test, for each that started.
+    # outcomes: instance -> the outcomes of its one outcome record. seen: every instance that has a start or an outcome.
+    # answered: every instance that has an outcome record. doubled: every instance that has more than one.
+    collected, tests, outcomes, seen, answered, doubled, ids = {}, {}, {}, set(), set(), set(), {}
     loads = []
     for number, record in records:
         kind = record["record"]
-        if kind == "start":
+        if kind == "collected":
             instance = record["instance"]
-            if instance in used:
-                problems.append("the records, line %d: instance %d started twice" % (number, instance) if instance in tests
-                                else "the records, line %d: instance %d starts after a record of it" % (number, instance))
+            if seen or loads:
+                problems.append("the records, line %d: a test collected after the run started" % number)
+            elif instance in collected:
+                problems.append("the records, line %d: instance %d collected twice" % (number, instance))
+            else:
+                collected[instance] = record["test"]
+        elif kind == "start":
+            instance = record["instance"]
+            if instance in tests:
+                problems.append("the records, line %d: instance %d started twice" % (number, instance))
                 continue
-            used.add(instance)
+            if instance in seen:
+                problems.append("the records, line %d: instance %d starts after a record of it" % (number, instance))
+                continue
+            seen.add(instance)
+            if instance in collected and collected[instance] != record["test"]:
+                problems.append("the records, line %d: the start of instance %d names %s, and that instance is %s"
+                                % (number, instance, record["test"], collected[instance]))
+                continue
+            if instance not in collected:
+                problems.append("%s: ran and was not collected" % record["test"])
             tests[instance] = record["test"]
-            outcomes[instance] = []
             ids.setdefault(record["test"], []).append(instance)
         elif kind == "outcome":
             instance = record["instance"]
-            used.add(instance)
+            if instance in answered:
+                problems.append("the records, line %d: a second outcome of %s, instance %d. A test has exactly one" % (number, record["test"], instance))
+                doubled.add(instance)
+                continue
+            answered.add(instance)
+            seen.add(instance)
             if instance not in tests:
-                problems.append("%s: %s, outside any test" % (record["test"], record["outcome"]))
+                problems.append("%s: %s, outside any test" % (record["test"], ", ".join(record["outcomes"])))
             elif record["test"] != tests[instance]:
                 problems.append("the records, line %d: the outcome of instance %d names %s, and that instance is %s"
                                 % (number, instance, record["test"], tests[instance]))
             else:
-                outcomes[instance].append(record["outcome"])
+                outcomes[instance] = record["outcomes"]
         elif kind == "loaded":
             if record["instance"] is not None and record["instance"] not in tests:
                 problems.append("the records, line %d: %s was loaded by instance %d, which never started" % (number, record["fixture"], record["instance"]))
                 continue
             loads.append(record)
 
+    for instance in sorted(set(collected) - set(tests)):
+        problems.append("%s: collected and did not run" % collected[instance])
     passed = set()
     for instance in sorted(tests):
-        got = outcomes[instance]
-        if not got:
+        got = outcomes.get(instance)
+        if got is None:
             problems.append("%s: started and has no outcome" % tests[instance])
+        elif got == [PASSED]:
+            if instance in collected and instance not in doubled:
+                passed.add(instance)
         elif set(got) == {PASSED}:
-            passed.add(instance)
+            problems.append("%s: passed %d times in one run of the test" % (tests[instance], len(got)))
         else:
             problems.append("%s: %s" % (tests[instance], ", ".join(sorted(set(got) - {PASSED}))))
     for test, instances in sorted(ids.items()):

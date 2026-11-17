@@ -192,7 +192,8 @@ class Guard(unittest.TestCase):
     def test_the_rules_of_a_released_version_changed_fails(self):
         write(self.root, "CHANGELOG.md", changelog("0.3", "0.2", "0.1"))
         write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "sources": [],\n  "rules": []', A_RULE) % "0.3")
-        self.assertIn("ratchet.new", open(os.path.join(self.root, "ratchet.json"), encoding="utf-8").read())
+        with open(os.path.join(self.root, "ratchet.json"), encoding="utf-8") as handle:
+            self.assertIn("ratchet.new", handle.read())
         self.assert_fails("ratchet.json: names 0.3, which is released, and is not as it stood at the tag v0.3. A change to the rules raises the version")
 
     def test_a_released_version_whose_tag_holds_no_ratchet_json_fails(self):
@@ -210,8 +211,11 @@ class Guard(unittest.TestCase):
         # Finding 4 of review round 1 of the new approach: plain json.loads took a field twice, an unknown field and NaN.
         valid = RATCHET % "0.4"
         cases = {
+            # The parser meets NaN before it closes the object, so NaN is the problem it names.
             "the probe of the review": ('{"version":"0.3","version":"0.4","unknown":true,"rules":NaN}\n',
-                                        "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
+                                        "ratchet.json: not a valid data file: NaN is not allowed"),
+            "the probe of the review, without NaN": ('{"version":"0.3","version":"0.4","unknown":true,"rules":[]}\n',
+                                                     "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
             "a field twice": (valid.replace('"date"', '"version": "0.4",\n  "date"'),
                               "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
             "an unknown field": (valid.replace('"date"', '"unknown": true,\n  "date"'), "ratchet.json: unknown field 'unknown'"),

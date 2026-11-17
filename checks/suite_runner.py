@@ -6,18 +6,28 @@ It is started by checks/expected_tests.py, not by hand. It runs
 `unittest discover` on the start directory with unittest's own text runner, and
 writes one JSON record per line to FILE, which must not exist yet:
 
-- "start", when a test starts, with a number that is new for each test instance
-- "outcome", for each outcome that unittest gives: passed, failed, errored, skipped,
-  expected failure or unexpected success. An outcome of a subtest is the outcome of
-  its test. An outcome of a set-up or tear-down of a class or a module has an
-  instance of its own, which never started.
+- "collected", before the run, for every test in the suite that discover returns,
+  with a number that is new for each test instance
+- "start", when a test starts, with the number of its instance. A test that starts
+  and was not collected gets a new number.
+- "outcome", once for each test, when it stops: every outcome that unittest gave it
+  while it ran, in order: passed, failed, errored, skipped, expected failure or
+  unexpected success. An outcome of a subtest is an outcome of its test. An outcome
+  given outside the run of its test, such as one of a set-up or tear-down of a class
+  or a module, or one given to a test after it stopped, is a record of its own at
+  once. A set-up or tear-down has an instance of its own, which was never collected
+  and never started.
 - "loaded", when a FixtureTest loads a fixture: its name and the sha256 of the
   bytes it read, with the instance that was running, or null outside any test
-- "complete", after unittest has printed its summary, with the counts.
+- "complete", after unittest has printed its summary, with the counts. The number
+  of tests collected is unittest's own countTestCases() of the suite, taken before
+  the run.
 
 The outcomes come from unittest's result object, here, and not from the tests. The
 completion record is written only when the run returns. A run that exits early,
-from anywhere, or is killed, leaves it out.
+from anywhere, or is killed, leaves it out. A run that returns early, because it
+was interrupted or told to stop, writes it, and the tests it did not run are
+collected and have no start.
 
 FixtureTest is how a test loads a fixture. It works the same in a run without this
 runner, such as `python3 -m unittest discover -s checks`, and records nothing there.
@@ -40,13 +50,27 @@ FIXTURES = expected_tests.FIXTURES
 RECORDER = None
 
 
+def flatten(suite):
+    """Every test in a suite, in the order the suite runs them."""
+    for test in suite:
+        if isinstance(test, unittest.TestSuite):
+            yield from flatten(test)
+        elif test is not None:
+            yield test
+
+
 class Recorder:
     """Writes the records of one run, one JSON object per line, each flushed when it is written."""
 
     def __init__(self, path):
         self.handle = open(path, "x", encoding="utf-8", newline="\n")
         self.instances = 0
-        self.current = None
+        # id(test) -> (test, instance). The test is kept, so that its id is not used again by another object.
+        self.known = {}
+        # instance -> the outcomes unittest gave it so far, for each test that started and has not stopped
+        self.running = {}
+        # The instances that are running, the last one innermost. A load counts for the last.
+        self.stack = []
         self.outcomes = 0
         self.loads = 0
 
@@ -58,26 +82,54 @@ class Recorder:
         self.instances += 1
         return self.instances
 
+    def instance_of(self, test):
+        entry = self.known.get(id(test))
+        return entry[1] if entry is not None and entry[0] is test else None
+
+    def collect(self, suite):
+        for test in flatten(suite):
+            if self.instance_of(test) is None:
+                self.known[id(test)] = (test, self.new_instance())
+            self.write({"record": "collected", "instance": self.instance_of(test), "test": test.id()})
+
     def start(self, test):
-        self.current = self.new_instance()
-        test._suite_runner_instance = self.current
-        self.write({"record": "start", "instance": self.current, "test": test.id()})
+        instance = self.instance_of(test)
+        if instance is None:
+            instance = self.new_instance()
+            self.known[id(test)] = (test, instance)
+        self.running[instance] = []
+        self.stack.append(instance)
+        self.write({"record": "start", "instance": instance, "test": test.id()})
+
+    def stop(self, test):
+        instance = self.instance_of(test)
+        if instance in self.stack:
+            self.stack.remove(instance)
+        got = self.running.pop(instance, None)
+        if got:
+            self.outcome_record(instance, test, got)
 
     def outcome(self, test, outcome):
         case = getattr(test, "test_case", test) if isinstance(test, unittest.case._SubTest) else test
-        instance = getattr(case, "_suite_runner_instance", None)
+        instance = self.instance_of(case)
+        if instance in self.running:
+            self.running[instance].append(outcome)
+            return
         if instance is None:
             # A set-up or tear-down of a class or a module, which unittest gives as a holder, not as a test.
             instance = self.new_instance()
+        self.outcome_record(instance, case, [outcome])
+
+    def outcome_record(self, instance, test, outcomes):
         self.outcomes += 1
-        self.write({"record": "outcome", "instance": instance, "test": case.id(), "outcome": outcome})
+        self.write({"record": "outcome", "instance": instance, "test": test.id(), "outcomes": outcomes})
 
     def loaded(self, name, sha):
         self.loads += 1
-        self.write({"record": "loaded", "instance": self.current, "fixture": name, "sha256": sha})
+        self.write({"record": "loaded", "instance": self.stack[-1] if self.stack else None, "fixture": name, "sha256": sha})
 
-    def complete(self, tests_run):
-        self.write({"record": "complete", "tests_run": tests_run, "outcomes": self.outcomes, "loaded": self.loads})
+    def complete(self, collected, tests_run):
+        self.write({"record": "complete", "collected": collected, "tests_run": tests_run, "outcomes": self.outcomes, "loaded": self.loads})
         self.handle.close()
 
 
@@ -90,7 +142,7 @@ class RecordingResult(unittest.TextTestResult):
 
     def stopTest(self, test):
         super().stopTest(test)
-        RECORDER.current = None
+        RECORDER.stop(test)
 
     def addSuccess(self, test):
         super().addSuccess(test)
@@ -130,8 +182,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     RECORDER = Recorder(args.records)
     suite = unittest.TestLoader().discover(args.start)
+    collected = suite.countTestCases()
+    RECORDER.collect(suite)
     result = unittest.TextTestRunner(verbosity=2, resultclass=RecordingResult).run(suite)
-    RECORDER.complete(result.testsRun)
+    RECORDER.complete(collected, result.testsRun)
     return 0 if result.wasSuccessful() else 1
 
 

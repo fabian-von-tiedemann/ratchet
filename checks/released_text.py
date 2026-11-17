@@ -17,22 +17,26 @@ fails, naming each problem, when:
 - an entry is headed in any way but "## <version> (<date>)", or stands twice
 - there are no tags, or a tag of another form, or the tags cannot be listed.
 
+- ratchet.json is not a valid data file, read as every check reads it: strict JSON,
+  with no field twice, no NaN or Infinity, and no field it does not know
+  (registry.strict_loads and registry.validate).
+
 A file is read as strict UTF-8, and CRLF is read as LF, as every check here reads it.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
 import argparse
-import json
 import os
 import re
 import subprocess
 import sys
 
+import registry
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TAG = re.compile(r"^v([0-9]+\.[0-9]+)\Z")
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \([0-9]{4}-[0-9]{2}-[0-9]{2}\)\Z")
-VERSION = re.compile(r"^[0-9]+\.[0-9]+\Z")
 
 
 class GitError(Exception):
@@ -141,15 +145,21 @@ def check(root):
     else:
         with open(path, "rb") as handle:
             data = handle.read()
+        source, version = None, None
         try:
             source = text(data, "ratchet.json")
-            version = json.loads(source).get("version") if isinstance(json.loads(source), dict) else None
+            parsed = registry.strict_loads(source)
+        except RecursionError:
+            problems.append("ratchet.json: not a valid data file: it is nested too deeply")
         except ValueError as error:
-            problems.append(str(error) if str(error).startswith("ratchet.json") else "ratchet.json: not a valid data file: %s" % error)
+            problems.append(str(error) if source is None else "ratchet.json: not a valid data file: %s" % error)
         else:
-            if not isinstance(version, str) or not VERSION.match(version):
-                problems.append("ratchet.json: the version must look like 0.4, found %r" % (version,))
-            elif version in released:
+            invalid = registry.validate(parsed, root)
+            problems += ["ratchet.json: %s" % problem for problem in invalid]
+            if not invalid:
+                version = parsed["version"]
+        if version is not None:
+            if version in released:
                 then = git(root, "show", "%s:ratchet.json" % released[version])
                 if then is None:
                     problems.append("ratchet.json: names %s, which is released, and the tag %s holds no ratchet.json" % (version, released[version]))

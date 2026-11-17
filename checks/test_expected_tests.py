@@ -426,6 +426,26 @@ class Runs(FixtureTest):
             ''', "a second outcome of test_inner.Loads.test_one", ONE_MISSING, THREE_MISSING)
         self.assertNotIn("the suite exited with status", output, "the child exited 0")
 
+    def test_a_test_with_several_outcomes_has_one_outcome_record(self):
+        # unittest gives a test that fails and then errors in tearDown, or whose subtests fail twice, more than one outcome.
+        # The runner writes them in one record when the test stops, so that a second record is always a problem.
+        output = self.assert_fails(BOTH + '''
+            class Several(Base):
+                def tearDown(self):
+                    raise RuntimeError("cannot clean up")
+
+                def test_fails_and_errors(self):
+                    self.fail("no")
+
+
+            class Subtests(Base):
+                def test_two_subtests_fail(self):
+                    for number in (1, 2):
+                        with self.subTest(number=number):
+                            self.fail(str(number))
+            ''', "test_inner.Several.test_fails_and_errors: errored, failed", "test_inner.Subtests.test_two_subtests_fail: failed")
+        self.assertNotIn("a second outcome", output)
+
     def test_a_fixture_changed_after_it_was_loaded_fails(self):
         # Finding 5 of review round 1 of the new approach: no test turned red when this comparison was removed.
         cases = {
