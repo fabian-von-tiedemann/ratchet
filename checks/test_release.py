@@ -20,6 +20,7 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+import zlib
 from unittest import mock
 
 import release
@@ -308,7 +309,7 @@ class Publish(unittest.TestCase):
     def test_a_tag_that_is_not_a_version_fails(self):
         github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.4-rc": ("commit", EARLIER)}, releases=[{"tag_name": "v0.3", "draft": False}])
         error, _, github = publish(TWO, github=github)
-        self.assertIn("a tag under refs/tags/v is not of the form vMAJOR.MINOR", error)
+        self.assertIn('the tag "refs/tags/v0.4-rc": the version "0.4-rc" ' + FORM, error)
         self.assertEqual(github.writes, [])
 
     def test_a_tag_at_this_commit_without_a_release_gets_only_its_release(self):
@@ -812,11 +813,11 @@ class MainHistory(unittest.TestCase):
             (good.replace(b"0.3", b"\xff0.3", 1), "is not valid UTF-8"),
             (b"\xef\xbb\xbf" + good, "not a valid data file"),
             (good[:-10], "not a valid data file"),
-            (good.replace(b'"version": "0.3"', b'"version": "0.3.1"'), "has no version of the form MAJOR.MINOR"),
-            (good.replace(b'"version": "0.3"', b'"version": "\xd9\xa0.3"'), "has no version of the form MAJOR.MINOR"),
-            (good.replace(b'"version": "0.3"', b'"version": 0.3'), "has no version of the form MAJOR.MINOR"),
-            (good.replace(b'"version": "0.3"', b'"release": "0.3"'), "has no version of the form MAJOR.MINOR"),
-            (b'["0.3"]\n', "has no version of the form MAJOR.MINOR"),
+            (good.replace(b'"version": "0.3"', b'"version": "0.3.1"'), 'the version "0.3.1" ' + FORM),
+            (good.replace(b'"version": "0.3"', b'"version": "\xd9\xa0.3"'), 'the version "\\u0660.3" ' + FORM),
+            (good.replace(b'"version": "0.3"', b'"version": 0.3'), "the version 0.3 " + FORM),
+            (good.replace(b'"version": "0.3"', b'"release": "0.3"'), "has no version"),
+            (b'["0.3"]\n', "has no version"),
         )
         for raw, problem in cases:
             with self.subTest(problem=problem, raw=raw[:40]):
@@ -871,16 +872,225 @@ class MainHistory(unittest.TestCase):
         with mock.patch.dict(os.environ, variables):
             self.assertEqual([v for _, v in self.checkout.history(four)], ["0.4", "0.3"])
 
-    def test_a_replace_ref_does_not_change_the_history(self):
-        self.checkout.commit("0.3", changelog(("0.3", "Three.")))
-        four = self.checkout.commit("0.4", TWO)
-        head = self.checkout.commit("0.5", THREE)
-        # A replace ref swaps the commit of 0.4 for one that names 0.3. git reads it unless it is told not to.
-        git(self.checkout.directory, "checkout", "-q", "--detach", four + "~1")
+
+# D-2026-11-17-release-narrow-claim: the six spellings of 0.4 that review round 2 of release-links and the decision name.
+NOT_A_VERSION = ("00.4", "0.04", "+0.4", " 0.4", "0.4 ", "٠.٤")
+FORM = "is not of the form MAJOR.MINOR, in ASCII digits with no leading zero. Nothing was written."
+
+
+def not_a_version(where, value):
+    """The message for a version of another form, written out here and not taken from the script."""
+    return "%s: the version %s %s" % (where, json.dumps(value), FORM)
+
+
+class StrictVersions(unittest.TestCase):
+    """Round 2 of release-links, finding 2, and D-2026-11-17-release-narrow-claim: every version has one form.
+
+    A version is read from ratchet.json in the checkout, from ratchet.json at each commit on main, from the tags and
+    from the headings of the changelog. Each must match ^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$, or the run fails and names
+    the value and where it came from. Versions are compared as pairs of integers.
+    """
+
+    def checkout(self):
+        checkout = Checkout()
+        self.addCleanup(checkout.close)
+        return checkout
+
+    def test_a_version_of_another_form_in_the_checkout_fails_before_any_request(self):
+        for value in NOT_A_VERSION:
+            with self.subTest(value=value):
+                checkout = self.checkout()
+                checkout.commit("0.3", changelog(("0.3", "Three.")))
+                checkout.write("ratchet.json", checkout.ratchet_json(value))
+                github = FakeGitHub(**DONE_03)
+                code, _, err, _ = checkout.run(github)
+                self.assertEqual((code, err), (1, "release: %s\n" % not_a_version("ratchet.json in the checkout", value)))
+                self.assertEqual(github.calls, [])
+                out, err = io.StringIO(), io.StringIO()
+                code = release.main(["notes", "--repo", REPO], environ={}, opener=None, out=out, err=err, root=checkout.directory)
+                self.assertEqual((code, out.getvalue()), (1, ""))
+                self.assertEqual(err.getvalue(), "release: %s\n" % not_a_version("ratchet.json in the checkout", value))
+
+    def test_a_version_of_another_form_at_a_commit_on_main_fails_and_names_the_commit(self):
+        for value in NOT_A_VERSION:
+            with self.subTest(value=value):
+                checkout = self.checkout()
+                checkout.commit("0.3", changelog(("0.3", "Three.")))
+                odd = checkout.commit(value, TWO)
+                checkout.commit("0.4", TWO)
+                with self.assertRaises(release.ReleaseError) as caught:
+                    checkout.history()
+                self.assertEqual(str(caught.exception), not_a_version("ratchet.json at commit %s on main" % odd, value))
+
+    def test_the_history_03_04_004_fails_on_004_and_writes_nothing(self):
+        # The reviewer's history: 0.4 is merged and never tagged, then 00.4. It released v00.4 and named nothing.
+        checkout = self.checkout()
+        checkout.commit("0.3", changelog(("0.3", "Three.")))
+        checkout.commit("0.4", TWO)
+        head = checkout.commit("00.4", changelog(("00.4", "Alias."), ("0.4", "Four."), ("0.3", "Three.")))
+        github = FakeGitHub(**DONE_03)
+        code, out, err, _ = checkout.run(github, head)
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(err, "release: %s\n" % not_a_version("ratchet.json in the checkout", "00.4"))
+        self.assertEqual(github.writes, [])
+        self.assertEqual(sorted(github.tags), ["0.3"])
+
+    def test_a_tag_of_another_form_fails_and_is_named(self):
+        for value in NOT_A_VERSION + ("0.4-rc",):
+            with self.subTest(value=value):
+                github = FakeGitHub(tags={"0.3": ("commit", EARLIER), value: ("commit", EARLIER)}, releases=DONE_03["releases"])
+                error, _, github = publish(TWO, github=github)
+                where = "GET %s/git/matching-refs/tags/v, the tag %s" % (PATH, json.dumps("refs/tags/v" + value))
+                self.assertEqual(error, not_a_version(where, value))
+                self.assertEqual(github.writes, [])
+
+    def test_a_heading_with_a_leading_zero_fails_and_names_its_line(self):
+        for value in ("00.4", "0.04"):
+            with self.subTest(value=value):
+                text = changelog(("0.4", "Four."), (value, "Alias."), ("0.3", "Three."))
+                with self.assertRaises(release.ReleaseError) as caught:
+                    release.changelog_versions(text)
+                self.assertEqual(str(caught.exception), not_a_version("CHANGELOG.md, line 7", value))
+                error, _, github = publish(text, github=FakeGitHub(**DONE_03), history=[(SHA, "0.4"), (commit_of("0.3"), "0.3")])
+                self.assertEqual(error, not_a_version("CHANGELOG.md, line 7", value))
+                self.assertEqual(github.calls, [])
+
+    def test_versions_are_compared_as_pairs_of_integers(self):
+        self.assertEqual(release.version_key("0.10"), (0, 10))
+        self.assertGreater(release.version_key("0.10"), release.version_key("0.9"))
+        self.assertGreater(release.version_key("10.0"), release.version_key("9.12"))
+
+    def test_09_then_010_releases_010(self):
+        checkout = self.checkout()
+        checkout.commit("0.3", changelog(("0.3", "Three.")))
+        nine = checkout.commit("0.9", changelog(("0.9", "Nine."), ("0.3", "Three.")))
+        head = checkout.commit("0.10", changelog(("0.10", "Ten."), ("0.9", "Nine."), ("0.3", "Three.")))
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), "0.9": ("commit", nine)},
+                            releases=DONE_03["releases"] + [{"tag_name": "v0.9", "draft": False}])
+        code, out, err, _ = checkout.run(github, head)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags["0.10"], ("commit", head))
+        self.assertEqual(github.releases[-1]["body"], release_line("0.10"))
+
+    def test_09_unfinished_stops_010(self):
+        checkout = self.checkout()
+        checkout.commit("0.3", changelog(("0.3", "Three.")))
+        nine = checkout.commit("0.9", changelog(("0.9", "Nine."), ("0.3", "Three.")))
+        head = checkout.commit("0.10", changelog(("0.10", "Ten."), ("0.9", "Nine."), ("0.3", "Three.")))
+        github = FakeGitHub(**DONE_03)
+        code, _, err, _ = checkout.run(github, head)
+        self.assertEqual(code, 1)
+        self.assertIn("0.9: no tag. Rerun the release run of commit %s," % nine, err)
+        self.assertEqual(github.writes, [])
+
+    def test_a_tag_named_with_the_token_is_not_printed(self):
+        # A tag name comes from an answer of the API and is now named in a message. The token is taken out of every message.
+        checkout = self.checkout()
+        checkout.commit("0.3", changelog(("0.3", "Three.")))
+        checkout.commit("0.4", TWO)
+        github = FakeGitHub(tags={"0.3": ("commit", EARLIER), TOKEN: ("commit", EARLIER)}, releases=DONE_03["releases"])
+        code, out, err, _ = checkout.run(github)
+        self.assertEqual(code, 1)
+        self.assertNotIn(TOKEN, out + err)
+        self.assertNotIn(TOKEN[4:20], out + err)
+        self.assertIn("the tag \"refs/tags/v[the token]\"", err)
+
+
+class Substitutes(unittest.TestCase):
+    """Round 2 of release-links, finding 1, and D-2026-11-17-release-narrow-claim: a checkout that swaps objects is refused.
+
+    Before any history is read, the run fails when the checkout has .git/info/grafts, a ref under refs/replace/,
+    .git/shallow or .git/objects/info/alternates. Each test shows first that the file or the ref changes what git
+    reads, or that the reading ignores it, and then that the run refuses it.
+    """
+
+    def setUp(self):
+        self.checkout = Checkout()
+        self.git_dir = os.path.join(self.checkout.directory, ".git")
+        self.three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+        self.four = self.checkout.commit("0.4", TWO)
+        self.head = self.checkout.commit("0.5", THREE)
+
+    def tearDown(self):
+        self.checkout.close()
+
+    def refused(self, message):
+        with self.assertRaises(release.ReleaseError) as caught:
+            self.checkout.history(self.head)
+        self.assertEqual(str(caught.exception), message)
+        github = FakeGitHub(**DONE_03)
+        code, _, err, _ = self.checkout.run(github, self.head)
+        self.assertEqual((code, err), (1, "release: %s\n" % message))
+        self.assertEqual(github.calls, [])
+
+    def test_a_graft_file_is_refused(self):
+        # The reviewer's probe: a graft makes 0.3 the parent of 0.5, and 0.4 is gone from the history.
+        with open(os.path.join(self.git_dir, "info", "grafts"), "w") as handle:
+            handle.write("%s %s\n" % (self.head, self.three))
+        self.assertEqual(git(self.checkout.directory, "rev-list", "--first-parent", self.head).split(), [self.head, self.three])
+        self.refused("the checkout has .git/info/grafts, which changes the parents git reads. Nothing was written.")
+
+    def test_the_reading_ignores_a_graft_file_and_graft_variables(self):
+        with open(os.path.join(self.git_dir, "info", "grafts"), "w") as handle:
+            handle.write("%s %s\n" % (self.head, self.three))
+        other = os.path.join(self.checkout.directory, "other-grafts")
+        with open(other, "w") as handle:
+            handle.write("%s %s\n" % (self.head, self.three))
+        with mock.patch.dict(os.environ, {"GIT_GRAFT_FILE": other}):
+            self.assertEqual(release.read_history(self.checkout.directory, self.head),
+                             [(self.head, "0.5"), (self.four, "0.4"), (self.three, "0.3")])
+
+    def test_a_replace_ref_is_refused(self):
+        # A replace ref swaps the commit of 0.4 for one that names 0.3.
+        git(self.checkout.directory, "checkout", "-q", "--detach", self.three)
         fake = self.checkout.commit("0.3", TWO, message="Not on main")
         git(self.checkout.directory, "checkout", "-q", "main")
-        git(self.checkout.directory, "replace", four, fake)
-        self.assertEqual([v for _, v in self.checkout.history(head)], ["0.5", "0.4", "0.3"])
+        git(self.checkout.directory, "replace", self.four, fake)
+        self.assertEqual(release.read_history(self.checkout.directory, self.head),
+                         [(self.head, "0.5"), (self.four, "0.4"), (self.three, "0.3")])
+        self.refused("the checkout has the replace ref %s, which swaps one object for another. Nothing was written."
+                     % json.dumps("refs/replace/" + self.four))
+
+    def test_a_packed_replace_ref_is_refused(self):
+        git(self.checkout.directory, "replace", self.four, self.three)
+        git(self.checkout.directory, "pack-refs", "--all")
+        self.assertFalse(os.path.exists(os.path.join(self.git_dir, "refs", "replace", self.four)))
+        self.refused("the checkout has the replace ref %s, which swaps one object for another. Nothing was written."
+                     % json.dumps("refs/replace/" + self.four))
+
+    def test_a_shallow_file_is_refused_also_when_empty(self):
+        # .git/shallow cuts the history at the commits it names, in a clone that holds the whole history.
+        shallow = os.path.join(self.git_dir, "shallow")
+        with open(shallow, "w") as handle:
+            handle.write("%s\n" % self.four)
+        self.assertEqual(release.read_history(self.checkout.directory, self.head), [(self.head, "0.5"), (self.four, "0.4")])
+        message = ("the checkout is shallow: the release reads the whole history of main, "
+                   "so the workflow checks out with fetch-depth: 0. Nothing was written.")
+        self.refused(message)
+        open(shallow, "w").close()
+        self.refused(message)
+
+    def test_an_alternates_file_is_refused(self):
+        # An object store named in alternates stands in for an object the checkout lacks, and git does not check its hash
+        # when it reads it. The blob of ratchet.json at 0.4 is taken out of the checkout, and another store holds, under
+        # its name, the bytes of a ratchet.json that names 0.3. Then 0.4 is gone from the history.
+        blob = git(self.checkout.directory, "rev-parse", "%s:ratchet.json" % self.four)
+        os.remove(os.path.join(self.git_dir, "objects", blob[:2], blob[2:]))
+        store = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, store)
+        data = self.checkout.ratchet_json("0.3")
+        os.makedirs(os.path.join(store, blob[:2]))
+        with open(os.path.join(store, blob[:2], blob[2:]), "wb") as handle:
+            handle.write(zlib.compress(b"blob %d\0" % len(data) + data))
+        with open(os.path.join(self.git_dir, "objects", "info", "alternates"), "w") as handle:
+            handle.write(store + "\n")
+        self.assertEqual(release.read_history(self.checkout.directory, self.head),
+                         [(self.head, "0.5"), (self.four, "0.3"), (self.three, "0.3")])
+        self.refused("the checkout has .git/objects/info/alternates, which reads objects from another store. Nothing was written.")
+
+    def test_an_empty_alternates_file_is_refused(self):
+        open(os.path.join(self.git_dir, "objects", "info", "alternates"), "w").close()
+        self.refused("the checkout has .git/objects/info/alternates, which reads objects from another store. Nothing was written.")
 
 
 class Token(unittest.TestCase):
