@@ -2,7 +2,7 @@
 
 > **Experimental.** This file is outside Ratchet's core. Its rules may change in any version, and they are not counted in the share of rules that are text only. A project adopts them row by row, like any other rule.
 
-Every failure in a project should make the same failure harder to repeat, in that project first and then in every project that uses Ratchet. This file describes the loop that does it. The rules follow the same form as [RATCHET.md](RATCHET.md), and the table is generated from [ratchet.json](ratchet.json).
+Every failure in a project should make the same failure harder to repeat, in that project first and then in every project that uses Ratchet. This file describes the loop that does it. The rules follow the same form as [RATCHET.md](RATCHET.md), and the tables are generated from [ratchet.json](ratchet.json).
 
 Two owners appear below. The **project's owner** approves lessons in the project. **Ratchet's maintainer** approves changes to Ratchet.
 
@@ -31,6 +31,16 @@ Two owners appear below. The **project's owner** approves lessons in the project
 | ratchet.si-maintainer-approves | Changes to Ratchet itself are proposed in PRs\, by people or by agents\, and approved by Ratchet\'s maintainer\, like any change to checks \(see `ratchet.checks-owner-read`\)\. | Check\: branch protection on Ratchet\'s main branch | — |
 <!-- /generated -->
 
+## Rules promoted from projects
+
+A lesson that comes to Ratchet in step 4 and needs a rule of its own starts here, as an experimental rule outside the core: see [The core is frozen](RATCHET.md#the-core-is-frozen). It moves into the core only by a decision of Ratchet's maintainer.
+
+<!-- generated:table promoted -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.expected-tests-ran | A suite of tests made from a source\, such as a table\, a spec or a directory of fixtures\, fails when a test it expects did not run\. The expected tests are read from that same source\, and the run fails when one of them is missing\, skipped or could not be prepared\. Every row of the source has a test that goes red when that row\'s own check is removed\. | Check\: at the end of every run\, the expected tests read from the source are compared with the tests that ran and passed\, and the run fails on each one that did not\. It does not see whether a test uses what it reads\: a mutation per row does\, as in `ratchet.test-can-fail` | — |
+<!-- /generated -->
+
 ## What "tighter" means
 
 Tighter does not mean more rules. It means:
@@ -47,5 +57,5 @@ If the number of rules grows while these numbers stand still, Ratchet is getting
 The count is computed from `ratchet.json` by `checks/generate.py --count` and stated with every version in the [changelog](CHANGELOG.md). The share covers the core. A rule counts as shipped with a reference check only if that check has a fixture it fails on.
 
 <!-- generated:count -->
-Ratchet 0.3, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 20 experimental rules: 9 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.3, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->

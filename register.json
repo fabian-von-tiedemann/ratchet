@@ -94,6 +94,14 @@
       "source": "",
       "status": "text only for now",
       "where": "Pending setup, as for `ratchet.one-approver`"
+    },
+    {
+      "key": "ratchet.expected-tests-ran",
+      "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run. The expected tests are read from that same source, and the run fails when one of them is missing, skipped or could not be prepared. Every row of the source has a test that goes red when that row's own check is removed.",
+      "ratchet": "Check: at the end of every run, the expected tests read from the source are compared with the tests that ran and passed, and the run fails on each one that did not. It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "source": "",
+      "status": "built",
+      "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in the step that runs `python3 -m unittest discover -s checks`"
     }
   ],
   "own": [

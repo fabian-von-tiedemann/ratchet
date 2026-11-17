@@ -4,7 +4,9 @@
 
 Each fixture under checks/fixtures/ carries one fault, and the test names the
 message the check must give for it. Among them is every way that reviews have
-found to hide something from a check. Standard library only.
+found to hide something from a check. A test loads a fixture through FixtureTest,
+which copies it into a scratch directory: the run fails if a fixture is not loaded
+by a test that passes (ratchet.expected-tests-ran). Standard library only.
 """
 
 import json
@@ -19,10 +21,11 @@ import tempfile
 import unicodedata
 import unittest
 
+from expected_tests import FixtureTest
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 REGISTERS = os.path.join(HERE, "fixtures", "register")
-HANDWRITTEN = os.path.join(HERE, "fixtures", "handwritten")
 VERSION = "must be exactly a version like"
 NOT_GENERATED = "REGISTER.md: is not what register.json generates"
 NOT_UTF8 = "is not valid UTF-8"
@@ -163,13 +166,13 @@ def scratch(case):
     return directory
 
 
-class RegisterCheck(unittest.TestCase):
+class RegisterCheck(FixtureTest):
     def check(self, name, markdown=True):
-        directory = os.path.join(REGISTERS, name)
-        args = [os.path.join(directory, "register.json")]
-        if markdown:
-            args += ["--markdown", os.path.join(directory, "REGISTER.md")]
-        return run("check_register.py", *args)
+        """Run the register check on a copy of the fixture: the data file alone, or with the generated file."""
+        if not markdown:
+            return run("check_register.py", self.fixture_file("register/%s/register.json" % name))
+        directory = self.fixture_directory("register/" + name)
+        return run("check_register.py", os.path.join(directory, "register.json"), "--markdown", os.path.join(directory, "REGISTER.md"))
 
     def test_clean_project_copy_passes(self):
         code, output = self.check("clean")
@@ -188,7 +191,7 @@ class RegisterCheck(unittest.TestCase):
     def test_data_is_written_as_text_and_cannot_hide(self):
         code, output = self.check("escaped")
         self.assertEqual(code, 0, output)
-        markdown = read("checks", "fixtures", "register", "escaped", "REGISTER.md")
+        markdown = self.fixture_text("register/escaped/REGISTER.md")
         for line in (
             "# Register for A \\& B \\<the example\\> \\[x\\]\\(`)<!-- hidden -->`y",
             "| example.comment | \\<\\!\\-\\- Owner approval is mandatory\\. \\-\\-\\> |",
@@ -206,9 +209,8 @@ class RegisterCheck(unittest.TestCase):
     def test_latin_letters_and_the_listed_marks_outside_ascii_pass_and_are_written_as_they_stand(self):
         code, output = self.check("latin")
         self.assertEqual(code, 0, output)
-        with open(os.path.join(REGISTERS, "latin", "register.json"), "rb") as handle:
-            self.assertIn("sm\u00f6rg\u00e5sbord".encode("utf-8"), handle.read(), "the fixture holds the letters as themselves")
-        markdown = read("checks", "fixtures", "register", "latin", "REGISTER.md")
+        self.assertIn("sm\u00f6rg\u00e5sbord".encode("utf-8"), self.fixture_bytes("register/latin/register.json"), "the fixture holds the letters as themselves")
+        markdown = self.fixture_text("register/latin/REGISTER.md")
         for line in (
             "# Register for the \u00e9xample project",
             "| example.letters | Na\u00efve fa\u00e7ade\\, sm\u00f6rg\u00e5sbord\\, \u00e6ble\\, \u017c\u00f3\u0142ty\\, \u0111\u1ea7y \u0111\u1ee7 and stra\u00dfe are words\\. |",
@@ -221,7 +223,7 @@ class RegisterCheck(unittest.TestCase):
         # A boundary that is stated, not a protection: see "What it does not claim" in checks/README.md.
         code, output = self.check("references")
         self.assertEqual(code, 0, output)
-        markdown = read("checks", "fixtures", "register", "references", "REGISTER.md")
+        markdown = self.fixture_text("register/references/REGISTER.md")
         for line in (
             "| example.person | Ask \\@someone and \\@some\\-group\\/some\\-team before every release\\. |",
             "| example.person-first | \\@someone approves every release\\. |",
@@ -330,18 +332,20 @@ class RegisterCheck(unittest.TestCase):
     def test_no_bytes_that_are_not_utf8_are_read_as_text(self):
         directory = scratch(self)
         markdown, data = os.path.join(directory, "REGISTER.md"), os.path.join(directory, "register.json")
-        clean = os.path.join(REGISTERS, "clean", "register.json")
+        clean = self.fixture_file("register/clean/register.json")
+        clean_markdown = self.fixture_bytes("register/clean/REGISTER.md")
+        clean_data = self.fixture_bytes("register/clean/register.json")
         for wrong in NOT_UTF8_BYTES:
             with self.subTest(generated_file=wrong):
                 with open(markdown, "wb") as handle:
-                    handle.write(read("checks", "fixtures", "register", "clean", "REGISTER.md").encode("utf-8").replace(b"Every rule", b"Every " + wrong + b" rule", 1))
+                    handle.write(clean_markdown.replace(b"Every rule", b"Every " + wrong + b" rule", 1))
                 code, output = run("check_register.py", clean, "--markdown", markdown)
                 self.assertEqual(code, 1, output)
                 self.assertIn("REGISTER.md: " + NOT_UTF8, output)
                 self.assertNotIn("Traceback", output)
             with self.subTest(data_file=wrong):
                 with open(data, "wb") as handle:
-                    handle.write(read("checks", "fixtures", "register", "clean", "register.json").encode("utf-8").replace(b"the example project", b"the example " + wrong + b" project", 1))
+                    handle.write(clean_data.replace(b"the example project", b"the example " + wrong + b" project", 1))
                 code, output = run("check_register.py", data)
                 self.assertEqual(code, 1, output)
                 self.assertIn("not a valid data file: it " + NOT_UTF8, output)
@@ -350,8 +354,7 @@ class RegisterCheck(unittest.TestCase):
     def test_the_replacement_character_in_the_data_does_not_stand_in_for_bytes_that_are_not_utf8(self):
         # The pair a review found: U+FFFD in a value, and a generated file with one wrong byte in its place.
         directory = scratch(self)
-        with open(os.path.join(REGISTERS, "clean", "register.json"), encoding="utf-8") as handle:
-            register = json.load(handle)
+        register = json.loads(self.fixture_text("register/clean/register.json"))
         register["own"][0]["rule"] = "Every release \ufffd has a changelog entry."
         data, markdown = os.path.join(directory, "register.json"), os.path.join(directory, "REGISTER.md")
         with open(data, "w", encoding="utf-8") as handle:
@@ -363,13 +366,13 @@ class RegisterCheck(unittest.TestCase):
         code, output = run("check_register.py", data, "--markdown", markdown)
         self.assertEqual(code, 1, output)
         self.assertIn(outside("rule", "FFFD"), output)
-        code, output = run("check_register.py", os.path.join(REGISTERS, "clean", "register.json"), "--markdown", markdown)
+        code, output = run("check_register.py", self.fixture_file("register/clean/register.json"), "--markdown", markdown)
         self.assertEqual(code, 1, output)
         self.assertIn("REGISTER.md: " + NOT_UTF8, output)
 
     def test_nothing_is_written_from_a_register_that_cannot_be_written(self):
         target = os.path.join(scratch(self), "REGISTER.md")
-        code, output = run("check_register.py", os.path.join(REGISTERS, "project-surrogate", "register.json"), "--write", target)
+        code, output = run("check_register.py", self.fixture_file("register/project-surrogate/register.json"), "--write", target)
         self.assertEqual(code, 1, output)
         self.assertNotIn("Traceback", output)
         self.assertFalse(os.path.exists(target))
@@ -400,38 +403,39 @@ class RegisterCheck(unittest.TestCase):
         self.assertEqual(code, 0, output)
 
     def test_a_missing_register_is_not_a_pass(self):
-        code, output = run("check_register.py", os.path.join(REGISTERS, "does-not-exist.json"))
+        code, output = run("check_register.py", os.path.join(scratch(self), "register.json"))
         self.assertEqual(code, 2, output)
 
     def test_writing_gives_the_file_that_the_check_accepts(self):
         directory = scratch(self)
         target = os.path.join(directory, "REGISTER.md")
-        data = os.path.join(REGISTERS, "clean", "register.json")
+        data = self.fixture_file("register/clean/register.json")
         code, output = run("check_register.py", data, "--write", target)
         self.assertEqual(code, 0, output)
         with open(target, encoding="utf-8", newline="") as handle:
-            self.assertEqual(handle.read(), read("checks", "fixtures", "register", "clean", "REGISTER.md"))
+            self.assertEqual(handle.read(), self.fixture_text("register/clean/REGISTER.md"))
 
     def test_nothing_is_written_from_a_register_that_fails(self):
         target = os.path.join(scratch(self), "REGISTER.md")
-        code, output = run("check_register.py", os.path.join(REGISTERS, "changed-row", "register.json"), "--write", target)
+        code, output = run("check_register.py", self.fixture_file("register/changed-row/register.json"), "--write", target)
         self.assertEqual(code, 1, output)
         self.assertFalse(os.path.exists(target))
 
     def test_line_endings_of_the_generated_file_do_not_matter(self):
         target = os.path.join(scratch(self), "REGISTER.md")
         with open(target, "w", encoding="utf-8", newline="") as handle:
-            handle.write(read("checks", "fixtures", "register", "clean", "REGISTER.md").replace("\n", "\r\n"))
-        code, output = run("check_register.py", os.path.join(REGISTERS, "clean", "register.json"), "--markdown", target)
+            handle.write(self.fixture_text("register/clean/REGISTER.md").replace("\n", "\r\n"))
+        code, output = run("check_register.py", self.fixture_file("register/clean/register.json"), "--markdown", target)
         self.assertEqual(code, 0, output)
 
     def test_a_register_typed_by_hand_passes_and_its_changed_copy_fails(self):
-        source = os.path.join(HANDWRITTEN, "ratchet.json")
-        code, output = run("check_register.py", "--source", source, os.path.join(HANDWRITTEN, "register.json"),
-                           "--markdown", os.path.join(HANDWRITTEN, "REGISTER.md"))
+        handwritten = self.fixture_directory("handwritten")
+        source = os.path.join(handwritten, "ratchet.json")
+        code, output = run("check_register.py", "--source", source, os.path.join(handwritten, "register.json"),
+                           "--markdown", os.path.join(handwritten, "REGISTER.md"))
         self.assertEqual(code, 0, output)
         self.assertIn("2 rules match Ratchet 9.9 (2 core, 0 experimental). 1 name a check: 1 built", output)
-        code, output = run("check_register.py", "--source", source, os.path.join(HANDWRITTEN, "register-changed.json"))
+        code, output = run("check_register.py", "--source", source, os.path.join(handwritten, "register-changed.json"))
         self.assertEqual(code, 1, output)
         self.assertIn("the rule of ratchet.example-one differs from Ratchet 9.9", output)
         self.assertIn("FAIL: 1 problem(s)", output)

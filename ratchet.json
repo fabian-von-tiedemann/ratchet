@@ -52,6 +52,11 @@
       "id": "tightening",
       "file": "SELF-IMPROVEMENT.md",
       "title": "How Ratchet tightens over time"
+    },
+    {
+      "id": "promoted",
+      "file": "SELF-IMPROVEMENT.md",
+      "title": "Rules promoted from projects"
     }
   ],
   "sources": [
@@ -576,6 +581,16 @@
       "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
       "ratchet": "Check: branch protection on Ratchet's main branch",
       "source": ""
+    },
+    {
+      "key": "ratchet.expected-tests-ran",
+      "part": "promoted",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run. The expected tests are read from that same source, and the run fails when one of them is missing, skipped or could not be prepared. Every row of the source has a test that goes red when that row's own check is removed.",
+      "ratchet": "Check: at the end of every run, the expected tests read from the source are compared with the tests that ran and passed, and the run fails on each one that did not. It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "source": "",
+      "reference_check": "checks/expected_tests.py"
     }
   ]
 }

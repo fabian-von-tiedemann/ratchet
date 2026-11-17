@@ -6,6 +6,7 @@ Checks that Ratchet ships. Each one runs in this repo's CI ([checks.yml](../.git
 | Rule | Reference check |
 |---|---|
 | ratchet.register-on-top | [checks/check_register.py](check_register.py) |
+| ratchet.expected-tests-ran | [checks/expected_tests.py](expected_tests.py) |
 <!-- /generated -->
 
 ## Data files and strict forms
@@ -149,6 +150,54 @@ The registers above are generated from `ratchet.json`. [fixtures/handwritten/](f
 - It does not claim that two characters on the list cannot be taken for one another: see [The characters a value may hold](#the-characters-a-value-may-hold).
 - A project may leave a rule out. A missing rule is a choice, not drift.
 - It runs from the version of Ratchet it was fetched at. The project's workflow pins that version by commit, and a change to the workflow is a change to a check (`ratchet.checks-owner-read`).
+
+## expected_tests.py
+
+```sh
+python3 -m unittest discover -s checks -v
+```
+
+The reference check for `ratchet.expected-tests-ran`. It is not a script of its own: it runs inside the suite. A test that loads fixtures is a `FixtureTest`, and loads each one by its name under [fixtures/](fixtures/), with `fixture_bytes`, `fixture_text`, `fixture_file` or `fixture_directory`. The last two give a copy in a scratch directory, made from the bytes that were loaded, and the check under test is run on the copy.
+
+**What it claims.** In every run of the suite, every file under `checks/fixtures/` was loaded by a test that ran and passed in that same run. Otherwise the run fails, with each fixture named, before unittest prints its summary and sets the exit status.
+
+**Against which threat.** A suite that stays green while it runs fewer tests than it should: a test removed, skipped or broken in its preparation, a module that no longer imports, a fixture added and never tested, or a test that names a fixture that is gone. A green summary says only that the tests that ran passed, not that the tests that were meant to run did.
+
+**How it works.**
+
+- **The expected set is the fixtures themselves.** It is read from the directory, not from a list in a test and not from Markdown. Every file is one fixture. A file whose name starts with a dot, or holds a character other than letters, digits, `_`, `.` and `-`, fails, and so does a link.
+- **Every load is recorded.** The record holds the fixture's name, the test and the sha256 of the bytes the test read. It is kept on the run's own result, so a suite run inside a test keeps its own.
+- **Every outcome is recorded.** When a test ends, the record says whether it passed, failed, errored, could not be prepared (an error before its body started, as in `setUp`), was skipped, or was an expected failure or an unexpected success. A load counts only for a test that passed.
+- **The comparison runs when the run stops.** The first `FixtureTest` in a run hooks the result's `stopTestRun`, which unittest's runner calls after the last test and before its summary. The comparison reads every fixture again. A record counts only if its bytes are the fixture's own as it stands then, so a name without its content does not count. Each problem is named in one failed test, `test_every_expected_test_ran_and_passed`.
+
+**The cases.** Each is a test in [test_expected_tests.py](test_expected_tests.py). They use a fake tree of two fixtures, [fixtures/tests-ran/tree/](fixtures/tests-ran/tree/), copied into a scratch directory, and give the check either fake results or the results of a small suite run with unittest's own runner.
+
+| Case | What is wrong | Result |
+|---|---|---|
+| A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | Passes |
+| A missing test | A fixture that no test loads. | Fails |
+| A skipped test | The only test for a fixture is skipped, before it loads the fixture or after. | Fails |
+| An erroring test | A test that loaded a fixture raised an error. | Fails |
+| Not prepared | A `setUp` that loaded a fixture raised an error before the test's body ran. | Fails |
+| A failure beside a pass | Two tests load a fixture, and one of them fails. | Fails |
+| Only named | A test that names the fixture, or opens its path, without loading it through `FixtureTest`. | Fails |
+| Not as it stands | A record of a fixture without its bytes, with another fixture's bytes, or with bytes the fixture no longer holds when the run stops. | Fails |
+| No such fixture | A test names a fixture that does not exist, a directory, or a name outside the tree, even if the test passes. | Fails |
+| An empty directory | The directory of fixtures holds no fixtures. A run that expects nothing has not shown that everything ran. | Fails |
+| No directory | There is no directory of fixtures. | Fails |
+| A name no test can give | A file whose name starts with a dot. | Fails |
+| A link | A link in the tree. | Fails |
+| A module that cannot be imported | Its tests never run. The run fails on the import, and the fixtures that only it loads are named. | Fails |
+| `unittest discover` | In a process of its own, as CI runs it: exit status 0 for a complete set and 1 for a missing test. | Passes, then fails |
+
+**What it does not claim.**
+
+- It does not see whether a test uses what it loads. A test that loads a fixture and then checks something else, or drops a case it could not prepare after it loaded the fixture, passes. One mutation per case shows that a test uses its fixture (`ratchet.test-can-fail`), and the PR that adds a case shows the mutation.
+- The outcome is a test method's, not a subtest's. A method that loads many fixtures in subtests counts for all of them when it passes, and fails all of them when one subtest fails.
+- A test can still open a fixture by its path. Such a test is not counted, so the fixture stays expected and the run fails unless another test loads it.
+- The comparison runs only in a run that holds a `FixtureTest`. When every module that holds one fails to import, the run fails on the import errors, not on this check. It runs under unittest's own runner, and another runner needs a check of its own.
+- A run of part of the suite, with `-k` or a single module, fails on purpose: it did not run every expected test.
+- A fixture is a file. A fixture that is a directory, such as `register/md-missing`, is expected as the files it holds. That it holds no `REGISTER.md` is the test's to check.
 
 ## generate.py
 
