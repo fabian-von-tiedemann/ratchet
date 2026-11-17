@@ -9,10 +9,12 @@ name: release
 # nothing is written: rerun the run of the commit the message names, then this one.
 # workflow_dispatch takes no input. It releases what ratchet.json names at the head of main,
 # under the same checks, and refuses any other branch.
-# schedule runs every day on the head of main, also when nothing is merged, so that a version left
-# unfinished by the last run, cancelled after its tag for example, is named by a red run within a day.
-# A scheduled run writes nothing: it fails and names the version, the commit of its tag and what is
-# missing, and passes when every version is finished. The script refuses every other event.
+# schedule runs every day on the head of main, also when nothing is merged. While a version is left
+# unfinished, cancelled after its tag for example, each scheduled run that GitHub starts is red
+# (D-2026-11-17-release-fail-closed). A scheduled run writes nothing. When the GitHub API answers, it
+# names the version, the commit of its tag and what is missing. That is not promised: when a read fails,
+# the run is red and may name only the request. It passes when every version is finished. GitHub may
+# start a scheduled run late or drop one: see checks/README.md. The script refuses every other event.
 
 on:
   push:

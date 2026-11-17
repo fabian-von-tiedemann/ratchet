@@ -328,7 +328,7 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 
 | Test | What is tried | Result |
 |---|---|---|
-| `test_fixture_*`, one for each file under [fixtures/sources/](fixtures/sources/) | 49 malformed sources: names with `##[`, `::`, `@`, `#`, `<`, a backtick, a space, a capital, `_`, a leading `.` or `-`, 101 characters, `www.` or `gh-12`; directories with `//`, `..`, a part `.`, a capital, `_`, 101 characters or `www.`; an owner with `_`; and the forms of round 1. | Fails, names the problem, or prints that a line was left out where the problem quotes `_` or `\|`; reads nothing |
+| `test_fixture_*`, one for each file under [fixtures/sources/](fixtures/sources/), each loaded through `FixtureTest` | 49 malformed sources: names with `##[`, `::`, `@`, `#`, `<`, a backtick, a space, a capital, `_`, a leading `.` or `-`, 101 characters, `www.` or `gh-12`; directories with `//`, `..`, a part `.`, a capital, `_`, 101 characters or `www.`; an owner with `_`; and the forms of round 1. | Fails, names the problem, or prints that a line was left out where the problem quotes `_` or `\|`; reads nothing |
 | `test_the_sources_in_ratchet_json_have_the_form` | This repo's own sources. | Passes |
 | `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Nothing written |
 | `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with exactly the expected body |
@@ -431,7 +431,7 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of 0.4 on a copy of this repo: the regex of the release workflow, `^## 0.4 \(`, finds its entry, the guard passes before the tag and after it, and the full suite passes after it | Passes |
+| The release of 0.4 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.4, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
 | After that release, a rule changed without a new version | Fails |
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
