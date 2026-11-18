@@ -656,6 +656,27 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 25, and one experimental rule over it fails the check.
 
+## The issue form
+
+A proposal starts as an issue with the form [proposal.yml](../.github/ISSUE_TEMPLATE/proposal.yml), which asks for the five fields of [D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md): what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source. See [CONTRIBUTING.md](../CONTRIBUTING.md). The form is a test of this repo, not a reference check.
+
+**What it claims.** The form has exactly these five fields, in this order, each a text area marked required. GitHub reads the form as YAML, and the standard library has no YAML parser, so the test reads one fixed form line by line and fails on every line outside it: a top of `name`, `description` and `body`, then seven lines per field in a fixed order and indentation. A value is one plain line that starts with a capital letter and holds only letters, digits, spaces and `,.;()'?-`, and is not a word that YAML 1.1 reads as true, false or null. Any YAML parser reads such a file the same way, so what the test reads is what GitHub reads.
+
+**Against which threat.** A field is dropped, renamed or made optional, and proposals arrive without what is needed to judge them. Or the form is written in a way of YAML that the test would read differently from GitHub.
+
+**What it does not claim.** It does not claim that GitHub accepts the form or shows it: that is seen on GitHub once the form is on `main`. It does not stop an issue opened without the form, from the blank issue or through the API.
+
+| Case | Result |
+|---|---|
+| The form as it stands | Passes |
+| A field left out, a field twice, a field renamed or relabeled | Fails |
+| A field not required, with no `validations`, cut short at the end, or of another type than `textarea` | Fails |
+| A value with a colon, quoted, a block scalar, or `Yes` | Fails |
+| A comment, a key the test does not know, a line indented one more, a trailing space | Fails |
+| A tab, a carriage return, a letter that is not ASCII, no final newline | Fails |
+
+The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with one change, so they follow the form when it changes.
+
 ## upgrade.py
 
 ```sh
