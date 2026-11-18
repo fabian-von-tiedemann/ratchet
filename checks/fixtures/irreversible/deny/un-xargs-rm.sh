@@ -1,0 +1,1 @@
+ls | xargs rm -rf

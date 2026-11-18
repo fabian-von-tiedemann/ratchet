@@ -1,0 +1,10 @@
+{
+  "approvals": [
+    {
+      "step": "tag",
+      "command": "git tag v2",
+      "until": 29991231,
+      "reason": "The owner asked for this step."
+    }
+  ]
+}
