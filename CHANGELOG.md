@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5 (2026-11-18)
+
+<!-- generated:count -->
+Ratchet 0.5, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules, under a cap of 25: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+No rule is added or removed in this version, and one is changed. It adds a way for a project to upgrade, and a cap on the rules outside the core, by the decision `D-2026-11-17-pull-and-budget`. The cap is a new required field in `ratchet.json`, a change of form, which a minor version before 1.0 may now make, by the decision `D-2026-11-18-form-change-before-1-0`.
+
+Added:
+
+- `checks/upgrade.py` and `UPGRADING.md`: the upgrade path. Given a project's `register.json` and the `ratchet.json` of the version the register states, the script prints what the register must do to move to the Ratchet it is run from: for each adopted rule that changed or was removed, the entry to paste or the reason to remove it, and for each new rule, the entry to paste if the project adopts it. It writes nothing and runs offline, on the files it is given. It fails when the register does not pass against the version it states, and it checks that the register with every step done passes against the newer one. See [checks/README.md](checks/README.md#upgradepy).
+- `experimental_cap` in `ratchet.json`: the most experimental rules there may be, 25, which is the 20 there were when the decision was recorded on `main`, plus five. Every check that reads `ratchet.json` fails when there are more, so `generate.py --check` is red. A new experimental rule then replaces, merges or removes one, or a decision raises the cap. The count of rules states the cap.
+
+Changed:
+
+- `ratchet.si-version`: before 1.0, a minor version may also change the form, and the changelog lists every change of form, as it lists every rename. The rest of the rule is as it was. A register that adopts it replaces its entry: `upgrade.py` prints the new one, and a status and a `where` stay.
+
+Changes of form:
+
+- `ratchet.json` has `experimental_cap`, a required field, a whole number from 0. A `ratchet.json` without it, or with a value of another kind, is not a valid data file. Ratchet's checks read `ratchet.json` strictly, so the checks of 0.4 refuse the `ratchet.json` of 0.5 for the field they do not know, and the checks of 0.5 refuse that of 0.4 for the field it lacks. A project whose checks are those in `.ratchet`, fetched at the version its register states as the README says, has nothing to do: the checks and `ratchet.json` come from the same version. A project that keeps a copy of a Ratchet check, or has a check of its own, that reads `ratchet.json` replaces the copy with the one from 0.5, or changes its check to read the field. `upgrade.py` says so when the form changed between the two versions it compares.
+
 ## 0.4 (2026-11-17)
 
 <!-- generated:count -->

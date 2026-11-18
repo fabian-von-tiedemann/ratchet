@@ -720,7 +720,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("CHANGELOG.md: the first entry must hold exactly these generated blocks, once each: count. Missing: count")
 
     def test_a_count_in_the_first_entry_edited_by_hand_fails(self):
-        self.edit("CHANGELOG.md", "Ratchet 0.4, computed", "Ratchet 0.4 (almost), computed")
+        version = json.loads(read("ratchet.json"))["version"]
+        self.edit("CHANGELOG.md", "Ratchet %s, computed" % version, "Ratchet %s (almost), computed" % version)
         self.assert_check_fails("CHANGELOG.md: generated text is out of date or was edited by hand")
 
     def test_a_heading_of_another_form_fails(self):
@@ -819,7 +820,7 @@ class StartPath(unittest.TestCase):
                 self.assertEqual(code, 0, output)
 
     def test_no_instruction_tells_the_reader_to_leave_the_root(self):
-        for name in ("README.md", "MIGRATING.md"):
+        for name in ("README.md", "MIGRATING.md", "UPGRADING.md"):
             with self.subTest(document=name):
                 text = read(name)
                 self.assertIsNone(re.search(r"(?m)^\s*cd ", text))

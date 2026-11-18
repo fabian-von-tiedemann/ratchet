@@ -1,0 +1,99 @@
+{
+  "version": "9.8",
+  "date": "2026-01-01",
+  "experimental_cap": 10,
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "sources": [],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "enforcement": "enforced",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.reworded",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Prefer the\u200b simple solution.",
+      "ratchet": "Text only: simplicity is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-checked",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Name every decision.",
+      "ratchet": "Text only: a name is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-text",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "Every release has a changelog entry.",
+      "ratchet": "Check: a lint of the changelog",
+      "source": ""
+    },
+    {
+      "key": "ratchet.new-ratchet",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "No secrets in the repo.",
+      "ratchet": "Check: a secret scan in every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.dropped",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Write a status every day.",
+      "ratchet": "Text only: a status is prose",
+      "source": ""
+    },
+    {
+      "key": "ratchet.dropped-unadopted",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Keep a diary.",
+      "ratchet": "Text only: a diary is prose",
+      "source": ""
+    },
+    {
+      "key": "ratchet.left-out",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Read the handover first.",
+      "ratchet": "Text only: reading is not visible",
+      "source": ""
+    },
+    {
+      "key": "ratchet.changed-unadopted",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Ask before you merge.",
+      "ratchet": "Text only: asking is a judgment",
+      "source": ""
+    }
+  ]
+}
