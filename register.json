@@ -31,7 +31,7 @@
       "ratchet": "Check: required review by the owner on the directory that holds the decisions, with agents under an account of their own",
       "source": "",
       "status": "text only for now",
-      "where": "Pending setup. `.github/CODEOWNERS` is in place. It becomes built when the protection on `main` requires the code owner's approval and dismisses it on a new push, the agents' account has the role Write and no more, and all of it has been read back with `gh api` and tried with a pull request from that account"
+      "where": "Pending setup. `.github/CODEOWNERS` is in place. It becomes built when the protection on `main` requires the code owner's approval and dismisses it on a new push, the agents' account has the role Write and no more, and all of it has been read back with `gh api` and tried with a pull request from that account. Since D-2026-11-18-approve-on-word, the control room may submit the code owner's approval with a token of the maintainer's own account, on the maintainer's word, so a required review by the code owner no longer shows by itself that the maintainer clicked"
     },
     {
       "key": "ratchet.kinds-apart",
@@ -137,9 +137,9 @@
     },
     {
       "key": "repo.agents-own-account",
-      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and never approves one. It merges one, with a squash, only after the code owner has approved its exact head and a reviewer from another model family has passed that head. A pull request that changes only files in `decisions/` and `HANDOVER.md`, and changes no rule, check or register, needs no such reviewer.",
-      "ratchet": "Text only: the protection on `main` refuses a merge unless the code owner has approved the latest change and the job `checks` is green. It cannot see whether the review from another model family passed",
-      "source": "D-2026-11-17-agent-merges-after-approval"
+      "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and never approves one. The code owner's approval is a click by the maintainer on GitHub, or is submitted by the control room with a token of the maintainer's own account, on the maintainer's word in the control room's chat. The account merges a pull request, with a squash, only after the code owner has approved its exact head and a reviewer from another model family has passed that head. A pull request that changes only files in `decisions/` and `HANDOVER.md`, and changes no rule, check or register, needs no such reviewer.",
+      "ratchet": "Text only: the protection on `main` refuses a merge unless the code owner has approved the latest change and the job `checks` is green. It cannot see whether the review from another model family passed, or whether the maintainer gave the word for an approval the control room submitted",
+      "source": "D-2026-11-17-agent-merges-after-approval, D-2026-11-18-approve-on-word"
     },
     {
       "key": "repo.standard-library-only",
