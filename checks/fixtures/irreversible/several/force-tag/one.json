@@ -1,0 +1,10 @@
+{
+  "approvals": [
+    {
+      "step": "force-push",
+      "command": "git push --force origin v1",
+      "until": "2999-12-31",
+      "reason": "The owner asked for this step."
+    }
+  ]
+}

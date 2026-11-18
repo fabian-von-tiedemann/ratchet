@@ -1,0 +1,16 @@
+{
+  "approvals": [
+    {
+      "step": "force-push",
+      "command": "git push --mirror origin",
+      "until": "2999-12-31",
+      "reason": "The owner asked for this step."
+    },
+    {
+      "step": "tag",
+      "command": "git push --mirror origin",
+      "until": "2999-12-31",
+      "reason": "The owner asked for this step."
+    }
+  ]
+}

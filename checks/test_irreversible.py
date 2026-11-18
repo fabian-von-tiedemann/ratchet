@@ -12,6 +12,8 @@ checks/fixtures/irreversible/:
 - pass/ok-<case>.sh: one command each, which the hook must let run.
 - approved/<step>/command.sh and approvals.json: a command that is denied, and the approvals file that lets it run.
 - approvals/<case>.json: an approvals file that approves nothing for `git tag v2`.
+- several/<case>/command.sh, one.json and both.json: a command that takes two steps, an approvals file with an
+  entry for one of them, which does not let it run, and one with an entry for each, which does.
 
 Each test runs the hook as Claude Code does, in a process of its own, on a scratch working tree that is a git
 repository with a tag v1, and with a link inside it that points outside. Standard library only.
@@ -157,6 +159,29 @@ class Hook(FixtureTest):
                 # The same approval does not reach a command that differs, or the step chained to another command.
                 self.assert_denied(self.bash(command + " "), step, command + " ")
                 self.assert_denied(self.bash("true && " + command), step, "true && " + command)
+
+    def test_a_command_with_several_steps_runs_when_each_step_has_an_entry(self):
+        cases = sorted(os.listdir(os.path.join(self.fixtures, "irreversible", "several")))
+        self.assertEqual(cases, ["force-tag", "mirror"])
+        for case in cases:
+            with self.subTest(case=case):
+                command = self.command("irreversible/several/%s/command.sh" % case)
+                path = os.path.join(self.tree, APPROVALS)
+                if os.path.exists(path):
+                    os.remove(path)
+                result = self.bash(command)
+                self.assert_denied(result, "force-push", command)
+                self.assert_denied(result, "tag", command)
+                # One entry is valid, and lets the command run only once the other step has an entry too.
+                self.approve(self.fixture_bytes("irreversible/several/%s/one.json" % case))
+                code, _, err = self.bash(command)
+                self.assertEqual(code, 2, err)
+                self.assertNotIn("ratchet-approvals.json: ", err)
+                self.assertIn('"step": "tag"', err)
+                self.assertNotIn('"step": "force-push"', err)
+                self.approve(self.fixture_bytes("irreversible/several/%s/both.json" % case))
+                self.assert_passes(self.bash(command), command)
+                self.assert_denied(self.bash("true && " + command), "tag", "true && " + command)
 
     def test_an_approvals_file_that_is_not_valid_or_does_not_match_approves_nothing(self):
         names = sorted(name[:-len(".json")] for name in os.listdir(os.path.join(self.fixtures, "irreversible", "approvals")))
