@@ -1,0 +1,56 @@
+{
+  "project": "the example project",
+  "ratchet_version": "9.7",
+  "adopted": [
+    {
+      "key": "ratchet.keep",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": "",
+      "status": "built",
+      "where": "checks/test.sh"
+    },
+    {
+      "key": "ratchet.reworded",
+      "rule": "Prefer the simple solution.",
+      "ratchet": "Text only: simplicity is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-checked",
+      "rule": "Name every decision.",
+      "ratchet": "Text only: a name is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-text",
+      "rule": "Every release has a changelog entry.",
+      "ratchet": "Check: a lint of the changelog",
+      "source": "",
+      "status": "built",
+      "where": "checks/changelog.sh"
+    },
+    {
+      "key": "ratchet.new-ratchet",
+      "rule": "No secrets in the repo.",
+      "ratchet": "Check: a secret scan in every PR",
+      "source": "",
+      "status": "built",
+      "where": "checks/secrets.sh"
+    },
+    {
+      "key": "ratchet.dropped",
+      "rule": "Write a status every day.",
+      "ratchet": "Text only: a status is prose",
+      "source": ""
+    }
+  ],
+  "own": [
+    {
+      "key": "example.changelog",
+      "rule": "Every release has a changelog entry.",
+      "ratchet": "Text only: a check cannot tell whether an entry is complete",
+      "source": ""
+    }
+  ]
+}

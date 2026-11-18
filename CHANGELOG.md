@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5 (2026-11-18)
+
+<!-- generated:count -->
+Ratchet 0.5, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules, under a cap of 25: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+No rule is added, changed or removed in this version. It adds a way for a project to upgrade, and a cap on the rules outside the core, by the decision `D-2026-11-17-pull-and-budget`.
+
+Added:
+
+- `checks/upgrade.py` and `UPGRADING.md`: the upgrade path. Given a project's `register.json` and the `ratchet.json` of the version the register states, the script prints what the register must do to move to the Ratchet it is run from: for each adopted rule that changed or was removed, the entry to paste or the reason to remove it, and for each new rule, the entry to paste if the project adopts it. It writes nothing and runs offline, on the files it is given. It fails when the register does not pass against the version it states, and it checks that the register with every step done passes against the newer one. See [checks/README.md](checks/README.md#upgradepy).
+- `experimental_cap` in `ratchet.json`: the most experimental rules there may be, 25, which is the 20 there were when the decision was recorded on `main`, plus five. Every check that reads `ratchet.json` fails when there are more, so `generate.py --check` is red. A new experimental rule then replaces, merges or removes one, or a decision raises the cap. The count of rules states the cap.
+
+Changed:
+
+- `ratchet.json` must hold `experimental_cap`, a whole number from 0. A `ratchet.json` without it, or with a value of another kind, is not a valid data file.
+
 ## 0.4 (2026-11-17)
 
 <!-- generated:count -->

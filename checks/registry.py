@@ -57,7 +57,9 @@ STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
 RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check"}
 REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"}
-TOP_FIELDS = {"version", "date", "start", "parts", "sources", "rules"}
+TOP_FIELDS = {"version", "date", "experimental_cap", "start", "parts", "sources", "rules"}
+# The budget: the most experimental rules there may be (D-2026-11-17-pull-and-budget). Raising it is a decision.
+CAP = "experimental_cap"
 
 SOURCE_FIELDS = {"name", "repo", "directory", "author", "commit", "license"}
 REQUIRED_SOURCE_FIELDS = {"name", "repo", "commit", "license"}
@@ -261,11 +263,17 @@ def load(path=SOURCE):
     return data
 
 
-def validate(data, root):
+def validate(data, root, older=False):
+    """Every problem with a parsed ratchet.json, or nothing.
+
+    With older=True, the ratchet.json of an older version, which checks/upgrade.py compares with this one: it may
+    lack the cap, which came in 0.5, its sources are not read, the files of its reference checks are not looked
+    for, and the budget is not counted. Everything else is read as strictly as this version's own file.
+    """
     problems = []
     if not isinstance(data, dict):
         return ["the top level must be an object"]
-    for field in sorted(TOP_FIELDS - set(data)):
+    for field in sorted(TOP_FIELDS - set(data) - ({CAP} if older else set())):
         problems.append("missing field %r" % field)
     for field in sorted(set(data) - TOP_FIELDS):
         problems.append("unknown field %r" % field)
@@ -276,6 +284,9 @@ def validate(data, root):
         problems.append("version must look like 0.2")
     if not isinstance(data["date"], str) or not DATE.match(data["date"]):
         problems.append("date must look like 2026-01-31")
+    cap = data.get(CAP)
+    if CAP in data and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
+        problems.append("%s must be a whole number from 0, found %s" % (CAP, json.dumps(cap)))
 
     for field in ("start", "parts", "sources", "rules"):
         if not isinstance(data[field], list):
@@ -340,7 +351,7 @@ def validate(data, root):
                 continue
             if rule["enforcement"] != "enforced":
                 problems.append("%s: only an enforced rule can have a reference check" % name)
-            if not os.path.isfile(os.path.join(root, reference)):
+            if not older and not os.path.isfile(os.path.join(root, reference)):
                 problems.append("%s: the reference check %s does not exist" % (name, reference))
 
     if not all(isinstance(key, str) for key in data["start"]):
@@ -352,8 +363,23 @@ def validate(data, root):
         if key not in keys:
             problems.append("start names %s, which is not a rule" % key)
 
+    if older:
+        return problems
     problems.extend(source_problems(data["sources"]))
+    if not problems:
+        problems.extend(budget_problems(data))
     return problems
+
+
+def budget_problems(data):
+    """Why the experimental rules break the budget, or nothing. A new rule replaces, merges or removes one."""
+    experimental = counts(data)["experimental"]["rules"]
+    if experimental <= data[CAP]:
+        return []
+    return [
+        "there are %d experimental rules, which is more than the cap of %d in %s. A new experimental rule replaces, "
+        "merges or removes one, or a decision raises the cap (D-2026-11-17-pull-and-budget)" % (experimental, data[CAP], CAP)
+    ]
 
 
 def github_repo(value):

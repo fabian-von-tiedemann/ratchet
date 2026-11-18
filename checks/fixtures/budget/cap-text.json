@@ -1,0 +1,45 @@
+{
+  "version": "9.9",
+  "date": "2026-01-01",
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "sources": [],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "enforcement": "enforced",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.reworded",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Prefer the simple solution.",
+      "ratchet": "Text only: simplicity is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-checked",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Name every decision.",
+      "ratchet": "Text only: a name is a judgment",
+      "source": ""
+    }
+  ],
+  "experimental_cap": "2"
+}

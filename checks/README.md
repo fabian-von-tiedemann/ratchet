@@ -187,7 +187,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | An expected failure | A test marked `expectedFailure` fails, which does not fail a unittest run. | `Runs.test_an_expected_failure_fails` | Fails |
 | A skip decorator on a class | Every test of the class is skipped. | `Runs.test_a_skip_decorator_on_a_class_fails` | Fails |
 | A module that fails to import | discover gives a test that errors in its place. | `Runs.test_a_module_that_fails_to_import_fails` | Fails |
-| The release steps | The release of 0.4 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
+| The release steps | The release of 0.5 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
 | A killed child | A test kills its own process. | `Runs.test_a_killed_child_fails` | Fails: the signal, no completion record, a test with no outcome |
 | A record of an unknown form | An unknown kind, an unknown or missing field, an instance that is not a whole number from 1, an unknown outcome, a sha256 or a name of another form, a line that is not one JSON object, a field twice, a line cut off, bytes that are not UTF-8. | `Records.test_a_record_of_a_form_the_check_does_not_know_fails` and the six after it | Fails |
 | A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | `Runs.test_a_complete_set_passes`, `Runs.test_every_way_of_loading_counts`, `Records.test_a_complete_run_passes` | Passes |
@@ -395,6 +395,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - such a file links to a local file that does not exist, with an inline link or with a link definition at the start of a line. Links to the web and links inside a page are not followed.
 - the first entry in the changelog is not the version in `ratchet.json`, or a heading of an entry is not of the form `## <version> (<date>)`
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
+- there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
@@ -431,7 +432,7 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of 0.4 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.4, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
+| The release of 0.5 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.5, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
 | After that release, a rule changed without a new version | Fails |
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
@@ -633,6 +634,72 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 - It trusts the history of `main` as the ruleset keeps it. An administrator who turns the ruleset off and force-pushes `main` could take a version out of that history.
 - `generate.py` and `check_register.py` read `version` in `ratchet.json` with the older form `^[0-9]+\.[0-9]+$`, so they accept `00.4`. Only the release script refuses it. Making `registry.py` as strict is a proposal (P) in the decision, not done here.
 - A workflow file on another branch can be changed by anyone who can push to it. The check of `GITHUB_REF` stops a mistake, not a change to the workflow or the script.
+
+## The budget
+
+`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)). It is 25: there were 20 experimental rules in `ratchet.json` at the commit on `main` that added that decision, and the decision put the cap at that number plus five.
+
+**What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when there are more experimental rules than the cap, so `generate.py --check` is red and nothing is generated. It fails the same way when the cap is missing, stands twice, or is anything but a whole number from 0: text, `true`, `2.0` or a negative number. The count of rules, in the README, `RATCHET.md`, `SELF-IMPROVEMENT.md` and the first entry of the changelog, states the cap.
+
+**Against which threat.** Ratchet grows a rule at a time until no one reads it. With the cap, a new experimental rule replaces, merges or removes one, or a decision raises the cap.
+
+**What it does not claim.** It does not count the core, which is frozen, and it does not judge whether a rule is worth its place. A PR can raise the cap in the same change that adds a rule. That is a change to `ratchet.json`, which the maintainer reads before it is merged (`ratchet.checks-owner-read`), and raising the cap is a decision.
+
+| Fixture | What is wrong | Result |
+|---|---|---|
+| `budget/at-cap.json` | Nothing. Two experimental rules under a cap of 2. | Passes |
+| `budget/over-cap.json` | Two experimental rules under a cap of 1. | Fails |
+| `budget/no-cap.json` | No cap. | Fails |
+| `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
+| `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
+
+The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 25, and one experimental rule over it fails the check.
+
+## upgrade.py
+
+```sh
+python3 .ratchet/checks/upgrade.py register.json --from .ratchet/from.json
+```
+
+This one checks no rule in a register. It is the upgrade path for a project ([UPGRADING.md](../UPGRADING.md)). `--from` is the `ratchet.json` of the version the register states, taken from its tag. `--source`, by default the `ratchet.json` next to the script, is the newer Ratchet.
+
+**What it claims.** It reads three data files strictly, and when they are valid it prints, rule by rule, what is different between the two versions of Ratchet and what the register must do about it:
+
+- a rule the register adopts that changed: which of its status, enforcement, rule, ratchet and source changed, and the entry to put in its place. The entry is the newer rule, character for character. It keeps the status and the place of the check when the rule still names a check, gets `text only for now` when its ratchet now names one, and loses both when it is text only now. When the ratchet of a rule marked `built` changed, it says to look at the check again.
+- a rule the register adopts that was removed: take it out of `adopted`, or move it to `own`.
+- a new rule: the entry to add, if the project adopts it.
+- a rule that changed or was removed and is not adopted: its key, with nothing to do.
+
+Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. It writes nothing, and reads no file but the three it is given. It runs offline.
+
+**Against which threat.** A project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's.
+
+**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with four things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
+
+**What it does not claim.**
+
+- It does not find the latest version, and does not reach the network. It compares the files it is given.
+- It does not see that the file given with `--from` is the one at the tag. It checks that the register passes against it and that the version is older or the same, and that two files that name the same version have the same rules.
+- It does not see whether a check marked `built` exists or works.
+- It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
+- It does not say why a rule changed. The changelog of the newer Ratchet does.
+
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` and `v0.4`.
+
+| Case | Fixture | Result |
+|---|---|---|
+| Every kind of change: a rule reworded, one that now names a check, one that is now text only, one whose ratchet and source changed while its check is built, one removed, two new, and one changed and one removed that are not adopted | `register.json`, `old/ratchet.json`, `new/ratchet.json` | Passes, with a step for each |
+| Each printed entry is the newer rule, with the status that holds | the same | Passes |
+| The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
+| Nothing is written | the same | Passes, every file as it was |
+| This repo's register at 0.3 and at 0.4, upgraded to this version | `released/0.3/`, `released/0.4/` | Passes |
+| An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
+| A register already on the newer version | `register-current.json` | Passes: nothing to change |
+| A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
+| A register on another version than the older `ratchet.json` | `register-other-version.json` | Fails |
+| A newer Ratchet that is older than the register | `register-current.json` with the two swapped | Fails |
+| A `ratchet.json`, older or newer, with a field twice, not JSON, not UTF-8, a field it does not know at the top or in a rule, a field missing, a character not on the list, a version that is a number, a key twice, a rule in a part that does not exist | `faults/` | Cannot run, with the fault named |
+| A file that does not exist, or no `--from` | none | Cannot run |
 
 ## Why JSON
 

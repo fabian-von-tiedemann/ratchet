@@ -85,13 +85,13 @@ def count_text(data):
     core, extra = numbers["core"], numbers["experimental"]
     return (
         "Ratchet %s, computed from `ratchet.json`: the core has %d rules. %d name a check and %d are text only (%d%%). "
-        "Ratchet ships a reference check for %d of the %d. Outside the core there are %d experimental rules: "
-        "%d name a check and %d are text only. They are not counted in the share. "
+        "Ratchet ships a reference check for %d of the %d. Outside the core there are %d experimental rules, "
+        "under a cap of %d: %d name a check and %d are text only. They are not counted in the share. "
         "The share counts what kind of ratchet a rule has, not whether a project has built the check: "
         "a project's register says that, and Ratchet's own is REGISTER.md."
         % (
             data["version"], core["rules"], core["enforced"], core["text_only"], numbers["text_only_percent"],
-            core["reference_checks"], core["enforced"], extra["rules"], extra["enforced"], extra["text_only"],
+            core["reference_checks"], core["enforced"], extra["rules"], data[registry.CAP], extra["enforced"], extra["text_only"],
         )
     )
 
