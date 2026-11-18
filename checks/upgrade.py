@@ -7,21 +7,27 @@ The register is the project's register.json. --from is ratchet.json of the versi
 the register states, and --source, by default the ratchet.json next to this script,
 is the newer Ratchet. The script compares the two, rule by rule, and prints:
 
-- a step for each adopted rule that changed or was removed, with the entry to
-  paste in place of the old one, or the reason to remove it
+- a step for each adopted rule that changed, with the entry to paste in place of
+  the old one
+- a step for each adopted rule that was removed: take it out of "adopted", and to
+  keep it, add the printed entry to "own", which has the fields of an own rule only
+- when every adopted rule was removed, a step to adopt at least one rule
 - the new rules, each with the entry to paste if the project adopts it
 - the changed and removed rules that the register does not adopt, by key.
 
 It writes nothing. It runs offline, on the files it is given. Before it prints a
 step, it checks that the register passes check_register.py against the older
 Ratchet, and that the register with every step done passes it against the newer
-one. The data files are read strictly, as every check here reads them, and no rule
-is read from Markdown. Where a version changed a rule, and why, is in the changelog
+one: with each removed rule taken out, and with each also moved to "own". When the
+register must adopt a rule, it is checked with all of those it is given adopted.
+The data files are read strictly, as every check here reads them, and no rule is
+read from Markdown. Where a version changed a rule, and why, is in the changelog
 of the newer Ratchet.
 
 Exit code 0: the steps are printed, or there is nothing to change. 1: the register
-does not pass against the version it states, or the newer Ratchet is older. 2: the
-script could not run: a file is missing or is not a valid data file.
+does not pass against the version it states, the newer Ratchet is older, or the
+steps would not give a register that passes against it. 2: the script could not
+run: a file is missing or is not a valid data file.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
@@ -29,6 +35,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import sys
 
 import check_register
@@ -74,6 +81,33 @@ def entry(rule, old_entry=None):
     return result
 
 
+def own_prefix(register):
+    """(prefix, why) for the project's own keys: that of its first own rule, or one made from the project's name.
+
+    A name gives the lowercase letters and digits in it, in words joined by hyphens. A name that gives none, or gives
+    Ratchet's own prefix, gives "project".
+    """
+    if register["own"]:
+        return register["own"][0]["key"].split(".", 1)[0], "from the register's first own rule"
+    prefix = "-".join(re.findall(r"[a-z0-9]+", register["project"].lower()))
+    if prefix in ("", "ratchet"):
+        prefix = "project"
+    return prefix, "made from the project's name"
+
+
+def own_entry(rule, before, prefix, taken):
+    """A removed rule as a rule of the project's own: the fields key, rule, ratchet and source, and nothing else.
+
+    The key is the prefix, a dot and the name of Ratchet's key, with -2, -3 and so on when that key is taken.
+    """
+    name = rule["key"].split(".", 1)[1]
+    key, number = "%s.%s" % (prefix, name), 1
+    while key in taken:
+        number += 1
+        key = "%s.%s-%d" % (prefix, name, number)
+    return dict([("key", key)] + [(field, rule[field]) for field in check_register.RULE_FIELDS if field != "key"])
+
+
 def changed_fields(old, new):
     return [name for field, name in COMPARED if old[field] != new[field]]
 
@@ -114,11 +148,27 @@ def plan(register, old, new):
                             'the ratchet says, or set the status to "text only for now".')
             step["text"] = " ".join(text)
         steps.append(step)
+    prefix, why = own_prefix(register)
+    taken = set(item["key"] for item in register["own"])
     for rule in old["rules"]:
         key = rule["key"]
         if key not in new_by:
-            steps.append({"key": key, "kind": "removed", "adopted": key in adopted,
-                          "text": '%s: removed. Remove it from "adopted". To keep it, move it to "own" under the project\'s own prefix.' % key})
+            step = {"key": key, "kind": "removed", "adopted": key in adopted, "text": "%s: removed." % key}
+            if key in adopted:
+                step["entry"] = own_entry(rule, adopted[key], prefix, taken)
+                taken.add(step["entry"]["key"])
+                text = ['%s: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add this entry to "own".' % key]
+                if register["own"]:
+                    text.append('Its key has the prefix "%s", %s.' % (prefix, why))
+                else:
+                    text.append('The register has no own rule yet, so its key has a prefix %s, "%s". Any other prefix of the same '
+                                'form will do, but not "ratchet".' % (why, prefix))
+                if step["entry"]["key"] != "%s.%s" % (prefix, key.split(".", 1)[1]):
+                    text.append('The key "%s.%s" is taken, so the entry has "%s".' % (prefix, key.split(".", 1)[1], step["entry"]["key"]))
+                if "status" in adopted[key] or "where" in adopted[key]:
+                    text.append('An own rule has only the fields key, rule, ratchet and source, so the entry has no status and no "where".')
+                step["text"] = " ".join(text)
+            steps.append(step)
 
     after = copy.deepcopy(register)
     after["ratchet_version"] = new["version"]
@@ -129,6 +179,30 @@ def plan(register, old, new):
         if not (item["key"] in by_step and by_step[item["key"]]["kind"] == "removed")
     ]
     return steps, after
+
+
+def outcomes(steps, after, new):
+    """(registers, kept, must_adopt): each register the printed steps can give, whether a removed rule can be kept in
+    "own", and the entries of which the register must adopt at least one.
+
+    A removed rule may be taken out or also moved to "own", so there are two registers when the register adopts one.
+    When every rule the register adopts was removed, it must adopt at least one: the new rules, or, when there are
+    none, the rules to start with, which templates/register.json adopts. Each register is then checked with all of them
+    adopted.
+    """
+    kept = [step["entry"] for step in steps if step["adopted"] and step["kind"] == "removed"]
+    registers = [after]
+    if kept:
+        moved = copy.deepcopy(after)
+        moved["own"] = moved["own"] + copy.deepcopy(kept)
+        registers.append(moved)
+    must_adopt = []
+    if not after["adopted"]:
+        by_key = registry.rules_by_key(new)
+        must_adopt = [step["entry"] for step in steps if step["kind"] == "new"] or [entry(by_key[key]) for key in new["start"]]
+        for register in registers:
+            register["adopted"] = copy.deepcopy(must_adopt)
+    return registers, bool(kept), must_adopt
 
 
 def paste(item):
@@ -157,13 +231,18 @@ def report(path, register, old, new, out, script):
         return 0
 
     steps, after = plan(register, old, new)
-    problems, _ = check_register.check(after, new)
-    if problems:
-        # The steps would not give a register that passes. That is a fault in this script, not in the register.
-        for problem in problems:
-            print("%s after the steps: %s" % (name, problem), file=out)
+    registers, kept, must_adopt = outcomes(steps, after, new)
+    failed = False
+    for number, done in enumerate(registers):
+        how = "" if number == 0 else ', with each removed rule moved to "own"'
+        for problem in check_register.check(done, new)[0]:
+            # The steps would not give a register that passes. That is a fault in this script, not in the register.
+            print("%s after the steps%s: %s" % (name, how, problem), file=out)
+            failed = True
+    if failed:
         print("FAIL: the steps would not give a register that passes against Ratchet %s. Upgrade by hand, and report this." % new["version"], file=out)
         return 1
+    new_rules = [step for step in steps if step["kind"] == "new"]
 
     told = {0: "no rule is", 1: "1 rule is"}.get(len(steps), "%d rules are" % len(steps))
     print("%s is on Ratchet %s. In Ratchet %s, %s new, changed or removed." % (name, old["version"], new["version"], told), file=out)
@@ -181,7 +260,19 @@ def report(path, register, old, new, out, script):
             print("", file=out)
             print(paste(step["entry"]), file=out)
             print("", file=out)
-    new_rules = [step for step in steps if step["kind"] == "new"]
+    if must_adopt:
+        number += 1
+        print("%d. Every rule the register adopts was removed, and a register that adopts no rule from Ratchet does not pass "
+              "check_register.py. Adopt at least one rule of Ratchet %s: %s" % (number, new["version"], (
+                  "the new rules below come with their entries." if new_rules else
+                  "the rules to start with below come with their entries.")), file=out)
+    if must_adopt and not new_rules:
+        print("", file=out)
+        print("Rules to start with, which templates/register.json of Ratchet %s adopts:" % new["version"], file=out)
+        print("", file=out)
+        for item in must_adopt:
+            print(paste(item), file=out)
+            print("", file=out)
     if new_rules:
         print("", file=out)
         print("New rules, which the register may adopt:", file=out)
@@ -201,7 +292,15 @@ def report(path, register, old, new, out, script):
     print("    python3 %s %s --write REGISTER.md" % (script, path), file=out)
     print("    python3 %s %s --markdown REGISTER.md" % (script, path), file=out)
     print("", file=out)
-    print("Checked: with the steps above and no new rule adopted, %s passes check_register.py against Ratchet %s." % (name, new["version"]), file=out)
+    if not must_adopt:
+        adopting = "no new rule adopted"
+    elif new_rules:
+        adopting = "the new rules adopted"
+    else:
+        adopting = "the rules to start with adopted"
+    either = ', whether each removed rule is taken out or also moved to "own" with the entry printed' if kept else ""
+    print("Checked: with the steps above and %s, %s passes check_register.py against Ratchet %s%s." % (
+        adopting, name, new["version"], either), file=out)
     print("The reasons for each change are in CHANGELOG.md of Ratchet %s, in the entries after %s." % (new["version"], old["version"]), file=out)
     return 0
 

@@ -24,7 +24,9 @@ Run these in the root of your own repo, on a branch of their own. The commands b
 
    It fails, and prints no steps, when the register does not pass against the version it states. Fix that first: an upgrade starts from a register that matches its Ratchet.
 
-3. Do each step in `register.json`. A changed rule comes with its new entry: replace the old entry with it. A removed rule is taken out of `adopted`, or moved to `own` under your own prefix if the project keeps it. When a rule's ratchet changed and your check is marked `built`, look again at whether the check still does what the ratchet says.
+3. Do each step in `register.json`. A changed rule comes with its new entry: replace the old entry with it. A removed rule is taken out of `adopted`. If the project keeps it, add the entry printed with it to `own` as well. That entry has only the fields of an own rule, `key`, `rule`, `ratchet` and `source`, so a status and a `where` are not carried over. Its key has the prefix of your first own rule, or, when you have none, a prefix made from the project's name; you may change the prefix, but not to `ratchet`. When a rule's ratchet changed and your check is marked `built`, look again at whether the check still does what the ratchet says.
+
+   When every rule the register adopts was removed, the register must adopt at least one rule, because a register that adopts none does not pass the check. The script then says so, and prints the entries to choose from: the new rules, or the rules to start with when there are no new ones.
 4. Choose which new rules, if any, the project adopts. Each comes with its entry. Add a rule when a failure shows you need it, not because it is new. Before 1.0, a new version may rename a key: the changelog lists every rename, and the old key shows as removed and the new one as new.
 5. Write `REGISTER.md` again and check it.
 

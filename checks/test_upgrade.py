@@ -3,10 +3,12 @@
     python3 -m unittest discover -s checks -v
 
 The fixtures are under checks/fixtures/upgrade/: a Ratchet 9.8 and a 9.9 with every kind of change between them,
-a project's register on 9.8, and data files with one fault each. Each test loads what it uses through FixtureTest.
+a project's register on 9.8, and data files with one fault each. Under upgrade/removed/ are a smaller 9.8 and 9.9, in
+which two rules that registers on 9.8 adopt are removed. Each test loads what it uses through FixtureTest.
 Standard library only.
 """
 
+import io
 import json
 import os
 import re
@@ -15,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from suite_runner import FixtureTest
 from test_checks import ROOT, read, run
@@ -78,11 +81,13 @@ class Upgrade(FixtureTest):
             "ratchet.new-ratchet: changed: the ratchet and the source. The register adopts it: replace its entry with this one. "
             'It keeps the status "built". Its ratchet changed: check that the check in "where" still does what the ratchet says, '
             'or set the status to "text only for now".',
-            'ratchet.dropped: removed. Remove it from "adopted". To keep it, move it to "own" under the project\'s own prefix.',
+            'ratchet.dropped: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add this entry '
+            'to "own". Its key has the prefix "example", from the register\'s first own rule.',
             "ratchet.added: new. The register may adopt it. To adopt it, add this entry to \"adopted\".",
             "ratchet.added-text: new. The register may adopt it. To adopt it, add this entry to \"adopted\".",
             "Not adopted, so nothing to do: ratchet.changed-unadopted (changed), ratchet.dropped-unadopted (removed).",
-            "Checked: with the steps above and no new rule adopted, register.json passes check_register.py against Ratchet 9.9.",
+            "Checked: with the steps above and no new rule adopted, register.json passes check_register.py against Ratchet 9.9, "
+            'whether each removed rule is taken out or also moved to "own" with the entry printed.',
             "The reasons for each change are in CHANGELOG.md of Ratchet 9.9, in the entries after 9.8.",
         ):
             self.assertIn(line, output)
@@ -96,7 +101,11 @@ class Upgrade(FixtureTest):
         new = registry.rules_by_key(self.loaded("new/ratchet.json"))
         printed = entries(output)
         self.assertEqual([entry["key"] for entry in printed],
-                         ["ratchet.reworded", "ratchet.now-checked", "ratchet.now-text", "ratchet.new-ratchet", "ratchet.added", "ratchet.added-text"])
+                         ["ratchet.reworded", "ratchet.now-checked", "ratchet.now-text", "ratchet.new-ratchet", "example.dropped",
+                          "ratchet.added", "ratchet.added-text"])
+        self.assertEqual(printed[4], {"key": "example.dropped", "rule": "Write a status every day.",
+                                      "ratchet": "Text only: a status is prose", "source": ""})
+        printed = [entry for entry in printed if entry["key"].startswith("ratchet.")]
         for entry in printed:
             with self.subTest(key=entry["key"]):
                 for field in check_register.RULE_FIELDS:
@@ -213,6 +222,139 @@ class Upgrade(FixtureTest):
         code, output = run("upgrade.py", self.fixture_file("upgrade/register.json"))
         self.assertEqual(code, 2, output)
         self.assertIn("--from", output)
+
+
+class RemovedRules(FixtureTest):
+    """Rules that the register adopts and that the newer Ratchet removed. The fixtures are under upgrade/removed/:
+    a Ratchet 9.8 with a rule that names a check and a rule that is text only, and a 9.9 that removes both and adds one."""
+
+    def files(self, register):
+        return [self.fixture_file("upgrade/removed/" + register), "--from", self.fixture_file("upgrade/removed/old.json"),
+                "--source", self.fixture_file("upgrade/removed/new.json")]
+
+    def loaded(self, name):
+        return registry.parse_json(self.fixture_bytes("upgrade/removed/" + name))
+
+    def done(self, register, own, adopt=()):
+        """The register with the printed steps done: each removed rule taken out of "adopted" and, when own holds its
+        printed entry, added to "own", and the printed entries in adopt added to "adopted"."""
+        new = self.loaded("new.json")
+        result = json.loads(json.dumps(register))
+        result["ratchet_version"] = new["version"]
+        result["adopted"] = [item for item in result["adopted"] if item["key"] in registry.rules_by_key(new)]
+        result["adopted"] += list(adopt)
+        result["own"] += list(own)
+        return result
+
+    def test_a_removed_rule_kept_in_own_comes_with_an_entry_that_passes(self):
+        # The review of round 1: an adopted rule with the status "built" and a "where", moved to "own" as the steps
+        # said, failed check_register.py with "an own rule has exactly the fields key, rule, ratchet, source".
+        code, output = run("upgrade.py", *self.files("register.json"))
+        self.assertEqual(code, 0, output)
+        for line in (
+            'ratchet.dropped-checked: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add '
+            'this entry to "own". Its key has the prefix "example", from the register\'s first own rule. An own rule has only '
+            'the fields key, rule, ratchet and source, so the entry has no status and no "where".',
+            'ratchet.dropped: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add this entry '
+            'to "own". Its key has the prefix "example", from the register\'s first own rule. The key "example.dropped" is '
+            'taken, so the entry has "example.dropped-2".',
+            'Checked: with the steps above and no new rule adopted, register.json passes check_register.py against Ratchet 9.9, '
+            'whether each removed rule is taken out or also moved to "own" with the entry printed.',
+        ):
+            self.assertIn(line, output)
+        old = registry.rules_by_key(self.loaded("old.json"))
+        own = [entry for entry in entries(output) if not entry["key"].startswith("ratchet.")]
+        self.assertEqual([entry["key"] for entry in own], ["example.dropped-checked", "example.dropped-2"])
+        for entry, key in zip(own, ("ratchet.dropped-checked", "ratchet.dropped")):
+            with self.subTest(key=key):
+                self.assertEqual(list(entry), list(check_register.RULE_FIELDS))
+                for field in ("rule", "ratchet", "source"):
+                    self.assertEqual(entry[field], old[key][field])
+        register = self.loaded("register.json")
+        for after in (self.done(register, own), self.done(register, [])):
+            self.assertEqual(check_register.check(after, self.loaded("new.json"))[0], [])
+
+    def test_the_check_of_the_steps_covers_a_removed_rule_kept_in_own(self):
+        # If the entry for "own" kept the status and the "where", the steps would give a register that fails. The
+        # script must then fail too, not print the steps.
+        def with_status(rule, before, prefix, taken):
+            return before
+        with mock.patch.object(upgrade, "own_entry", with_status):
+            out = io.StringIO()
+            code = upgrade.main(self.files("register.json"), out=out)
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("an own rule has exactly the fields key, rule, ratchet, source", out.getvalue())
+        self.assertIn("FAIL: the steps would not give a register that passes against Ratchet 9.9.", out.getvalue())
+        self.assertNotIn("Steps for", out.getvalue())
+
+    def test_a_register_that_adopts_only_removed_rules_gets_its_steps(self):
+        code, output = run("upgrade.py", *self.files("register-only-removed.json"))
+        self.assertEqual(code, 0, output)
+        for line in (
+            '1. Set "ratchet_version" to "9.9".',
+            'ratchet.dropped-checked: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add '
+            'this entry to "own". The register has no own rule yet, so its key has a prefix made from the project\'s name, '
+            '"the-example-project". Any other prefix of the same form will do, but not "ratchet".',
+            "Every rule the register adopts was removed, and a register that adopts no rule from Ratchet does not pass "
+            "check_register.py. Adopt at least one rule of Ratchet 9.9: the new rules below come with their entries.",
+            "New rules, which the register may adopt:",
+            'ratchet.added: new. The register may adopt it. To adopt it, add this entry to "adopted".',
+            "Checked: with the steps above and the new rules adopted, register-only-removed.json passes check_register.py "
+            'against Ratchet 9.9, whether each removed rule is taken out or also moved to "own" with the entry printed.',
+        ):
+            self.assertIn(line, output)
+        self.assertNotIn("no rules from Ratchet", output)
+        printed = entries(output)
+        self.assertEqual([entry["key"] for entry in printed],
+                         ["the-example-project.dropped-checked", "the-example-project.dropped", "ratchet.added"])
+        register, new = self.loaded("register-only-removed.json"), self.loaded("new.json")
+        for own in (printed[:2], []):
+            self.assertEqual(check_register.check(self.done(register, own, adopt=printed[2:]), new)[0], [])
+
+    def test_with_no_new_rule_a_register_that_adopts_only_removed_rules_gets_the_rules_to_start_with(self):
+        new = self.loaded("new.json")
+        new["rules"] = [rule for rule in new["rules"] if rule["key"] == "ratchet.keep"]
+        out = io.StringIO()
+        code = upgrade.report("register-only-removed.json", self.loaded("register-only-removed.json"),
+                              self.loaded("old.json"), new, out, "check_register.py")
+        self.assertEqual(code, 0, out.getvalue())
+        output = out.getvalue()
+        for line in (
+            "Adopt at least one rule of Ratchet 9.9: the rules to start with below come with their entries.",
+            "Rules to start with, which templates/register.json of Ratchet 9.9 adopts:",
+            "Checked: with the steps above and the rules to start with adopted, register-only-removed.json passes",
+        ):
+            self.assertIn(line, output)
+        self.assertNotIn("New rules", output)
+        printed = entries(output)
+        self.assertEqual([entry["key"] for entry in printed],
+                         ["the-example-project.dropped-checked", "the-example-project.dropped", "ratchet.keep"])
+        self.assertEqual(printed[2], upgrade.entry(registry.rules_by_key(new)["ratchet.keep"]))
+        register = self.loaded("register-only-removed.json")
+        for own in (printed[:2], []):
+            self.assertEqual(check_register.check(self.done(register, own, adopt=printed[2:]), new)[0], [])
+
+    def test_a_name_that_gives_no_prefix_or_ratchets_own_gives_project(self):
+        old, new = self.loaded("old.json"), self.loaded("new.json")
+        for project in ("Ratchet", "ÅÄÖ"):
+            with self.subTest(project=project):
+                register = self.loaded("register-only-removed.json")
+                register["project"] = project
+                steps, after = upgrade.plan(register, old, new)
+                own = [step["entry"] for step in steps if step["kind"] == "removed"]
+                self.assertEqual([entry["key"] for entry in own], ["project.dropped-checked", "project.dropped"])
+                registers, kept, must_adopt = upgrade.outcomes(steps, after, new)
+                self.assertTrue(kept)
+                for done in registers:
+                    self.assertEqual(check_register.check(done, new)[0], [])
+
+    def test_a_register_that_adopts_nothing_from_ratchet_fails(self):
+        # Not a Ratchet register: it does not pass check_register.py against the version it states.
+        code, output = run("upgrade.py", *self.files("register-adopts-nothing.json"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("no rules from Ratchet. A register that adopts nothing has nothing to check", output)
+        self.assertIn("register-adopts-nothing.json does not pass check_register.py against Ratchet 9.8, the version it states.", output)
+        self.assertNotIn("Steps for", output)
 
 
 class UpgradingSteps(FixtureTest):

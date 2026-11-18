@@ -1,0 +1,36 @@
+{
+  "version": "9.9",
+  "date": "2026-01-01",
+  "experimental_cap": 10,
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "sources": [],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "enforcement": "enforced",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.added",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "The main branch takes changes only through PRs.",
+      "ratchet": "Check: branch protection with required checks",
+      "source": ""
+    }
+  ]
+}

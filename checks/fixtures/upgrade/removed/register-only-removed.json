@@ -1,0 +1,21 @@
+{
+  "project": "The Example Project",
+  "ratchet_version": "9.8",
+  "adopted": [
+    {
+      "key": "ratchet.dropped-checked",
+      "rule": "Every day has a status.",
+      "ratchet": "Check: a lint of the daily status",
+      "source": "someone/somewhere `a-skill`",
+      "status": "built",
+      "where": "checks/status.sh"
+    },
+    {
+      "key": "ratchet.dropped",
+      "rule": "Write a status every day.",
+      "ratchet": "Text only: a status is prose",
+      "source": ""
+    }
+  ],
+  "own": []
+}

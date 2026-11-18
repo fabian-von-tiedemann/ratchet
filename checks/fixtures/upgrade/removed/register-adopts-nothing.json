@@ -1,0 +1,13 @@
+{
+  "project": "the example project",
+  "ratchet_version": "9.8",
+  "adopted": [],
+  "own": [
+    {
+      "key": "example.changelog",
+      "rule": "Every release has a changelog entry.",
+      "ratchet": "Text only: a check cannot tell whether an entry is complete",
+      "source": ""
+    }
+  ]
+}
