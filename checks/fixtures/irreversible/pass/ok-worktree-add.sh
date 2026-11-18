@@ -1,1 +1,1 @@
-git worktree add -b personlig/y ../wt origin/main
+git worktree add -b work/y ../wt origin/main

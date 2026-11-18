@@ -27,6 +27,7 @@ One file, standard library only, so that a project can copy it. Run on Python 3.
 """
 
 import datetime
+import fnmatch
 import json
 import os
 import re
@@ -50,8 +51,20 @@ ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\+?=")
 REF_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._/-]*\Z")
 # A directory that mktemp -d makes in the temporary directory, by its default template.
 MKTEMP_NAME = re.compile(r"^tmp\.[A-Za-z0-9]{6,}\Z")
-# Characters an unquoted path to delete may hold. Anything else unquoted is refused.
-SAFE_UNQUOTED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/+-,@%:=~*?")
+# Characters an unquoted path to delete may hold. Anything else unquoted is refused. A pattern is never expanded.
+SAFE_UNQUOTED = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._/+-,@%:=~")
+# What may follow "$d" in a path to delete, for a directory from mktemp -d: parts below it, none of them . or ..
+BELOW = re.compile(r"^(/[A-Za-z0-9_][A-Za-z0-9._-]*)*/?\Z")
+# Words in front of a command that run it in the shell itself, so that a builtin after them can assign a variable.
+PRECOMMANDS = {"command", "builtin", "time", "noglob", "nocorrect", "-", "exec"}
+# Programs that cannot assign a variable of the shell that runs the line: programs of their own, and builtins
+# that assign none. Any other command may assign every name it is given, and is read that way. The list says what
+# is known to be safe; what is not on it counts as a builtin that assigns.
+NO_ASSIGN = {"git", "gh", "rm", "rmdir", "unlink", "mkdir", "touch", "cp", "mv", "ln", "cat", "ls", "echo", "test", "[",
+             "true", "false", ":", "cd", "pushd", "popd", "trap", "tar", "zip", "unzip", "curl", "jq", "python3",
+             "python", "sed", "awk", "grep", "rg", "head", "tail", "wc", "sort", "uniq", "diff", "cmp", "find", "xargs",
+             "open", "chmod", "du", "basename", "dirname", "realpath", "sleep", "date", "env", "sudo", "nohup",
+             "timeout", "make", "mktemp", "ffmpeg", "ffprobe", "tee"}
 MAX_CWDS = 32
 
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "csh", "tcsh", "yash", "posh"}
@@ -89,14 +102,9 @@ GIT_COMMANDS = {
     "update-index", "update-ref", "var", "verify-commit", "verify-pack", "verify-tag", "version", "whatchanged",
     "worktree", "write-tree",
 }
-GH_QUIET = {"pr", "issue", "run", "label", "cache", "gist", "auth", "config", "org", "codespace", "cs", "project",
+GH_QUIET = {"pr", "issue", "label", "cache", "gist", "auth", "config", "org", "codespace", "cs", "project",
             "search", "status", "browse", "attestation", "completion", "help", "version", "ruleset", "ssh-key",
             "gpg-key", "co"}
-# Parts of a repository's path in the API under which a change is a change of the repository's settings.
-SETTINGS_PATHS = {"rulesets", "collaborators", "invitations", "hooks", "keys", "environments", "pages", "topics",
-                  "vulnerability-alerts", "automated-security-fixes", "private-vulnerability-reporting", "transfer",
-                  "properties", "autolinks", "interaction-limits", "dispatches", "immutable-releases", "lfs",
-                  "secret-scanning", "code-security-configuration", "tags", "teams", "subscription"}
 
 
 class Unreadable(Exception):
@@ -126,32 +134,46 @@ class Word:
         shape = "".join(part[1] if part[0] == "lit" and not part[2] else "x" for part in self.parts)
         return re.search(r"\{[^{}]*(,|\.\.)[^{}]*\}", shape) is not None
 
+    def ambiguity(self):
+        """Why the shell may make of the word something other than its text, or None. The hook does not expand a
+        pattern (* ? [ and zsh's ^ and #), a brace expansion, a tilde other than a leading ~ or ~/ that no quote
+        touches, or zsh's leading =. It names them, so that a word that holds one is never read as plain text."""
+        if self.braces():
+            return "a brace expansion"
+        for index, part in enumerate(self.parts):
+            if part[0] != "lit" or part[2]:
+                continue
+            text = part[1]
+            for offset, c in enumerate(text):
+                start = index == 0 and offset == 0
+                later = text[offset + 1:] + "".join(other[1] for other in self.parts[index + 1:] if other[0] == "lit")
+                # [ opens a pattern only when a ] follows it in the word; [ alone, as in [ -x f ], is a program.
+                if c in "*?^#" or (c == "[" and "]" in later):
+                    return "a pattern"
+                if c == "=" and start:
+                    return "a leading ="
+                if c == "~":
+                    alone = len(text) == 1 and len(self.parts) == 1
+                    if not (start and (alone or text[1:2] == "/")):
+                        return "a tilde this hook does not expand"
+        return None
+
     def value(self):
         """The text the shell makes of the word, when it is plain text, or None."""
-        if any(part[0] != "lit" for part in self.parts) or self.braces():
+        if any(part[0] != "lit" for part in self.parts) or self.ambiguity():
             return None
         first = self.parts[0] if self.parts else ("lit", "", True)
         text = "".join(part[1] for part in self.parts)
-        if not first[2] and first[1].startswith("="):
-            return None
         if not first[2] and first[1].startswith("~"):
-            head = first[1].split("/", 1)[0]
-            if head != "~":
-                return None
             return os.path.expanduser("~") + text[1:]
         return text
 
-    def glob(self):
-        return any(part[0] == "lit" and not part[2] and re.search(r"[*?\[]", part[1]) for part in self.parts)
+    def why_not_plain(self):
+        why = self.ambiguity()
+        return "not plain text" if why is None else "%s, which this hook does not expand" % why
 
     def unquoted(self):
         return "".join(part[1] for part in self.parts if part[0] == "lit" and not part[2])
-
-    def exact_variable(self):
-        """(name, quoted) when the word is one variable and nothing else."""
-        if len(self.parts) == 1 and self.parts[0][0] == "var":
-            return self.parts[0][1], self.parts[0][2]
-        return None
 
     def assignment(self):
         """(name, the value as a Word) when the word assigns a variable."""
@@ -196,6 +218,7 @@ class Context:
         self.functions = False
         self.loop_names = set()
         self.expansion_names = set()
+        self.indirect = False
 
 
 class Lexer:
@@ -236,6 +259,8 @@ class Lexer:
             return ("newline", None)
         if c in "<>" and self.peek(1) == "(":
             return ("word", self.word())
+        if re.match(r"<[0-9]*-[0-9]*>", self.s[self.i:]):
+            raise Unreadable("zsh's pattern <...>, which this hook does not expand")
         match = re.match(r"[0-9]+(?=[<>])", self.s[self.i:])
         if match:
             self.i += match.end()
@@ -343,6 +368,7 @@ class Lexer:
         elif following == '"' and not quoted:
             self.i += 2
             self.double_quoted(parts)
+            parts.append(("dyn", '$"...", which the locale may translate', True))
         elif following == "(" and self.peek(2) == "(":
             depth, index = 0, self.i + 1
             while index < len(self.s):
@@ -383,7 +409,11 @@ class Lexer:
                 return
             if "$(" in body or "`" in body:
                 raise Unreadable("a command substitution in a parameter expansion")
-            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):?=", body)
+            # Any operator may assign, as ${d=x}, ${d:=x} and zsh's ${d::=x} do; zsh's flags, as in ${(P)x::=y},
+            # may assign a variable that another names.
+            if body.startswith("("):
+                self.context.indirect = True
+            match = re.match(r"^[#!]?([A-Za-z_][A-Za-z0-9_]*)", body)
             if match:
                 self.context.expansion_names.add(match.group(1))
             parts.append(("dyn", "${%s}" % body, quoted))
@@ -394,8 +424,12 @@ class Lexer:
         elif following and following in "0123456789@*#?$!-_":
             parts.append(("dyn", "$" + following, quoted))
             self.i += 2
-        else:
+        elif following in ("", " ", "\t", "\n") or following in "|&;<>()" or (quoted and following == '"'):
             parts.append(("lit", "$", quoted))
+            self.i += 1
+        else:
+            # $[...], zsh's $=name and $~name, and the like: a form of $ this hook does not read.
+            parts.append(("dyn", "a form of $ this hook does not read", quoted))
             self.i += 1
 
     def backticks(self, quoted):
@@ -671,7 +705,15 @@ def analyze(command, cwd, root):
     except RecursionError:
         return findings + [Finding(UNREADABLE, "it is nested too deeply")]
     state = State(root, cwd, context)
-    state.temps = temporary_names(program, context)
+    found = assigned(program, context)
+    state.temps = temporary_names(found, context)
+    # A command that may assign, given a GIT_ name or a name this hook cannot read, may change what git does.
+    for text in found.texts:
+        for match in re.finditer(r"(?<![A-Za-z0-9_$])(?<!\$\{)(GIT_[A-Za-z0-9_]*)", text):
+            if match.group(1) not in SAFE_GIT_ENV:
+                state.git_taint = True
+    if found.opaque:
+        state.git_taint = True
     run_program(program, state, top=True)
     if state.links and state.deletes:
         state.unreadable("it makes a link and deletes, and a link it makes could lead outside the working tree")
@@ -713,58 +755,108 @@ def is_mktemp(word):
     return directory and templates <= 1
 
 
-def temporary_names(program, context):
-    """The variables that only ever hold a directory from mktemp -d, assigned at the top of the line."""
-    if context.arith or context.functions:
-        return set()
-    good, bad = set(), set(context.loop_names) | set(context.expansion_names)
-    blocked = [False]
+def effective_words(words):
+    """The words of a command from the program it runs, past command, builtin, time, noglob, nocorrect, - and exec,
+    with their options."""
+    index = 0
+    while index < len(words) and program_name(words[index]) in PRECOMMANDS:
+        index += 1
+        while index < len(words):
+            value = words[index].value()
+            if value == "--":
+                index += 1
+                break
+            if value is None or not value.startswith("-") or value == "-":
+                break
+            index += 2 if value == "-a" else 1
+    return words[index:]
+
+
+def mentions(text, name):
+    """Whether literal text may name a variable: the name as a word of its own, not after $ or ${, or at the end of
+    a cluster of short options, as in printf -vd."""
+    if re.search(r"(?<![A-Za-z0-9_$])(?<!\$\{)%s(?![A-Za-z0-9_])" % re.escape(name), text):
+        return True
+    return re.match(r"^-[A-Za-z0-9_]*%s\Z" % re.escape(name), text) is not None
+
+
+class Assigned:
+    """What a line may assign, beyond its plain assignments: the literal text that commands which may assign are
+    given, and whether one of them is given a name this hook cannot read."""
+
+    def __init__(self):
+        self.texts = []
+        self.opaque = False
+        self.blocked = False
+        self.good = set()
+        self.bad = set()
+
+    def may_assign(self, name):
+        return self.opaque or any(mentions(text, name) for text in self.texts)
+
+
+def assigned(program, context):
+    """Read the whole line for what it may assign. A variable from mktemp -d is trusted only when nothing else in
+    the line may assign it: no plain assignment, no loop, no ${name=...}, and no command that may assign, such as
+    read, printf -v, declare, set -A or a builtin behind command or builtin, that is given its name or a word this
+    hook cannot read."""
+    found = Assigned()
+    found.bad |= set(context.loop_names) | set(context.expansion_names)
 
     def collect(program, top):
         for command in program.commands:
+            for name, value in command.assigns:
+                if (top and not command.words and command.depth == 0 and command.first and not command.pipeline
+                        and not command.background and is_mktemp(value)):
+                    found.good.add(name)
+                else:
+                    found.bad.add(name)
+                    found.texts.extend(part[1] for part in value.parts if part[0] == "lit")
             for word in command.all_words():
+                if is_mktemp(word):
+                    continue
                 for inner in word.programs():
                     collect(inner, False)
             if command.data:
                 continue
-            for name, value in command.assigns:
-                if (top and not command.words and command.depth == 0 and command.first and not command.pipeline
-                        and not command.background and is_mktemp(value)):
-                    good.add(name)
-                else:
-                    bad.add(name)
-            if not command.words:
+            words = effective_words(command.words)
+            if not words:
+                if command.words:
+                    found.opaque = True
                 continue
-            name = program_name(command.words[0])
+            name = program_name(words[0])
             if name in ("source", ".", "eval"):
-                blocked[0] = True
-            if name == "printf":
-                values = [word.value() for word in command.words]
-                for index, value in enumerate(values[:-1]):
-                    if value == "-v":
-                        if values[index + 1] is None:
-                            blocked[0] = True
-                        else:
-                            bad.add(values[index + 1])
-            elif name in VARIABLE_BUILTINS:
-                for word in command.words[1:]:
-                    value = word.value()
-                    if value is None:
-                        blocked[0] = True
-                        continue
-                    match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", value)
-                    if match:
-                        bad.add(match.group(1))
+                found.blocked = True
             if name == "trap":
-                action = trap_action(command.words)
+                action = trap_action(words)
                 if action is not None and action.value() is not None:
                     try:
                         collect(parse(action.value(), context), False)
                     except Unreadable:
-                        blocked[0] = True
+                        found.blocked = True
+            if name in NO_ASSIGN:
+                continue
+            # printf assigns only with -v, which comes first: a first argument that is literal and is no option
+            # leaves nothing to assign.
+            if name == "printf" and len(words) > 1 and words[1].value() is not None \
+                    and (not words[1].value().startswith("-") or words[1].value() == "--"):
+                continue
+            for word in words:
+                for part in word.parts:
+                    if part[0] == "lit":
+                        found.texts.append(part[1])
+                    elif not (part[0] == "var" and part[1] in found.good):
+                        found.opaque = True
 
     collect(program, True)
-    return set() if blocked[0] or context.arith or context.functions else good - bad
+    return found
+
+
+def temporary_names(found, context):
+    """The variables that only ever hold a directory from mktemp -d, assigned at the top of the line."""
+    if found.blocked or context.arith or context.functions or context.indirect:
+        return set()
+    return set(name for name in found.good - found.bad if not found.may_assign(name))
 
 
 def trap_action(words):
@@ -782,6 +874,17 @@ def trap_action(words):
 def touches_approvals(word, state):
     """Whether a word may lead to the approvals file. A word with a space in it is text, such as a message."""
     text = "".join(part[1] for part in word.parts if part[0] == "lit")
+    target = os.path.realpath(os.path.join(state.root, APPROVALS))
+    if word.ambiguity() and not re.search(r"\s", text) and all(part[0] == "lit" for part in word.parts):
+        # A pattern the shell may expand to the approvals file, part by part.
+        pattern = [part for part in text.split("/") if part not in ("", ".")]
+        for base in state.cwds:
+            if base is None:
+                return True
+            whole = [part for part in (target if text.startswith("/") else os.path.relpath(target, base)).split("/") if part]
+            if len(whole) == len(pattern) and all(fnmatch.fnmatchcase(a, b) for a, b in zip(whole, pattern)):
+                return True
+        return False
     if APPROVALS_NAME not in text or re.search(r"\s", text):
         return False
     value = word.value()
@@ -843,9 +946,12 @@ def run_words(words, state, env_taint, override):
         return
     name = program_name(words[0])
     if name is None:
-        state.unreadable("the program %s is not plain text" % words[0].raw)
+        state.unreadable("the program %s is %s" % (words[0].raw, words[0].why_not_plain()))
         return
     args = words[1:]
+    if name in ("hash", "enable") and args:
+        state.unreadable("%s with arguments can make a name run another program" % name)
+        return
     if name in ("cd", "pushd"):
         targets = [w for w in args if not (w.value() or "").startswith("-") or w.value() == "-"]
         if not targets:
@@ -927,6 +1033,9 @@ def run_words(words, state, env_taint, override):
     # Any other program: an argument that would take a step if it were a command may be run by it.
     triggers = {"git", "gh", "find", "rsync", "busybox", "env", "sudo", "doas", "xargs", "nohup", "timeout", "eval"} | DELETERS | SHELLS
     for index in range(1, len(words)):
+        if pattern_may_name(words[index], triggers):
+            state.unreadable("%s is given %s, a pattern that may name a program it runs" % (name, words[index].raw))
+            return
         if program_name(words[index]) in triggers:
             child = state.child()
             child.findings = []
@@ -937,6 +1046,16 @@ def run_words(words, state, env_taint, override):
                 state.add(finding.step, "%s may run its arguments: %s" % (name, finding.why))
             if child.findings:
                 return
+
+
+def pattern_may_name(word, names):
+    """Whether a word that the shell may expand, such as g[i]t or ~user/bin/rm, may name one of the programs."""
+    if any(part[0] != "lit" for part in word.parts) or word.ambiguity() is None:
+        return False
+    text = "".join(part[1] for part in word.parts).rstrip("/")
+    pattern = re.sub(r"\{[^{}]*\}", "*", text.rsplit("/", 1)[-1])
+    pattern = re.sub(r"[\^#]", "*", pattern)
+    return any(fnmatch.fnmatchcase(name, pattern) for name in names)
 
 
 def run_shell(name, args, state):
@@ -1180,37 +1299,35 @@ def resolve_target(base, value):
     return os.path.join(os.path.realpath(os.path.dirname(joined)), last)
 
 
+def temporary_word(word, state):
+    """Whether a word is "$d", or "$d" and parts below it such as "$d/wt", for a variable d that holds a directory
+    from mktemp -d in this line. The variable is quoted, and what follows is literal and holds no . or .. part."""
+    if not word.parts or word.parts[0][0] != "var" or not word.parts[0][2]:
+        return False
+    name = word.parts[0][1]
+    if name not in state.temps or name not in state.live:
+        return False
+    rest = word.parts[1:]
+    if any(part[0] != "lit" for part in rest):
+        return False
+    return BELOW.match("".join(part[1] for part in rest)) is not None
+
+
 def check_delete(word, state, override, contents=False):
     """Whether deleting what a word names stays inside the working tree. With contents=True, what is deleted is
     inside the named directory, which may be the working tree itself."""
     state.deletes = True
-    variable = word.exact_variable()
-    if variable and variable[1] and variable[0] in state.temps and variable[0] in state.live:
+    if temporary_word(word, state):
         return
     value = word.value()
     if value is None:
-        state.unreadable("the path %s to delete is not plain text" % word.raw)
+        state.unreadable("the path %s to delete is %s" % (word.raw, word.why_not_plain()))
         return
     if set(word.unquoted()) - SAFE_UNQUOTED:
         state.unreadable("the path %s to delete holds a character this hook does not read unquoted" % word.raw)
         return
     if value == "":
         return
-    parts = value.split("/")
-    if word.glob():
-        globbed = [i for i, part in enumerate(parts) if re.search(r"[*?\[]", part)]
-        first = globbed[0]
-        if "[" in value:
-            state.unreadable("the path %s to delete has a pattern with [" % word.raw)
-            return
-        if any(parts[i].startswith(".") for i in globbed):
-            state.add("delete-outside", "the pattern %s may match .." % word.raw)
-            return
-        if first != len(parts) - 1:
-            state.unreadable("the path %s to delete has a pattern before its last part" % word.raw)
-            return
-        value = "/".join(parts[:first]) or ("/" if value.startswith("/") else ".")
-        contents = True
     bases = {None} if os.path.isabs(value) else bases_for(state, override)
     for base in bases:
         if base is None and not os.path.isabs(value):
@@ -1241,54 +1358,121 @@ def run_delete(name, args, state, override):
         check_delete(word, state, override)
 
 
+# Options of find before its starting points, and primaries of its expression that take one value.
+FIND_LEADING = {"-H", "-L", "-P", "-E", "-X", "-s", "-x", "-d"}
+FIND_ONE = {"-name", "-iname", "-path", "-ipath", "-wholename", "-iwholename", "-regex", "-iregex", "-lname",
+            "-ilname", "-type", "-xtype", "-user", "-group", "-uid", "-gid", "-perm", "-size", "-mtime", "-mmin",
+            "-atime", "-amin", "-ctime", "-cmin", "-newer", "-anewer", "-cnewer", "-maxdepth", "-mindepth", "-links",
+            "-inum", "-samefile", "-used", "-fstype", "-printf", "-fprint", "-fprint0", "-fls", "-context",
+            "-regextype", "-flags", "-Btime", "-Bmin", "-Bnewer"}
+
+
 def run_find(args, state, override):
     starts, index = [], 0
-    follows = False
-    while index < len(args) and (args[index].value() or "") in ("-H", "-L", "-P", "-E", "-X", "-s", "-x", "-d", "-f"):
-        if args[index].value() == "-L":
-            follows = True
-        if args[index].value() == "-f":
-            index += 1
-            if index < len(args):
-                starts.append(args[index])
-        index += 1
+    follows = starts_unknown = False
     while index < len(args):
         value = args[index].value()
+        if value in FIND_LEADING:
+            follows = follows or value == "-L"
+            index += 1
+        elif value == "-f":
+            if index + 1 < len(args):
+                starts.append(args[index + 1])
+            index += 2
+        elif value == "-D":
+            index += 2
+        elif value is not None and re.match(r"^-O[0-9]\Z", value):
+            index += 1
+        else:
+            break
+    while index < len(args):
+        word = args[index]
+        value = word.value()
+        if value is None and not temporary_word(word, state):
+            state.unreadable("find is given %s, which may be a starting point or an action" % word.raw)
+            return
         if value is not None and (value.startswith("-") or value in ("(", "!", ",")):
             break
-        starts.append(args[index])
+        starts.append(word)
         index += 1
     expression = args[index:]
     deletes, position = False, 0
     while position < len(expression):
-        value = expression[position].value()
+        word = expression[position]
+        value = word.value()
+        position += 1
+        if value is None:
+            state.unreadable("find is given %s, which may be an action" % word.raw)
+            return
         if value == "-follow":
             follows = True
-        if value == "-delete":
+        elif value == "-delete":
             deletes = True
-        if value in ("-exec", "-execdir", "-ok", "-okdir"):
-            inner = []
+        elif value == "-files0-from":
+            starts_unknown = True
             position += 1
-            while position < len(expression) and expression[position].value() not in (";", "+"):
-                inner.append(expression[position])
+        elif value in FIND_ONE or re.match(r"^-newer[a-zA-Z]{2}\Z", value):
+            position += 1
+        elif value == "-fprintf":
+            position += 2
+        elif value in ("-exec", "-execdir", "-ok", "-okdir"):
+            inner, closed = [], False
+            while position < len(expression):
+                following = expression[position]
                 position += 1
-            program = program_name(inner[0]) if inner else None
-            if program is None:
-                state.unreadable("find runs a program that is not plain text")
+                if following.value() == ";" or (following.value() == "+" and inner and inner[-1].value() == "{}"):
+                    closed = True
+                    break
+                inner.append(following)
+            if not closed:
+                state.unreadable("find %s is not closed with ; or +" % value)
                 return
-            if program in DELETERS:
-                deletes = True
-            elif program in SHELLS or program in ("git", "gh", "find", "rsync") or program in WRAPPERS or program in RUNS_STRINGS:
-                state.unreadable("find runs %s for each file it finds" % program)
+            result = run_find_exec(value, inner, state, override)
+            if result is None:
                 return
-        position += 1
+            deletes = deletes or result
     if not deletes:
         return
     if follows:
         state.unreadable("find follows links while it deletes")
         return
+    if starts_unknown:
+        state.unreadable("find reads where it starts from a file while it deletes")
+        return
     for word in starts or [Word([("lit", ".", True)], ".")]:
         check_delete(word, state, override, contents=True)
+
+
+def run_find_exec(kind, inner, state, override):
+    """The command of find -exec, -execdir, -ok or -okdir, read as if it ran directly. {} stands for each file
+    find finds, which a deletion reaches through the starting points. With -execdir and -okdir, the command runs
+    in a directory this hook does not know. True when it deletes what find finds, False when not, None when the
+    command cannot be read."""
+    if not inner:
+        state.unreadable("find %s runs nothing" % kind)
+        return None
+    name = program_name(inner[0])
+    if name is None:
+        state.unreadable("find runs a program that is %s" % inner[0].why_not_plain())
+        return None
+    if name in SHELLS or name in RUNS_STRINGS:
+        state.unreadable("find runs %s for each file it finds" % name)
+        return None
+    base = {None} if kind in ("-execdir", "-okdir") else override
+    words = []
+    for word in inner:
+        if word.value() == "{}":
+            words.append(None)
+        elif "{}" in word.raw:
+            words.append(dynamic("a word that holds {}"))
+        else:
+            words.append(word)
+    if name in DELETERS:
+        run_delete(name, [word for word in words[1:] if word is not None], state, base)
+        return True
+    found = Word([("dyn", "a file that find finds", True)], "{}")
+    run_words([found if word is None else word for word in words], state, False, base)
+    return False
 
 
 def run_rsync(args, state, override):
@@ -1364,7 +1548,7 @@ def run_git(args, state, env_taint, override):
     if index >= len(args):
         return
     if env_taint:
-        state.unreadable("a GIT_ variable in the environment changes what git does")
+        state.unreadable("a GIT_ variable, or a variable this hook cannot name, may change what git does")
         return
     sub = args[index].value()
     rest = args[index + 1:]
@@ -1373,20 +1557,16 @@ def run_git(args, state, env_taint, override):
     elif sub == "tag":
         run_tag(rest, state)
     elif sub == "update-ref":
-        values = [word.value() for word in rest]
-        if None in values or "--stdin" in values:
-            state.unreadable("git update-ref with arguments this hook cannot read")
-            return
-        refs = [value for value in values if not value.startswith("-")]
-        if refs and refs[0].startswith("refs/tags/"):
-            state.add("tag", "git update-ref changes the tag %s" % refs[0])
+        run_update_ref(rest, state)
+    elif sub == "symbolic-ref":
+        run_symbolic_ref(rest, state)
     elif sub == "clean":
         run_clean(rest, state, bases)
     elif sub == "worktree":
         if rest and rest[0].value() == "remove":
-            for word in rest[1:]:
-                if not (word.value() or "x").startswith("-"):
-                    check_delete(word, state, bases)
+            run_worktree_remove(rest[1:], state, bases)
+    elif sub == "remote" and any(word.value() is None or (word.value() or "").startswith("--mirror") for word in rest):
+        state.unreadable("git remote with --mirror, or with a word that is not plain text, changes what a later push does")
     elif sub == "config":
         run_config(rest, state)
     elif sub == "submodule" and any(word.value() == "foreach" for word in rest):
@@ -1399,72 +1579,105 @@ def run_git(args, state, env_taint, override):
         state.unreadable("git %s is not a git command this hook knows, and may be an alias" % sub)
 
 
-def run_push(args, state, bases):
-    words, force, tags, mirror, prune, delete, dry = [], [], False, False, False, False, False
-    index, options_done = 0, False
-    no_ops = {"--set-upstream", "--quiet", "--verbose", "--progress", "--no-progress", "--porcelain", "--atomic",
-              "--no-atomic", "--no-verify", "--verify", "--thin", "--no-thin", "--ipv4", "--ipv6", "--all",
-              "--branches", "--signed", "--no-signed", "--no-force-with-lease", "--no-recurse-submodules",
-              "--no-force-if-includes", "--no-follow-tags", "--no-tags"}
+def git_options(args, state, what, flags, values=(), optional=(), numbers=(), paths=False):
+    """Read the options of a git subcommand strictly. flags take no value; values take one, after = or as the next
+    word; optional are long options that take a value only after =; numbers are short options with digits attached,
+    as in -n5. Short options may be clustered, as in -fdx, and a short option that takes a value takes the rest of
+    the cluster or the next word, as git does. Any other option, and an abbreviation of a long one, is an option
+    this hook does not know, and the command is unreadable: its arity is not guessed. With paths, a positional word
+    may be "$d" for a directory from mktemp -d. Returns ([(option, value)], [positional Word]) or None."""
+    found, positional, index, done = [], [], 0, False
     while index < len(args):
         word = args[index]
         value = word.value()
-        if value is None:
-            state.unreadable("an argument of git push, %s, is not plain text" % word.raw)
-            return
         index += 1
-        if options_done or not value.startswith("-") or value == "-":
-            words.append(value)
+        if value is None:
+            if paths and temporary_word(word, state):
+                positional.append(word)
+                continue
+            state.unreadable("%s is given %s, which is %s" % (what, word.raw, word.why_not_plain()))
+            return None
+        if done or not value.startswith("-") or value == "-":
+            positional.append(word)
             continue
         if value == "--":
-            options_done = True
-        elif value in no_ops or value.startswith("--signed=") or value.startswith("--recurse-submodules=") \
-                or value.startswith("--push-option=") or value.startswith("--repo="):
-            pass
-        elif value in ("--push-option", "--repo"):
-            index += 1
-        elif value in ("--dry-run",):
-            dry = True
-        elif value in ("--force", "--force-if-includes") or value == "--force-with-lease" or value.startswith("--force-with-lease="):
-            force.append(value)
-        elif value == "--mirror":
-            mirror = True
-        elif value == "--prune":
-            prune = True
-        elif value == "--delete":
-            delete = True
-        elif value in ("--tags", "--follow-tags"):
-            tags = True
-        elif value.startswith("--"):
-            state.unreadable("git push %s is an option this hook does not follow" % value)
-            return
-        else:
-            for letter in value[1:]:
-                if letter == "f":
-                    force.append("-f")
-                elif letter == "n":
-                    dry = True
-                elif letter == "d":
-                    delete = True
-                elif letter in "uqv46":
-                    pass
-                elif letter == "o":
+            done = True
+            continue
+        if value.startswith("--"):
+            name, equals, attached = value.partition("=")
+            if name in flags and not equals:
+                found.append((name, None))
+            elif name in values:
+                if equals:
+                    found.append((name, attached))
+                elif index < len(args):
+                    found.append((name, args[index].value()))
                     index += 1
                 else:
-                    state.unreadable("git push -%s is an option this hook does not follow" % letter)
-                    return
-    if dry:
+                    found.append((name, None))
+            elif name in optional and equals:
+                found.append((name, attached))
+            else:
+                state.unreadable("%s %s is an option this hook does not know" % (what, value))
+                return None
+            continue
+        letters = value[1:]
+        for position, letter in enumerate(letters):
+            short = "-" + letter
+            rest = letters[position + 1:]
+            if short in flags:
+                found.append((short, None))
+            elif short in values:
+                if rest:
+                    found.append((short, rest))
+                elif index < len(args):
+                    found.append((short, args[index].value()))
+                    index += 1
+                else:
+                    found.append((short, None))
+                break
+            elif short in numbers and re.match(r"^[0-9]*\Z", rest):
+                found.append((short, rest))
+                break
+            else:
+                state.unreadable("%s -%s is an option this hook does not know" % (what, letter))
+                return None
+    return found, positional
+
+
+PUSH_FLAGS = {"--all", "--branches", "--mirror", "-d", "--delete", "--tags", "-n", "--dry-run", "--porcelain", "-f",
+              "--force", "--force-with-lease", "--force-if-includes", "--thin", "--no-thin", "-u", "--set-upstream",
+              "--progress", "--no-progress", "--prune", "--no-verify", "--verify", "--follow-tags", "--no-follow-tags",
+              "--no-tags", "--atomic", "--no-atomic", "-v", "--verbose", "-q", "--quiet", "-4", "--ipv4", "-6",
+              "--ipv6", "--no-force-with-lease", "--no-force-if-includes", "--no-recurse-submodules", "--signed",
+              "--no-signed"}
+PUSH_VALUES = {"--repo", "-o", "--push-option", "--recurse-submodules"}
+PUSH_OPTIONAL = {"--force-with-lease", "--signed"}
+
+
+def run_push(args, state, bases):
+    parsed = git_options(args, state, "git push", PUSH_FLAGS, PUSH_VALUES, PUSH_OPTIONAL)
+    if parsed is None:
         return
+    found, positional = parsed
+    names = set(name for name, _ in found)
+    if names & {"-n", "--dry-run"}:
+        return
+    force = [name for name, _ in found if name in ("-f", "--force", "--force-with-lease", "--force-if-includes")]
     if force:
         state.add("force-push", "git push %s may overwrite a ref on the remote" % force[0])
-    if mirror:
+    if "--mirror" in names:
         state.add("force-push", "git push --mirror overwrites and removes refs on the remote")
         state.add("tag", "git push --mirror pushes and removes tags")
-    if prune:
+    if "--prune" in names:
         state.add("force-push", "git push --prune removes refs from the remote")
-    if tags:
+    if names & {"--tags", "--follow-tags"}:
         state.add("tag", "git push --tags or --follow-tags pushes tags")
-    refspecs = words[1:]
+    delete = bool(names & {"-d", "--delete"})
+    words = [word.value() for word in positional]
+    # The first word is the repository. With --repo, git still reads it so; the hook also reads it as a refspec,
+    # so that neither reading lets a refspec through.
+    refspecs = words if "--repo" in names else words[1:]
     index = 0
     while index < len(refspecs):
         spec = refspecs[index]
@@ -1481,59 +1694,86 @@ def run_push(args, state, bases):
             source, target = "", spec
         if source == "":
             state.add("force-push", "it removes %s from the remote" % target)
-            if target.startswith("refs/tags/") or (not target.startswith("refs/") and is_local_tag(target, bases)):
+            if is_tag_ref(target) or (not target.lower().startswith("refs/") and is_local_tag(target, bases)):
                 state.add("tag", "it removes the tag %s from the remote" % target)
             continue
-        if source.startswith("refs/tags/") or target.startswith("refs/tags/"):
+        if is_tag_ref(source) or is_tag_ref(target):
             state.add("tag", "the refspec %s pushes a tag" % spec)
-        elif source not in ("HEAD", "@") and not source.startswith("refs/") and re.match(r"^[A-Za-z0-9_./-]+\Z", source) \
-                and is_local_tag(source, bases):
+        elif source not in ("HEAD", "@") and not source.lower().startswith("refs/") \
+                and re.match(r"^[A-Za-z0-9_./-]+\Z", source) and is_local_tag(source, bases):
             state.add("tag", "%s is a tag" % source)
 
 
+def is_tag_ref(ref):
+    """A ref under refs/tags/, in any case, since a file system that ignores case makes refs/TAGS/x a tag."""
+    return ref.lower().startswith("refs/tags/")
+
+
+TAG_FLAGS = {"-a", "--annotate", "-s", "--sign", "--no-sign", "-f", "--force", "-e", "--edit", "--no-edit",
+             "--create-reflog", "-l", "--list", "-d", "--delete", "-v", "--verify", "-i", "--ignore-case",
+             "--omit-empty", "--column", "--no-column", "--color", "--no-color"}
+TAG_VALUES = {"-m", "--message", "-F", "--file", "-u", "--local-user", "--cleanup", "--trailer", "--sort", "--format",
+              "--contains", "--no-contains", "--merged", "--no-merged", "--points-at"}
+# What makes git tag list tags: -l, and the options that git documents as implying it. --column, --sort, --format
+# and -i do not: with a name, git tag creates the tag.
+TAG_LISTING = {"-l", "--list", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "-n"}
+TAG_CREATING = {"-a", "--annotate", "-s", "--sign", "-f", "--force", "-e", "--edit", "-m", "--message", "-F", "--file",
+                "-u", "--local-user", "--trailer"}
+
+
 def run_tag(args, state):
-    values = [word.value() for word in args]
-    if None in values:
-        state.unreadable("an argument of git tag is not plain text")
+    parsed = git_options(args, state, "git tag", TAG_FLAGS, TAG_VALUES, {"--column", "--color"}, {"-n"})
+    if parsed is None:
         return
-    listing = {"-l", "--list", "-v", "--verify", "--column", "--no-column", "-i", "--ignore-case"}
-    listing_prefixes = ("--contains", "--no-contains", "--merged", "--no-merged", "--points-at", "--sort", "--format",
-                        "--color", "-n")
-    creating = {"-a", "--annotate", "-s", "--sign", "-f", "--force", "-e", "--edit", "--create-reflog", "--no-sign"}
-    with_value = {"-m", "-F", "-u", "--message", "--file", "--local-user", "--cleanup", "--trailer"}
-    lists = create = delete = False
-    positional, index = [], 0
-    while index < len(values):
-        value = values[index]
-        index += 1
-        if value in ("-d", "--delete"):
-            delete = True
-        elif value in listing or value.startswith(listing_prefixes):
-            lists = True
-        elif value in creating:
-            create = True
-        elif value.split("=", 1)[0] in with_value:
-            create = True
-            if "=" not in value:
-                index += 1
-        elif value.startswith("-") and len(value) > 1:
-            create = True
-        else:
-            positional.append(value)
-    if delete:
+    found, positional = parsed
+    names = set(name for name, _ in found)
+    if names & {"-d", "--delete"}:
         state.add("tag", "git tag --delete deletes a tag")
-    elif create or (positional and not lists):
+    elif names & {"-v", "--verify"} or names & TAG_LISTING:
+        return
+    elif positional or names & TAG_CREATING:
         state.add("tag", "git tag creates or moves a tag")
 
 
-def run_clean(args, state, bases):
-    values = [word.value() for word in args]
-    if None in values:
-        state.unreadable("an argument of git clean is not plain text")
+def run_update_ref(args, state):
+    parsed = git_options(args, state, "git update-ref", {"--no-deref", "-d", "--create-reflog", "-z", "--batch-updates"},
+                         {"-m"})
+    if parsed is None or not parsed[1]:
         return
-    for value in values:
-        if value in ("-n", "--dry-run") or (re.match(r"^-[a-zA-Z]+\Z", value) and "n" in value):
-            return
+    ref = parsed[1][0].value()
+    if is_tag_ref(ref):
+        state.add("tag", "git update-ref changes the tag %s" % ref)
+    elif not ref.lower().startswith("refs/") and ref != "HEAD":
+        state.unreadable("git update-ref changes %s, a ref outside refs/" % ref)
+
+
+def run_symbolic_ref(args, state):
+    parsed = git_options(args, state, "git symbolic-ref", {"-q", "--quiet", "-d", "--delete", "--short", "--recurse",
+                                                           "--no-recurse"}, {"-m"})
+    if parsed is None:
+        return
+    names = set(name for name, _ in parsed[0])
+    refs = [word.value() for word in parsed[1]]
+    if (len(refs) >= 2 or names & {"-d", "--delete"}) and any(is_tag_ref(ref) for ref in refs):
+        state.add("tag", "git symbolic-ref makes or removes a ref that leads to a tag")
+
+
+def run_worktree_remove(args, state, bases):
+    parsed = git_options(args, state, "git worktree remove", {"-f", "--force"}, paths=True)
+    if parsed is None:
+        return
+    for word in parsed[1]:
+        check_delete(word, state, bases)
+
+
+def run_clean(args, state, bases):
+    parsed = git_options(args, state, "git clean", {"-d", "-f", "--force", "-i", "--interactive", "-n", "--dry-run",
+                                                    "-q", "--quiet", "-x", "-X"}, {"-e", "--exclude"}, paths=True)
+    if parsed is None:
+        return
+    found, paths = parsed
+    if set(name for name, _ in found) & {"-n", "--dry-run"}:
+        return
     for base in bases:
         if base is None:
             state.unreadable("the directory git clean runs in is not known")
@@ -1541,43 +1781,36 @@ def run_clean(args, state, bases):
         if not inside(state, base, allow_root=True):
             state.add("delete-outside", "git clean deletes in %s, outside the working tree" % base)
             return
-    paths = [word for word, value in zip(args, values) if not value.startswith("-")]
     for word in paths:
         check_delete(word, state, bases, contents=True)
     state.deletes = True
 
 
+CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--get-color",
+                "--get-colorbool"}
+CONFIG_WRITES = {"--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section"}
+CONFIG_FLAGS = CONFIG_READS | CONFIG_WRITES | {"--global", "--system", "--local", "--worktree", "--includes",
+                                               "--no-includes", "--null", "-z", "--name-only", "--show-origin",
+                                               "--show-scope", "--bool", "--int", "--bool-or-int", "--bool-or-str",
+                                               "--path", "--expiry-date", "--no-type", "--fixed-value", "--all",
+                                               "--append", "--regexp", "-e", "--edit"}
+CONFIG_VALUES = {"--file", "-f", "--blob", "--type", "--default", "--comment", "--value", "--url"}
+
+
 def run_config(args, state):
-    values = [word.value() for word in args]
-    if None in values:
-        state.unreadable("an argument of git config is not plain text")
+    parsed = git_options(args, state, "git config", CONFIG_FLAGS, CONFIG_VALUES)
+    if parsed is None:
         return
-    reads = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--get-color", "--get-colorbool"}
-    writes = {"--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section"}
-    with_value = {"--file", "-f", "--blob", "--type", "--default", "--comment"}
-    mode, positional, index = None, [], 0
-    while index < len(values):
-        value = values[index]
-        index += 1
-        if value in ("--edit", "-e"):
-            state.unreadable("git config --edit lets any setting change")
-            return
-        if value in reads:
-            mode = "read"
-        elif value in writes:
-            mode = "write"
-        elif value in with_value:
-            index += 1
-        elif value.startswith("-"):
-            pass
-        else:
-            positional.append(value)
+    found, words = parsed
+    names = set(name for name, _ in found)
+    positional = [word.value() for word in words]
+    if names & {"-e", "--edit"} or positional[:1] == ["edit"]:
+        state.unreadable("git config --edit lets any setting change")
+        return
+    mode = "read" if names & CONFIG_READS else "write" if names & CONFIG_WRITES else None
     if positional and positional[0] in ("get", "list"):
         return
-    if positional and positional[0] in ("set", "unset", "rename-section", "remove-section", "edit"):
-        if positional[0] == "edit":
-            state.unreadable("git config edit lets any setting change")
-            return
+    if positional and positional[0] in ("set", "unset", "rename-section", "remove-section"):
         mode, positional = "write", positional[1:]
     if mode == "read" or (mode is None and len(positional) < 2):
         return
@@ -1588,117 +1821,203 @@ def run_config(args, state):
 
 # gh.
 
+def gh_action(args, state, what):
+    """(index, action): where the first word that is not an option is, and that word, past -R or --repo and its
+    value. The action is None when there is none, or when the call asks for help. The result is None when the
+    call cannot be read: any other option before the action is one this hook does not know."""
+    index = 0
+    while index < len(args):
+        value = args[index].value()
+        if value is None:
+            state.unreadable("what %s does is %s" % (what, args[index].why_not_plain()))
+            return None
+        if value in ("-R", "--repo"):
+            index += 2
+        elif value.startswith("--repo=") or (value.startswith("-R") and len(value) > 2):
+            index += 1
+        elif value in ("-h", "--help"):
+            return index, None
+        elif value.startswith("-"):
+            state.unreadable("%s %s is an option this hook does not know" % (what, value))
+            return None
+        else:
+            return index, value
+    return index, None
+
+
 def run_gh(args, state):
     values = [word.value() for word in args]
-    index = 0
-    while index < len(values) and values[index] is not None and values[index].startswith("-"):
-        if values[index] in ("--help", "--version", "-h"):
+    if not values:
+        return
+    if values[0] is not None and values[0].startswith("-"):
+        if values[0] in ("--help", "--version", "-h"):
             return
-        state.unreadable("gh %s is an option this hook does not follow" % values[index])
+        state.unreadable("gh %s is an option this hook does not follow" % values[0])
         return
-    if index >= len(values):
-        return
-    sub = values[index]
+    sub = values[0]
     if sub is None:
-        state.unreadable("the gh command is not plain text")
+        state.unreadable("the gh command is %s" % args[0].why_not_plain())
         return
-    rest = args[index + 1:]
+    rest = args[1:]
     if sub == "api":
         run_api(rest, state)
         return
     if sub in GH_QUIET:
         return
-    action = None
-    position = 0
-    while position < len(rest):
-        value = rest[position].value()
-        if value in ("-R", "--repo"):
-            position += 2
-            continue
-        if value is not None and value.startswith("-"):
-            position += 1
-            continue
-        action = value if value is not None else False
-        break
-    if action is False:
-        state.unreadable("what gh %s does is not plain text" % sub)
+    if sub not in ("release", "repo", "secret", "variable", "workflow", "run", "alias", "extension", "ext", "extensions"):
+        state.unreadable("gh %s is not a gh command this hook knows, and may be an alias or an extension" % sub)
         return
-    later = [word.value() for word in rest[position + 1:]]
+    found = gh_action(rest, state, "gh " + sub)
+    if found is None:
+        return
+    position, action = found
+    if action is None:
+        return
+    later = rest[position + 1:]
     if sub == "release":
         if action in ("create", "new", "delete", "edit", "upload", "delete-asset"):
             state.add("release", "gh release %s changes a release" % action)
-        elif action not in ("view", "list", "ls", "download", "verify", "verify-asset", None):
+        elif action not in ("view", "list", "ls", "download", "verify", "verify-asset"):
             state.unreadable("gh release %s is not one this hook knows" % action)
     elif sub == "repo":
         if action in ("edit", "delete", "rename", "archive", "unarchive"):
             state.add("settings", "gh repo %s changes the repository" % action)
         elif action in ("deploy-key", "autolink"):
-            if later and later[0] in ("add", "delete", "create"):
-                state.add("settings", "gh repo %s %s changes the repository's settings" % (action, later[0]))
+            inner = gh_action(later, state, "gh repo " + action)
+            if inner is not None and inner[1] not in (None, "list", "ls"):
+                state.add("settings", "gh repo %s %s changes the repository's settings" % (action, inner[1]))
         elif action == "sync":
-            if any(value is None or value in ("--force", "-f") for value in later):
-                state.add("force-push", "gh repo sync --force overwrites a branch")
-        elif action not in ("create", "new", "fork", "clone", "view", "list", "ls", "set-default", "gitignore", "license", None):
+            run_repo_sync(later, state)
+        elif action not in ("create", "new", "fork", "clone", "view", "list", "ls", "set-default", "gitignore", "license"):
             state.unreadable("gh repo %s is not one this hook knows" % action)
     elif sub in ("secret", "variable"):
         if action in ("set", "delete", "remove"):
             state.add("settings", "gh %s %s changes the repository's settings" % (sub, action))
-        elif action not in ("list", "ls", "get", None):
+        elif action not in ("list", "ls", "get"):
             state.unreadable("gh %s %s is not one this hook knows" % (sub, action))
     elif sub == "workflow":
         if action in ("enable", "disable", "run"):
             state.add("settings", "gh workflow %s changes which workflows run, and a workflow may take any step" % action)
-        elif action not in ("list", "ls", "view", None):
+        elif action not in ("list", "ls", "view"):
             state.unreadable("gh workflow %s is not one this hook knows" % action)
-    elif sub in ("alias", "extension", "ext", "extensions"):
-        if action not in ("list", "ls", "search", "browse", None):
-            state.unreadable("gh %s %s defines or runs a command this hook does not see" % (sub, action))
-    else:
-        state.unreadable("gh %s is not a gh command this hook knows, and may be an alias or an extension" % sub)
+    elif sub == "run":
+        if action == "rerun":
+            state.add("settings", "gh run rerun starts a workflow again, and a workflow may take any step")
+        elif action not in ("list", "ls", "view", "watch", "download", "cancel", "delete"):
+            state.unreadable("gh run %s is not one this hook knows" % action)
+    elif action not in ("list", "ls", "search", "browse"):
+        state.unreadable("gh %s %s defines or runs a command this hook does not see" % (sub, action))
+
+
+# pflag's false values for a flag such as --force=false.
+FALSE = ("false", "0", "f", "F", "FALSE", "False")
+
+
+def run_repo_sync(args, state):
+    index, force = 0, False
+    while index < len(args):
+        value = args[index].value()
+        index += 1
+        if value is None:
+            state.unreadable("gh repo sync is given %s, which is %s" % (args[index - 1].raw, args[index - 1].why_not_plain()))
+            return
+        if value == "--":
+            break
+        if not value.startswith("-") or value == "-":
+            continue
+        if value == "--force":
+            force = True
+        elif value.startswith("--force="):
+            force = force or value[len("--force="):] not in FALSE
+        elif value in ("--branch", "--source"):
+            index += 1
+        elif value.startswith(("--branch=", "--source=")):
+            pass
+        elif value in ("--help", "-h"):
+            return
+        elif value.startswith("--"):
+            state.unreadable("gh repo sync %s is an option this hook does not know" % value)
+            return
+        else:
+            letters = value[1:]
+            for position, letter in enumerate(letters):
+                if letter == "f":
+                    force = True
+                elif letter in "bs":
+                    if position == len(letters) - 1:
+                        index += 1
+                    break
+                else:
+                    state.unreadable("gh repo sync -%s is an option this hook does not know" % letter)
+                    return
+    if force:
+        state.add("force-push", "gh repo sync --force overwrites a branch")
+
+
+API_FLAGS = {"-i", "--include", "--paginate", "--silent", "--slurp", "--verbose"}
+API_VALUES = {"-X", "--method", "-H", "--header", "-f", "--raw-field", "-F", "--field", "--input", "-q", "--jq", "-t",
+              "--template", "--cache", "-p", "--preview", "--hostname"}
 
 
 def run_api(args, state):
     method = endpoint = None
     fields, has_input = [], False
-    skip_value = {"-q", "--jq", "-t", "--template", "--cache", "-p", "--preview", "--hostname"}
-    flags = {"-i", "--include", "--paginate", "--silent", "--slurp", "--verbose"}
-    index = 0
+    options, index = [], 0
+    # Read the options as pflag does: a long option takes its value after = or as the next word, short ones may be
+    # clustered, and a short one that takes a value takes the rest of the cluster or the next word.
     while index < len(args):
         word = args[index]
         value = word.value()
         index += 1
-        if value is not None and value.startswith("-") and len(value) > 1:
-            option, attached = (value.split("=", 1) + [None])[:2] if value.startswith("--") else (value[:2], value[2:] or None)
-            take = (lambda: (attached_word(word, value, attached) if attached is not None else (args[index] if index < len(args) else dynamic("no value"))))
-            if option in ("-X", "--method"):
-                method = take()
-            elif option in ("-H", "--header"):
-                header = take().value()
-                if header is None:
-                    state.unreadable("gh api sends a header that is not plain text")
-                    return
-                if header.lower().replace(" ", "").startswith("x-http-method-override"):
-                    state.unreadable("gh api overrides its method with a header")
-                    return
-            elif option in ("-f", "--raw-field", "-F", "--field"):
-                fields.append((option, take()))
-            elif option == "--input":
-                has_input = True
-                take()
-            elif option in skip_value:
-                take()
-            elif option in flags:
+        if value is None or not value.startswith("-") or value == "-":
+            if endpoint is not None:
+                state.unreadable("gh api is given two endpoints")
+                return
+            endpoint = word
+            continue
+        if value.startswith("--"):
+            name, equals, attached = value.partition("=")
+            if name in API_FLAGS:
                 continue
-            else:
+            if name not in API_VALUES:
                 state.unreadable("gh api %s is an option this hook does not follow" % value)
                 return
-            if attached is None:
+            if equals:
+                options.append((name, attached_word(word, attached)))
+            else:
+                options.append((name, args[index] if index < len(args) else dynamic("no value")))
                 index += 1
-        elif endpoint is not None:
-            state.unreadable("gh api is given two endpoints")
-            return
-        else:
-            endpoint = word
+            continue
+        letters = value[1:]
+        for position, letter in enumerate(letters):
+            short = "-" + letter
+            rest = letters[position + 1:]
+            if short in API_FLAGS:
+                continue
+            if short not in API_VALUES:
+                state.unreadable("gh api -%s is an option this hook does not follow" % letter)
+                return
+            if rest:
+                options.append((short, attached_word(word, rest)))
+            else:
+                options.append((short, args[index] if index < len(args) else dynamic("no value")))
+                index += 1
+            break
+    for option, word in options:
+        if option in ("-X", "--method"):
+            method = word
+        elif option in ("-H", "--header"):
+            header = word.value()
+            if header is None:
+                state.unreadable("gh api sends a header that is not plain text")
+                return
+            if header.lower().replace(" ", "").startswith("x-http-method-override"):
+                state.unreadable("gh api overrides its method with a header")
+                return
+        elif option in ("-f", "--raw-field", "-F", "--field"):
+            fields.append((option, word))
+        elif option == "--input":
+            has_input = True
     if endpoint is None:
         return
     if method is not None:
@@ -1715,7 +2034,7 @@ def run_api(args, state):
     path = endpoint.value()
     if path is None:
         if verb not in ("GET", "HEAD"):
-            state.unreadable("gh api %s to an endpoint that is not plain text" % verb)
+            state.unreadable("gh api %s to an endpoint that is %s" % (verb, endpoint.why_not_plain()))
         return
     if path.startswith("https://api.github.com/"):
         path = path[len("https://api.github.com/"):]
@@ -1724,87 +2043,119 @@ def run_api(args, state):
         return
     path = re.split(r"[?#]", path.lstrip("/"), maxsplit=1)[0]
     segments = [segment for segment in path.lower().split("/") if segment]
-
-    def field(name):
-        for option, word in fields:
-            text = word.parts[0][1] if word.parts and word.parts[0][0] == "lit" else ""
-            if text.startswith(name + "="):
-                full = word.value()
-                if full is None or (option in ("-F", "--field") and full[len(name) + 1:].startswith("@")):
-                    return False
-                return full[len(name) + 1:]
-        return None
-
+    field = api_body(fields, has_input)
     if segments == ["graphql"]:
         query = field("query")
-        if not query or has_input:
+        if query is None or query is UNSURE:
             state.unreadable("gh api graphql with a query this hook cannot read")
-        elif re.search(r"\bmutation\b", query):
+        elif re.search(r"\bmutation\b", query[1]):
             state.unreadable("gh api graphql with a mutation, which may change anything")
         return
     if verb in ("GET", "HEAD"):
+        return
+    if "%" in path or "\\" in path or any(segment in (".", "..") for segment in segments):
+        state.unreadable("gh api %s to %s, a path with . or .., an escape or a backslash" % (verb, path))
         return
     step, why = classify_api(verb, segments, field)
     if step:
         state.add(step, "gh api %s %s %s" % (verb, path, why))
 
 
-def attached_word(word, value, attached):
+def attached_word(word, attached):
     if word.value() is not None:
         return Word([("lit", attached, True)], attached)
     return dynamic("an attached value")
 
 
+UNSURE = ("unsure", None)
+
+
+def api_body(fields, has_input):
+    """A function that tells what the body of a call says of one field: None when it holds no such field, UNSURE
+    when the hook cannot tell, as with --input, a value from a file or a field given twice, and otherwise
+    (option, value)."""
+    known, unsure = {}, has_input
+    for option, word in fields:
+        first = word.parts[0] if word.parts else None
+        if first is None or first[0] != "lit" or "=" not in first[1]:
+            unsure = True
+            continue
+        name = re.split(r"[\[=]", first[1], maxsplit=1)[0]
+        full = word.value()
+        value = None if full is None else full.split("=", 1)[1]
+        if value is not None and option in ("-F", "--field") and value.startswith("@"):
+            value = None
+        known.setdefault(name, []).append((option, value))
+
+    def field(name):
+        entries = known.get(name)
+        if entries:
+            if len(entries) > 1 or entries[0][1] is None:
+                return UNSURE
+            return entries[0]
+        return UNSURE if unsure else None
+    return field
+
+
+# What a call under a repository may change without changing a setting: issues, pull requests, their comments and
+# reviews, commit comments, and code. Everything else under the repository counts as a setting: variables, secrets,
+# environments, hooks, rulesets, branch protection, collaborators, keys, Pages, Actions, statuses and check runs,
+# topics, labels and what GitHub adds later. The list names what is not a setting, so that a new endpoint is one.
+REPOSITORY_WORK = {"issues", "pulls", "comments", "commits", "contents", "merges"}
+
+
 def classify_api(verb, segments, field):
-    if segments[:1] in (["orgs"], ["enterprises"], ["teams"]):
-        return "settings", "changes the settings of an organization"
-    if segments[:1] != ["repos"] or len(segments) < 3:
+    if segments[0] == "repos" and len(segments) >= 3:
+        rest = segments[3:]
+    elif segments[0] == "repositories" and len(segments) >= 2:
+        rest = segments[2:]
+    elif segments[:2] == ["user", "repository_invitations"] or segments[0] in ("markdown", "notifications"):
         return None, ""
-    rest = segments[3:]
+    else:
+        return "settings", "changes an account, an organization or something else outside a repository"
     if not rest:
         return "settings", "changes or deletes the repository"
     head = rest[0]
     if head == "releases":
         return "release", "changes a release"
     if head == "git":
-        if len(rest) >= 2 and rest[1] == "refs":
-            if len(rest) == 2:
-                ref = field("ref")
-                if ref is None or ref is False:
-                    return UNREADABLE, "makes a ref this hook cannot read"
-                if ref.startswith("refs/tags/"):
-                    return "tag", "makes a tag"
-                if ref.startswith("refs/heads/"):
-                    return None, ""
-                return UNREADABLE, "makes a ref this hook cannot read"
-            if rest[2] == "tags":
-                return "tag", "changes a tag"
-            if rest[2] == "heads":
-                if verb == "DELETE":
-                    return "force-push", "removes a branch"
-                force = field("force")
-                if force is False:
-                    return UNREADABLE, "with a force this hook cannot read"
-                if force in ("true",):
-                    return "force-push", "overwrites a branch"
-                if force in (None, "false"):
-                    return None, ""
-                return UNREADABLE, "with a force this hook cannot read"
-            return UNREADABLE, "changes a ref this hook cannot read"
-        if len(rest) >= 2 and rest[1] == "tags":
-            return "tag", "makes a tag"
+        return classify_git_api(verb, rest, field)
+    if head in REPOSITORY_WORK:
         return None, ""
-    if head == "branches":
-        if "protection" in rest or rest[-1] == "rename":
-            return "settings", "changes the protection or the name of a branch"
+    return "settings", "changes the repository's %s, which counts as a setting" % head
+
+
+def classify_git_api(verb, rest, field):
+    kind = rest[1] if len(rest) > 1 else None
+    if kind == "refs":
+        if len(rest) == 2:
+            ref = field("ref")
+            if ref is UNSURE:
+                return "tag", "makes a ref from a body this hook has not read, which may be a tag"
+            if ref is None:
+                return UNREADABLE, "makes a ref with no name"
+            if is_tag_ref(ref[1]):
+                return "tag", "makes a tag"
+            if ref[1].lower().startswith("refs/heads/"):
+                return None, ""
+            return UNREADABLE, "makes a ref this hook cannot read"
+        if rest[2] == "tags":
+            return "tag", "changes a tag"
+        if rest[2] == "heads":
+            if verb == "DELETE":
+                return "force-push", "removes a branch"
+            force = field("force")
+            if force is None or force == ("-F", "false"):
+                return None, ""
+            if force is UNSURE:
+                return "force-push", "may move a branch with force, from a body this hook has not read"
+            return "force-push", "overwrites a branch"
+        return UNREADABLE, "changes a ref this hook cannot read"
+    if kind == "tags":
+        return "tag", "makes a tag"
+    if kind in ("blobs", "trees", "commits"):
         return None, ""
-    if head == "actions":
-        if len(rest) > 1 and rest[1] in ("runs", "jobs", "artifacts", "caches"):
-            return None, ""
-        return "settings", "changes the settings of Actions, or starts a workflow"
-    if head in SETTINGS_PATHS:
-        return "settings", "changes the repository's settings"
-    return None, ""
+    return UNREADABLE, "changes something under git/ that this hook does not know"
 
 
 # ---------------------------------------------------------------- the approvals
@@ -1900,7 +2251,9 @@ def read_approvals(path, cwd=None, root=None):
         seen.add((step, command))
         findings = analyze(command, cwd, root)
         found = sorted(set(finding.step for finding in findings))
-        if found != [step]:
+        # The command takes this step, and perhaps others, each of which needs an entry of its own. It is never
+        # a command the hook cannot read, or one that touches the approvals file.
+        if step not in found or UNREADABLE in found or "approvals" in found:
             problems.append("%s: the command %s is not the step %s: it is %s" % (where, command, step, ", ".join(found) or "no step"))
             continue
         if date is not None:

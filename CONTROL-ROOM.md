@@ -56,7 +56,7 @@ The reference check is [checks/irreversible.py](checks/irreversible.py), a hook 
 
 1. Copy the hook to `.claude/hooks/irreversible.py` and [templates/claude-settings.json](templates/claude-settings.json) to `.claude/settings.json`, or add its hook to the settings you have. The settings block the command when the hook fails to run, so a missing or broken hook stops work instead of letting it through.
 2. Add `/.claude/ratchet-approvals.json` to `.gitignore`. The approvals stay on the machine, out of the repo.
-3. When the owner approves a step, the owner writes it into `.claude/ratchet-approvals.json`, in the form of [templates/ratchet-approvals.json](templates/ratchet-approvals.json): one entry per step, with the step, the exact command, the last day it holds and a reason. The hook refuses to let an agent write that file.
+3. When the owner approves a step, the owner writes it into `.claude/ratchet-approvals.json`, in the form of [templates/ratchet-approvals.json](templates/ratchet-approvals.json): one entry per step, with the step, the exact command, the last day it holds and a reason. A command that takes several steps needs an entry for each. The hook refuses to let an agent write that file.
 
 What the hook denies, what it lets through and what it does not see are in [checks/README.md](checks/README.md#irreversiblepy).
 
