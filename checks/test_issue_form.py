@@ -121,7 +121,14 @@ MUTATIONS = [
     ("a block scalar", "description: ", "description: |\n        ", "not a value"),
     ("a quoted value", "label: Primary source", "label: 'Primary source'", "not a value"),
     ("a comment", "body:\n", "body:\n# a comment\n", "expected"),
-    ("a key this reader does not know", "body:\n", "labels: [proposal]\nbody:\n", "expected"),
+    ("a key this reader does not know", "body:\n", "title: A proposal\nbody:\n", "expected 'body:'"),
+    ("the labels line left out", "labels: [proposal]\n", "", "starts 'labels: '"),
+    ("a different label", "labels: [proposal]", "labels: [question]", "expected 'labels: [proposal]'"),
+    ("a second label", "labels: [proposal]", "labels: [proposal, question]", "expected 'labels: [proposal]'"),
+    ("the labels as a block list", "labels: [proposal]\n", "labels:\n  - proposal\n", "starts 'labels: '"),
+    ("the label quoted", "labels: [proposal]", "labels: [\"proposal\"]", "expected 'labels: [proposal]'"),
+    ("the labels as a string", "labels: [proposal]", "labels: proposal", "expected 'labels: [proposal]'"),
+    ("the labels key twice", "labels: [proposal]\n", "labels: [proposal]\nlabels: [proposal]\n", "expected 'body:'"),
     ("a line indented one more", "    id: ratchet", "     id: ratchet", "expected"),
     ("a trailing space", "required: true\n", "required: true \n", "expected"),
     ("a tab", "  - type", "\t- type", "tab"),
@@ -135,6 +142,9 @@ MUTATIONS = [
 class IssueForm(unittest.TestCase):
     def test_the_form_has_the_five_fields_each_required(self):
         self.assertEqual(form_problems(read_bytes()), [])
+
+    def test_the_form_gives_its_issues_the_label_proposal(self):
+        self.assertEqual(read_form(read_bytes())[2], ["proposal"])
 
     def test_the_form_fails_with_a_field_left_out(self):
         text = read_bytes().decode("ascii")
@@ -160,11 +170,12 @@ class IssueForm(unittest.TestCase):
     def test_every_change_in_the_list_fails(self):
         text = read_bytes().decode("ascii")
         for what, old, new, message in MUTATIONS:
-            changed = text.replace(old, new, 1)
-            self.assertNotEqual(changed, text, what)
-            problems = form_problems(changed.encode("utf-8"))
-            self.assertEqual(len(problems), 1, what)
-            self.assertIn(message, problems[0], what)
+            with self.subTest(case=what):
+                changed = text.replace(old, new, 1)
+                self.assertNotEqual(changed, text, what)
+                problems = form_problems(changed.encode("utf-8"))
+                self.assertEqual(len(problems), 1, what)
+                self.assertIn(message, problems[0], what)
 
 
 if __name__ == "__main__":
