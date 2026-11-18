@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4 (2026-11-17)
+
+<!-- generated:count -->
+Ratchet 0.4, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+Added:
+
+- `ratchet.expected-tests-ran`, experimental, in a new part of `SELF-IMPROVEMENT.md` for rules promoted from projects: a suite of tests made from a source fails when a test it expects did not run and pass. Its reference check, `checks/expected_tests.py`, runs this repo's suite in a child process, through `checks/suite_runner.py`, and reads the record that the runner writes of every outcome and of the end of the run. It fails when a test did not pass exactly once, when the run did not finish, and when a file under `checks/fixtures/` was not loaded by a test that passed. It catches tests dropped by mistake, not test code written to defeat it. See [checks/README.md](checks/README.md#expected_testspy).
+- `checks/released_text.py`: fails when a released changelog entry, or the `ratchet.json` of a released version, is not as it stood at its tag, when a tag has no changelog entry, and when an entry after the first has no tag. A version that adds a rule is released on its own, by the decision `D-2026-11-17-new-approaches`.
+- `checks/release.py` and `.github/workflows/release.yml`: a version is tagged and released when it reaches `main`, from the version in `ratchet.json` (PR #9). The release text is one fixed line, with links to this changelog and to the files at the tag: nothing is copied from the changelog. A run fails closed: when it cannot confirm that every version that `ratchet.json` on `main` has named is tagged and released, it is red, and it writes nothing before every check has passed. It never moves, deletes or edits a tag. A scheduled run every day writes nothing, and is red while a version is unfinished. It names that version when the GitHub API answers, which is not promised. See [checks/README.md](checks/README.md#releasepy) and the decisions `D-2026-11-17-release-on-merge`, `D-2026-11-17-release-links`, `D-2026-11-17-release-narrow-claim` and `D-2026-11-17-release-fail-closed`.
+- `checks/watch_sources.py` and `.github/workflows/watch-sources.yml`: a watch, once a day, on the sources pinned in `ratchet.json` (PR #10). When a source has moved past its pin, or its pinned commit is gone, it opens one issue for it. An issue holds only values the watch has checked itself and text written in the code, never text from a source. It is a tool of this repo, not a reference check for a rule. See [checks/README.md](checks/README.md#watch_sourcespy).
+
+Changed:
+
+- Only the first entry of the changelog, the version being released, is generated. Every entry after it stays as it was released.
+- The tests in `checks/test_checks.py` and `checks/test_watch_sources.py` load their fixtures through `FixtureTest`.
+
 ## 0.3 (2026-11-16)
 
 <!-- generated:count -->

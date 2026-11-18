@@ -89,6 +89,27 @@ class RegistryError(Exception):
     """ratchet.json is missing, unreadable or breaks its own format."""
 
 
+def _pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result:
+            raise ValueError("the field %r appears twice in one object" % key)
+        result[key] = value
+    return result
+
+
+def _constant(name):
+    raise ValueError("%s is not allowed" % name)
+
+
+def strict_loads(text):
+    """Parse JSON text strictly: no field twice in one object, no NaN or Infinity.
+
+    Raises ValueError, or RecursionError for text nested too deeply. Every check that reads JSON parses it here.
+    """
+    return json.loads(text, object_pairs_hook=_pairs, parse_constant=_constant)
+
+
 def load_json(path):
     """Read a JSON data file strictly: valid UTF-8, no field twice in one object, no NaN or Infinity."""
     try:
@@ -101,20 +122,9 @@ def load_json(path):
 
 def parse_json(data):
     """The bytes of a JSON data file, read strictly as load_json reads a file."""
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise ValueError("the field %r appears twice in one object" % key)
-            result[key] = value
-        return result
-
-    def constant(name):
-        raise ValueError("%s is not allowed" % name)
-
     try:
         text = data.decode("utf-8", errors="strict")
-        return json.loads(text, object_pairs_hook=pairs, parse_constant=constant)
+        return strict_loads(text)
     except RecursionError:
         raise RegistryError("not a valid data file: it is nested too deeply")
     except UnicodeDecodeError as error:

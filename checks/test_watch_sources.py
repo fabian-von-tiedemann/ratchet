@@ -20,6 +20,7 @@ import urllib.request
 
 import registry
 import watch_sources
+from suite_runner import FixtureTest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -298,8 +299,9 @@ class Base(unittest.TestCase):
         return self.github.issues[0]
 
 
-class MalformedSources(Base):
-    """One test per fixture under fixtures/sources/, each loaded from its file."""
+class MalformedSources(Base, FixtureTest):
+    """One test per fixture under fixtures/sources/, each loaded through FixtureTest, so that the check that
+    every expected test ran sees each one loaded by a test that passed (ratchet.expected-tests-ran)."""
 
     def test_every_fixture_has_an_expectation_and_every_expectation_a_fixture(self):
         names = sorted(name[:-len(".json")] for name in os.listdir(SOURCES))
@@ -307,8 +309,7 @@ class MalformedSources(Base):
 
     def fails(self, fixture):
         message, printed = MALFORMED[fixture]
-        with open(os.path.join(SOURCES, fixture + ".json"), encoding="utf-8") as handle:
-            sources = json.load(handle)
+        sources = json.loads(self.fixture_text("sources/%s.json" % fixture))
         self.assertIn(message, registry.source_problems(sources))
         code, out, err = self.watch(sources)
         self.assertEqual(code, 1, out + err)

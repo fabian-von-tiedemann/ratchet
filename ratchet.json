@@ -1,6 +1,6 @@
 {
-  "version": "0.3",
-  "date": "2026-11-16",
+  "version": "0.4",
+  "date": "2026-11-17",
   "start": [
     "ratchet.register-on-top",
     "ratchet.protected-main",
@@ -52,6 +52,11 @@
       "id": "tightening",
       "file": "SELF-IMPROVEMENT.md",
       "title": "How Ratchet tightens over time"
+    },
+    {
+      "id": "promoted",
+      "file": "SELF-IMPROVEMENT.md",
+      "title": "Rules promoted from projects"
     }
   ],
   "sources": [
@@ -578,6 +583,16 @@
       "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
       "ratchet": "Check: branch protection on Ratchet's main branch",
       "source": ""
+    },
+    {
+      "key": "ratchet.expected-tests-ran",
+      "part": "promoted",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
+      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "source": "",
+      "reference_check": "checks/expected_tests.py"
     }
   ]
 }

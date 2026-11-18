@@ -12,6 +12,10 @@ in the markdown files, templates/register.json and the registers under
 checks/fixtures/register/. From register.json: REGISTER.md. Which blocks each file
 must hold is listed in required_blocks().
 
+In CHANGELOG.md only the first entry is generated, the entry of the version that
+ratchet.json names. Every entry after it is released text and is never rewritten:
+checks/released_text.py compares it with its tag.
+
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
@@ -37,6 +41,8 @@ KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 NOT_KEYS = {"json"}
+# The heading of a changelog entry. The release workflow finds an entry by "^## <version> \(".
+HEADING = re.compile(r"^## [0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)\Z")
 # Files that record history verbatim are not checked for mentions of keys that no longer exist.
 HISTORY = ("CHANGELOG.md",)
 # The only lines that may start with "<" in a file that holds generated blocks.
@@ -420,8 +426,13 @@ def expected_files(data, root):
         if current is None:
             problems.append("%s: the file is missing. It must hold the generated blocks: %s" % (name, ", ".join(required[name])))
             continue
-        blocks = list(BLOCK.finditer(current))
-        starts, ends = current.count(START), current.count(END)
+        # In the changelog only the first entry is generated. What follows it is released text, kept as it stands.
+        live, released, holder = current, "", name + ":"
+        if name == "CHANGELOG.md":
+            cut = first_entry_end(current)
+            live, released, holder = current[:cut], current[cut:], name + ": the first entry"
+        blocks = list(BLOCK.finditer(live))
+        starts, ends = live.count(START), live.count(END)
         if not (starts == ends == len(blocks)):
             problems.append(
                 "%s: the markers of the generated blocks are broken: %d start, %d end, %d complete blocks" % (name, starts, ends, len(blocks))
@@ -431,15 +442,21 @@ def expected_files(data, root):
             missing = sorted(set(required.get(name, [])) - set(found))
             extra = sorted(block for block in found if block not in required.get(name, []) or found.count(block) > 1)
             problems.append(
-                "%s: must hold exactly these generated blocks, once each: %s. Missing: %s. Not expected: %s"
-                % (name, ", ".join(required.get(name, [])) or "none", ", ".join(missing) or "none", ", ".join(sorted(set(extra))) or "none")
+                "%s must hold exactly these generated blocks, once each: %s. Missing: %s. Not expected: %s"
+                % (holder, ", ".join(required.get(name, [])) or "none", ", ".join(missing) or "none", ", ".join(sorted(set(extra))) or "none")
             )
         if name in required:
             problems += structure_problems(name, current)
         directory = os.path.dirname(name)
-        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory) + "\n" + m.group(5), current)
+        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
     return result, problems
+
+
+def first_entry_end(text):
+    """Where the first entry of a changelog ends: at the second line that starts with "## ", or at the end."""
+    starts = [match.start() for match in re.finditer(r"^## ", text, re.M)]
+    return starts[1] if len(starts) > 1 else len(text)
 
 
 def link_problem(path, target):
@@ -474,6 +491,9 @@ def consistency_problems(data, root):
     first = next((line.strip() for line in changelog.splitlines() if line.startswith("## ")), None)
     if first != heading:
         problems.append('CHANGELOG.md: the first entry must be "%s", found %r' % (heading, first))
+    for line in changelog.splitlines():
+        if line.startswith("## ") and not HEADING.match(line):
+            problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)", such as "%s"' % (line, heading))
 
     pinned = "--branch v%s " % data["version"]
     if pinned not in (read(os.path.join(root, "README.md")) or ""):
