@@ -27,6 +27,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 ## Next step
 
 1. 0.5 is released, with the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Its follow-ups are #33 and #35.
-2. Next in the build order from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): `CONTRIBUTING.md` and the issue form for proposals. Then #23 together with the phases, and then the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
+2. `CONTRIBUTING.md` and the issue form for proposals are on `main`, without a release. The label `proposal` exists, and a follow-up PR makes the form set it, with the form's test extended to read that key strictly.
+3. Next in the build order from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): #23 together with the phases, and then the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
 
 Proposal (P), not decided by the maintainer: a secret scan for this repo, which issue #17 waits on, comes after these.
