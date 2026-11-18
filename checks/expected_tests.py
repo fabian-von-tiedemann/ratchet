@@ -94,6 +94,21 @@ def whole(value, least):
     return isinstance(value, int) and not isinstance(value, bool) and value >= least
 
 
+def json_type(value):
+    """What kind of JSON value a parsed value is, in words."""
+    if isinstance(value, bool):
+        return "true or false"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, dict):
+        return "an object"
+    return "text"
+
+
 def form_problem(record):
     """Why a parsed line is not a record of a form this check knows, or None."""
     if not isinstance(record, dict):
@@ -101,6 +116,9 @@ def form_problem(record):
     if "record" not in record:
         return "a record without its kind"
     kind = record["record"]
+    # The type comes first: a list or an object is not a key that FORMS can be asked about.
+    if not isinstance(kind, str):
+        return "the kind of a record must be text, and it is %s" % json_type(kind)
     if kind not in FORMS:
         return "an unknown kind of record %r" % (kind,)
     fields = FORMS[kind]

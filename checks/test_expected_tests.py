@@ -610,6 +610,33 @@ class Records(FixtureTest):
         raw = "".join(json.dumps(line) + "\n" for line in self.lines()).encode("utf-8").replace(b"test_both", b"test_\xffboth", 1)
         self.assert_problem("the records are not valid UTF-8", raw=raw)
 
+    def test_a_kind_of_record_that_is_not_text_fails(self):
+        # A list or an object as the kind was looked up in FORMS before its type was checked, and raised TypeError.
+        base = self.lines()
+        cases = {"a list": ([], "a list"), "an object": ({}, "an object"), "a number": (1, "a number"),
+                 "a number with a fraction": (1.5, "a number"), "true": (True, "true or false"), "null": (None, "null")}
+        for case, (kind, name) in cases.items():
+            with self.subTest(case=case):
+                problem = "not a record the check knows: the kind of a record must be text, and it is %s" % name
+                self.assert_problem("line 3: " + problem, base[:2] + [dict(base[2], record=kind)] + base[2:])
+                raw = ('{"record": %s}\n' % json.dumps(kind)).encode("ascii")
+                self.assertEqual(self.problems(raw=raw)[0], "the records, line 1: " + problem)
+
+    def test_a_value_of_any_json_type_in_any_field_gives_problems_and_no_exception(self):
+        # Every field of every form, and the kind, given each kind of JSON value. The reader names a problem and does not raise.
+        lines = self.lines()
+        rows = {line["record"]: number for number, line in enumerate(lines)}
+        values = [[], {}, [[]], [{}], ["passed", []], [None], 0, -1, 1.5, True, False, None, "", "x"]
+        for kind, fields in expected_tests.FORMS.items():
+            for field in ("record",) + fields:
+                for value in values:
+                    with self.subTest(kind=kind, field=field, value=value):
+                        changed = [dict(line) for line in lines]
+                        changed[rows[kind]][field] = value
+                        found = self.problems(changed)
+                        self.assertTrue(found, "a run with %r in %s of a record %s passed" % (value, field, kind))
+                        self.assertTrue(all(isinstance(each, str) for each in found))
+
     def test_no_record_file_fails(self):
         records, problems = expected_tests.read_records(os.path.join(self.scratch(), "none"))
         self.assertEqual(records, [])
