@@ -4,14 +4,16 @@
 
 The form is `.github/ISSUE_TEMPLATE/proposal.yml`. GitHub reads it as YAML, and the standard library has no YAML
 parser, so this test does not parse YAML. It reads the file in one fixed form, line by line, and fails on every
-line that is not in that form: a top with `name`, `description` and `body`, then one block of seven lines per
-field, in a fixed order and with fixed indentation. A value is one plain line that starts with a capital letter
+line that is not in that form: a top with `name`, `description`, `labels` and `body`, then one block of seven
+lines per field, in a fixed order and with fixed indentation. The labels line is exactly `labels: [proposal]`, a
+list of the one label `proposal`. A value is one plain line that starts with a capital letter
 and holds only letters, digits, spaces and `,.;()'?-`, so YAML reads it as that text and nothing else: it has no
 colon, no `#`, no quote at its start and no mark that starts a block, an anchor or a tag, and it is not a word
 that YAML 1.1 reads as true, false or null. A form this reader accepts is read the same way by any YAML parser.
 
-The test claims that the form has exactly these fields, in this order, each a textarea marked required. It does
-not claim that GitHub accepts the form or shows it: that is seen on GitHub once the form is on main. It does not
+The test claims that the form has exactly these fields, in this order, each a textarea marked required, and that
+it gives the issues it opens the one label `proposal`. It does not claim that GitHub accepts the form or shows it,
+or that the label exists in the repo: that is seen on GitHub once the form is on main. It does not
 stop a person from opening an issue without the form. Standard library only.
 """
 
@@ -36,7 +38,11 @@ VALUE = re.compile(r"[A-Z][A-Za-z0-9 ,.;()'?-]*[A-Za-z0-9.?)]\Z|[A-Z]\Z")
 # Words that YAML 1.1 reads as true, false or null when they stand alone.
 KEYWORDS = {"y", "yes", "n", "no", "true", "false", "on", "off", "null"}
 
-TOP = (("name: ", VALUE), ("description: ", VALUE), ("body:", None))
+# The one label an issue opened with the form gets. The line is read as this exact text.
+LABELS = ["proposal"]
+LABELS_LINE = "[%s]" % ", ".join(LABELS)
+
+TOP = (("name: ", VALUE), ("description: ", VALUE), ("labels: ", LABELS_LINE), ("body:", None))
 ITEM = (
     ("  - type: ", "textarea"),
     ("    id: ", ID),
@@ -70,7 +76,7 @@ def value(number, line, prefix, form):
 
 
 def read_form(data):
-    """Return (name, description, [(id, label, description)]) from the bytes of the form, or raise FormError."""
+    """Return (name, description, labels, [(id, label, description)]) from the bytes of the form, or raise FormError."""
     try:
         text = data.decode("ascii")
     except UnicodeDecodeError as error:
@@ -91,13 +97,13 @@ def read_form(data):
             raise FormError("line %d: a field that is not complete" % block[0][0])
         found = [value(number, line, *ITEM[k]) for k, (number, line) in enumerate(block)]
         fields.append((found[1], found[3], found[4]))
-    return head[0], head[1], fields
+    return head[0], head[1], list(LABELS), fields
 
 
 def form_problems(data):
     """Every way the form differs from the five required fields."""
     try:
-        _, _, fields = read_form(data)
+        _, _, _, fields = read_form(data)
     except FormError as error:
         return [str(error)]
     found = [(field_id, label) for field_id, label, _ in fields]

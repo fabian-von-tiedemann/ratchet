@@ -1,5 +1,6 @@
 name: Proposal
 description: Propose a change to Ratchet, from something that failed. Leave out anything that identifies a project, company or person, and any secret.
+labels: [proposal]
 body:
   - type: textarea
     id: what-happened
