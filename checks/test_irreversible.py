@@ -217,6 +217,9 @@ class Hook(FixtureTest):
                 elsewhere = self.hook({"hook_event_name": "PreToolUse", "tool_name": tool,
                                        "tool_input": {field: os.path.join(self.tree, "README")}, "cwd": self.tree})
                 self.assert_passes(elsewhere, tool)
+        template = os.path.join(self.tree, "templates", os.path.basename(APPROVALS))
+        self.assert_passes(self.hook({"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": template},
+                                      "cwd": self.tree}), "Write to a file of the same name elsewhere")
         self.assert_passes(self.hook({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": path},
                                       "cwd": self.tree}), "Read")
 
