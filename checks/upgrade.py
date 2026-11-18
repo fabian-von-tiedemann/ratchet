@@ -13,7 +13,9 @@ is the newer Ratchet. The script compares the two, rule by rule, and prints:
   keep it, add the printed entry to "own", which has the fields of an own rule only
 - when every adopted rule was removed, a step to adopt at least one rule
 - the new rules, each with the entry to paste if the project adopts it
-- the changed and removed rules that the register does not adopt, by key.
+- the changed and removed rules that the register does not adopt, by key
+- when the fields at the top of ratchet.json differ between the two, a note for a
+  project that keeps a copy of a Ratchet check, or a check of its own, that reads it.
 
 It writes nothing. It runs offline, on the files it is given. Before it prints a
 step, it checks that the register passes check_register.py against the older
@@ -106,6 +108,15 @@ def own_entry(rule, before, prefix, taken):
         number += 1
         key = "%s.%s-%d" % (prefix, name, number)
     return dict([("key", key)] + [(field, rule[field]) for field in check_register.RULE_FIELDS if field != "key"])
+
+
+def form_changes(old, new):
+    """The fields at the top of ratchet.json that the newer version has and the older lacks, as text.
+
+    The older file is read with registry.validate(older=True), which allows it to lack only the cap and refuses a
+    field it does not know, so a field can be new but not gone.
+    """
+    return ['"%s" is new' % field for field in sorted(set(new) - set(old))]
 
 
 def changed_fields(old, new):
@@ -286,6 +297,15 @@ def report(path, register, old, new, out, script):
     if others:
         print("", file=out)
         print("Not adopted, so nothing to do: %s." % ", ".join(others), file=out)
+    form = form_changes(old, new)
+    if form:
+        print("", file=out)
+        print("The form of ratchet.json changed from Ratchet %s to %s: %s. This is for the project, not the register. Ratchet's "
+              "checks read ratchet.json strictly, so the checks of Ratchet %s do not read the ratchet.json of %s. The checks in "
+              ".ratchet come with their own version and need nothing. A copy of a Ratchet check kept in the project, or a check "
+              "of the project's own, that reads ratchet.json must be updated: replace the copy with the one from Ratchet %s, or "
+              "change the check." % (old["version"], new["version"], joined(form), old["version"], new["version"], new["version"]),
+              file=out)
     print("", file=out)
     print("Then write REGISTER.md again and check it:", file=out)
     print("", file=out)

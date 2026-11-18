@@ -43,6 +43,13 @@ FAULTS = {
     "unknown-part": "ratchet.reworded: unknown part two",
 }
 
+# What the upgrade says when the fields at the top of ratchet.json differ between the two versions.
+FORM = ("The form of ratchet.json changed from Ratchet %s to %s: %s. This is for the project, not the register. Ratchet's "
+        "checks read ratchet.json strictly, so the checks of Ratchet %s do not read the ratchet.json of %s. The checks in "
+        ".ratchet come with their own version and need nothing. A copy of a Ratchet check kept in the project, or a check "
+        "of the project's own, that reads ratchet.json must be updated: replace the copy with the one from Ratchet %s, or "
+        "change the check.")
+
 
 def entries(output):
     """Every JSON object in the output that starts at the beginning of a line, in order."""
@@ -93,6 +100,7 @@ class Upgrade(FixtureTest):
             self.assertIn(line, output)
         self.assertNotIn("ratchet.keep", output, "a rule that did not change is not listed")
         self.assertNotIn("ratchet.left-out", output, "a rule that did not change is not listed, adopted or not")
+        self.assertNotIn("The form of ratchet.json changed", output, "9.8 and 9.9 have the same fields")
         self.assertNotIn("Traceback", output)
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
@@ -179,6 +187,24 @@ class Upgrade(FixtureTest):
         code, output = self.upgrade(old="old-source-form/ratchet.json")
         self.assertEqual(code, 0, output)
         self.assertIn("In Ratchet 9.9, 9 rules are new, changed or removed.", output)
+        # That older file has no cap, so the form changed.
+        self.assertIn(FORM % ("9.8", "9.9", '"experimental_cap" is new', "9.8", "9.9", "9.9"), output)
+
+    def test_a_change_of_form_is_told_to_a_project_with_a_copy_that_reads_ratchet_json(self):
+        # The fields at the top of ratchet.json, which Ratchet's checks read strictly: a reader of the older version
+        # fails on a field it does not know, so a copy of it, or a check of the project's own, must be updated.
+        old, new = self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        self.assertEqual(upgrade.form_changes(old, new), [])
+        del old["experimental_cap"]
+        self.assertEqual(upgrade.form_changes(old, new), ['"experimental_cap" is new'])
+        out = io.StringIO()
+        code = upgrade.report("register.json", self.loaded("register.json"), old, new, out, "check_register.py")
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn(FORM % ("9.8", "9.9", '"experimental_cap" is new', "9.8", "9.9", "9.9"), out.getvalue())
+        # It is told after the steps for the register and before the command that writes REGISTER.md again.
+        output = out.getvalue()
+        self.assertLess(output.index("Steps for register.json:"), output.index("The form of ratchet.json changed"))
+        self.assertLess(output.index("The form of ratchet.json changed"), output.index("Then write REGISTER.md again"))
 
     def test_a_ratchet_data_file_with_a_fault_fails_as_either_file(self):
         self.assertEqual(sorted(FAULTS), sorted(name[:-len(".json")] for name in os.listdir(os.path.join(self.fixtures, "upgrade", "faults"))))
@@ -214,6 +240,10 @@ class Upgrade(FixtureTest):
                 self.assertIn("register.json is on Ratchet %s." % version, output)
                 self.assertIn('Set "ratchet_version" to "%s".' % new["version"], output)
                 self.assertIn("passes check_register.py against Ratchet %s" % new["version"], output)
+                # Neither released ratchet.json has the cap, which came in 0.5 as a change of form.
+                self.assertIn(FORM % (version, new["version"], '"experimental_cap" is new', version, new["version"], new["version"]), output)
+                # ratchet.si-version, which this repo adopts, changed in 0.5 (D-2026-11-18-form-change-before-1-0).
+                self.assertIn("ratchet.si-version: changed: the rule. The register adopts it: replace its entry with this one.", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])

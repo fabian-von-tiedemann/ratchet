@@ -341,11 +341,15 @@ class ReleaseSteps(unittest.TestCase):
         self.assertEqual((code, output), (0, release.release_text(self.version, test_release.REPO) + "\n"))
         # release.py reads only the headings of the changelog. It finds this version first, and nothing newer.
         self.assertEqual(release.changelog_versions(self.changelog), [version for version, _ in self.entries()])
-        # What the entry of 0.5 says: no rule changes, and the upgrade path and the budget that 0.5 releases.
+        # What the entry of 0.5 says: the upgrade path and the budget that 0.5 releases, the one rule it changes, and
+        # the change of form that the changed rule allows before 1.0, with what a project does about it.
         entry = self.entries()[0][1]
-        for words in ("Ratchet 0.5, computed from `ratchet.json`", "under a cap of 25", "No rule is added, changed or removed in this version.",
-                      "Added:", "`checks/upgrade.py`", "`UPGRADING.md`", "`experimental_cap`", "`D-2026-11-17-pull-and-budget`"):
+        for words in ("Ratchet 0.5, computed from `ratchet.json`", "under a cap of 25", "No rule is added or removed in this version, and one is changed.",
+                      "Added:", "`checks/upgrade.py`", "`UPGRADING.md`", "`experimental_cap`", "`D-2026-11-17-pull-and-budget`",
+                      "Changed:", "`ratchet.si-version`", "`D-2026-11-18-form-change-before-1-0`",
+                      "Changes of form:", "a required field", "A project whose checks are those in `.ratchet`"):
             self.assertIn(words, entry)
+        self.assertNotIn("No rule is added, changed or removed", entry)
         self.assertNotIn("nreleased", entry)
         # The release: release.py tags the merge and writes its one line, after every check it makes.
         self.tag_the_releases_before()
