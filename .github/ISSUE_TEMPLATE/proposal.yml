@@ -1,0 +1,38 @@
+name: Proposal
+description: Propose a change to Ratchet, from something that failed. Leave out anything that identifies a project, company or person, and any secret.
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: One to three sentences. The failure, where it was caught (review, experiment, main branch) and what it cost.
+    validations:
+      required: true
+  - type: textarea
+    id: failure-class
+    attributes:
+      label: Failure class
+      description: The kind of failure, in one sentence, general enough to recognize next time.
+    validations:
+      required: true
+  - type: textarea
+    id: ratchet
+    attributes:
+      label: Ratchet
+      description: The check that stops the failure from happening again. If no check can see it, the words text only, and the reason.
+    validations:
+      required: true
+  - type: textarea
+    id: other-projects
+    attributes:
+      label: Would it apply in other projects?
+      description: Yes or no, with one sentence why.
+    validations:
+      required: true
+  - type: textarea
+    id: primary-source
+    attributes:
+      label: Primary source
+      description: Where this comes from, at first hand, in your own words. A link to the original repo, document or talk, pinned to a commit or a date where you can. For a failure in your own project, say so, and give the evidence without anything that identifies the project.
+    validations:
+      required: true

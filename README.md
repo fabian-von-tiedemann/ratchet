@@ -118,7 +118,7 @@ An illustration, not a report from a real project. An agent writes "all tests pa
 
 ## Contributing
 
-A lesson from a project is welcome as a PR. It states what happened, the failure class, the ratchet and the result, with everything that identifies the project removed. See `ratchet.si-promote` in [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md). The working rules for this repo are in [AGENTS.md](AGENTS.md).
+A lesson from a project is welcome. It starts as an issue with the proposal form, which asks for what happened, the failure class, the ratchet, whether it would apply in other projects and the primary source, with everything that identifies the project removed. See [CONTRIBUTING.md](CONTRIBUTING.md) and `ratchet.si-promote` in [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md). The working rules for this repo are in [AGENTS.md](AGENTS.md).
 
 ## License
 
