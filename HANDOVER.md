@@ -16,7 +16,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
   4. After the code owner approves, a new push from the agents' account removes the approval.
 - **The agents' account merges, and waits on two approvals of the same head.** By [D-2026-11-17-agent-merges-after-approval](decisions/D-2026-11-17-agent-merges-after-approval.md) it merges a pull request with a squash, and with that head as the expected head, after the code owner has approved the head and a reviewer from another model family has passed it. A PR that changes only files in `decisions/` and this file, and changes no rule, check or register, needs no such reviewer ([D-2026-11-17-improvement-loop](decisions/D-2026-11-17-improvement-loop.md)). Auto-merge is not used. The ruleset on `main` refuses the merge without the code owner's approval of the latest push and `checks` green. Nothing stops the account from merging before the other review has passed, so `repo.agents-own-account` stays text only.
-- **The release of 0.4 waits on #12.** The release workflow from #9 is on `main`, and it tags and releases a new version when that version is merged. #12 raises the version to 0.4.
+- **A new version waits on a merge that raises it.** The release workflow from #9 tags and releases a version when the commit that raises `ratchet.json` to it reaches `main`. 0.4 was released that way on 2026-11-18, when #12 was merged, and a daily scheduled run turns red while any version that `main` has had lacks its tag or its release.
 - **A rule whose check is not built** stays "text only for now" in [REGISTER.md](REGISTER.md), and the register says what is missing.
 
 ## Who acts next
@@ -26,7 +26,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 
 ## Next step
 
-1. #12 is rebased on `main` and reviewed by a model from another family at its new head. The maintainer approves that head, and the agents' account merges it. The merge publishes 0.4.
-2. Then the build order after 0.4 from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): first the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Then the issue form for proposals, #23 together with the phases, and the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
+1. A follow-up to #12. Its last review found one nonblocking fault: a record file that holds a kind that is not a string makes `checks/expected_tests.py` raise `TypeError` instead of giving its diagnostic. The fix comes with a test of that input.
+2. The build order after 0.4 from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): first the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Then the issue form for proposals, #23 together with the phases, and the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search. A released changelog entry stays as it was released, so the first of these that needs an entry in the changelog raises the version to 0.5, and its merge publishes 0.5.
 
 Proposal (P), not decided by the maintainer: a secret scan for this repo, which issue #17 waits on, comes after these.
