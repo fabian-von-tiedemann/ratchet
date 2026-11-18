@@ -1,6 +1,6 @@
 {
   "project": "Ratchet",
-  "ratchet_version": "0.4",
+  "ratchet_version": "0.5",
   "adopted": [
     {
       "key": "ratchet.register-on-top",
@@ -81,7 +81,7 @@
     },
     {
       "key": "ratchet.si-version",
-      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules. A major version changes the form, renames keys or removes rules that a check now covers. Before 1.0, a minor version may rename keys, and the changelog lists every rename.",
+      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules. A major version changes the form, renames keys or removes rules that a check now covers. Before 1.0, a minor version may also rename keys and change the form, and the changelog lists every rename and every change of form.",
       "ratchet": "Check: the changelog has an entry for every tag",
       "source": "",
       "status": "built",

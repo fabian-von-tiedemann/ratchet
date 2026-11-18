@@ -16,7 +16,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
   4. After the code owner approves, a new push from the agents' account removes the approval.
 - **The agents' account merges, and waits on two approvals of the same head.** By [D-2026-11-17-agent-merges-after-approval](decisions/D-2026-11-17-agent-merges-after-approval.md) it merges a pull request with a squash, and with that head as the expected head, after the code owner has approved the head and a reviewer from another model family has passed it. The code owner's approval is the maintainer's click on GitHub, or the control room submits it with a token of the maintainer's own account on the maintainer's word in the control room's chat, only at a head that has passed that review or falls under the exception below ([D-2026-11-18-approve-on-word](decisions/D-2026-11-18-approve-on-word.md)). A PR that changes only files in `decisions/` and this file, and changes no rule, check or register, needs no such reviewer ([D-2026-11-17-improvement-loop](decisions/D-2026-11-17-improvement-loop.md)). Auto-merge is not used. The ruleset on `main` refuses the merge without the code owner's approval of the latest push and `checks` green. Nothing stops the account from merging before the other review has passed, or the control room from approving without the maintainer's word, so `repo.agents-own-account` stays text only.
-- **The release of 0.4 waits on #12.** The release workflow from #9 is on `main`, and it tags and releases a new version when that version is merged. #12 raises the version to 0.4.
+- **A new version waits on a merge that raises it.** The release workflow from #9 tags and releases a version when the commit that raises `ratchet.json` to it reaches `main`. 0.4 was released that way on 2026-11-18, when #12 was merged, and a daily scheduled run turns red while any version that `main` has had lacks its tag or its release.
 - **A rule whose check is not built** stays "text only for now" in [REGISTER.md](REGISTER.md), and the register says what is missing.
 
 ## Who acts next
@@ -26,7 +26,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 
 ## Next step
 
-1. #12 is rebased on `main` and reviewed by a model from another family at its new head. The maintainer approves that head, and the agents' account merges it. The merge publishes 0.4.
-2. Then the build order after 0.4 from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): first the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Then the issue form for proposals, #23 together with the phases, and the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
+1. 0.5 is released, with the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Its follow-ups are #33 and #35.
+2. Next in the build order from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): `CONTRIBUTING.md` and the issue form for proposals. Then #23 together with the phases, and then the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
 
 Proposal (P), not decided by the maintainer: a secret scan for this repo, which issue #17 waits on, comes after these.

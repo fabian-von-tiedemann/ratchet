@@ -1,0 +1,45 @@
+{
+  "version": "9.8",
+  "date": "2026-01-01",
+  "experimental_cap": 10,
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "sources": [],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "enforcement": "enforced",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.dropped-checked",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "Every day has a status.",
+      "ratchet": "Check: a lint of the daily status",
+      "source": "someone/somewhere `a-skill`"
+    },
+    {
+      "key": "ratchet.dropped",
+      "part": "one",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "Write a status every day.",
+      "ratchet": "Text only: a status is prose",
+      "source": ""
+    }
+  ]
+}

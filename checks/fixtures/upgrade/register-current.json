@@ -1,0 +1,14 @@
+{
+  "project": "the example project",
+  "ratchet_version": "9.9",
+  "adopted": [
+    {
+      "key": "ratchet.keep",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": "",
+      "status": "text only for now"
+    }
+  ],
+  "own": []
+}

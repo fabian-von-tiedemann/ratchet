@@ -172,7 +172,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 - **The outcomes come from the runner.** The runner's result class takes the outcomes from unittest's result object: passed, failed, errored, skipped, expected failure or unexpected success. When a test stops, the runner writes one record "outcome" for it, with every outcome unittest gave it while it ran, in order. So a test that fails and then errors in `tearDown`, or whose subtests fail twice, has one record, and a second record of one instance is always a problem. An outcome of a subtest is an outcome of its test. An outcome given outside the run of its test, such as one given to a test after it stopped, is a record of its own at once. An outcome of a `setUpClass`, `tearDownClass`, `setUpModule` or `tearDownModule` has an instance that was never collected and never started, and fails the run.
 - **The tests write only what they loaded.** A `FixtureTest` writes the fixture's name and the sha256 of the bytes it read, with the instance that was running. A load outside any test, as in `setUpClass`, does not count.
 - **The completion record.** After unittest has printed its summary, the runner writes one last record with the number of tests collected, of tests run, of outcomes and of loads. A child that exits early, with `sys.exit` anywhere, `os._exit`, a `KeyboardInterrupt` or another error the runner does not catch, or that is killed, leaves it out, and the check fails. A run that returns early writes it: under unittest's Ctrl-C handler, after `result.stop()` sets `shouldStop`, or with `failfast` after a failure. The tests it did not run were collected and have no start, and the check fails on each.
-- **Read strictly.** One JSON object per line, each ending in a line break, in UTF-8, parsed by the strict reader every check uses, `registry.strict_loads`: a field twice, `NaN` or `Infinity`, or a line nested too deeply is a problem, not a crash. Each kind of record has exactly its fields, each of its own form: an instance is a whole number from 1, the outcomes are a list of one or more of the six, a test is a name of one line with no lone surrogate, a fixture is a fixture's name, a sha256 is 64 lowercase hex digits. Anything else, a line cut off, a record after the completion record, a test collected after the run started, fails the run.
+- **Read strictly.** One JSON object per line, each ending in a line break, in UTF-8, parsed by the strict reader every check uses, `registry.strict_loads`: a field twice, `NaN` or `Infinity`, or a line nested too deeply is a problem, not a crash. The kind of a record is text, and its type is checked before the kind is looked up. Each kind of record has exactly its fields, each of its own form: an instance is a whole number from 1, the outcomes are a list of one or more of the six, a test is a name of one line with no lone surrogate, a fixture is a fixture's name, a sha256 is 64 lowercase hex digits. Anything else, a line cut off, a record after the completion record, a test collected after the run started, fails the run.
 - **The comparison.** The check fails on: an exit status other than 0, or a signal; no completion record, two of them, or counts that disagree with the records; a test that was collected and did not run; a test that ran and was not collected, which covers no fixture; a test whose outcomes are not exactly one "passed", or that started and has no outcome; a second outcome record of one instance, after which the instance does not count as passed; an id that ran more than once; an instance collected twice or started twice, a start or an outcome that names another test than its instance; a fixture that no test that passed loaded with the bytes it held before the run; a load of a fixture that does not exist, or of other bytes; a fixture that changed while the suite ran; a suite that ran no tests.
 - **The expected set.** The tests are the ones discover collects, and the fixtures are read from the directory, not from a list in a test and not from Markdown. Every file is one fixture. A file whose name starts with a dot, or holds a character other than letters, digits, `_`, `.` and `-`, fails, and so does a link.
 
@@ -187,7 +187,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | An expected failure | A test marked `expectedFailure` fails, which does not fail a unittest run. | `Runs.test_an_expected_failure_fails` | Fails |
 | A skip decorator on a class | Every test of the class is skipped. | `Runs.test_a_skip_decorator_on_a_class_fails` | Fails |
 | A module that fails to import | discover gives a test that errors in its place. | `Runs.test_a_module_that_fails_to_import_fails` | Fails |
-| The release steps | The release of 0.4 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
+| The release steps | The release of 0.5 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
 | A killed child | A test kills its own process. | `Runs.test_a_killed_child_fails` | Fails: the signal, no completion record, a test with no outcome |
 | A record of an unknown form | An unknown kind, an unknown or missing field, an instance that is not a whole number from 1, an unknown outcome, a sha256 or a name of another form, a line that is not one JSON object, a field twice, a line cut off, bytes that are not UTF-8. | `Records.test_a_record_of_a_form_the_check_does_not_know_fails` and the six after it | Fails |
 | A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | `Runs.test_a_complete_set_passes`, `Runs.test_every_way_of_loading_counts`, `Records.test_a_complete_run_passes` | Passes |
@@ -213,6 +213,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | Several outcomes while a test runs | A failure and an error in `tearDown`, or two failing subtests. | `Runs.test_a_test_with_several_outcomes_has_one_outcome_record` | Fails, with one outcome record |
 | A fixture changed after it was loaded | A test appends to a fixture, removes one, or adds one, after the loads. Finding 5 of round 1 of the new approach. | `Runs.test_a_fixture_changed_after_it_was_loaded_fails` | Fails: changed while the suite ran |
 | What was collected, out of order | A test collected twice, collected after the run started, or started under another test's number, or a count of collected tests that disagrees. | `Records.test_a_test_collected_twice_fails`, `Records.test_a_test_collected_after_the_run_started_fails`, `Records.test_a_start_of_another_test_than_its_collected_instance_fails`, `Records.test_counts_that_disagree_with_the_records_fail` | Fails |
+| A kind of record that is not text | A list, an object, a number, `true` or `null` as the kind. A list or an object raised `TypeError`, because the kind was looked up before its type was checked. | `Records.test_a_kind_of_record_that_is_not_text_fails`, `Records.test_a_value_of_any_json_type_in_any_field_gives_problems_and_no_exception` | Fails, with no crash |
 | Records that are not strict JSON | `NaN`, `Infinity`, a field twice, a line nested too deeply. | `Records.test_a_constant_that_is_not_json_fails`, `Records.test_a_field_twice_in_one_record_fails`, `Records.test_a_line_nested_too_deeply_fails` | Fails, with no crash |
 
 **Known limits.**
@@ -395,6 +396,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - such a file links to a local file that does not exist, with an inline link or with a link definition at the start of a line. Links to the web and links inside a page are not followed.
 - the first entry in the changelog is not the version in `ratchet.json`, or a heading of an entry is not of the form `## <version> (<date>)`
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
+- there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
@@ -431,7 +433,7 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of 0.4 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.4, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
+| The release of 0.5 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.5, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
 | After that release, a rule changed without a new version | Fails |
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
@@ -633,6 +635,81 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 - It trusts the history of `main` as the ruleset keeps it. An administrator who turns the ruleset off and force-pushes `main` could take a version out of that history.
 - `generate.py` and `check_register.py` read `version` in `ratchet.json` with the older form `^[0-9]+\.[0-9]+$`, so they accept `00.4`. Only the release script refuses it. Making `registry.py` as strict is a proposal (P) in the decision, not done here.
 - A workflow file on another branch can be changed by anyone who can push to it. The check of `GITHUB_REF` stops a mistake, not a change to the workflow or the script.
+
+## The budget
+
+`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)). It is 25: there were 20 experimental rules in `ratchet.json` at the commit on `main` that added that decision, and the decision put the cap at that number plus five.
+
+**What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when there are more experimental rules than the cap, so `generate.py --check` is red and nothing is generated. It fails the same way when the cap is missing, stands twice, or is anything but a whole number from 0: text, `true`, `2.0` or a negative number. The count of rules, in the README, `RATCHET.md`, `SELF-IMPROVEMENT.md` and the first entry of the changelog, states the cap.
+
+**Against which threat.** Ratchet grows a rule at a time until no one reads it. With the cap, a new experimental rule replaces, merges or removes one, or a decision raises the cap.
+
+**What it does not claim.** It does not count the core, which is frozen, and it does not judge whether a rule is worth its place. A PR can raise the cap in the same change that adds a rule. That is a change to `ratchet.json`, which the maintainer reads before it is merged (`ratchet.checks-owner-read`), and raising the cap is a decision.
+
+| Fixture | What is wrong | Result |
+|---|---|---|
+| `budget/at-cap.json` | Nothing. Two experimental rules under a cap of 2. | Passes |
+| `budget/over-cap.json` | Two experimental rules under a cap of 1. | Fails |
+| `budget/no-cap.json` | No cap. | Fails |
+| `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
+| `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
+
+The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 25, and one experimental rule over it fails the check.
+
+## upgrade.py
+
+```sh
+python3 .ratchet/checks/upgrade.py register.json --from .ratchet/from.json
+```
+
+This one checks no rule in a register. It is the upgrade path for a project ([UPGRADING.md](../UPGRADING.md)). `--from` is the `ratchet.json` of the version the register states, taken from its tag. `--source`, by default the `ratchet.json` next to the script, is the newer Ratchet.
+
+**What it claims.** It reads three data files strictly, and when they are valid it prints, rule by rule, what is different between the two versions of Ratchet and what the register must do about it:
+
+- a rule the register adopts that changed: which of its status, enforcement, rule, ratchet and source changed, and the entry to put in its place. The entry is the newer rule, character for character. It keeps the status and the place of the check when the rule still names a check, gets `text only for now` when its ratchet now names one, and loses both when it is text only now. When the ratchet of a rule marked `built` changed, it says to look at the check again.
+- a rule the register adopts that was removed: take it out of `adopted`, and, to keep it, add the printed entry to `own`. The entry is the older rule with only the fields of an own rule, `key`, `rule`, `ratchet` and `source`, so a status and a `where` are dropped. Its key is the prefix of the register's first own rule, or one made from the project's name, then a dot and the name in Ratchet's key, with `-2` and so on when that key is taken. A name that gives no prefix, or gives `ratchet`, gives `project`.
+- when every rule the register adopts was removed: adopt at least one rule, from the new rules, or from the rules to start with when there are no new ones, each printed with its entry. A register that adopts no rule does not pass `check_register.py`.
+- a new rule: the entry to add, if the project adopts it.
+- a rule that changed or was removed and is not adopted: its key, with nothing to do.
+- when the fields at the top of `ratchet.json` differ between the two versions: which are new, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack only the cap and may hold no field the newer one does not know, so a field can be new but not gone.
+
+Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. It writes nothing, and reads no file but the three it is given. It runs offline.
+
+**Against which threat.** A project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's.
+
+**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with four things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
+
+**What it does not claim.**
+
+- It does not find the latest version, and does not reach the network. It compares the files it is given.
+- It does not see that the file given with `--from` is the one at the tag. It checks that the register passes against it and that the version is older or the same, and that two files that name the same version have the same rules.
+- It does not see whether a check marked `built` exists or works.
+- It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
+- It does not say why a rule changed. The changelog of the newer Ratchet does.
+
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` and `v0.4`.
+
+| Case | Fixture | Result |
+|---|---|---|
+| Every kind of change: a rule reworded, one that now names a check, one that is now text only, one whose ratchet and source changed while its check is built, one removed, two new, and one changed and one removed that are not adopted | `register.json`, `old/ratchet.json`, `new/ratchet.json` | Passes, with a step for each, and an entry for `own` for the removed rule |
+| Each printed entry is the newer rule, with the status that holds | the same | Passes |
+| The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
+| Nothing is written | the same | Passes, every file as it was |
+| This repo's register at 0.3 and at 0.4, upgraded to this version | `released/0.3/`, `released/0.4/` | Passes |
+| An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
+| A register already on the newer version | `register-current.json` | Passes: nothing to change |
+| A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
+| A register on another version than the older `ratchet.json` | `register-other-version.json` | Fails |
+| A newer Ratchet that is older than the register | `register-current.json` with the two swapped | Fails |
+| A `ratchet.json`, older or newer, with a field twice, not JSON, not UTF-8, a field it does not know at the top or in a rule, a field missing, a character not on the list, a version that is a number, a key twice, a rule in a part that does not exist | `faults/` | Cannot run, with the fault named |
+| A file that does not exist, or no `--from` | none | Cannot run |
+| An older `ratchet.json` without the cap, as at `v0.3` and `v0.4`, and two with the same fields | `old-source-form/ratchet.json`, `released/`, and `old/ratchet.json` with the cap taken out in the test | Passes, with a note that `experimental_cap` is new, after the steps. With the same fields, no note |
+| A removed rule marked `built` with a `where`, and one whose key in `own` is taken, each kept in `own` by the printed entry | `removed/register.json`, `removed/old.json`, `removed/new.json` | Passes, with an entry that has the fields of an own rule only, and `-2` on the taken key |
+| The same, with an entry for `own` that keeps the status and the `where` | the same, with the entry changed in the test | Fails: no step is printed |
+| A register that adopts only rules that were removed | `removed/register-only-removed.json` | Passes, with the removals, the new rules and a step to adopt one |
+| The same, against a Ratchet with no new rule | the same, with the new rule left out in the test | Passes, with the rules to start with |
+| A register without own rules whose project name gives no prefix, or gives `ratchet` | the same, with the name changed in the test | Passes, with the prefix `project` |
+| A register that adopts no rule from Ratchet | `removed/register-adopts-nothing.json` | Fails: it does not pass against the version it states |
 
 ## Why JSON
 
