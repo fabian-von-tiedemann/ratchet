@@ -1722,7 +1722,7 @@ def run_api(args, state):
     elif re.match(r"^[a-z]+://", path):
         state.unreadable("gh api to another host")
         return
-    path = re.split(r"[?#]", path.lstrip("/"), 1)[0]
+    path = re.split(r"[?#]", path.lstrip("/"), maxsplit=1)[0]
     segments = [segment for segment in path.lower().split("/") if segment]
 
     def field(name):
