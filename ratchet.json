@@ -1,5 +1,5 @@
 {
-  "version": "0.5",
+  "version": "0.6",
   "date": "2026-11-18",
   "experimental_cap": 25,
   "start": [
@@ -48,6 +48,11 @@
       "id": "control-room",
       "file": "CONTROL-ROOM.md",
       "title": "The control room"
+    },
+    {
+      "id": "undo",
+      "file": "CONTROL-ROOM.md",
+      "title": "What can be undone"
     },
     {
       "id": "tightening",
@@ -512,6 +517,16 @@
       "rule": "Every message to the owner leads with what the owner must decide or do, in one sentence with a recommendation, before any background. If nothing is needed, it says so.",
       "ratchet": "Text only: messages pass no check",
       "source": ""
+    },
+    {
+      "key": "ratchet.irreversible-waits",
+      "part": "undo",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "An agent goes ahead with a step that can be undone, and waits for the owner on a step that cannot. Such a step goes ahead only with a recorded approval that names the step and the exact command. The project lists the steps. Ratchet's list is a force push, creating or deleting a tag, a release, deleting outside the working tree, and a change to the repository's settings.",
+      "ratchet": "Check: a hook in the agent's harness denies each listed step before it runs unless an approval names it, and denies a command it cannot read with certainty. It stands against an agent's mistake, not against an agent that writes its own approval or works around the hook",
+      "source": "",
+      "reference_check": "checks/irreversible.py"
     },
     {
       "key": "ratchet.si-harden",

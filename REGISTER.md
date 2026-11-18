@@ -4,7 +4,7 @@ Every rule in force in this project. This file takes precedence over all other t
 
 ## Rules from Ratchet
 
-Ratchet version: 0.5. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.6. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
@@ -22,6 +22,7 @@ Ratchet version: 0.5. The rows below are copied verbatim from Ratchet at that ve
 | ratchet.si-version | Ratchet is versioned `MAJOR.MINOR`\, with a git tag `vMAJOR.MINOR` and a changelog entry for each version\. A minor version adds or tightens rules\. A major version changes the form\, renames keys or removes rules that a check now covers\. Before 1\.0\, a minor version may also rename keys and change the form\, and the changelog lists every rename and every change of form\. | Check\: the changelog has an entry for every tag | — |
 | ratchet.si-maintainer-approves | Changes to Ratchet itself are proposed in PRs\, by people or by agents\, and approved by Ratchet\'s maintainer\, like any change to checks \(see `ratchet.checks-owner-read`\)\. | Check\: branch protection on Ratchet\'s main branch | — |
 | ratchet.expected-tests-ran | A suite of tests made from a source\, such as a table\, a spec or a directory of fixtures\, fails when a test it expects did not run and pass\. The expected tests are read from that same source\. The run fails when one of them is missing\, skipped\, errored or could not be prepared\, when the suite exits before it is done\, and when two tests run under one id\. Every row of the source has a test that goes red when that row\'s own check is removed\. | Check\: a step of its own runs the suite in a child process\, whose runner writes a record of every outcome and\, at the end\, a completion record\, and the step fails on each expected test that did not pass exactly once\. It catches tests dropped by mistake\. It does not stop test code written to defeat it\, which runs with the same rights\, so a change to the checks is read by the owner \(`ratchet.checks-owner-read`\)\. It does not see whether a test uses what it reads\: a mutation per row does\, as in `ratchet.test-can-fail` | — |
+| ratchet.irreversible-waits | An agent goes ahead with a step that can be undone\, and waits for the owner on a step that cannot\. Such a step goes ahead only with a recorded approval that names the step and the exact command\. The project lists the steps\. Ratchet\'s list is a force push\, creating or deleting a tag\, a release\, deleting outside the working tree\, and a change to the repository\'s settings\. | Check\: a hook in the agent\'s harness denies each listed step before it runs unless an approval names it\, and denies a command it cannot read with certainty\. It stands against an agent\'s mistake\, not against an agent that writes its own approval or works around the hook | — |
 
 ## Where each check stands
 
@@ -39,6 +40,7 @@ One row for each adopted rule whose ratchet starts with "Check:". The status is 
 | ratchet.si-version | built | `checks/released_text.py`\, run by `.github/workflows/checks.yml` on a checkout that holds the tags\. It also fails when a released changelog entry\, or the `ratchet.json` of a released version\, is not as it stood at its tag |
 | ratchet.si-maintainer-approves | text only for now | Pending setup\, as for `ratchet.one-approver` |
 | ratchet.expected-tests-ran | built | `checks/expected_tests.py`\, run by `.github/workflows/checks.yml` in a step of its own\. It runs the suite in a child process through `checks/suite_runner.py` |
+| ratchet.irreversible-waits | built | `checks/irreversible.py`\, run by `.claude/settings.json` before each command in a Claude Code session in this repo\. A session in another harness does not run it\, and the approvals file `.claude/ratchet-approvals.json` is kept out of the repo |
 
 ## The project's own rules
 

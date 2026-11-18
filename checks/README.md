@@ -6,6 +6,7 @@ Checks that Ratchet ships. Each one runs in this repo's CI ([checks.yml](../.git
 | Rule | Reference check |
 |---|---|
 | ratchet.register-on-top | [checks/check_register.py](check_register.py) |
+| ratchet.irreversible-waits | [checks/irreversible.py](irreversible.py) |
 | ratchet.expected-tests-ran | [checks/expected_tests.py](expected_tests.py) |
 <!-- /generated -->
 
@@ -187,7 +188,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | An expected failure | A test marked `expectedFailure` fails, which does not fail a unittest run. | `Runs.test_an_expected_failure_fails` | Fails |
 | A skip decorator on a class | Every test of the class is skipped. | `Runs.test_a_skip_decorator_on_a_class_fails` | Fails |
 | A module that fails to import | discover gives a test that errors in its place. | `Runs.test_a_module_that_fails_to_import_fails` | Fails |
-| The release steps | The release of 0.5 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
+| The release steps | The release of 0.6 on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
 | A killed child | A test kills its own process. | `Runs.test_a_killed_child_fails` | Fails: the signal, no completion record, a test with no outcome |
 | A record of an unknown form | An unknown kind, an unknown or missing field, an instance that is not a whole number from 1, an unknown outcome, a sha256 or a name of another form, a line that is not one JSON object, a field twice, a line cut off, bytes that are not UTF-8. | `Records.test_a_record_of_a_form_the_check_does_not_know_fails` and the six after it | Fails |
 | A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | `Runs.test_a_complete_set_passes`, `Runs.test_every_way_of_loading_counts`, `Records.test_a_complete_run_passes` | Passes |
@@ -433,7 +434,7 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of 0.5 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.5, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
+| The release of 0.6 on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before 0.5, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
 | After that release, a rule changed without a new version | Fails |
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
@@ -709,7 +710,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
 
-**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` and `v0.4`.
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3`, `v0.4` and `v0.5`.
 
 | Case | Fixture | Result |
 |---|---|---|
@@ -717,7 +718,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3 and at 0.4, upgraded to this version | `released/0.3/`, `released/0.4/` | Passes |
+| This repo's register at 0.3, at 0.4 and at 0.5, upgraded to this version | `released/0.3/`, `released/0.4/`, `released/0.5/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
@@ -732,6 +733,91 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | The same, against a Ratchet with no new rule | the same, with the new rule left out in the test | Passes, with the rules to start with |
 | A register without own rules whose project name gives no prefix, or gives `ratchet` | the same, with the name changed in the test | Passes, with the prefix `project` |
 | A register that adopts no rule from Ratchet | `removed/register-adopts-nothing.json` | Fails: it does not pass against the version it states |
+
+## irreversible.py
+
+```json
+{"hooks": {"PreToolUse": [{"matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit",
+  "hooks": [{"type": "command", "command": "python3", "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/irreversible.py"],
+             "onFailure": "block", "timeout": 30}]}]}}
+```
+
+The reference check for `ratchet.irreversible-waits`. It is a `PreToolUse` hook for Claude Code, as the [hooks reference](https://code.claude.com/docs/en/hooks) describes them: Claude Code runs it before each tool call that the matcher names, with the call as JSON on stdin. It exits 0 to let the call run, and 2, with the reason on stderr, to deny it. A project copies it to `.claude/hooks/` and wires it with [templates/claude-settings.json](../templates/claude-settings.json), as above. With `"onFailure": "block"`, which needs Claude Code 2.1.295 or later, a hook that is missing, cannot start, exits with another code or times out blocks the call as well. A crash inside the hook is caught and denies. This repo wires `checks/irreversible.py` in [.claude/settings.json](../.claude/settings.json).
+
+**What it claims.** For a Bash command, it exits 2 when the command takes one of five steps and no approval names that step and the exact command, or when it cannot read the command with certainty. Otherwise it exits 0, and it says nothing.
+
+| Step | What counts |
+|---|---|
+| `force-push` | `git push` with `--force`, `-f` alone or in a cluster such as `-uf`, `--force-with-lease`, `--force-if-includes`, `--mirror`, `--prune`, `--delete`, a refspec with `+` or with no source; `gh repo sync --force`; the GitHub API deleting a branch, or moving one with `force` |
+| `tag` | `git tag` that creates, moves or deletes; `git update-ref` on `refs/tags/`; `git push` with `--tags`, `--follow-tags`, `--mirror`, the keyword `tag`, a refspec under `refs/tags/`, or a short name that is a tag in the repository; the GitHub API on tags and on refs under `refs/tags/` |
+| `release` | `gh release` create, edit, upload, delete and delete-asset; the GitHub API under `releases` |
+| `delete-outside` | `rm`, `rmdir`, `unlink`, `shred`, `find -delete` or `find -exec rm`, `rsync --delete`, `git clean` and `git worktree remove`, when what they delete is outside the working tree, the working tree itself or its `.git` |
+| `settings` | `gh repo` edit, delete, rename, archive and unarchive, deploy keys and autolinks; `gh secret` and `gh variable` set and delete; `gh workflow` enable, disable and run; the GitHub API changing the repository itself or its rulesets, branch protection, collaborators, hooks, keys, environments, Pages, Actions settings, secrets, variables or tag protection, or starting a workflow, and any change under `orgs/`, `enterprises/` or `teams/` |
+
+A command it cannot read with certainty is denied as `unreadable`, and no approval reaches it. That is so for: a program, a git or gh subcommand, an option of push or tag, a refspec, a method or an endpoint of `gh api` for a change, or a path to delete, that is not plain text, such as a variable, a substitution, `$'...'` with an escape, a brace expansion or `~user`; `eval`, `sh -c`, `bash -lc` and every shell that reads its commands from a string or from standard input; `watch`, `ssh` with a command, `su`, `chroot`, `parallel` and the like; `alias`, `case`, `for ((...))`, a here-document that is not quoted and runs a substitution; `git -c` with any setting outside a short list that cannot change a push, a tag or a clean, `git config` that writes an alias, a remote, a push setting or an include, a git subcommand it does not know, which may be an alias, a `GIT_` variable that changes where git works, an option of git or of push it does not know; `gh alias set`, an extension or a gh command it does not know; `gh api` with a method override header, a GraphQL mutation, or a query from a file; `xargs` in front of a deletion or a git command; `find -L` that deletes; a pattern before the last part of a path to delete, or one with `[`; a relative path to delete after `cd` to a directory that is not plain text; and a command that makes a link with `ln` and deletes.
+
+It follows the shell's quoting: `'git'`, `g'i't`, `\git` and `"push"` are read as git and push, `#` starts a comment only at the start of a word, and text in a quoted here-document or in one argument, such as a commit message, is not a command. It reads every command of a chain or a pipeline, across `;`, `&&`, `||`, `|`, `&`, newlines, subshells, groups, `if`, `while` and `for`, and the commands inside `$(...)`, backticks, `<(...)` and the action of `trap`. It looks through `env`, `command`, `builtin`, `exec`, `nohup`, `nice`, `time`, `timeout`, `sudo`, `doas`, `stdbuf`, `caffeinate`, `busybox` and an absolute or `~` path to the program. Any other program counts as running its arguments when one of them is git, gh, a deletion, a shell or a wrapper, so `ssh host rm -rf /x` and `foo git push -f` are denied. It reads `cd` and `pushd`, and `git -C` and `env -C`: a relative path to delete must be inside for every directory the command may be in at that point.
+
+For the file tools `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, it exits 2 when the path is the approvals file, and 0 otherwise. Every other tool exits 0. Input it cannot read, such as JSON that is not strict, or a call without a command or an absolute `cwd`, is denied.
+
+**Against which threat.** An agent's mistake: a force push it believes is harmless, a tag or a release it was not asked for, a `rm -rf` on the wrong directory, a change of a setting, or one of those hidden in a chain, a wrapper or a quoted program name. A step that cannot be undone then waits for the owner's word, and a mistake can be undone.
+
+**What it does not claim.**
+
+- It does not stand against an agent that means to get round it. Such an agent can write the approvals file another way, edit the settings that run the hook, run the step from a script, a Makefile, a git hook or another language such as Python, or ask a tool that is not Bash. The hook guards the shell the agent uses. Its settings and the hook itself are files a change to the checks covers (`ratchet.checks-owner-read`).
+- It reads one command line, not the files it runs: a script, a sourced file, a Makefile or a program's own configuration is not read. A git configuration set before the session, such as `remote.origin.mirror` or `push.followTags`, is not read either.
+- It does not see a step outside its list: `git reset --hard`, overwriting a file with `>`, `cp` or `mv`, dropping a stash, a migration of a database, a message sent, a payment. A project that needs more lists more.
+- It resolves links as they stand when it runs. A link that another program in the same command makes or moves before the deletion is not seen, except one made with `ln`.
+- Which step a denial names can be wider than what the command does: a short name pushed from a directory it cannot see, or a deletion on the remote by a short name, may be named as a tag. Only the label changes. The command is denied either way.
+- It is a hook in one harness. A session in another harness, or a person at the terminal, does not run it.
+
+**The working tree.** The directory in `CLAUDE_PROJECT_DIR`, the project root where the session started, or the `cwd` of the call when that is not set. Its `.git` is outside. A path is resolved through the links that exist, and the last part of a path is the entry itself, so `rm -rf link` removes a link inside, and `rm -rf link/` and `rm -rf link/sub` follow it.
+
+**Temporary directories.** The main deletion outside the working tree that an agent needs is its own temporary directory from `mktemp -d`. Two forms pass:
+
+- In the same command, `rm -rf "$d"`, when `d` is assigned `$(mktemp -d)`, or the same in backticks or in quotes, by a command of its own at the top of the line, first in its chain and not in the background or a pipeline, before the deletion, and `d` is assigned nowhere else: not in a loop, by `read`, `export`, `unset`, `${d:=...}`, a prefix or a trap. The word must be exactly `"$d"`, quoted. Then `d` holds the new directory, or nothing when `mktemp` failed, and `rm -rf ""` deletes nothing. A line with a function, an arithmetic command, `source` or `eval` gets no such exemption.
+- In a later command, by its path: a directory directly in the temporary directory, `$TMPDIR`, Python's `tempfile.gettempdir()` or `/tmp`, whose name is `tmp.` and six or more letters and digits, as `mktemp -d` names it, that is a directory and not a link, and that belongs to the user who runs the hook, and anything inside it after links are resolved.
+
+What that costs: a directory of that name that another session of the same user made can be deleted too. It does not reach the temporary directory itself, a link of that name, or a directory under another name.
+
+**The approvals.** `.claude/ratchet-approvals.json` in the project directory, kept out of the repo. The owner writes it. It is read strictly, as every data file here: strict UTF-8, strict JSON, no field twice, no field it does not know, and every value of its form. One problem anywhere in the file, and it approves nothing.
+
+```json
+{
+  "approvals": [
+    {"step": "tag", "command": "git tag v2", "until": "2026-11-30", "reason": "The owner asked for the tag on 2026-11-18."}
+  ]
+}
+```
+
+- `step` is one of the five steps, and an entry names exactly one. A command that takes two steps needs an entry for each.
+- `command` is the exact text of the command that the agent runs, compared character for character. It is one plain command: printable ASCII, with none of `;`, `&`, `|`, `<`, `>`, `(`, `)`, `$`, a backtick, `\`, `#` and `*`, no newline and no space at its ends, and the hook must read it as that step and only that step. So an approval cannot cover a chain, a substitution or a command that cannot be read.
+- `until` is the last day it holds, as `YYYY-MM-DD`, by the date of the machine.
+- `reason` says why, in printable ASCII, and is not empty.
+
+When an approval holds, the command runs every time until that day. The owner takes it out once it is used.
+
+**The cases.** Each is a fixture under [fixtures/irreversible/](fixtures/irreversible/), one command a file, run by [test_irreversible.py](test_irreversible.py) in a process of its own, as Claude Code runs the hook, on a scratch working tree that is a git repository with a tag `v1` and a link inside it that points outside.
+
+| Case | Fixtures | Result |
+|---|---|---|
+| A force push in every form: `--force`, `-f`, `-uf`, `--force-with-lease` with and without a value, `+main`, `+HEAD:refs/heads/main`, `--mirror`, `--delete`, `:feature`, `--prune`, `gh repo sync --force`, the API moving a branch with `force` | `deny/fp-*` | Denied: `force-push` |
+| The same hidden: quoted, `g'i't`, `\git`, an absolute path, `git -C`, `env`, `env -i`, `command`, `nohup timeout`, after `;`, `&&`, `\|\|`, a newline, in a pipeline, a subshell, a group, `if`, a function, `$(...)`, backticks, `<(...)` and `trap` | `deny/fp-*` | Denied: `force-push` |
+| A tag: created, annotated, moved, deleted, by `update-ref`, pushed with `--tags`, `--follow-tags`, by name, with `tag`, as `refs/tags/`, as a target, as a pattern, deleted with `:refs/tags/v1` and `--delete`, by the API | `deny/tag-*` | Denied: `tag` |
+| A release: created, from an absolute path to gh, edited, uploaded to, deleted, by the API with and without `--method` | `deny/release-*` | Denied: `release` |
+| A deletion outside: `../x`, `/etc/x`, `/`, `~/x`, `.git`, `.`, `.*`, `../*`, after `cd ..` and `cd /tmp`, through a link with and without `/`, `rmdir`, `unlink`, `shred`, `find -delete`, `find -exec rm`, `rsync --delete`, `git -C .. clean`, `git worktree remove`, `sudo rm`, `trap` | `deny/del-*` | Denied: `delete-outside` |
+| A change of settings: `gh api` PATCH, attached `-XPATCH`, `--method=PUT` on branch protection, DELETE of a ruleset, an implied POST, a full URL, from `~/.local/bin/gh`, a workflow dispatch; `gh repo` edit, delete, rename, archive; `gh secret set`, `gh variable delete`, a deploy key | `deny/set-*` | Denied: `settings` |
+| What cannot be read: a program or subcommand from a substitution or a variable, `eval`, `sh -c`, `bash -lc`, `sh` reading a here-document or a pipe, `alias`, `$'\x67it'`, `=git`, `git -c alias.*`, `git config alias.*` with its use, `git config remote.*.push`, `git -c remote.*.mirror`, `GIT_DIR=`, an unknown git option, `gh alias set`, an unknown gh command, `X-HTTP-Method-Override`, a method from a variable, a GraphQL mutation or a query from a file, `rm` of `"$HOME/x"`, of a substitution, of `{../x,y}`, of an assigned variable, of `"$d"/..`, of `$d` unquoted, of a reassigned or looped `d`, a link made with `ln`, `xargs rm`, `case`, a quotation mark not closed, `cd "$x"` | `deny/un-*` | Denied: `unreadable` |
+| The approvals file: written, read, after `cd .claude`, from Python, by a path with a variable | `deny/appr-*` | Denied: `approvals` |
+| The control room's work: a push of a branch, of `HEAD`, a plain push, `--dry-run`, fetching tags, listing tags, a commit whose message names steps, `gh pr create`, `gh api` reads, editing a PR, the PUT merge, a comment, accepting an invitation, a GraphQL query, `gh release view`, `gh pr merge`, `mktemp -d` used and deleted in one line, with `trap` and with backticks, deletions inside, `git clean`, `git branch -D`, a template of the same name as the approvals file | `pass/ok-*` | Passes |
+| Each step with an approval that names it and its exact command | `approved/<step>/` | Passes. The same approval does not reach the command with a space added, or after `true &&` |
+| An approvals file with a field it does not know, at the top or in an entry, a field twice, not JSON, not UTF-8, approvals that are not a list, a top that is not an object, an unknown step, a step that is not the command's, a date of another form, an impossible date, a date as a number, a command with `;` or `$(...)`, an entry twice, an empty reason, a reason that is not ASCII | `approvals/*.json` | Denied, with the problem named |
+| An approval that has expired, or names another command, or the command with two spaces | `approvals/expired.json`, `command-other.json`, `command-extra-space.json` | Denied |
+| An approval for a command that cannot be read | none, in the test | Denied: `unreadable`, and the approval is a problem of the file |
+| A directory from `mktemp -d`, deleted by its path, in a later command, or something inside it | none, in the test | Passes. Its parent, `..` from it, a directory of another name and a link of that name are denied |
+| The file tools on the approvals file, on a file of the same name elsewhere, and `Read` | none, in the test | Denied for the approvals file, otherwise passes |
+| Input that is not JSON, not UTF-8, has a field twice, is not an object, has no tool, no command, a command that is not text, no `cwd`, a relative `cwd`, a file tool with no path | none, in the test | Denied: `input` |
+| The settings in the template and in this repo, and the template's approvals file | `templates/claude-settings.json`, `.claude/settings.json`, `templates/ratchet-approvals.json` | The hook is wired for the five tools, with `onFailure` block. The approvals file is valid and approves nothing |
 
 ## Why JSON
 

@@ -34,7 +34,7 @@ One person who decides, several coding agents, and a repo that has to last. Ratc
 ## Where it stands
 
 <!-- generated:count -->
-Ratchet 0.5, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 21 experimental rules, under a cap of 25: 10 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 22 experimental rules, under a cap of 25: 11 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 Most of Ratchet is still text. The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below. Each one runs in this repo's CI and has a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until the check exists, the rule is text only in your project, and your register says so.
@@ -43,6 +43,7 @@ Most of Ratchet is still text. The share is stated with every version in the [ch
 | Rule | Reference check |
 |---|---|
 | ratchet.register-on-top | [checks/check_register.py](checks/check_register.py) |
+| ratchet.irreversible-waits | [checks/irreversible.py](checks/irreversible.py) |
 | ratchet.expected-tests-ran | [checks/expected_tests.py](checks/expected_tests.py) |
 <!-- /generated -->
 
@@ -52,7 +53,7 @@ Most of Ratchet is still text. The share is stated with every version in the [ch
 - [ratchet.json](ratchet.json): every rule as data. The tables in the markdown files are generated from it. It caps the number of experimental rules, and raising the cap is a decision.
 - [checks/](checks/): the reference checks and the generator, in Python with no dependencies.
 - [GLOSSARY.md](GLOSSARY.md): the terms Ratchet uses.
-- [templates/](templates/): `AGENTS.md`, `register.json`, `DECISION.md`, `GLOSSARY.md`, `LESSON.md`, `SOURCE.md` (for a skill copied from another repo), `ratchet-checks.yml` and `CONTROL-ROOM-HANDBOOK.md`.
+- [templates/](templates/): `AGENTS.md`, `register.json`, `DECISION.md`, `GLOSSARY.md`, `LESSON.md`, `SOURCE.md` (for a skill copied from another repo), `ratchet-checks.yml`, `CONTROL-ROOM-HANDBOOK.md`, and `claude-settings.json` with `ratchet-approvals.json` for the hook of `ratchet.irreversible-waits`.
 - [MIGRATING.md](MIGRATING.md): how to move a register written for 0.2.
 - [UPGRADING.md](UPGRADING.md): how to move a register to a newer version, with `checks/upgrade.py`.
 - [CHANGELOG.md](CHANGELOG.md).
@@ -71,7 +72,7 @@ Run these in the root of your own repo. If you followed 0.2, read [MIGRATING.md]
 1. Fetch Ratchet at the version you follow into `.ratchet`, and keep it out of your repo.
 
    ```sh
-   git clone --branch v0.5 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git clone --branch v0.6 https://github.com/fabian-von-tiedemann/ratchet .ratchet
    echo ".ratchet/" >> .gitignore
    ```
 

@@ -42,6 +42,24 @@ The owner does not read every PR. Code is merged on green checks and a passed re
 | ratchet.cr-lead-with-ask | Every message to the owner leads with what the owner must decide or do\, in one sentence with a recommendation\, before any background\. If nothing is needed\, it says so\. | Text only\: messages pass no check | — |
 <!-- /generated -->
 
+## What can be undone
+
+More autonomy is safe where a mistake can be undone. An agent goes ahead with what it can take back, and waits for the owner on what it cannot. The rule below names the steps, and its reference check stops them.
+
+<!-- generated:table undo -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.irreversible-waits | An agent goes ahead with a step that can be undone\, and waits for the owner on a step that cannot\. Such a step goes ahead only with a recorded approval that names the step and the exact command\. The project lists the steps\. Ratchet\'s list is a force push\, creating or deleting a tag\, a release\, deleting outside the working tree\, and a change to the repository\'s settings\. | Check\: a hook in the agent\'s harness denies each listed step before it runs unless an approval names it\, and denies a command it cannot read with certainty\. It stands against an agent\'s mistake\, not against an agent that writes its own approval or works around the hook | — |
+<!-- /generated -->
+
+The reference check is [checks/irreversible.py](checks/irreversible.py), a hook that Claude Code runs before each command. A project adopts it like this:
+
+1. Copy the hook to `.claude/hooks/irreversible.py` and [templates/claude-settings.json](templates/claude-settings.json) to `.claude/settings.json`, or add its hook to the settings you have. The settings block the command when the hook fails to run, so a missing or broken hook stops work instead of letting it through.
+2. Add `/.claude/ratchet-approvals.json` to `.gitignore`. The approvals stay on the machine, out of the repo.
+3. When the owner approves a step, the owner writes it into `.claude/ratchet-approvals.json`, in the form of [templates/ratchet-approvals.json](templates/ratchet-approvals.json): one entry per step, with the step, the exact command, the last day it holds and a reason. The hook refuses to let an agent write that file.
+
+What the hook denies, what it lets through and what it does not see are in [checks/README.md](checks/README.md#irreversiblepy).
+
 ## The review script
 
 `ratchet.cr-review` leans on the review script, like three rules in the core. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).

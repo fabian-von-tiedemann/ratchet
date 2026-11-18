@@ -1,6 +1,6 @@
 {
   "project": "Ratchet",
-  "ratchet_version": "0.5",
+  "ratchet_version": "0.6",
   "adopted": [
     {
       "key": "ratchet.register-on-top",
@@ -102,6 +102,14 @@
       "source": "",
       "status": "built",
       "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in a step of its own. It runs the suite in a child process through `checks/suite_runner.py`"
+    },
+    {
+      "key": "ratchet.irreversible-waits",
+      "rule": "An agent goes ahead with a step that can be undone, and waits for the owner on a step that cannot. Such a step goes ahead only with a recorded approval that names the step and the exact command. The project lists the steps. Ratchet's list is a force push, creating or deleting a tag, a release, deleting outside the working tree, and a change to the repository's settings.",
+      "ratchet": "Check: a hook in the agent's harness denies each listed step before it runs unless an approval names it, and denies a command it cannot read with certainty. It stands against an agent's mistake, not against an agent that writes its own approval or works around the hook",
+      "source": "",
+      "status": "built",
+      "where": "`checks/irreversible.py`, run by `.claude/settings.json` before each command in a Claude Code session in this repo. A session in another harness does not run it, and the approvals file `.claude/ratchet-approvals.json` is kept out of the repo"
     }
   ],
   "own": [
