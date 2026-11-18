@@ -34,7 +34,7 @@ One person who decides, several coding agents, and a repo that has to last. Ratc
 ## Where it stands
 
 <!-- generated:count -->
-Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 22 experimental rules, under a cap of 25: 11 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 25 experimental rules, under a cap of 25: 11 name a check and 14 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 Most of Ratchet is still text. The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below. Each one runs in this repo's CI and has a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until the check exists, the rule is text only in your project, and your register says so.

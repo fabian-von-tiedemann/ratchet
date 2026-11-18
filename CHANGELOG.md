@@ -3,14 +3,15 @@
 ## 0.6 (2026-11-18)
 
 <!-- generated:count -->
-Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 22 experimental rules, under a cap of 25: 11 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 25 experimental rules, under a cap of 25: 11 name a check and 14 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
-One rule is added in this version, and none is changed or removed. The form of `ratchet.json` does not change. The rule comes from the decisions `D-2026-11-17-knowledge-and-modes`, item 1, and `D-2026-11-17-harness-sandbox-risk`, item 1.
+Four rules are added in this version, and none is changed or removed. The form of `ratchet.json` does not change. The rules come from the decisions `D-2026-11-17-knowledge-and-modes`, items 1 and 4, and `D-2026-11-17-harness-sandbox-risk`, item 1, and they bring the rules outside the core to the cap of 25.
 
 Added:
 
 - `ratchet.irreversible-waits`, experimental, in a new part of `CONTROL-ROOM.md`, "What can be undone": an agent goes ahead with a step that can be undone and waits for the owner on one that cannot, unless a recorded approval names the step and the exact command. Its reference check, `checks/irreversible.py`, is a hook that Claude Code runs before each command. It denies a force push, creating or deleting a tag, a release, deleting outside the working tree and a change to the repository's settings, with exit code 2 and the reason, unless `.claude/ratchet-approvals.json` approves that step for that command until a given day. It denies, and never lets an approval reach, a command it cannot read with certainty, and a command or a file tool that may lead to the approvals file. It stands against an agent's mistake, not against an agent that means to get round it. See [checks/README.md](checks/README.md#irreversiblepy).
+- `ratchet.phase-explore`, `ratchet.phase-build` and `ratchet.phase-run`, experimental and text only, in a new part of `CONTROL-ROOM.md`, "The phases": what an agent may do in each phase of a work package, and what ends the phase. Explore changes nothing that others rely on, build works on one approved work package and merges on green checks and a passed review, and run operates what is merged and sends a fix back to build.
 - `templates/claude-settings.json` and `templates/ratchet-approvals.json`: the settings that run a copy of the hook in a project, and block the command when the hook fails to run, and an approvals file that approves nothing.
 
 ## 0.5 (2026-11-18)

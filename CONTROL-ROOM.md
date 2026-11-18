@@ -60,6 +60,18 @@ The reference check is [checks/irreversible.py](checks/irreversible.py), a hook 
 
 What the hook denies, what it lets through and what it does not see are in [checks/README.md](checks/README.md#irreversiblepy).
 
+## The phases
+
+A work package is in one of three phases at a time: explore, build or run. The phase is named in the package's issue. Each phase says what an agent may do in it and what ends it.
+
+<!-- generated:table phases -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.phase-explore | In explore\, an agent reads\, searches and tries things out in scratch space\, and writes what it finds as proposals and questions\. It changes nothing that others rely on\: it does not merge\, release or change the register\. Explore ends when the owner picks a proposal to build\, or drops it\. | Text only\: a check cannot tell which phase a session is in | — |
+| ratchet.phase-build | In build\, an agent works on one work package that the owner approved\, on its own branch\, and changes only the files the package names\. It opens a PR\, and merges it only when the checks are green and the review has passed\. Build ends when the PR is merged\, or when the package\'s stop rule is reached\. | Text only\: a check cannot tell which phase a session is in\. The required checks and the review on the PR guard the merge | — |
+| ratchet.phase-run | In run\, an agent operates what is merged\: it watches it\, reports on it\, and undoes a change that fails\. A fix\, or anything new\, goes back to build as a work package\. Run ends when the owner retires what runs\, or opens a new phase\. | Text only\: a check cannot tell which phase a session is in | — |
+<!-- /generated -->
+
 ## The review script
 
 `ratchet.cr-review` leans on the review script, like three rules in the core. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).

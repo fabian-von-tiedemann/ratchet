@@ -55,6 +55,11 @@
       "title": "What can be undone"
     },
     {
+      "id": "phases",
+      "file": "CONTROL-ROOM.md",
+      "title": "The phases"
+    },
+    {
       "id": "tightening",
       "file": "SELF-IMPROVEMENT.md",
       "title": "How Ratchet tightens over time"
@@ -527,6 +532,33 @@
       "ratchet": "Check: a hook in the agent's harness denies each listed step before it runs unless an approval names it, and denies a command it cannot read with certainty. It stands against an agent's mistake, not against an agent that writes its own approval or works around the hook",
       "source": "",
       "reference_check": "checks/irreversible.py"
+    },
+    {
+      "key": "ratchet.phase-explore",
+      "part": "phases",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "In explore, an agent reads, searches and tries things out in scratch space, and writes what it finds as proposals and questions. It changes nothing that others rely on: it does not merge, release or change the register. Explore ends when the owner picks a proposal to build, or drops it.",
+      "ratchet": "Text only: a check cannot tell which phase a session is in",
+      "source": ""
+    },
+    {
+      "key": "ratchet.phase-build",
+      "part": "phases",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "In build, an agent works on one work package that the owner approved, on its own branch, and changes only the files the package names. It opens a PR, and merges it only when the checks are green and the review has passed. Build ends when the PR is merged, or when the package's stop rule is reached.",
+      "ratchet": "Text only: a check cannot tell which phase a session is in. The required checks and the review on the PR guard the merge",
+      "source": ""
+    },
+    {
+      "key": "ratchet.phase-run",
+      "part": "phases",
+      "status": "experimental",
+      "enforcement": "text-only",
+      "rule": "In run, an agent operates what is merged: it watches it, reports on it, and undoes a change that fails. A fix, or anything new, goes back to build as a work package. Run ends when the owner retires what runs, or opens a new phase.",
+      "ratchet": "Text only: a check cannot tell which phase a session is in",
+      "source": ""
     },
     {
       "key": "ratchet.si-harden",

@@ -341,13 +341,14 @@ class ReleaseSteps(unittest.TestCase):
         self.assertEqual((code, output), (0, release.release_text(self.version, test_release.REPO) + "\n"))
         # release.py reads only the headings of the changelog. It finds this version first, and nothing newer.
         self.assertEqual(release.changelog_versions(self.changelog), [version for version, _ in self.entries()])
-        # What the entry of 0.6 says: the rule it adds, with its reference check and the decisions it comes from, and
+        # What the entry of 0.6 says: the rules it adds, the reference check of one, the decisions they come from, and
         # that the form of ratchet.json does not change.
         entry = self.entries()[0][1]
         for words in ("Ratchet 0.6, computed from `ratchet.json`", "under a cap of 25", "none is changed or removed",
                       "The form of `ratchet.json` does not change.", "Added:", "`ratchet.irreversible-waits`",
                       "`checks/irreversible.py`", "`D-2026-11-17-knowledge-and-modes`", "`D-2026-11-17-harness-sandbox-risk`",
-                      "`templates/claude-settings.json`", "`templates/ratchet-approvals.json`"):
+                      "`templates/claude-settings.json`", "`templates/ratchet-approvals.json`",
+                      "`ratchet.phase-explore`", "`ratchet.phase-build`", "`ratchet.phase-run`", "items 1 and 4"):
             self.assertIn(words, entry)
         self.assertNotIn("Changes of form:", entry)
         self.assertNotIn("nreleased", entry)
