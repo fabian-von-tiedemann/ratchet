@@ -17,7 +17,7 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 
 - The core, the six parts of [RATCHET.md](RATCHET.md), is frozen: no rule is added to it or removed from it without the maintainer's decision. A new rule is a proposal (P) for the maintainer and starts as experimental.
 - The work now is turning rules that are text only into reference checks, one at a time, each with a fixture it fails on.
-- The maintainer approves decisions, tags and releases. An agent proposes and opens a PR. It does not tag, release or change the repository's settings.
+- The maintainer approves decisions, tags and releases. An agent proposes, opens a PR and merges it once the code owner has approved its exact head. It does not tag, release or change the repository's settings.
 
 ## How to change a rule
 
@@ -59,7 +59,9 @@ Show the commands and their results in the PR (`ratchet.evidence-before-done`).
 
 `main` takes changes only through pull requests. A pull request needs the job `checks` green and the approval of the code owner, who is the maintainer ([.github/CODEOWNERS](.github/CODEOWNERS)). Administrators are exempt from the protection, so that the one maintainer can merge their own changes ([D-2026-11-16-code-owner](decisions/D-2026-11-16-code-owner.md)).
 
-Agents contribute through a machine account of their own with write access. It opens pull requests. It does not approve or merge one. That is an instruction and not a lock: an account with write access is able to merge once the requirements are met. What the protection makes sure of is that the code owner has approved the latest change. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given.
+Agents contribute through a machine account of their own with write access. It opens pull requests and does not approve one. It merges a pull request only after the code owner has approved its exact head, and after a reviewer from another model family has passed that same head, except for a pull request that changes only files in `decisions/` and [HANDOVER.md](HANDOVER.md), and changes no rule, check or register ([D-2026-11-17-improvement-loop](decisions/D-2026-11-17-improvement-loop.md)). It merges with a squash and with the approved head as the expected head, so that GitHub refuses the merge if anything was pushed after the approval ([D-2026-11-17-agent-merges-after-approval](decisions/D-2026-11-17-agent-merges-after-approval.md)). Auto-merge is not used.
+
+What the protection makes sure of is that the code owner has approved the latest change and that the job `checks` is green. An approval from the agents' account does not count as the code owner's, and a new push dismisses an approval already given. That the account waits for the review from another model family is an instruction and not a lock.
 
 The account exists and has the role Write. The protection is the ruleset that guards `main`, which requires the code owner's review and the job `checks` and refuses force pushes and deletion. Both were read back on 2026-11-17. A test pull request (#1, closed unmerged) showed the same day that a new push dismisses the code owner's approval. Until every step that [HANDOVER.md](HANDOVER.md) names has been tried and recorded, [REGISTER.md](REGISTER.md) lists the rules that lean on them as "text only for now".
 
