@@ -40,6 +40,9 @@ import tempfile
 STEPS = ("force-push", "tag", "release", "delete-outside", "settings")
 APPROVALS = os.path.join(".claude", "ratchet-approvals.json")
 FILE_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
+# The second root of own_temporary, after the directory where mktemp -d writes. A test puts a directory of its own in
+# its place. Nothing in a call, its JSON or its environment, can change it.
+SECOND_ROOT = "/tmp"
 # An approved command is one plain line: printable ASCII without the marks that chain, redirect or substitute.
 PLAIN = re.compile(r"^[!-~](?:[ -~]*[!-~])?\Z")
 NOT_PLAIN = set(";&|<>()$`\\")
@@ -458,7 +461,7 @@ def own_temporary(cwd, word):
     before any link is followed: none may be a link, "." or "..". A part that does not exist ends the walk, since
     nothing below it exists either."""
     parts = [part for part in os.path.join(cwd, os.path.expanduser(word)).split("/") if part]
-    for root in (mktemp_directory(), "/tmp"):
+    for root in (mktemp_directory(), SECOND_ROOT):
         if root is None:
             continue
         for form in set((os.path.abspath(root), os.path.realpath(root))):

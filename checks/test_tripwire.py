@@ -14,6 +14,7 @@ import datetime
 import json
 import os
 import random
+import re
 import shutil
 import string
 import subprocess
@@ -241,17 +242,30 @@ class Tripwire(FixtureTest):
         return tripwire.decide(call, {"CLAUDE_PROJECT_DIR": self.tree}, datetime.date.today())
 
     def mktemp_in_tmp(self):
-        """A real directory that mktemp -d makes directly in /tmp, of mktemp -d's own form, removed after the test."""
-        made = subprocess.run(["mktemp", "-d", "/tmp/tmp.XXXXXXXXXX"], stdout=subprocess.PIPE, universal_newlines=True,
-                              check=True).stdout.strip()
-        self.addCleanup(shutil.rmtree, made, True)
-        self.assertRegex(made, r"^/tmp/tmp\.[A-Za-z0-9]{10}$")
+        """A real directory that mktemp -d makes directly in the second root, of mktemp -d's own form, removed after
+        the test. The second root is /tmp in the hook. Here it is a fresh directory from mktemp -d, put in place of
+        /tmp for this test only, so that the test needs no write to /tmp and runs in a sandbox that refuses one."""
+        root = os.path.realpath(subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True,
+                                               check=True).stdout.strip())
+        self.addCleanup(shutil.rmtree, root, True)
+        replaced = mock.patch.object(tripwire, "SECOND_ROOT", root)
+        replaced.start()
+        self.addCleanup(replaced.stop)
+        made = subprocess.run(["mktemp", "-d", os.path.join(root, "tmp.XXXXXXXXXX")], stdout=subprocess.PIPE,
+                              universal_newlines=True, check=True).stdout.strip()
+        self.assertRegex(made, r"^%s/tmp\.[A-Za-z0-9]{10}$" % re.escape(root))
         return made
+
+    def test_the_second_root_is_tmp(self):
+        # The tests above put a directory of their own in place of /tmp. The hook itself trusts /tmp, a constant that
+        # nothing in the call, its JSON or its environment, can change.
+        self.assertEqual(tripwire.SECOND_ROOT, "/tmp")
 
     def test_on_macOS_a_system_temporary_directory_it_cannot_establish_is_not_trusted(self):
         # On macOS the hook reads where mktemp -d writes from confstr(_CS_DARWIN_USER_TEMP_DIR). When that fails, or
         # gives no absolute path of an existing directory, no directory takes its place: not TMPDIR, which the harness
-        # sets, and not a default. /tmp stays the second root. Elsewhere the temporary directory is TMPDIR's, as before.
+        # sets, and not a default. /tmp stays the second root, here the stand-in from mktemp_in_tmp. Elsewhere the
+        # temporary directory is TMPDIR's, as before.
         unrelated = os.path.realpath(self.scratch())
         planted = fresh(unrelated, 10, os.mkdir)
         in_tmp = self.mktemp_in_tmp()
@@ -282,26 +296,35 @@ class Tripwire(FixtureTest):
 
     def test_a_directory_from_mktemp_in_tmp_may_be_deleted_by_its_path_in_a_later_call(self):
         # /tmp is the second root, whatever TMPDIR says and wherever the system's temporary directory is: a real
-        # directory of mktemp -d's form, made directly in /tmp, and a path inside it, pass.
-        environ = dict(os.environ, TMPDIR=os.path.realpath(self.scratch()))
+        # directory of mktemp -d's form, made directly in /tmp, and a path inside it, pass. The stand-in for /tmp is
+        # from mktemp_in_tmp, and the first root is an unrelated directory, so that only the second root lets it pass.
+        unrelated = os.path.realpath(self.scratch())
         made = self.mktemp_in_tmp()
-        for command in ("rm -rf %s" % made, "rm -r %s/sub" % made, "rm -rf %s/" % made):
-            self.assertEqual(self.bash(command, environ), (0, ""), command)
+        with mock.patch.dict(tripwire.os.environ, TMPDIR=unrelated), \
+                mock.patch.object(tripwire, "mktemp_directory", return_value=unrelated):
+            for command in ("rm -rf %s" % made, "rm -r %s/sub" % made, "rm -rf %s/" % made):
+                self.assertIsNone(self.decide(command), command)
 
     def test_a_directory_of_another_owner_is_never_deleted(self):
         # The entry from mktemp -d must be owned by the user the hook runs as. With the hook running as another uid,
-        # the same directory, and a path inside it, are denied, in the temporary directory and in /tmp.
-        made = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout.strip()
-        self.addCleanup(shutil.rmtree, made, True)
+        # the same directory, and a path inside it, are denied, in the temporary directory and in /tmp. The stand-in
+        # for /tmp is from mktemp_in_tmp, and the temporary directory is another fresh directory from mktemp -d, so
+        # that each path is judged by its own root alone.
+        first = os.path.realpath(subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True,
+                                                check=True).stdout.strip())
+        self.addCleanup(shutil.rmtree, first, True)
+        made = subprocess.run(["mktemp", "-d", os.path.join(first, "tmp.XXXXXXXXXX")], stdout=subprocess.PIPE,
+                              universal_newlines=True, check=True).stdout.strip()
         in_tmp = self.mktemp_in_tmp()
         commands = ["rm -rf %s" % path for path in (made, in_tmp)] + ["rm -r %s/sub" % path for path in (made, in_tmp)]
-        for command in commands:
-            self.assertIsNone(self.decide(command), command)
-        with mock.patch.object(tripwire.os, "getuid", return_value=os.getuid() + 1):
+        with mock.patch.object(tripwire, "mktemp_directory", return_value=first):
             for command in commands:
-                message = self.decide(command)
-                self.assertIsNotNone(message, command)
-                self.assertIn("tripwire: delete-outside", message)
+                self.assertIsNone(self.decide(command), command)
+            with mock.patch.object(tripwire.os, "getuid", return_value=os.getuid() + 1):
+                for command in commands:
+                    message = self.decide(command)
+                    self.assertIsNotNone(message, command)
+                    self.assertIn("tripwire: delete-outside", message)
 
     def test_a_command_with_two_steps_needs_an_entry_for_each(self):
         command = "git push --mirror origin"
