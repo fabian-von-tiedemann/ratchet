@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unicodedata
 import unittest
+import unittest.mock
 
 from suite_runner import FixtureTest
 
@@ -1003,6 +1004,19 @@ class StartPath(unittest.TestCase):
                 self.assertEqual(code, 0, output)
 
     def test_every_command_in_the_readme_runs_in_an_empty_project(self):
+        self.run_the_readme()
+
+    def test_the_project_name_does_not_come_from_the_temporary_directory(self):
+        # tempfile names a directory at random, and a name such as ratchet-test-_duwh33j is not a project name.
+        # Forced here, so the README's commands pass whatever name tempfile gives.
+        real = tempfile.mkdtemp
+
+        def mkdtemp(prefix=None, **kwargs):
+            return real(prefix=(prefix or "") + "_", suffix="_ not a name!", **kwargs)
+
+        with unittest.mock.patch.object(tempfile, "mkdtemp", mkdtemp):
+            self.setUp()
+        self.assertIn("_ not a name!", self.project)
         self.run_the_readme()
 
     def test_every_step_in_the_workflow_template_runs_after_the_readme(self):

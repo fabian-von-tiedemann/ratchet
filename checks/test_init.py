@@ -7,6 +7,9 @@ checkout as its .ratchet, and runs init.py from there, as README says. The copy 
 that init.py reads a real commit to pin. Standard library only.
 """
 
+import builtins
+import contextlib
+import errno
 import json
 import os
 import re
@@ -15,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -46,6 +50,48 @@ def git(cwd, *args):
 def read_template(name):
     with open(os.path.join(ROOT, "templates", name), encoding="utf-8", newline="") as handle:
         return handle.read()
+
+
+def no_link(*args, **kwargs):
+    raise OSError(errno.EPERM, "no hard links here")
+
+
+class CutOff:
+    """A file opened for writing whose first write stops halfway, as when the disk fills or the run is stopped."""
+
+    def __init__(self, handle):
+        self.handle = handle
+
+    def write(self, data):
+        self.handle.write(data[:len(data) // 2])
+        self.handle.flush()
+        raise OSError(errno.ENOSPC, "cut off halfway")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.handle.close()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self.handle, name)
+
+
+@contextlib.contextmanager
+def cut_off_writes():
+    """Every file opened for writing, with open or os.fdopen, is cut off halfway through its first write."""
+    real_open, real_fdopen = builtins.open, os.fdopen
+
+    def wrap(opener):
+        def opened(file, mode="r", *args, **kwargs):
+            handle = opener(file, mode, *args, **kwargs)
+            return CutOff(handle) if set(mode) & set("wxa+") else handle
+        return opened
+
+    with unittest.mock.patch.object(builtins, "open", wrap(real_open)), \
+            unittest.mock.patch.object(os, "fdopen", wrap(real_fdopen)):
+        yield
 
 
 def snapshot(directory):
@@ -124,7 +170,8 @@ class Init(unittest.TestCase):
         template = json.loads(read_template("register.json"))
         template["project"] = "demo-project"
         self.assertEqual(register, template)
-        self.assertEqual(self.text(".gitignore"), ".ratchet/\n")
+        self.assertEqual(self.text(".gitignore"), "/.ratchet/\n")
+        self.assert_ratchet_ignored()
         self.assertIn("9 rules match Ratchet %s" % self.version, output)
 
     def test_the_pinned_commit_is_in_the_workflow(self):
@@ -228,23 +275,86 @@ class Init(unittest.TestCase):
         self.write(".gitignore", "node_modules")
         code, output = self.init()
         self.assertEqual(code, 0, output)
-        self.assertEqual(self.text(".gitignore"), "node_modules\n.ratchet/\n")
-        self.assertRegex(output, r"(?m)^add +\.ratchet/ to \.gitignore")
+        self.assertEqual(self.text(".gitignore"), "node_modules\n/.ratchet/\n")
+        self.assertRegex(output, r"(?m)^add +/\.ratchet/ to \.gitignore")
+        self.assert_ratchet_ignored()
+
+    def assert_ratchet_ignored(self):
+        """git itself, run here by the test and never by init.py, says that .ratchet is ignored."""
+        git(self.project, "-c", "core.fsmonitor=false", "check-ignore", "-q", ".ratchet")
 
     def test_a_gitignore_that_holds_the_line_is_not_changed(self):
-        for line in (".ratchet", ".ratchet/", "/.ratchet", "/.ratchet/"):
-            with self.subTest(line=line):
-                self.write(".gitignore", "build/\r\n%s\r\n" % line)
+        for line in (".ratchet/", "/.ratchet/"):
+            for newline in ("\n", "\r\n"):
+                with self.subTest(line=line, newline=newline):
+                    text = "build/%s!.ratchet/%s%s%s" % (newline, newline, line, newline)
+                    self.write(".gitignore", text)
+                    code, output = self.init()
+                    self.assertEqual(code, 0, output)
+                    self.assertEqual(self.text(".gitignore"), text)
+                    self.assertRegex(output, r"(?m)^unchanged +\.gitignore")
+                    self.assert_ratchet_ignored()
+
+    def test_a_gitignore_whose_last_line_on_ratchet_is_not_the_line_gets_it(self):
+        # The last line that mentions .ratchet decides, and only .ratchet/ or /.ratchet/, exactly, with no
+        # negation after it, counts. A leading space is part of the pattern in gitignore.
+        for text in (" .ratchet/\n", "\t.ratchet/\n", ".ratchet/\n!.ratchet/\n", ".ratchet/\n!*\n", "!.ratchet/\n",
+                     "# .ratchet/\n", ".ratchet\n", "/.ratchet\n", ".ratchet/ \n", ".ratchet/*\n", "build/\n"):
+            with self.subTest(text=text):
+                self.write(".gitignore", text)
                 code, output = self.init()
                 self.assertEqual(code, 0, output)
-                self.assertEqual(self.text(".gitignore"), "build/\r\n%s\r\n" % line)
+                self.assertEqual(self.text(".gitignore"), text + "/.ratchet/\n")
+                self.assertRegex(output, r"(?m)^add +/\.ratchet/ to \.gitignore")
+                self.assert_ratchet_ignored()
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
                 self.assertRegex(output, r"(?m)^unchanged +\.gitignore")
 
     def test_a_gitignore_with_crlf_gets_crlf(self):
         self.write(".gitignore", "build/\r\n")
         code, output = self.init()
         self.assertEqual(code, 0, output)
-        self.assertEqual(self.text(".gitignore"), "build/\r\n.ratchet/\r\n")
+        self.assertEqual(self.text(".gitignore"), "build/\r\n/.ratchet/\r\n")
+        self.assert_ratchet_ignored()
+
+    def test_a_gitignore_changed_after_the_plan_is_left_as_it_is(self):
+        # Another edit lands between the plan and the write: init.py stops, and the edit is kept.
+        self.write(".gitignore", "build/\n")
+        code, output = self.run_patched("""
+plan = init.gitignore_plan
+def gitignore_plan(path):
+    result = plan(path)
+    with open(path, "a") as handle:
+        handle.write("dist/\\n")
+    return result
+init.gitignore_plan = gitignore_plan
+""")
+        self.assertEqual(code, 2, output)
+        self.assertEqual(self.text(".gitignore"), "build/\ndist/\n")
+        self.assertIn(".gitignore changed while init.py ran", output)
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.text(".gitignore"), "build/\ndist/\n/.ratchet/\n")
+
+    def test_the_line_is_added_only_to_the_gitignore_that_was_read(self):
+        path = self.path(".gitignore")
+        self.write(".gitignore", "build/\n")
+        init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+        self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
+        with self.assertRaises(init.Changed):
+            init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+        self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
+        self.assertEqual(sorted(os.listdir(self.project)), [".git", ".gitignore", ".ratchet"])
+
+    def run_patched(self, patch, *args):
+        """Run init.py as the README does, with a change to it or to os made first, in the same process."""
+        code = "\n".join(["import errno, os, sys",
+                          "sys.path.insert(0, os.path.join('.ratchet', 'checks'))",
+                          "import init", patch, "sys.exit(init.main(sys.argv[1:]))"])
+        result = subprocess.run([sys.executable, "-c", code] + list(args), cwd=self.project, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
+        return result.returncode, result.stdout
 
     def test_an_existing_register_is_kept_and_its_register_md_generated_from_it(self):
         code, output = self.init("--name", "first")
@@ -269,12 +379,142 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertEqual(sorted(snapshot(self.project)), sorted(WRITTEN))
 
+    def test_without_hard_links_no_file_is_written(self):
+        # A file system with no hard links: a file cannot be put in place whole without the risk of overwriting
+        # one, so init.py stops and writes none, rather than writing a file directly.
+        code, output = self.run_patched("""
+def link(*args, **kwargs):
+    raise OSError(errno.EPERM, "no hard links here")
+os.link = link
+""")
+        self.assertEqual(code, 2, output)
+        self.assertIn("cannot write AGENTS.md", output)
+        self.assertEqual(snapshot(self.project), {})
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(sorted(snapshot(self.project)), sorted(WRITTEN))
+
+    def test_a_write_cut_off_leaves_no_file(self):
+        # The disk fills or the run is stopped in the middle of a write: the file that was being written does
+        # not exist, so a second run writes it, rather than skipping a file that is half written.
+        for links in (True, False):
+            with self.subTest(links=links):
+                path = self.path("AGENTS.md")
+                with cut_off_writes(), unittest.mock.patch.object(os, "link", os.link if links else no_link):
+                    with self.assertRaises(OSError):
+                        init.write_new(path, b"x" * 4096)
+                self.assertFalse(os.path.lexists(path))
+                self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
+
+    def test_without_hard_links_write_new_creates_nothing(self):
+        path = self.path("AGENTS.md")
+        with unittest.mock.patch.object(os, "link", no_link):
+            with self.assertRaises(OSError):
+                init.write_new(path, b"whole\n")
+        self.assertFalse(os.path.lexists(path))
+        self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
+
+    def test_a_file_is_linked_into_place_whole(self):
+        path = self.path("AGENTS.md")
+        data = b"whole\n" * 1000
+        calls = []
+        real = os.link
+
+        def link(source, destination, **kwargs):
+            self.assertFalse(os.path.lexists(destination))
+            with open(source, "rb") as handle:
+                self.assertEqual(handle.read(), data)
+            calls.append(destination)
+            return real(source, destination, **kwargs)
+
+        with unittest.mock.patch.object(os, "link", link):
+            self.assertTrue(init.write_new(path, data))
+        self.assertEqual(calls, [path])
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), data)
+        self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet", "AGENTS.md"])
+
+    def test_a_file_that_appears_meanwhile_is_not_overwritten(self):
+        path = self.path("AGENTS.md")
+        real = os.link
+
+        def link(source, destination, **kwargs):
+            with open(destination, "wb") as handle:
+                handle.write(b"theirs\n")
+            return real(source, destination, **kwargs)
+
+        with unittest.mock.patch.object(os, "link", link):
+            self.assertFalse(init.write_new(path, b"ours\n"))
+        with open(path, "rb") as handle:
+            self.assertEqual(handle.read(), b"theirs\n")
+        self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet", "AGENTS.md"])
+
     def test_outside_the_root_of_a_git_repo_it_does_not_run(self):
         shutil.rmtree(self.path(".git"))
         code, output = self.init()
         self.assertEqual(code, 2, output)
         self.assertIn("the root of a git repo", output)
         self.assertEqual(snapshot(self.project), {})
+
+    def assert_not_a_repo(self):
+        before = snapshot(self.project)
+        code, output = self.init()
+        self.assertEqual(code, 2, output)
+        self.assertIn("the root of a git repo", output)
+        self.assertIn("nothing was written", output)
+        self.assertEqual(snapshot(self.project), before)
+
+    def test_a_git_that_is_not_a_repo_does_not_run(self):
+        store = os.path.join(self.directory, "store")
+        os.mkdir(store)
+        cases = (
+            ("an empty .git directory", None),
+            ("a .git directory without objects", "HEAD"),
+            ("a stale .git file", "gitdir: %s\n" % os.path.join(self.directory, "gone")),
+            ("a .git file naming a directory that is no repo", "gitdir: %s\n" % store),
+            ("a .git file of two lines", "gitdir: %s\ngitdir: %s\n" % (store, store)),
+            ("a .git file with no gitdir", "%s\n" % store),
+            ("an empty .git file", ""),
+        )
+        for case, content in cases:
+            with self.subTest(case=case):
+                shutil.rmtree(self.path(".git"), ignore_errors=True)
+                if os.path.lexists(self.path(".git")):
+                    os.remove(self.path(".git"))
+                if content is None or content == "HEAD":
+                    os.mkdir(self.path(".git"))
+                    if content == "HEAD":
+                        self.write(os.path.join(".git", "HEAD"), "ref: refs/heads/main\n")
+                else:
+                    self.write(".git", content)
+                self.assert_not_a_repo()
+
+    def test_a_worktree_runs(self):
+        main = os.path.join(self.directory, "main")
+        os.mkdir(main)
+        git(main, "init", "-q")
+        git(main, "commit", "-q", "--allow-empty", "-m", "start")
+        worktree = os.path.join(self.directory, "worktree-project")
+        git(main, "worktree", "add", "-q", worktree)
+        with open(os.path.join(worktree, ".git"), encoding="utf-8") as handle:
+            self.assertRegex(handle.read(), r"^gitdir: .*worktrees")
+        git(worktree, "clone", "-q", self.source, ".ratchet")
+        code, output = self.init("--name", "demo", project=worktree)
+        self.assertEqual(code, 0, output)
+        self.assertTrue(os.path.isfile(os.path.join(worktree, "AGENTS.md")))
+
+    def test_a_git_file_naming_a_repo_elsewhere_runs(self):
+        # As git init --separate-git-dir and a submodule leave it: an absolute path, and one relative to the
+        # folder of the .git file.
+        for relative in (False, True):
+            with self.subTest(relative=relative):
+                store = os.path.join(self.directory, "store-%s" % relative)
+                shutil.move(self.path(".git"), store)
+                self.write(".git", "gitdir: %s\n" % (os.path.relpath(store, self.project) if relative else store))
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
+                os.remove(self.path(".git"))
+                shutil.move(store, self.path(".git"))
 
     def test_a_ratchet_that_is_not_a_git_checkout_does_not_run(self):
         shutil.rmtree(self.path(".ratchet", ".git"))
