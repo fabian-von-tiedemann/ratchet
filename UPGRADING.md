@@ -4,6 +4,8 @@ A project states in `register.json` which version of Ratchet it follows. To move
 
 This works for a register on 0.3 or later. A register written for 0.2 is moved by hand first: see [MIGRATING.md](MIGRATING.md).
 
+A new project does not upgrade. From 0.9 it starts with `checks/init.py`, as the [README](README.md#start-here) says. `init.py` never overwrites a file, so it is not a way to move a register: in a project that already has one, it skips the files that exist and writes only what is missing.
+
 ## Steps
 
 Run these in the root of your own repo, on a branch of their own. The commands below move a register from 0.7 to 0.8. Put in the version your register states and the version you move to.

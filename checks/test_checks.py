@@ -20,6 +20,7 @@ import sys
 import tempfile
 import unicodedata
 import unittest
+import unittest.mock
 
 from suite_runner import FixtureTest
 
@@ -858,6 +859,28 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.edit("README.md", "```sh\n   %s" % (FETCH % fetched), "```\n   %s" % (FETCH % fetched))
         self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
+    def test_entries_out_of_order_fail_and_the_readme_fetches_the_highest_dated_version(self):
+        # Review of PR #50, round 2, nonblocking: the generator took the first entry with a date for the pin, not the
+        # newest version. With the intact entry of 0.6 moved above 0.8 and 0.7, a README pinned to v0.6 passed.
+        version, fetched = first_entry(self.copy)
+        path = os.path.join(self.copy, "CHANGELOG.md")
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        start, end = text.index("## 0.6 ("), text.index("## 0.5 (")
+        moved, rest = text[start:end], text[:start] + text[end:]
+        at = rest.index("## %s (" % fetched)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(rest[:at] + moved + rest[at:])
+        self.edit("README.md", "--branch v%s " % fetched, "--branch v0.6 ")
+        self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
+                                "it. '## 0.6 (2026-11-19)' stands before '## %s (2026-11-19)'" % fetched)
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
+
+    def test_a_version_twice_in_the_changelog_fails(self):
+        self.edit("CHANGELOG.md", "## 0.6 (2026-11-19)\n", "## 0.7 (2026-11-19)\n")
+        self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
+                                "it. '## 0.7 (2026-11-19)' stands before '## 0.7 (2026-11-19)'")
+
     def test_only_the_first_entry_may_be_unreleased(self):
         self.edit("CHANGELOG.md", "## 0.8 (2026-11-19)\n", "## 0.8 (unreleased)\n")
         self.assert_check_fails("CHANGELOG.md: '## 0.8 (unreleased)' is headed (unreleased), and only the first entry may be")
@@ -953,18 +976,20 @@ class CodeOwnership(RepoCopy, unittest.TestCase):
 
 
 class StartPath(unittest.TestCase):
-    """The README's start, run from an empty project with this repo as .ratchet."""
+    """The README's start, run from an empty git repo with this repo as .ratchet, a git checkout with one commit."""
 
     def setUp(self):
-        self.project = scratch(self)
-        shutil.copytree(ROOT, os.path.join(self.project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        # A folder of a fixed, valid name: init.py takes the project's name from it, and tempfile's names are random.
+        self.project = os.path.join(scratch(self), "demo-project")
+        os.mkdir(self.project)
+        ratchet = os.path.join(self.project, ".ratchet")
+        shutil.copytree(ROOT, ratchet, ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures", ".claude"))
+        for directory, command in ((self.project, ["init", "-q"]), (ratchet, ["init", "-q"]), (ratchet, ["add", "-A"]),
+                                   (ratchet, ["commit", "-q", "-m", "Ratchet as it stands"])):
+            subprocess.run(["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid",
+                            "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + command, cwd=directory, check=True, stdout=subprocess.DEVNULL,
+                           env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
         self.readme = read("README.md")
-        for name in ("AGENTS.md", "register.json"):
-            self.assertIn("cp .ratchet/templates/%s %s" % (name, name), self.readme)
-            shutil.copyfile(os.path.join(ROOT, "templates", name), os.path.join(self.project, name))
-        if "mkdir decisions && touch decisions/.gitkeep" in self.readme:
-            os.mkdir(os.path.join(self.project, "decisions"))
-            open(os.path.join(self.project, "decisions", ".gitkeep"), "w").close()
 
     def run_in_project(self, command):
         words = shlex.split(command)
@@ -983,6 +1008,19 @@ class StartPath(unittest.TestCase):
     def test_every_command_in_the_readme_runs_in_an_empty_project(self):
         self.run_the_readme()
 
+    def test_the_project_name_does_not_come_from_the_temporary_directory(self):
+        # tempfile names a directory at random, and a name such as ratchet-test-_duwh33j is not a project name.
+        # Forced here, so the README's commands pass whatever name tempfile gives.
+        real = tempfile.mkdtemp
+
+        def mkdtemp(prefix=None, **kwargs):
+            return real(prefix=(prefix or "") + "_", suffix="_ not a name!", **kwargs)
+
+        with unittest.mock.patch.object(tempfile, "mkdtemp", mkdtemp):
+            self.setUp()
+        self.assertIn("_ not a name!", self.project)
+        self.run_the_readme()
+
     def test_every_step_in_the_workflow_template_runs_after_the_readme(self):
         self.run_the_readme()
         commands = re.findall(r"(?m)^\s+run: (python3 \.ratchet/\S.*)$", read("templates", "ratchet-checks.yml"))
@@ -992,7 +1030,16 @@ class StartPath(unittest.TestCase):
                 code, output = self.run_in_project(command)
                 self.assertEqual(code, 0, output)
 
+    def test_the_readme_starts_with_init(self):
+        commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)
+        self.assertEqual(commands[:2], ["python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py"])
+        self.run_the_readme()
+        for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+            self.assertTrue(os.path.isfile(os.path.join(self.project, name)), name)
+
     def test_every_command_in_the_migration_runs_from_the_root_of_a_project(self):
+        self.assertIn("cp .ratchet/templates/register.json register.json", read("MIGRATING.md"))
+        shutil.copyfile(os.path.join(ROOT, "templates", "register.json"), os.path.join(self.project, "register.json"))
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
         self.assertEqual(len(commands), 3)
         for command in commands:
@@ -1010,6 +1057,8 @@ class StartPath(unittest.TestCase):
                     self.assertTrue(command.startswith(".ratchet/checks/"), command)
 
     def test_the_entry_that_is_printed_can_be_pasted(self):
+        code, output = self.run_in_project("python3 .ratchet/checks/init.py")
+        self.assertEqual(code, 0, output)
         code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-first")
         self.assertEqual(code, 0, output)
         path = os.path.join(self.project, "register.json")

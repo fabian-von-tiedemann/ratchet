@@ -469,14 +469,21 @@ def expected_files(data, root, context):
 
 
 def changelog_context(root):
-    """(the date of the first entry, or None while it is unreleased, the newest version with a date, or None).
+    """(the date of the first entry, or None while it is unreleased, the highest version with a date, or None).
 
-    Only the headings of the exact forms are read. A heading of another form is named by consistency_problems.
+    Only the headings of the exact forms are read. A heading of another form, and entries that do not stand in
+    descending version order, are named by consistency_problems. Versions are compared as pairs of integers.
     """
     headings = [line for line in (read(os.path.join(root, "CHANGELOG.md")) or "").split("\n") if line.startswith("## ")]
     first = HEADING.match(headings[0]) if headings else None
-    dated = next((HEADING.match(line).group(1) for line in headings if HEADING.match(line)), None)
-    return (first.group(2) if first else None), dated
+    dated = [HEADING.match(line).group(1) for line in headings if HEADING.match(line)]
+    return (first.group(2) if first else None), (max(dated, key=version_key) if dated else None)
+
+
+def version_key(version):
+    """A version of the form MAJOR.MINOR as a pair of integers, so that 0.10 is newer than 0.9."""
+    major, minor = version.split(".")
+    return int(major), int(minor)
 
 
 def first_entry_end(text):
@@ -526,6 +533,12 @@ def consistency_problems(data, root, context):
         elif not HEADING.match(line) and not UNRELEASED.match(line):
             problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)", and the '
                             'first may be headed "## <version> (unreleased)"' % line)
+    entries = [line for line in headings if HEADING.match(line) or UNRELEASED.match(line)]
+    for newer, older in zip(entries, entries[1:]):
+        if version_key((HEADING.match(newer) or UNRELEASED.match(newer)).group(1)) <= version_key(
+                (HEADING.match(older) or UNRELEASED.match(older)).group(1)):
+            problems.append("CHANGELOG.md: the entries must stand newest first, each version higher than the one after it. "
+                            "%r stands before %r" % (newer, older))
 
     released = context["released"]
     if released is None:
