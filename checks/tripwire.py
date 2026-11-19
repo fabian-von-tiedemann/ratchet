@@ -435,27 +435,32 @@ def rm_steps(args, raws, cwd, tree, mktemp):
 
 
 def mktemp_directory():
-    """The directory where mktemp -d writes. On macOS that is the per-user temporary directory the system gives,
-    confstr(_CS_DARWIN_USER_TEMP_DIR), whatever TMPDIR says, as mktemp(1) reads it, so TMPDIR does not move the
-    exception there. Elsewhere, and where the system gives none, it is the temporary directory that TMPDIR names,
-    as GNU mktemp reads it."""
-    if sys.platform == "darwin":
-        try:
-            found = os.confstr(65537)  # _CS_DARWIN_USER_TEMP_DIR in <unistd.h>; Python has no name for it
-        except (OSError, ValueError):
-            found = None
-        if found and os.path.isabs(found):
-            return found
-    return tempfile.gettempdir()
+    """The directory where mktemp -d writes, or None when it cannot be established. On macOS that is the per-user
+    temporary directory the system gives, confstr(_CS_DARWIN_USER_TEMP_DIR), whatever TMPDIR says, as mktemp(1)
+    reads it, so TMPDIR does not move the exception there. When the system gives no absolute path of an existing
+    directory, it is None, and nothing takes its place: not TMPDIR, which the harness sets, and not a default.
+    Elsewhere it is the temporary directory that TMPDIR names, as GNU mktemp reads it."""
+    if sys.platform != "darwin":
+        return tempfile.gettempdir()
+    try:
+        found = os.confstr(65537)  # _CS_DARWIN_USER_TEMP_DIR in <unistd.h>; Python has no name for it
+    except (OSError, ValueError):
+        return None
+    if isinstance(found, str) and os.path.isabs(found) and os.path.isdir(found):
+        return found
+    return None
 
 
 def own_temporary(cwd, word):
     """Whether a word names, as written, a directory that mktemp -d made, or a path inside it: tmp. and at least six
-    letters or digits, directly in the directory where mktemp -d writes or in /tmp, a real directory owned by this
-    user. The entry and every part after it are read as they stand, with lstat and before any link is followed:
-    none may be a link, "." or "..". A part that does not exist ends the walk, since nothing below it exists either."""
+    letters or digits, directly in the directory where mktemp -d writes, when it can be established, or in /tmp, a
+    real directory owned by this user. The entry and every part after it are read as they stand, with lstat and
+    before any link is followed: none may be a link, "." or "..". A part that does not exist ends the walk, since
+    nothing below it exists either."""
     parts = [part for part in os.path.join(cwd, os.path.expanduser(word)).split("/") if part]
     for root in (mktemp_directory(), "/tmp"):
+        if root is None:
+            continue
         for form in set((os.path.abspath(root), os.path.realpath(root))):
             prefix = [part for part in form.split("/") if part]
             rest = parts[len(prefix):]
