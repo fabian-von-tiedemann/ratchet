@@ -73,6 +73,15 @@ class RepoBudget(RepoCopy, unittest.TestCase):
         self.edit("ratchet.json", '"experimental_cap": %d,' % CAP, '"experimental_cap": %d,' % (count - 1))
         self.assert_check_fails("%d experimental rules, which is more than the cap of %d" % (count, count - 1))
 
+    def test_the_phases_are_one_experimental_rule_that_is_text_only(self):
+        # D-2026-11-19-locks-not-parsing, item 5: explore, build and run are one rule, outside the core.
+        data = registry.load(os.path.join(ROOT, "ratchet.json"))
+        parts = dict((part["id"], part["file"]) for part in data["parts"])
+        self.assertEqual(parts.get("phases"), "CONTROL-ROOM.md")
+        rules = [(rule["key"], rule["status"], rule["enforcement"]) for rule in data["rules"] if rule["part"] == "phases"]
+        self.assertEqual(rules, [("ratchet.phases", "experimental", "text-only")])
+        self.assertFalse([rule["key"] for rule in data["rules"] if rule["key"].startswith("ratchet.phase-")])
+
     def test_the_count_text_states_the_cap(self):
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
         count = registry.counts(data)["experimental"]["rules"]

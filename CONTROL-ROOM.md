@@ -42,6 +42,16 @@ The owner does not read every PR. Code is merged on green checks and a passed re
 | ratchet.cr-lead-with-ask | Every message to the owner leads with what the owner must decide or do\, in one sentence with a recommendation\, before any background\. If nothing is needed\, it says so\. | Text only\: messages pass no check | — |
 <!-- /generated -->
 
+## The phases
+
+A work package is explored, built or run, one at a time. The phase says what an agent may do and what ends it. It is one rule, so that the three are adopted together.
+
+<!-- generated:table phases -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.phases | A work package is in one phase at a time\, named in its issue\: explore\, build or run\. In explore\, an agent reads\, searches\, tries things in scratch space and writes proposals and questions\. It does not merge\, release or change the register\. Explore ends when the owner picks a proposal to build\, or drops it\. In build\, an agent works on one work package the owner approved\, on its own branch\, changes only the files the package names\, and merges only on green checks and a passed review\. Build ends when the PR is merged or the stop rule is reached\. In run\, an agent watches what is merged\, reports on it and undoes a change that fails\. A fix\, or anything new\, goes back to build\. Run ends when the owner retires what runs or opens a new phase\. | Text only\: a check cannot tell which phase a session is in\. In build\, the required checks and the review on the PR guard the merge | — |
+<!-- /generated -->
+
 ## The review script
 
 `ratchet.cr-review` leans on the review script, like three rules in the core. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).
