@@ -36,7 +36,7 @@ Ratchet follows its own rules, and this repo is where they are tried first. Its 
 ## The honest limits
 
 <!-- generated:count -->
-Ratchet 0.9, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 - **Most of the core is still text.** The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below, each run in this repo's CI with a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until it does, the rule is text only in your project, and your register says so.
@@ -102,6 +102,7 @@ The nine rules to start with:
 - [sources.json](sources.json): the sources that rules cite, each pinned at a commit. It is not part of what is released, so a pin that moves needs no new version.
 - [checks/](checks/): the reference checks, the generator, `init.py` for the start and `upgrade.py` for an upgrade, in Python with no dependencies.
 - [GLOSSARY.md](GLOSSARY.md): the terms Ratchet uses.
+- [docs/](docs/): the landing page, served by GitHub Pages from `main`, with its text taken from this README.
 - [templates/](templates/): `AGENTS.md`, `register.json`, `DECISION.md`, `GLOSSARY.md`, `LESSON.md`, `SOURCE.md` (for a skill copied from another repo), `ratchet-checks.yml` and `CONTROL-ROOM-HANDBOOK.md`.
 - [MIGRATING.md](MIGRATING.md): how to move a register written for 0.2.
 - [UPGRADING.md](UPGRADING.md): how to move a register to a newer version, with `checks/upgrade.py`.

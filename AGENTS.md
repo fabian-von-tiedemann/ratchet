@@ -29,7 +29,7 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## How to release a version
 
-A release is a pull request of its own, merged only on the maintainer's word. It replaces `(unreleased)` in the first heading of [CHANGELOG.md](CHANGELOG.md) with the date, and moves the tag that the command in [README.md](README.md) fetches to the new version. Then run `python3 checks/generate.py`, which writes the rest. The release workflow tags and releases the version when the pull request is merged. The control room proposes a release at most once a week, or when the maintainer asks, and a fix for a security fault is released at once. That pace is text only: no check counts releases.
+A release is a pull request of its own, merged only on the maintainer's word. It replaces `(unreleased)` in the first heading of [CHANGELOG.md](CHANGELOG.md) with the date, and moves the tag that the command in [README.md](README.md) fetches to the new version. Then run `python3 checks/generate.py`, which writes the rest, among it the same command on the landing page, [docs/index.html](docs/index.html). `generate.py --check` fails until it has. The release workflow tags and releases the version when the pull request is merged. The control room proposes a release at most once a week, or when the maintainer asks, and a fix for a security fault is released at once. That pace is text only: no check counts releases.
 
 ## How to move a source's pin
 
