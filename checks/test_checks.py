@@ -975,18 +975,18 @@ class CodeOwnership(RepoCopy, unittest.TestCase):
 
 
 class StartPath(unittest.TestCase):
-    """The README's start, run from an empty project with this repo as .ratchet."""
+    """The README's start, run from an empty git repo with this repo as .ratchet, a git checkout with one commit."""
 
     def setUp(self):
         self.project = scratch(self)
-        shutil.copytree(ROOT, os.path.join(self.project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        ratchet = os.path.join(self.project, ".ratchet")
+        shutil.copytree(ROOT, ratchet, ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures", ".claude"))
+        for directory, command in ((self.project, ["init", "-q"]), (ratchet, ["init", "-q"]), (ratchet, ["add", "-A"]),
+                                   (ratchet, ["commit", "-q", "-m", "Ratchet as it stands"])):
+            subprocess.run(["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid",
+                            "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + command, cwd=directory, check=True, stdout=subprocess.DEVNULL,
+                           env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
         self.readme = read("README.md")
-        for name in ("AGENTS.md", "register.json"):
-            self.assertIn("cp .ratchet/templates/%s %s" % (name, name), self.readme)
-            shutil.copyfile(os.path.join(ROOT, "templates", name), os.path.join(self.project, name))
-        if "mkdir decisions && touch decisions/.gitkeep" in self.readme:
-            os.mkdir(os.path.join(self.project, "decisions"))
-            open(os.path.join(self.project, "decisions", ".gitkeep"), "w").close()
 
     def run_in_project(self, command):
         words = shlex.split(command)
@@ -1014,7 +1014,16 @@ class StartPath(unittest.TestCase):
                 code, output = self.run_in_project(command)
                 self.assertEqual(code, 0, output)
 
+    def test_the_readme_starts_with_init(self):
+        commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)
+        self.assertEqual(commands[:2], ["python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py"])
+        self.run_the_readme()
+        for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+            self.assertTrue(os.path.isfile(os.path.join(self.project, name)), name)
+
     def test_every_command_in_the_migration_runs_from_the_root_of_a_project(self):
+        self.assertIn("cp .ratchet/templates/register.json register.json", read("MIGRATING.md"))
+        shutil.copyfile(os.path.join(ROOT, "templates", "register.json"), os.path.join(self.project, "register.json"))
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
         self.assertEqual(len(commands), 3)
         for command in commands:
@@ -1032,6 +1041,8 @@ class StartPath(unittest.TestCase):
                     self.assertTrue(command.startswith(".ratchet/checks/"), command)
 
     def test_the_entry_that_is_printed_can_be_pasted(self):
+        code, output = self.run_in_project("python3 .ratchet/checks/init.py")
+        self.assertEqual(code, 0, output)
         code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-first")
         self.assertEqual(code, 0, output)
         path = os.path.join(self.project, "register.json")

@@ -37,7 +37,7 @@ def environment():
 def git(cwd, *args):
     result = subprocess.run(
         ["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
-         "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"] + list(args),
+         "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + list(args),
         cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
     assert result.returncode == 0, result.stdout
     return result.stdout.strip()
@@ -93,7 +93,8 @@ class Init(unittest.TestCase):
 
     def init(self, *args, project=None):
         project = project or self.project
-        result = subprocess.run([sys.executable, os.path.join(project, ".ratchet", "checks", "init.py")] + list(args),
+        script = os.path.join(self.project if project == self.path(".ratchet") else project, ".ratchet", "checks", "init.py")
+        result = subprocess.run([sys.executable, script] + list(args),
                                 cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
                                 env=environment())
         return result.returncode, result.stdout
@@ -202,7 +203,7 @@ class Init(unittest.TestCase):
         for name in ("", " demo", "demo ", "two  spaces", "bad|name", "a@b", "-demo", "demo-", "a_b_", "demo!",
                      "www.example.com", "Proj\u00e9t", "\u540d\u524d", "demo\u200b", "x" * 101, "<project>"):
             with self.subTest(name=name):
-                code, output = self.init("--name", name)
+                code, output = self.init("--name=" + name)
                 self.assertEqual(code, 2, output)
                 self.assertIn("project name", output)
                 self.assertEqual(snapshot(self.project), {})
