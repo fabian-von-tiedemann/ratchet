@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 24 experimental rules, under a cap of 25: 11 name a check and 13 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+One rule is added in this version, and none is changed or removed. The form of `ratchet.json` does not change. The rule comes from the decision `D-2026-11-19-review-by-risk`, choices 1 and 3, and item 3 of `D-2026-11-17-harness-sandbox-risk`.
+
+Added:
+
+- `ratchet.review-by-risk`, experimental, in `CONTROL-ROOM.md`: the depth of a review follows the risk of the paths a PR changes. A PR that changes only documentation, the landing page or tests gets a light review, from the same reviewer from another model family at a lower effort. A PR that changes any other path, among them a check, a workflow, a hook, a rule or the register, gets the full review, and so does a PR that deletes a test or a fixture. A finding marked as not blocking starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed. It is text only, because a check in the repo cannot see the effort of a review. It counts against the cap: 24 experimental rules under a cap of 25.
+
 ## 0.9 (2026-11-19)
 
 <!-- generated:count -->
