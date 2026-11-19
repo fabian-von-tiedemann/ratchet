@@ -752,6 +752,160 @@
     },
     {
       "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X < secret.txt",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X --env production --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X --app dependabot --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X -R o/r --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set -f secrets.env",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret delete X --env production",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret delete X --app codespaces",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret remove X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable set X --env production --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable set -f vars.env",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable delete X -e production",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/actions/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api --method DELETE /repos/o/r/actions/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api --method=PUT https://api.github.com/repos/o/r/actions/secrets/X --input secret.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -XDELETE repos/{owner}/{repo}/actions/variables/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PATCH repos/o/r/actions/variables/X -f value=y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/environments/production/secrets/X -f encrypted_value=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/environments/production/variables -f name=X -f value=y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/environments/production/variables/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/dependabot/secrets/X -f encrypted_value=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/codespaces/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/actions/workflows/checks.yml/disable",
+      "approvable": true
+    },
+    {
+      "steps": [
         "approvals-file"
       ],
       "command": "echo x > .claude/ratchet-approvals.json",

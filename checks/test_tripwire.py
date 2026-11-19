@@ -13,6 +13,9 @@ Standard library only.
 import datetime
 import json
 import os
+import random
+import shutil
+import string
 import subprocess
 import sys
 import tempfile
@@ -60,6 +63,20 @@ def git(cwd, *args):
                    env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
                             GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid",
                             GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="test@example.invalid"))
+
+
+def fresh(root, length, make):
+    """A new entry directly in root, tmp. and length random letters and digits, made by make(path), which fails when
+    the path exists. Never a fixed name, so that runs at the same time never share one."""
+    choose = random.SystemRandom().choice
+    for _ in range(100):
+        path = os.path.join(root, "tmp." + "".join(choose(string.ascii_letters + string.digits) for _ in range(length)))
+        try:
+            make(path)
+            return path
+        except FileExistsError:
+            continue
+    raise AssertionError("no free name of %d characters in %s" % (length, root))
 
 
 def strict(data, fields):
@@ -169,6 +186,31 @@ class Tripwire(FixtureTest):
         self.addCleanup(os.remove, link)
         for command in ("rm -rf %s" % root, "rm -rf %s/.." % made, "rm -rf %s" % other, "rm -rf %s" % os.path.join(root, "tmp.ab1"),
                         "rm -rf %s" % link, "rm -rf %s/" % link):
+            code, message = self.bash(command)
+            self.assertEqual(code, 2, command)
+            self.assertIn("tripwire: delete-outside", message)
+
+    def test_a_link_to_or_inside_a_directory_from_mktemp_is_never_followed(self):
+        # The entry in the temporary directory, and every part after it, is read as written: a link there, "." or
+        # "..", and the path is denied, even where the link or the ".." leads to another directory from mktemp -d.
+        made, made2 = (subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True,
+                                      check=True).stdout.strip() for _ in range(2))
+        for directory in (made, made2):
+            self.addCleanup(shutil.rmtree, directory, True)
+        root = os.path.dirname(made)
+        outside = self.scratch()
+        sibling = fresh(root, 10, lambda path: os.symlink(made, path))
+        self.addCleanup(os.remove, sibling)
+        os.symlink(outside, os.path.join(made, "out"))
+        os.symlink(made2, os.path.join(made, "in"))
+        os.mkdir(os.path.join(made, "sub"))
+        for command in ("rm -rf %s/" % made, "rm -rf %s//sub" % made, "rm -rf %s" % os.path.realpath(made)):
+            self.assertEqual(self.bash(command), (0, ""), command)
+        for command in ("rm -rf %s" % sibling, "rm -rf %s/" % sibling, "rm -rf %s/sub" % sibling,
+                        "rm -rf %s/out/" % made, "rm -rf %s/out/x" % made, "rm -rf %s/out" % made,
+                        "rm -rf %s/in/" % made, "rm -rf %s/in/x" % made,
+                        "rm -rf %s/.." % made, "rm -rf %s/../.." % made, "rm -rf %s/sub/../.." % made,
+                        "rm -rf %s/../%s" % (made, os.path.basename(made2)), "rm -rf %s/./sub" % made):
             code, message = self.bash(command)
             self.assertEqual(code, 2, command)
             self.assertIn("tripwire: delete-outside", message)
@@ -320,6 +362,20 @@ class Rule(FixtureTest):
         for case in cases:
             with self.subTest(command=case["command"]):
                 self.assertIn("`%s`" % case["command"].replace("\n", " "), text)
+
+
+class Parallel(unittest.TestCase):
+    """The tests that make entries in the shared temporary directory, run in several processes at once."""
+
+    TESTS = ("test_tripwire.Tripwire.test_a_directory_from_mktemp_may_be_deleted_by_its_path_in_a_later_call",
+             "test_tripwire.Tripwire.test_a_link_to_or_inside_a_directory_from_mktemp_is_never_followed")
+
+    def test_runs_at_the_same_time_do_not_touch_each_other(self):
+        children = [subprocess.Popen([sys.executable, "-m", "unittest"] + list(self.TESTS), cwd=HERE, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT) for _ in range(4)]
+        outputs = [child.communicate(timeout=600)[0].decode("utf-8", errors="replace") for child in children]
+        for number, (child, output) in enumerate(zip(children, outputs), 1):
+            self.assertEqual(child.returncode, 0, "run %d of 4:\n%s" % (number, output))
 
 
 class TagRuleset(unittest.TestCase):
