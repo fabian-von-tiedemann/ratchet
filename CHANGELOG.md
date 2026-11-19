@@ -11,6 +11,12 @@ One rule is added in this version, and none is changed or removed. The form of `
 Added:
 
 - `ratchet.review-by-risk`, experimental, in `CONTROL-ROOM.md`: the depth of a review follows the risk of the paths a PR changes. A PR that changes only documentation, the landing page or tests gets a light review, from the same reviewer from another model family at a lower effort. A PR that changes any other path, among them a check, a workflow, a hook, a rule or the register, gets the full review, and so does a PR that deletes a test or a fixture. A finding marked as not blocking starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed. It is text only, because a check in the repo cannot see the effort of a review. It counts against the cap: 24 experimental rules under a cap of 25.
+- `docs/index.html`: a landing page for GitHub Pages, served from `docs/` on `main` with no build step (`docs/.nojekyll`). It is one page with its CSS inline, no script, and nothing loaded from another origin, in light and dark. Its text is taken from `README.md`. It goes live when the maintainer turns on Pages for `main` and `/docs`, a setting of the repository.
+- `checks/test_pages.py`: a test of this repo that reads the page strictly. It fails on an element or an attribute the page may not hold, an element left open, anything loaded from another origin, a link that leads out of the repo or to a file that does not exist, a link to the page whose fragment is not an id on it, an id twice, a heading that skips a level, an image without alt text, a pair of colors under a contrast ratio of 4.5, and a command that is not a line of a code block in `README.md`. See [checks/README.md](checks/README.md#the-landing-page).
+
+Changed:
+
+- `checks/generate.py` writes the version in the line of `docs/index.html` that fetches Ratchet, the newest version with a date, as the command in `README.md` names it. `--check` fails when the line is not current, is missing, stands twice, or another line of the page holds `git clone`. So the pull request of a release moves the page with the README when it runs `generate.py`.
 
 ## 0.9 (2026-11-19)
 

@@ -400,6 +400,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - the first entry in the changelog is not the version in `ratchet.json`, headed `## <version> (<date>)` or `## <version> (unreleased)`, an entry after the first is headed `(unreleased)`, or a heading of an entry is of another form
 - the entries in the changelog do not stand newest first: each version, compared as a pair of integers, must be higher than the one after it, so a version twice or an entry moved up fails
 - the command in `README.md` that fetches Ratchet is not the one line `git clone --branch v<version> https://github.com/fabian-von-tiedemann/ratchet .ratchet`, once, in a code block marked `sh`, for the highest version with a date in the changelog, or another line of `README.md` runs `git clone`. The line is matched whole, after the spaces that indent it, so a pin written in prose, a command with more on its line, or the command outside such a block does not count. `generate.py` reads no tags, so it does not claim that the tag exists: the window in which it does not is under "What it does not claim" in [released_text.py](#released_textpy)
+- the landing page, `docs/index.html`, does not hold the line `<pre><code>git clone --branch v<version> https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>` exactly once, with any version, after the spaces that indent it, or another line of the page holds `git clone`. The generator writes into that line the version that the command in `README.md` must fetch, so `--check` fails when the page fetches another version than the README. The rest of the page is checked by a test: see [The landing page](#the-landing-page)
 - `sources.json` is not a valid data file: not strict JSON in UTF-8, a field twice, any field but `sources`, a source of another form, a name twice
 - the source of a rule cites a name that is not a source in `sources.json`. The source of a rule is empty, or citations separated by `; `, each of which starts with the name of a source and then, after a space or a comma, says what is taken from it
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
@@ -716,6 +717,56 @@ A proposal starts as an issue with the form [proposal.yml](../.github/ISSUE_TEMP
 | A tab, a carriage return, a letter that is not ASCII, no final newline | Fails |
 
 The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with one change, so they follow the form when it changes.
+
+## The landing page
+
+[docs/index.html](../docs/index.html) is the landing page. GitHub Pages serves it from `docs/` on `main`, as the files stand, with no build step and no workflow: `docs/.nojekyll` tells Pages not to run Jekyll. It goes live when the maintainer sets Settings, Pages, "Deploy from a branch", `main` and `/docs`, a setting of the repository. To see it before then, open the file: `open docs/index.html` on macOS, or any browser. The page is a test of this repo, not a reference check.
+
+**What it claims.** [test_pages.py](test_pages.py) reads the page strictly and fails on what it does not know:
+
+- The page is strict UTF-8, starts with `<!DOCTYPE html>`, and holds no control character but the newline and no character that reorders or hides text.
+- `html.parser` reads it as well-formed: each element is one of a fixed list, with only the attributes listed for it, each once and with a value. Every element that is opened is closed, in order, and a void element is never closed. There is no comment, processing instruction or other declaration. No script, frame, object, form, base, inline SVG, style attribute or event handler is on the list.
+- Nothing is loaded from another origin. What an element loads, `img src`, `source srcset` and `link href`, is the name of a file in `docs/`, and the one `link` is the icon. The CSS, all in one `<style>`, has no at-rule but `@media`, no function but `var()`, no backslash and no `url`, so it loads nothing and no escape can spell a word the test does not see.
+- A link goes to a file in `docs/`, to an id on the page, or into the repo on GitHub: the repo, a file or a directory on `main` that exists in the checkout, a pull request or the latest release. A link elsewhere fails, and so does a path with a part that is `.` or `..`.
+- A link to the page, `#…` or `index.html#…`, names an id that is on the page, as `html.parser` reads it, character for character. The page is the one page in `docs/`, so a link to a logo has no fragment. The ids on the page stand once each.
+- A link into the repo on GitHub may end in a fragment, which must have the form of an id: lowercase letters and digits in words joined by `-`. Whether GitHub shows that id on its page is not checked.
+- `docs/` holds exactly `index.html`, `.nojekyll` and the two logos, and each logo is byte for byte its copy in `assets/`.
+- The page has `lang="en"`, one `h1`, headings that do not skip a level, and alt text on every image.
+- The colors are two palettes of custom properties, for light and for dark (`prefers-color-scheme`), and no hex color is written outside them. In each, the text, the muted text and the links on the background, and the text on the background of code, have a contrast ratio of at least 4.5 (WCAG 2, level AA).
+- Every command on the page, a line of a `<pre><code>` block, is a line of a code block marked `sh` in `README.md`.
+- The line that fetches Ratchet is written by `generate.py`, and `--check` fails when it is not current (see [generate.py](#generatepy)). So the pull request of a release, which moves the command in `README.md` and runs `generate.py`, moves the page with it.
+
+**Against which threat.** The page is the first thing many people read, so it must not promise more than the README, and it must not track them: no script, font, stylesheet or image from another origin. A release that moves the README and forgets the page would send people to an older version, and a link that leads nowhere would go unseen, because nothing else reads the page.
+
+**What it does not claim.** It does not claim that a browser shows the page as intended, or that Pages is turned on and serves it. It reads hex colors only, so a named color is not checked for contrast. It does not check that the text is true: it is taken from `README.md` and read by the maintainer. A link into the repo is checked against the checkout, not against GitHub, so the fragment of such a link, as in the README's `#start-here`, is checked for its form only.
+
+| Case | Result |
+|---|---|
+| The page as it stands, in this repo and in a copy | Passes |
+| No `docs/`, no `.nojekyll`, a file that is not known in `docs/` such as `CNAME` or `404.html`, or a logo that differs from its copy in `assets/` | Fails |
+| A byte that is not UTF-8, or a carriage return, a tab, a NUL, a right-to-left override, a zero-width space or a byte order mark | Fails |
+| No doctype | Fails |
+| A script, inline or loaded, also in capitals, a frame, an object, an embed, a base, a form, an inline SVG image, or audio | Fails |
+| An event handler, a style attribute, a `srcset` or `loading` on an image | Fails |
+| An image, a source or the icon loaded from another origin, from `//`, with the scheme written as a character reference, from the repo's raw files, or from `../assets/` | Fails |
+| `@import`, `@font-face`, `url(`, `URL(`, `url` spelled with a CSS escape, `image-set()`, `calc()`, or a `link` that is a stylesheet | Fails |
+| A link to another site, to `http:`, to another repo of the same owner, to `javascript:`, also written as a character reference, to `mailto:`, to the Pages origin, or to `//` | Fails |
+| A link into the repo to a file or a directory that is not there, to a directory as a file, through `..`, to another branch, to the settings | Fails |
+| A relative link to a file that is not in `docs/`, out of `docs/`, from the root, to `.nojekyll`, or to an id that is not on the page | Fails |
+| A link to `index.html#start-here` | Passes |
+| A link to the page whose fragment is not an id on it: `index.html#start-hree`, a typo for `start-here`, `index.html#Start-here`, `index.html#`, `#missing`, `#start-hree` or `#` | Fails |
+| A link with a fragment to a logo, `ratchet-light.svg#logo` | Fails |
+| An id twice on the page, here a second `start-here`, which a link names | Fails |
+| An element left open, closed out of order, a void element closed, a self-closed `p`, a comment, a CDATA section, a processing instruction, an attribute twice or one not on the list, a second `title` | Fails |
+| No `lang`, an empty or a missing alt text, an `h3` after the `h1`, no `h1` | Fails |
+| Muted text, links or the background changed to a color under 4.5, a hex color outside the palettes, or no palette for dark | Fails |
+| A command on the page that is not in `README.md`, or a second line added to a command | Fails |
+| A release that dates the first entry and moves the README, before `generate.py` is run | `generate.py --check` fails on `docs/index.html`, and `generate.py` writes it |
+| The page moved to a version that the README does not fetch | `generate.py --check` fails |
+| The fetch line removed, twice, with more on its line, outside `<pre><code>`, another line that holds `git clone`, or a version of another form | `generate.py --check` fails, and `generate.py` writes nothing to the page |
+| No page, or a page that is not UTF-8 | `generate.py --check` fails, with no traceback |
+
+Each case is the page with one change, so the cases follow the page when it changes.
 
 ## upgrade.py
 
