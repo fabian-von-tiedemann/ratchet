@@ -188,7 +188,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | An expected failure | A test marked `expectedFailure` fails, which does not fail a unittest run. | `Runs.test_an_expected_failure_fails` | Fails |
 | A skip decorator on a class | Every test of the class is skipped. | `Runs.test_a_skip_decorator_on_a_class_fails` | Fails |
 | A module that fails to import | discover gives a test that errors in its place. | `Runs.test_a_module_that_fails_to_import_fails` | Fails |
-| The release steps | The release of the version that `ratchet.json` names, 0.8 here, on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
+| The release steps | The version that `ratchet.json` names, on a copy: first unreleased, when a merge publishes nothing, then given its date and released. The guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
 | A killed child | A test kills its own process. | `Runs.test_a_killed_child_fails` | Fails: the signal, no completion record, a test with no outcome |
 | A record of an unknown form | An unknown kind, an unknown or missing field, an instance that is not a whole number from 1, an unknown outcome, a sha256 or a name of another form, a line that is not one JSON object, a field twice, a line cut off, bytes that are not UTF-8. | `Records.test_a_record_of_a_form_the_check_does_not_know_fails` and the six after it | Fails |
 | A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | `Runs.test_a_complete_set_passes`, `Runs.test_every_way_of_loading_counts`, `Records.test_a_complete_run_passes` | Passes |
@@ -231,10 +231,10 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 
 ```sh
 python3 checks/watch_sources.py
-python3 checks/watch_sources.py --data ratchet.json
+python3 checks/watch_sources.py --data sources.json
 ```
 
-This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [ratchet.json](../ratchet.json) that `RATCHET.md` shows under Sources. Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
+This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [sources.json](../sources.json) that `RATCHET.md` shows under Sources. The data file is an object with the one field `sources`, and any other field fails the run before anything is read ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
 
 **What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API. It reads the head as `commits/HEAD`, which GitHub resolves to the head of the default branch, so it never reads the name of the branch.
 
@@ -246,21 +246,21 @@ This is not a reference check for a rule. It is a tool this repo runs on its own
 **Against which threat.**
 
 1. A pinned source moves, and nobody notices, so a rule keeps crediting a source that now says something else, or a project keeps copying a skill at a pin that has gone (`ratchet.skills-pinned`).
-2. Text from a source, from an answer of the API or from `ratchet.json` is written so that the issue pings someone, links somewhere, shows HTML or reads as an instruction (`ratchet.material-not-instructions`), or so that a line in the log is read by the runner as a command, such as `::warning::` or `##[error]`.
+2. Text from a source, from an answer of the API or from `sources.json` is written so that the issue pings someone, links somewhere, shows HTML or reads as an instruction (`ratchet.material-not-instructions`), or so that a line in the log is read by the runner as a command, such as `::warning::` or `##[error]`.
 3. The token is printed in a log or an error, written into an issue, or sent to another host.
 
 **No text from a source (`D-2026-11-17-new-approaches`, in PR #13).** Two review rounds found text from upstream that escaping did not make inert, and a token that got through an encoding the watch did not undo. So the watch no longer tries to make such text safe. No text from a source, and no text from an answer of the API, reaches an issue, a title or a printed line. An issue holds only these values:
 
 | Value | From | Checked as |
 |---|---|---|
-| Name | `ratchet.json` | The narrow form below |
-| Directory | `ratchet.json` | The narrow form below |
-| Pinned commit | `ratchet.json` | 40 lowercase hex characters |
+| Name | `sources.json` | The narrow form below |
+| Directory | `sources.json` | The narrow form below |
+| Pinned commit | `sources.json` | 40 lowercase hex characters |
 | Head of the default branch | The API | 40 lowercase hex characters |
 | Status | The API | One of `identical`, `ahead`, `behind`, `diverged` |
 | Commits ahead and behind | The API | Integers from 0 to 999999999 |
 | Changed files, and those under the directory | Counted by the watch from the API's list | Integers, or "not listed by the API" |
-| Compare link | Owner and repo from `ratchet.json`, and the two shas | `https://github.com/<owner>/<repo>/compare/<pin>...<head>` |
+| Compare link | Owner and repo from `sources.json`, and the two shas | `https://github.com/<owner>/<repo>/compare/<pin>...<head>` |
 | Everything else | Fixed English text in the script | Each line exactly |
 
 No commit subject, file name, branch name, author or message is written. The issue tells the reader to follow the compare link to see the commits and the files, and that what they find there is material, not instructions. File names are read only to count those under the directory. The name of the default branch is not read at all.
@@ -269,8 +269,8 @@ No commit subject, file name, branch name, author or message is written. The iss
 
 | Request | Its kind in an error | The values in its path, and their form |
 |---|---|---|
-| `GET /repos/<owner>/<repo>/commits/HEAD` | `source <name>: reading the head of the default branch` | Owner and repo from `ratchet.json`, and the fixed `HEAD` |
-| `GET /repos/<owner>/<repo>/compare/<pin>...<head>` | `source <name>: comparing the pinned commit with the head` | The pin from `ratchet.json`; the head from the API, checked as 40 lowercase hex characters first |
+| `GET /repos/<owner>/<repo>/commits/HEAD` | `source <name>: reading the head of the default branch` | Owner and repo from `sources.json`, and the fixed `HEAD` |
+| `GET /repos/<owner>/<repo>/compare/<pin>...<head>` | `source <name>: comparing the pinned commit with the head` | The pin from `sources.json`; the head from the API, checked as 40 lowercase hex characters first |
 | `GET /repos/<owner>/<repo>/commits/<pin>` | `source <name>: reading the pinned commit` | The pin, 40 lowercase hex characters |
 | `GET /repos/<target>/issues?state=open&per_page=100&page=<n>` | `reading the open issues of the target repository` | `GITHUB_REPOSITORY`, checked as owner/repo; integers |
 | `POST /repos/<target>/issues` | `opening the issue <title>` | The target |
@@ -331,7 +331,9 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 | Test | What is tried | Result |
 |---|---|---|
 | `test_fixture_*`, one for each file under [fixtures/sources/](fixtures/sources/), each loaded through `FixtureTest` | 49 malformed sources: names with `##[`, `::`, `@`, `#`, `<`, a backtick, a space, a capital, `_`, a leading `.` or `-`, 101 characters, `www.` or `gh-12`; directories with `//`, `..`, a part `.`, a capital, `_`, 101 characters or `www.`; an owner with `_`; and the forms of round 1. | Fails, names the problem, or prints that a line was left out where the problem quotes `_` or `\|`; reads nothing |
-| `test_the_sources_in_ratchet_json_have_the_form` | This repo's own sources. | Passes |
+| `test_the_sources_in_sources_json_have_the_form` | This repo's own sources. | Passes |
+| `test_with_no_arguments_the_watch_reads_sources_json_in_this_repo` | No arguments: this repo's `sources.json`. | Passes, reads each source |
+| `test_a_data_file_with_any_field_but_sources_fails_before_any_read` | `ratchet.json` with sources, a field besides `sources`, no field, a list, a field twice. | Fails, reads nothing |
 | `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Nothing written |
 | `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with exactly the expected body |
 | `test_a_second_run_updates_and_does_not_duplicate` | The same move twice, then a further move. | Nothing written the second time, then the open issue updated |
@@ -395,11 +397,16 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - a file it reads is not valid UTF-8
 - a markdown file in the root, in `templates/` or in `checks/` mentions a key that is not a rule
 - such a file links to a local file that does not exist, with an inline link or with a link definition at the start of a line. Links to the web and links inside a page are not followed.
-- the first entry in the changelog is not the version in `ratchet.json`, or a heading of an entry is not of the form `## <version> (<date>)`
+- the first entry in the changelog is not the version in `ratchet.json`, headed `## <version> (<date>)` or `## <version> (unreleased)`, an entry after the first is headed `(unreleased)`, or a heading of an entry is of another form
+- the command in `README.md` that fetches Ratchet is not the one line `git clone --branch v<version> https://github.com/fabian-von-tiedemann/ratchet .ratchet`, once, in a code block marked `sh`, for the newest version with a date in the changelog, or another line of `README.md` runs `git clone`. The line is matched whole, after the spaces that indent it, so a pin written in prose, a command with more on its line, or the command outside such a block does not count. `generate.py` reads no tags, so it does not claim that the tag exists: the window in which it does not is under "What it does not claim" in [released_text.py](#released_textpy)
+- `sources.json` is not a valid data file: not strict JSON in UTF-8, a field twice, any field but `sources`, a source of another form, a name twice
+- the source of a rule cites a name that is not a source in `sources.json`. The source of a rule is empty, or citations separated by `; `, each of which starts with the name of a source and then, after a space or a comma, says what is taken from it
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 - there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 
-In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
+From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
+
+In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged with a date in its heading. While it is headed `(unreleased)`, changes are collected under it, and no merge publishes it. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
 ## released_text.py
 
@@ -414,6 +421,8 @@ python3 checks/released_text.py
 
 It also fails when a tag has no entry in the changelog (`ratchet.si-version`), when an entry after the first has no tag, when a heading is not of the form `## <version> (<date>)` or a version stands twice, when there are no tags, when a tag is of another form, and when the tags cannot be read.
 
+**An unreleased first entry** ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). The first entry may be headed `## <version> (unreleased)`, exactly. It passes while its version has no tag, and `ratchet.json` may name that version and change: nothing of it is released. An entry after the first headed so fails, and so does the first when its version has a tag: a released version stays released. Once the heading has a date, the next push to `main` releases it, and from its tag on the entry and `ratchet.json` are compared as every released one is. `sources.json` is not read: the list of sources is not part of what is released, so a pin that moves needs no new version. The threat here is the one that item 3 of [D-2026-11-17-new-approaches](../decisions/D-2026-11-17-new-approaches.md) named: an unreleased heading was once how released text got rewritten. So the heading has one exact form, only the first entry may have it, and released text is compared from its tag on as before.
+
 **Against which threat.** Released text rewritten after its tag, as the count under the released heading of 0.3 was, by the generator, in the first round of PR #12. A record of the release kept in the repo does not protect it, because the same PR can change the record. The tag is published, and is never moved (`repo.tags-stay`).
 
 **In CI.** The checkout of the job `checks` fetches the tags, with `fetch-depth: 0`, and a step runs this check. Without the tags it fails, and says so: it is never skipped. The tests in [test_released_text.py](test_released_text.py) make a git repo of their own, with tags of their own, so they need none of this repo's tags.
@@ -427,6 +436,11 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag with no entry, also a tag that holds no changelog, as `v0.1` | Fails |
 | An entry after the first with no tag | Fails |
 | A heading of another form, such as `## Unreleased`, `## 0.4` or `## 0.4 (soon)`, or an entry twice | Fails |
+| The first entry headed `## 0.4 (unreleased)`, with no tag `v0.4`, and `ratchet.json` and the entry changed under it | Passes, and says that the first entry is unreleased |
+| That entry given its date, then tagged | Passes. From the tag on, the entry headed `(unreleased)` again fails |
+| An entry headed `(unreleased)` after the first, two such entries, or the first for a version that has a tag | Fails |
+| `(Unreleased)`, a space or a no-break space after it, no parentheses, no space before them, or one left open | Fails, not the heading of an entry |
+| `ratchet.json` with `sources` or `date`, which left it in 0.9 | Fails, an unknown field |
 | A changelog that is not UTF-8, or no changelog | Fails |
 | `ratchet.json` names a released version and is as it stood at its tag | Passes |
 | `ratchet.json` names a released version and its rules changed, or the tag holds no `ratchet.json`, or it cannot be read | Fails |
@@ -434,10 +448,12 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of the version that `ratchet.json` names, 0.8 here, on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before it, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
-| After that release, a rule changed without a new version | Fails |
+| The version that `ratchet.json` names, on a copy of this repo, with `release.py`'s own code and no copy of it, against a fake GitHub that holds the tags and releases from before it. First headed `(unreleased)`: `RATCHET.md` says it is not yet released, the README fetches the newest release, the checks pass, and a push and a scheduled run, on the history of `main` in the copy read with `release.main_history` and `release.read_pending`, write nothing and say why. Then given its date, with the README moved to its tag and `generate.py` run: the checks pass, `release.publish` tags the merge and releases it, the next scheduled run writes nothing, the guard passes, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
+| While that version is unreleased, a rule changed | Passes |
+| After its release, a rule changed without a new version | Fails |
+| After its release, a pin moved in `sources.json` | Passes, with no new version. `generate.py` writes only `RATCHET.md` |
 
-**What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
+**What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right. It does not see whether a dated first entry was released: on a pull request, and on the push of `main` before the release run is done, the tag does not exist yet. That is the release workflow's to see, on its next run and on its schedule. So the command in `README.md` that fetches Ratchet names a tag that may not exist yet: the pull request of a release moves it to the version it dates, and the tag is created by the release run after the merge. For the minutes that run takes, the command fails. If the run is cancelled or fails before it tags, the command fails until a rerun tags, and the daily scheduled run of `release.py` is red each day until then ([PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50), round 2, finding 2). Moving the pin in a pull request of its own after the tag exists would close that window, at the cost of a second pull request for each release, and is a question for the maintainer.
 
 ## release.py
 
@@ -479,6 +495,8 @@ It does not stand against someone who changes the runner's git data, such as a g
 - **A checkout that swaps objects or parents is refused.** Before it reads any history, the run fails when the checkout has `.git/info/grafts`, a ref under `refs/replace/`, loose or packed, a `.git/shallow` file, even an empty one, or a `.git/objects/info/alternates` file, even an empty one. git reads a graft as the parents of a commit, a replace ref as another object, a shallow file as the end of the history, and an alternate store as the source of an object the checkout lacks, without checking its hash: each changes what is read, and the tests show it. Beside the refusal, git runs with `GIT_NO_REPLACE_OBJECTS=1`, `--no-replace-objects` and `GIT_GRAFT_FILE` set to an empty file in a directory the script makes for each call, so that the reading ignores grafts and replace refs anyway. A fresh checkout on GitHub has none of these.
 - **The older versions are the ones `main` has had.** Before any request, it reads with git every commit on the first-parent history of `GITHUB_SHA` (`git rev-list --first-parent`) and the bytes of `ratchet.json` in each (`git cat-file`), and reads each as strictly as `registry.py` reads a data file: UTF-8, no field twice, no NaN, and a `version` of the form `MAJOR.MINOR`. Every commit is read, not only those git reports as changing the file. The run fails when the checkout is shallow, when it is not at `GITHUB_SHA`, when `ratchet.json` at `GITHUB_SHA` names another version than the checkout, when a commit names a version newer than the one being released, or when the file is missing at a commit after an earlier commit held it. Commits from before `ratchet.json` existed name no version. git runs with no `GIT_` variable of the environment, no system or global config, no replace refs and no graft file of the checkout, and it does not look for a repository above the checkout.
 - **Every tag has an entry, and every older version is finished.** Before any write, it lists the tags and the releases. A tag `vMAJOR.MINOR` up to this version with no line of its own fails the run, and so does a tag under `refs/tags/v` of another form, which is named. Each version that `ratchet.json` has named on `main` and that is older than the one being released must have a tag and a published release, not a draft. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version, what it lacks and the commit whose run to rerun, and writes nothing. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
+- **An unreleased first entry publishes nothing** ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). A line `## MAJOR.MINOR (unreleased)`, matched as a whole line as the dated heading is, is an entry of a version that is not released. When the first entry is headed so, for the version in `ratchet.json`, the run reads the tags and the releases, fails as before when an older version is not finished, and otherwise passes, writes nothing and says: `Ratchet <version> is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. Nothing was written.` That holds for a push, a run by hand and a scheduled run. It fails and writes nothing when that version already has a tag or a release, when an entry after the first is headed `(unreleased)`, when a version has two headings, and when the checkout and its commit on `main` disagree on whether the entry is unreleased. A heading of any other form, such as `(Unreleased)`, is no entry at all, so the run fails as for a missing entry. The release is the push of the commit that gives the entry its date.
+- **The versions that must be released are the ones `main` has named with a date.** Beside `ratchet.json`, the run reads with git the `CHANGELOG.md` of every commit on the first-parent history (`release.read_pending`), as strict UTF-8, and only its headings. A commit is pending when its first entry is the one exact unreleased heading for the version its `ratchet.json` names. A version must be released once a commit on `main` names it and is not pending, so a version merged with a date cannot be hidden by a later pull request, as before. A version that `main` only named as pending needs nothing. A version that a commit on `main` named and that was not pending must be released also when a later commit is pending for it again, with `(unreleased)` put back: the run of that later commit, on a push and on a schedule, fails, writes nothing and says `Ratchet <version> is not finished: commit <sha> on main gave its entry in CHANGELOG.md a date, and at commit <head> it is headed "(unreleased)" again.`, with the rerun. The commit that a message names for a rerun is the first commit on `main` that names the version and is not pending, since a rerun of a pending commit publishes nothing. A commit whose changelog is missing, or holds the heading in another form, counts as not pending: its version must be released. A changelog that is not UTF-8 at a commit on `main` fails the run and names the commit.
 - **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request. A scheduled run is on the default branch, `main`, and passes this check like the others.
 - **The event is one of three.** `GITHUB_EVENT_NAME` must be exactly `push`, `workflow_dispatch` or `schedule`, or the run fails before any request. A push and a run by hand write as described below.
 - **A scheduled run writes nothing, and is red on what is unfinished.** It runs the same checks on the head of `main` and reads the same tags and releases. Its API function sends a `GET` and refuses every other request, which is not sent, whatever the logic asks for. When a read fails, it is red as any run is, and its message may name only the request that failed. When the reads are answered and a run of a push would write, it fails instead: for a version with no tag, the message names the version, the head commit, the first commit on `main` whose `ratchet.json` names it, and the rerun; for a tag at the head with no published release, it names the version, the commit the tag points at, and that the release is missing. Every other fault fails as in a run of a push, and writes nothing. On a state where every version is finished, it passes.
@@ -508,6 +526,7 @@ It does not stand against someone who changes the runner's git data, such as a g
 - A version that is merged and left unreleased, or made impossible to release, with no red run: a run that fails or is cancelled after it tags, a waiting run replaced in the concurrency group by a newer one, or a later pull request that takes the version's heading out of the changelog.
 - A release attached to a tag at another commit than the one approved, because the tag appeared between a check and a write.
 - A version hard-coded in the script instead of read from `ratchet.json`.
+- A version collected under an unreleased entry that is published before its pull request of release, or a version merged with a date that is then never released because the changelog says it was unreleased. Only the exact heading, as the first entry, holds a version back, and only at commits whose own changelog says so ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). Once a commit on `main` has dated a version, a later commit that heads it `(unreleased)` again does not take the duty away: the run fails and names the commit that dated it (PR #50, round 2, finding 1).
 - The token sent somewhere else, or shown in a log.
 
 A version written in an odd form by mistake, such as `0.04`, fails the run and is named. The threats that are out of scope are under "What it does not claim".
@@ -600,6 +619,23 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 | This version's release on the second page | Found, nothing written |
 | A list of releases with no end | Fails after 100 pages, writes nothing |
 | The version is not the newest entry, or has none | Fails before any request |
+| The first entry headed `## 0.4 (unreleased)`, with every older version finished, on a push and on a schedule | Passes, says that 0.4 is not released, writes nothing |
+| The same, with 0.3 tagged and not released | Fails, names 0.3, writes nothing |
+| The same, with a tag `v0.4` at another commit or at this one with its release, or with a release `v0.4` and no tag | Fails, writes nothing |
+| An entry headed `(unreleased)` after the first, or a version with two headings | Fails before any request, names the line or the version |
+| `## 0.4 (Unreleased)`, a space or a no-break space after it, no parentheses, no space before them, one left open, `## Unreleased`, two spaces, more words | No entry: fails before any request |
+| The checkout heads 0.4 `(unreleased)` and its commit does not, or the other way round | Fails before any request |
+| In a real git history: 0.4 unreleased twice, then dated | Both unreleased commits are pending. The push of the dated one tags it and releases it |
+| In a real git history: a push of 0.4 unreleased, and the scheduled run after it | Pass, send only `GET`, write nothing |
+| 0.4 unreleased, then dated, then a later commit, with no tag, in a scheduled run | Fails, names the dated commit as the one to rerun |
+| 0.4 unreleased, then dated and never released, then 0.5 unreleased, on a push and on a schedule | Fails, names 0.4 and the dated commit |
+| 0.4 only ever unreleased, then 0.5 dated | 0.4 needs nothing. 0.5 is tagged and released |
+| 0.4 unreleased, then dated with its run cancelled before the tag, then headed `(unreleased)` again, on a push and on a schedule | Fails, names the dated commit and the head, writes nothing. Round 2, finding 1 |
+| The same, then the late run of the dated commit | Tags and releases 0.4 at the dated commit. The head then fails, since a released version is headed `(unreleased)`, until a commit dates it again, which passes as released at an earlier commit |
+| 0.4 dated, its late run releases it, then headed `(unreleased)` again | Fails on a push and on a schedule, writes nothing |
+| 0.4 dated, unreleased, dated again, unreleased again | Fails, names the first commit that dated it |
+| A commit on `main` whose changelog heads 0.4 `(Unreleased)`, with a space after, or with no date | Not pending: 0.4 must be released, and is named |
+| A changelog at a commit on `main` that is not UTF-8 | Fails, names the commit and the byte |
 | `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with the fixed line for 9.7, and `notes` prints it |
 | The token in five runs, with an answer that holds it | Never in the output, and sent only to `api.github.com` |
 | No token, a repository, a commit or a branch not of its form | Fails before any request |
@@ -629,6 +665,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 - It does not make GitHub start a scheduled run. GitHub may start one late, and at times of high load it may drop one. In a public repository, GitHub turns off a scheduled workflow after 60 days with no activity in the repository, and it stays off until someone turns it on again. Within those limits, while a version is unfinished, the scheduled run is red each day. A cancelled run prints nothing itself. The next run is red on it.
 - It does not promise to name the unfinished version ([D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). When the GitHub API is down, or answers a read with an error such as HTTP 503, or with something that is not JSON or not of the form expected, the run is red and writes nothing. Its message may name only the request that failed, and not the version, the commit or the rerun. As long as the API fails that way on the scheduled runs, a version can stay unfinished with no run that names it. Each of those runs is still red.
 - A scheduled run has the same job, and so the same token with `contents: write`, as a run of a push. What keeps it to reading is the script, which sends nothing but a `GET` on a schedule, not the token. A second job with a read-only token would need an `if:` on the event, and the workflow has none.
+- A version that is collected under an unreleased entry can be dropped on purpose, by a later pull request that raises `ratchet.json` past it before the entry has a date. That is a choice made in a pull request, as a skipped version is. Once a commit on `main` has dated the entry, the version must be released, whatever the changelog says later.
 - A version may be skipped on purpose, from 0.4 to 0.6, by a pull request that never puts 0.5 in `ratchet.json` on `main`. That is a choice made in a pull request, not a version lost. A version that a pull request names only in its own commits, and that `main` never names, is not counted.
 - Versions from before `ratchet.json` was on `main`, 0.1 and 0.2, are not in that history. Both were tagged by hand. The script checks them only as tags with an entry.
 - It does not stand against someone who changes the runner's git data ([D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md)). It refuses grafts, replace refs, a shallow file and alternates, and nothing more: a forged object written into the checkout's own store, a changed `HEAD` or ref, or a changed `git` binary are not looked for. On a fresh checkout on GitHub there is none, for the reasons under "Why that boundary holds".
@@ -694,13 +731,13 @@ This one checks no rule in a register. It is the upgrade path for a project ([UP
 - when every rule the register adopts was removed: adopt at least one rule, from the new rules, or from the rules to start with when there are no new ones, each printed with its entry. A register that adopts no rule does not pass `check_register.py`.
 - a new rule: the entry to add, if the project adopts it.
 - a rule that changed or was removed and is not adopted: its key, with nothing to do.
-- when the fields at the top of `ratchet.json` differ between the two versions: which are new, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack only the cap and may hold no field the newer one does not know, so a field can be new but not gone.
+- when the fields at the top of `ratchet.json` differ between the two versions: which are new and which are gone, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack the cap and may hold `date` and `sources`, which left `ratchet.json` in 0.9 ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)), and no other field the newer one does not know.
 
 Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. It writes nothing, and reads no file but the three it is given. It runs offline.
 
 **Against which threat.** A project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's.
 
-**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with four things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
+**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with four things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, it may hold `date` and `sources`, which left in 0.9, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
 
 **What it does not claim.**
 
@@ -710,7 +747,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
 
-**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3`, `v0.4`, `v0.5`, `v0.6` and `v0.7`, under `released/`.
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` to `v0.8`, under `released/`.
 
 | Case | Fixture | Result |
 |---|---|---|
@@ -718,7 +755,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3, 0.4, 0.5, 0.6 and 0.7, upgraded to this version, and the steps in `UPGRADING.md` run on the register at 0.7 | `released/0.3/`, `released/0.4/`, `released/0.5/`, `released/0.6/`, `released/0.7/` | Passes |
+| This repo's register at 0.3 to 0.8, upgraded to this version, with a note that `date` and `sources` are gone, and the steps in `UPGRADING.md` run on the register at 0.7. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.8/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
@@ -726,7 +763,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | A newer Ratchet that is older than the register | `register-current.json` with the two swapped | Fails |
 | A `ratchet.json`, older or newer, with a field twice, not JSON, not UTF-8, a field it does not know at the top or in a rule, a field missing, a character not on the list, a version that is a number, a key twice, a rule in a part that does not exist | `faults/` | Cannot run, with the fault named |
 | A file that does not exist, or no `--from` | none | Cannot run |
-| An older `ratchet.json` without the cap, as at `v0.3` and `v0.4`, and two with the same fields | `old-source-form/ratchet.json`, `released/`, and `old/ratchet.json` with the cap taken out in the test | Passes, with a note that `experimental_cap` is new, after the steps. With the same fields, no note |
+| An older `ratchet.json` without the cap, as at `v0.3` and `v0.4`, and two with the same fields | `old-source-form/ratchet.json`, `released/`, and `old/ratchet.json` with the cap taken out in the test | Passes, with a note that `experimental_cap` is new, after the steps, and that `date` and `sources` are gone where the older file holds them. With the same fields, no note |
 | A removed rule marked `built` with a `where`, and one whose key in `own` is taken, each kept in `own` by the printed entry | `removed/register.json`, `removed/old.json`, `removed/new.json` | Passes, with an entry that has the fields of an own rule only, and `-2` on the taken key |
 | The same, with an entry for `own` that keeps the status and the `where` | the same, with the entry changed in the test | Fails: no step is printed |
 | A register that adopts only rules that were removed | `removed/register-only-removed.json` | Passes, with the removals, the new rules and a step to adopt one |

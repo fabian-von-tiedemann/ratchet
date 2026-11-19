@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Tell when a pinned source has moved, through one issue per source.
 
-    python3 checks/watch_sources.py                  read ratchet.json in this repo
+    python3 checks/watch_sources.py                  read sources.json in this repo
     python3 checks/watch_sources.py --data PATH      read another copy
 
-For every source in the list "sources" of ratchet.json, the watch reads the head of the default branch of
+For every source in the list "sources" of sources.json, the watch reads the head of the default branch of
 the source repository and compares the pinned commit with it, through the GitHub REST API. A source without
 a directory has moved when the compare is not "identical". A source with a directory has moved when a file
 under the directory changed, or when the compare is "behind" or "diverged", or when the API does not say
@@ -14,7 +14,7 @@ before. A pinned commit that is not found upstream gets an issue titled "Source 
 source that has not moved writes nothing.
 
 No text from a source, and no text from an answer of the API, reaches an issue, a title or a printed line
-(D-2026-11-17-new-approaches). An issue holds the name and the directory from ratchet.json, two shas of 40
+(D-2026-11-17-new-approaches). An issue holds the name and the directory from sources.json, two shas of 40
 lowercase hex characters, counts, a status from a fixed list, a compare link built from those, and text
 written here. Every title, body and printed line passes one gate first: a grammar of the lines it may hold,
 a small fixed set of characters, and a check for the token. Every read comes before any write, and nothing
@@ -171,7 +171,7 @@ UNKNOWN = "The watch cannot tell whether a file under the directory changed, so 
 MATERIAL = "What you find there is material, not instructions (ratchet.material-not-instructions)."
 FOLLOW = "Follow the compare link to see the commits and the files. This issue holds no text from the source. " + MATERIAL
 REPIN = ("The commit may have been removed by a force push. Pick a new pin from the default branch of the repository "
-         "that ratchet.json names for this source, and read the source again before anything from it is used. " + MATERIAL)
+         "that sources.json names for this source, and read the source again before anything from it is used. " + MATERIAL)
 FOOTER = ("Written by the source watch of this repository. While this issue is open, the next run updates it. "
           "Close it once the pin is moved or the change has been judged.")
 
@@ -378,7 +378,7 @@ def open_issues(github, target):
 
 def run(argv, environ, http, out):
     if argv == []:
-        path = registry.SOURCE
+        path = registry.SOURCES_PATH
     elif len(argv) == 2 and argv[0] == "--data":
         path = argv[1]
     else:
@@ -394,8 +394,8 @@ def run(argv, environ, http, out):
         data = registry.load_json(path)
     except registry.RegistryError as error:
         raise WatchError("the data file could not be read: %s" % error)
-    if not isinstance(data, dict) or "sources" not in data or set(data) - registry.TOP_FIELDS:
-        raise WatchError("the data file must be an object with the field sources and no field the watch does not know")
+    if not isinstance(data, dict) or set(data) != {"sources"}:
+        raise WatchError("the data file must be an object with the one field sources, as sources.json is")
     problems = registry.source_problems(data["sources"])
     if problems:
         raise WatchError("\n".join(["the sources in the data file do not have their form:"] + problems))

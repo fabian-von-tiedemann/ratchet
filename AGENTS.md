@@ -24,8 +24,16 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 1. Edit [ratchet.json](ratchet.json). The rule tables are generated from it.
 2. Run `python3 checks/generate.py`. It rewrites the tables, the count, `templates/register.json`, `REGISTER.md` and the registers under `checks/fixtures/register/`.
 3. If a rule that [register.json](register.json) adopts changed, paste the new entry. `python3 checks/generate.py --entries` followed by the key prints it.
-4. Add the change to [CHANGELOG.md](CHANGELOG.md).
+4. Add the change to the first entry of [CHANGELOG.md](CHANGELOG.md), headed `## <version> (unreleased)`. If the first entry has a date, it is released: raise the version in `ratchet.json` and start a new first entry headed `(unreleased)`, before you run `generate.py`. Changes are collected there and released together ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)).
 5. Run the commands under "Before you say it is done".
+
+## How to release a version
+
+A release is a pull request of its own, merged only on the maintainer's word. It replaces `(unreleased)` in the first heading of [CHANGELOG.md](CHANGELOG.md) with the date, and moves the tag that the command in [README.md](README.md) fetches to the new version. Then run `python3 checks/generate.py`, which writes the rest. The release workflow tags and releases the version when the pull request is merged. The control room proposes a release at most once a week, or when the maintainer asks, and a fix for a security fault is released at once. That pace is text only: no check counts releases.
+
+## How to move a source's pin
+
+Edit [sources.json](sources.json) and run `python3 checks/generate.py`, which writes the table of sources in [RATCHET.md](RATCHET.md). The list of sources is not part of what is released, so a pin that moves needs no new version.
 
 ## How to change this repo's register
 

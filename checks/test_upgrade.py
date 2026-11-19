@@ -35,7 +35,7 @@ FAULTS = {
     "not-json": "not a valid data file",
     "not-utf8": "is not valid UTF-8, at byte",
     "unknown-field": "unknown field 'waivers'",
-    "missing-field": "missing field 'sources'",
+    "missing-field": "missing field 'start'",
     "rule-unknown-field": "ratchet.reworded: unknown field waived",
     "rule-hidden-character": "ratchet.reworded: rule holds U+200B",
     "version-number": "version must look like 0.2",
@@ -187,8 +187,8 @@ class Upgrade(FixtureTest):
         code, output = self.upgrade(old="old-source-form/ratchet.json")
         self.assertEqual(code, 0, output)
         self.assertIn("In Ratchet 9.9, 9 rules are new, changed or removed.", output)
-        # That older file has no cap, so the form changed.
-        self.assertIn(FORM % ("9.8", "9.9", '"experimental_cap" is new', "9.8", "9.9", "9.9"), output)
+        # That older file has no cap, and has the date and the sources, which left ratchet.json in 0.9: the form changed.
+        self.assertIn(FORM % ("9.8", "9.9", '"date" is gone, "experimental_cap" is new and "sources" is gone', "9.8", "9.9", "9.9"), output)
 
     def test_a_change_of_form_is_told_to_a_project_with_a_copy_that_reads_ratchet_json(self):
         # The fields at the top of ratchet.json, which Ratchet's checks read strictly: a reader of the older version
@@ -197,6 +197,11 @@ class Upgrade(FixtureTest):
         self.assertEqual(upgrade.form_changes(old, new), [])
         del old["experimental_cap"]
         self.assertEqual(upgrade.form_changes(old, new), ['"experimental_cap" is new'])
+        # A field can also be gone: 0.9 took the date and the sources out of ratchet.json (D-2026-11-19-batched-releases).
+        older = dict(old, date="2026-01-01", sources=[])
+        self.assertEqual(upgrade.form_changes(older, new), ['"date" is gone', '"experimental_cap" is new', '"sources" is gone'])
+        self.assertEqual(upgrade.form_changes(dict(new, date="2026-01-01", sources=[]), new), ['"date" is gone', '"sources" is gone'])
+        self.assertEqual(upgrade.load_older(self.fixture_file("upgrade/old-source-form/ratchet.json"))["sources"][0]["name"], "somewhere")
         out = io.StringIO()
         code = upgrade.report("register.json", self.loaded("register.json"), old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
@@ -229,9 +234,9 @@ class Upgrade(FixtureTest):
                 self.assertNotIn("Traceback", output)
 
     def test_this_repos_register_at_each_released_version_upgrades_to_this_ratchet(self):
-        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3, v0.4, v0.5, v0.6 and v0.7.
+        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3 to v0.8.
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
-        for version in ("0.3", "0.4", "0.5", "0.6", "0.7"):
+        for version in ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8"):
             with self.subTest(version=version):
                 register = self.fixture_file("upgrade/released/%s/register.json" % version)
                 old = self.fixture_file("upgrade/released/%s/ratchet.json" % version)
@@ -242,22 +247,25 @@ class Upgrade(FixtureTest):
                 self.assertIn("passes check_register.py against Ratchet %s" % new["version"], output)
                 si_version = "ratchet.si-version: changed: the rule. The register adopts it: replace its entry with this one."
                 if version in ("0.3", "0.4"):
-                    # Neither has the cap, which came in 0.5 as a change of form.
-                    self.assertIn(FORM % (version, new["version"], '"experimental_cap" is new', version, new["version"], new["version"]), output)
+                    # Neither has the cap, which came in 0.5 as a change of form. Every released version has the date
+                    # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
+                    form = '"date" is gone, "experimental_cap" is new and "sources" is gone'
                     # ratchet.si-version, which this repo adopts, changed in 0.5 (D-2026-11-18-form-change-before-1-0).
                     self.assertIn(si_version, output)
                 else:
-                    # From 0.5 the form and ratchet.si-version stay as they were.
-                    self.assertNotIn("experimental_cap", output)
+                    form = '"date" is gone and "sources" is gone'
                     self.assertNotIn(si_version, output)
+                self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # The rule that 0.6 adds is new to each register before it, and so is the rule that 0.7 adds. 0.8 adds none:
-                # it moves two pins in "sources", which is not a field that the register holds.
+                # it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
                 for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits")):
                     line = "- %s: new. The register may adopt it." % rule
                     if tuple(map(int, version.split("."))) < tuple(map(int, added.split("."))):
                         self.assertIn(line, output)
                     else:
                         self.assertNotIn(line, output)
+                if version == "0.8":
+                    self.assertIn("In Ratchet %s, no rule is new, changed or removed." % new["version"], output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
@@ -411,7 +419,13 @@ class UpgradingSteps(FixtureTest):
         shutil.copyfile(self.fixture_file("upgrade/released/0.7/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
         text = read("UPGRADING.md")
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
-        self.assertIn("git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet" % new["version"], text)
+        # The steps fetch a tag that exists: a version with a date in the changelog, never one that is unreleased
+        # (D-2026-11-19-batched-releases). Their example moves from the version before it.
+        dated = re.findall(r"(?m)^## ([0-9]+\.[0-9]+) \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$", read("CHANGELOG.md"))
+        fetched = re.findall(r"git clone --branch v([0-9.]+) https://github.com/fabian-von-tiedemann/ratchet \.ratchet", text)
+        self.assertEqual(fetched, ["0.8"])
+        self.assertIn(fetched[0], dated)
+        self.assertEqual(dated[dated.index(fetched[0]) + 1], "0.7")
         self.assertIn("git -C .ratchet show v0.7:ratchet.json > .ratchet/from.json", text)
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", text)
         self.assertEqual([command.split()[1] for command in commands],

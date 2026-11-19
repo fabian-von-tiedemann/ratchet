@@ -7,6 +7,9 @@ name: release
 # The older versions are every version that ratchet.json has named on main, read with git from
 # the whole history, so the checkout is not shallow. One that is not finished fails the run, and
 # nothing is written: rerun the run of the commit the message names, then this one.
+# While the first entry of CHANGELOG.md is headed "(unreleased)", no run publishes its version: the run
+# passes once every older version is finished, and writes nothing (D-2026-11-19-batched-releases).
+# The release is the merge of the pull request that gives the entry its date.
 # workflow_dispatch takes no input. It releases what ratchet.json names at the head of main,
 # under the same checks, and refuses any other branch.
 # schedule runs every day on the head of main, also when nothing is merged. While a version is left

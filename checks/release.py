@@ -23,6 +23,15 @@ or alternates is refused before any history is read.
 Every failure after the tag is created, of any kind, ends in one message that names the version and
 the commit of the tag, says what is missing, and gives the rerun (finish_release).
 
+The first entry of the changelog may be headed "## <version> (unreleased)" (D-2026-11-19-batched-releases).
+While it is, no run publishes that version: it reads the tags and the releases, fails as before when an older
+version is not finished, and otherwise passes, says so and writes nothing. That holds for a push, a run by hand
+and a scheduled run. The release is the push of a commit that gives the entry its date. A version must be
+released once a commit on main names it in ratchet.json with an entry that has a date: the changelog at each
+commit is read with git beside ratchet.json, and only the one exact unreleased heading, as the first entry,
+takes a commit out. A version that main only ever named as unreleased needs nothing. A version that a commit on main
+dated must be released whatever the head says: a head that heads it "(unreleased)" again fails and names that commit.
+
 publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF and GITHUB_EVENT_NAME from the
 environment. A scheduled run (GITHUB_EVENT_NAME schedule) writes nothing: it fails and names the version
 when the version at the head of main, or an older one, is not finished, and passes when all are.
@@ -52,6 +61,8 @@ FORM = "is not of the form MAJOR.MINOR, in ASCII digits with no leading zero. No
 # The one form of the heading of a version, matched against a whole line and nothing else. [0-9] and not \d,
 # which in Python matches the digits of every script. \Z and not $, which also matches before a final LF.
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
+# The one form of the heading of a version that is not yet released, matched the same way (D-2026-11-19-batched-releases).
+UNRELEASED = re.compile(r"^## ([0-9]+\.[0-9]+) \(unreleased\)\Z")
 # The one line of a release, written here. Nothing from CHANGELOG.md is copied into it. The links name
 # the file and the tree at the tag, with no anchor, so they do not depend on how GitHub makes the anchor of a heading.
 RELEASE_LINE = ("Ratchet %(version)s: see [the changelog entry](https://github.com/%(repo)s/blob/v%(version)s/CHANGELOG.md) "
@@ -68,6 +79,7 @@ REPOSITORY = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_
 API_PATH = re.compile(r"^/repos/[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_.-]*/[A-Za-z0-9_-][A-Za-z0-9_./?=&-]*\Z")
 PAGES = 100
 HISTORY_FILE = "ratchet.json"
+CHANGELOG = "CHANGELOG.md"
 # A line of git cat-file --batch-check for a file that is there: object, type and size.
 BLOB = re.compile(r"^([0-9a-f]{40}) blob ([0-9]+)\Z")
 
@@ -113,20 +125,43 @@ def read_text(path):
         raise ReleaseError("CHANGELOG.md: it %s. Every file a check reads is UTF-8" % registry.not_utf8(error))
 
 
-def changelog_versions(text):
-    """The versions that have an entry in a changelog, in the order they stand.
+def changelog_entries(text):
+    """[(version, whether it has a date, line number)] for the headings of a changelog, in the order they stand.
 
     This reads no Markdown. CRLF is read as LF, the text is split at LF, and a line is the heading
-    of a version only when the whole line is "## MAJOR.MINOR (YYYY-MM-DD)". Every other line is
-    passed over, whatever a reader makes of it. Nothing else in the file is read, and nothing of it
-    reaches the release. A heading whose version has a leading zero fails.
+    of a version only when the whole line is "## MAJOR.MINOR (YYYY-MM-DD)", or "## MAJOR.MINOR (unreleased)".
+    Every other line is passed over, whatever a reader makes of it. Nothing else in the file is read, and
+    nothing of it reaches the release. A heading whose version has a leading zero fails.
     """
-    versions = []
+    entries = []
     for number, line in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
-        match = HEADING.match(line)
-        if match:
-            versions.append(checked(match.group(1), "CHANGELOG.md, line %d" % number))
-    return versions
+        for form, dated in ((HEADING, True), (UNRELEASED, False)):
+            match = form.match(line)
+            if match:
+                entries.append((checked(match.group(1), "CHANGELOG.md, line %d" % number), dated, number))
+    return entries
+
+
+def changelog_versions(text):
+    """The versions that have an entry in a changelog, released or not, in the order they stand."""
+    return [version for version, _, _ in changelog_entries(text)]
+
+
+def unreleased_first(text):
+    """The version of the first entry if it is headed "(unreleased)", else None. ReleaseError on any other place of that heading.
+
+    Only the first entry may be unreleased, and a version has one heading.
+    """
+    entries = changelog_entries(text)
+    for position, (version, dated, number) in enumerate(entries):
+        if not dated and position > 0:
+            raise ReleaseError("CHANGELOG.md, line %d: the entry of %s is headed (unreleased), and only the first entry may be. "
+                               "Nothing was written." % (number, version))
+    keys = [version_key(version) for version, _, _ in entries]
+    for key in sorted(set(keys)):
+        if keys.count(key) > 1:
+            raise ReleaseError("CHANGELOG.md: the version %s has %d headings. Nothing was written." % (name(key), keys.count(key)))
+    return entries[0][0] if entries and not entries[0][1] else None
 
 
 def git(root, args, data=None):
@@ -208,7 +243,27 @@ def read_history(root, sha):
     if commits[-1] != "" or not all(SHA.match(c) for c in commits[:-1]) or commits[0] != sha:
         raise ReleaseError("git rev-list: the answer is not a list of commits from %s. Nothing was written." % sha)
     commits = commits[:-1]
-    answer = git(root, ["cat-file", "--batch-check"], "".join("%s:%s\n" % (c, HISTORY_FILE) for c in commits).encode("ascii"))
+    blobs, contents = read_files(root, commits, HISTORY_FILE)
+    missing = None
+    for commit, blob in blobs:
+        if blob is None:
+            missing = missing or commit
+        elif missing:
+            raise ReleaseError("ratchet.json is missing at commit %s on main, and the earlier commit %s holds it. "
+                               "Nothing was written." % (missing, commit))
+    versions = {}
+    history = []
+    for commit, blob in blobs:
+        if blob is not None:
+            if blob not in versions:
+                versions[blob] = version_at(commit, contents[blob])
+            history.append((commit, versions[blob]))
+    return history
+
+
+def read_files(root, commits, path):
+    """([(commit, object or None)], {object: bytes}): the file at path in each commit, with git, None where it is missing."""
+    answer = git(root, ["cat-file", "--batch-check"], "".join("%s:%s\n" % (c, path) for c in commits).encode("ascii"))
     lines = answer.decode("ascii", errors="replace").split("\n")
     if len(lines) != len(commits) + 1 or lines[-1] != "":
         raise ReleaseError("git cat-file: the answer does not have one line for each commit. Nothing was written.")
@@ -217,41 +272,54 @@ def read_history(root, sha):
         match = BLOB.match(line)
         if match:
             blobs.append((commit, match.group(1), int(match.group(2))))
-        elif line == "%s:%s missing" % (commit, HISTORY_FILE):
+        elif line == "%s:%s missing" % (commit, path):
             blobs.append((commit, None, None))
         else:
-            raise ReleaseError("ratchet.json at commit %s on main is not a file. Nothing was written." % commit)
-    missing = None
-    for commit, blob, _ in blobs:
-        if blob is None:
-            missing = missing or commit
-        elif missing:
-            raise ReleaseError("ratchet.json is missing at commit %s on main, and the earlier commit %s holds it. "
-                               "Nothing was written." % (missing, commit))
+            raise ReleaseError("%s at commit %s on main is not a file. Nothing was written." % (path, commit))
     unique = []
     for _, blob, size in blobs:
         if blob is not None and (blob, size) not in unique:
             unique.append((blob, size))
-    answer = git(root, ["cat-file", "--batch"], "".join("%s\n" % blob for blob, _ in unique).encode("ascii"))
     contents = {}
-    at = 0
-    for blob, size in unique:
-        header = ("%s blob %d\n" % (blob, size)).encode("ascii")
-        end = at + len(header) + size
-        if answer[at:at + len(header)] != header or answer[end:end + 1] != b"\n":
+    if unique:
+        answer = git(root, ["cat-file", "--batch"], "".join("%s\n" % blob for blob, _ in unique).encode("ascii"))
+        at = 0
+        for blob, size in unique:
+            header = ("%s blob %d\n" % (blob, size)).encode("ascii")
+            end = at + len(header) + size
+            if answer[at:at + len(header)] != header or answer[end:end + 1] != b"\n":
+                raise ReleaseError("git cat-file: the answer is not of the form expected. Nothing was written.")
+            contents[blob] = answer[at + len(header):end]
+            at = end + 1
+        if at != len(answer):
             raise ReleaseError("git cat-file: the answer is not of the form expected. Nothing was written.")
-        contents[blob] = answer[at + len(header):end]
-        at = end + 1
-    if at != len(answer):
-        raise ReleaseError("git cat-file: the answer is not of the form expected. Nothing was written.")
-    versions = {}
-    history = []
-    for commit, blob, _ in blobs:
-        if blob is not None:
-            if blob not in versions:
-                versions[blob] = version_at(commit, contents[blob])
-            history.append((commit, versions[blob]))
-    return history
+    return [(commit, blob) for commit, blob, _ in blobs], contents
+
+
+def read_pending(root, history):
+    """The commits of history whose CHANGELOG.md heads the version they name "(unreleased)", as its first entry.
+
+    history is main_history(). The changelog at each commit is read with git, as strict UTF-8 with CRLF read as LF,
+    and only its headings, as changelog_entries reads them. A commit whose changelog is missing, or does not have the
+    one exact unreleased heading for its version as the first entry, is not pending: its version must be released.
+    """
+    blobs, contents = read_files(root, [commit for commit, _ in history], CHANGELOG)
+    named = dict(history)
+    pending = set()
+    for commit, blob in blobs:
+        if blob is None:
+            continue
+        try:
+            text = contents[blob].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise ReleaseError("CHANGELOG.md at commit %s on main: it %s. Nothing was written." % (commit, registry.not_utf8(error)))
+        try:
+            entries = changelog_entries(text)
+        except ReleaseError as error:
+            raise ReleaseError("CHANGELOG.md at commit %s on main: %s" % (commit, error))
+        if entries and not entries[0][1] and version_key(entries[0][0]) == version_key(named[commit]):
+            pending.add(commit)
+    return pending
 
 
 def release_text(version, repo):
@@ -446,8 +514,12 @@ def finish_release(api, repo, tag, version, body, sha):
         raise ReleaseError(after_tag(state, error, method, path, version, tag, sha))
 
 
-def first_commits(history, version, sha):
-    """{version_key: the first commit on main whose ratchet.json names it}, after checking the history against this run."""
+def first_commits(history, version, sha, pending=frozenset()):
+    """{version_key: the first commit on main whose ratchet.json names it with a dated entry}, after checking the history.
+
+    A commit in pending heads its version "(unreleased)", so it does not count: a rerun of its run publishes nothing.
+    A version that only pending commits name is not in the answer.
+    """
     if not history or history[0][0] != sha:
         raise ReleaseError("ratchet.json is not in commit %s. Nothing was written." % sha)
     if version_key(history[0][1]) != version_key(version):
@@ -457,7 +529,8 @@ def first_commits(history, version, sha):
     for commit, named in history:
         if version_key(named) > version_key(version):
             raise ReleaseError("ratchet.json at commit %s on main names %s, newer than %s. Nothing was written." % (commit, named, version))
-        first[version_key(named)] = commit
+        if commit not in pending:
+            first[version_key(named)] = commit
     return first
 
 
@@ -484,14 +557,15 @@ def unfinished(first, version, tags, releases):
     return problems
 
 
-def publish(version, text, history, repo, sha, api, out, report=False):
+def publish(version, text, history, repo, sha, api, out, report=False, pending=frozenset()):
     """Tag sha as v<version> and release it, or find that it is done. ReleaseError on every fault.
 
     history is main_history() of sha. Only versions up to this one are looked at. Nothing is
     written before every check has passed, and nothing is written for an older version. A tag
     is created and never moved, deleted or edited. Versions are compared as version_key, pairs of integers.
     With report, the run of a schedule, it writes nothing: where a run of a push would write, it fails and names
-    the version, the commit and what is missing.
+    the version, the commit and what is missing. pending is read_pending() of history. When the first entry is
+    headed "(unreleased)", nothing is written for this version, and the run passes once every older one is finished.
     """
     this = version_key(checked(version, "ratchet.json in the checkout"))
     entries = [version_key(v) for v in changelog_versions(text)]
@@ -500,7 +574,14 @@ def publish(version, text, history, repo, sha, api, out, report=False):
     newest = max(entries)
     if newest != this:
         raise ReleaseError("the newest entry in CHANGELOG.md is %s, and ratchet.json says %s" % (name(newest), version))
-    first = first_commits(history, version, sha)
+    held = unreleased_first(text) is not None
+    if held and sha not in pending:
+        raise ReleaseError('CHANGELOG.md in the checkout heads %s "(unreleased)", and at commit %s it does not. Nothing was written.'
+                           % (version, sha))
+    if sha in pending and not held:
+        raise ReleaseError('CHANGELOG.md at commit %s heads %s "(unreleased)", and in the checkout it does not. Nothing was written.'
+                           % (sha, version))
+    first = first_commits(history, version, sha, pending)
     body = release_text(version, repo)
     tag = "v%s" % version
 
@@ -518,6 +599,23 @@ def publish(version, text, history, repo, sha, api, out, report=False):
     mine = releases.get(tag, [])
     if len(mine) > 1:
         raise ReleaseError("there are %d releases for %s. Nothing was written." % (len(mine), tag))
+
+    if held:
+        if this in tags:
+            raise ReleaseError('the tag %s exists, and the entry of %s in CHANGELOG.md is headed "(unreleased)". '
+                               "A released version stays released. Nothing was written." % (tag, version))
+        if mine:
+            raise ReleaseError("a release for %s exists, and the tag does not. Publish or remove it by hand. Nothing was written." % tag)
+        if this in first:
+            # A commit on main dated this version, and its run did not release it. The heading that came back does not
+            # take the duty away (PR #50, round 2, finding 1).
+            raise ReleaseError('Ratchet %s is not finished: commit %s on main gave its entry in CHANGELOG.md a date, and at commit %s '
+                               'it is headed "(unreleased)" again. A version dated on main must be released. Give the entry its date '
+                               "again, so that the run of that push releases it, or rerun the release run of commit %s, the first "
+                               "commit on main that dated it. Nothing was written." % (version, first[this], sha, first[this]))
+        out.write('Ratchet %s is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. '
+                  "Nothing was written.\n" % version)
+        return
 
     if this not in tags:
         if mine:
@@ -618,7 +716,9 @@ def main(argv=None, environ=None, opener=None, out=None, err=None, root=None):
         report = event == "schedule"
         api = github(environ["GITHUB_TOKEN"], opener)
         text = read_text(path)
-        publish(version, text, main_history(root, sha), repo, sha, read_only(api) if report else api, out, report=report)
+        history = main_history(root, sha)
+        publish(version, text, history, repo, sha, read_only(api) if report else api, out, report=report,
+                pending=read_pending(root, history))
         return 0
     except ReleaseError as error:
         message = str(error)
