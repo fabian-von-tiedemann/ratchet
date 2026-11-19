@@ -16,7 +16,9 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   backslash and no "url", so it loads nothing either
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
   file or a directory on main that exists in this checkout, a pull request, or the latest release. Nothing else,
-  so nothing links out to another site
+  so nothing links out to another site. A fragment on a link to the page, "#..." or "index.html#...", is an id
+  on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the repo
+  may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
 - docs/ holds exactly the page, .nojekyll and the two logos, and each logo is byte for byte its copy in assets/
 - the page has one h1, its headings do not skip a level, html has lang="en" and every image has alt text
 - the colors are a palette of custom properties, one for light and one for dark, and each pair of text and
@@ -304,8 +306,9 @@ def page_problems(root):
     duplicates = sorted(set(each for each in reader.ids if reader.ids.count(each) > 1))
     if duplicates:
         found.append("%s: ids that stand more than once: %s" % (name, ", ".join(duplicates)))
+    # The page is the one page in docs/ (FILES), so its ids, as html.parser read them, are the ids a fragment may name.
     for where, value in reader.links:
-        problem = link_problem(root, value, reader.ids)
+        problem = link_problem(root, value, {PAGE: reader.ids})
         if problem:
             found.append("%s: %s: the link %r %s" % (name, where, value, problem))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
@@ -321,11 +324,11 @@ def page_problems(root):
 
 
 def link_problem(root, value, ids):
-    """Why a link on the page is not allowed, or None."""
-    if value.startswith("#"):
-        if not FRAGMENT.match(value) or value[1:] not in ids:
-            return "is not an id on the page"
-        return None
+    """Why a link on the page is not allowed, or None. ids maps each page in docs/ to the ids on it.
+
+    A link into the repo may end in a fragment of the form of an id, which is not checked against GitHub. A link
+    to a page in docs/, or to "#..." on this page, has a fragment only if it is an id on that page.
+    """
     if value.startswith(REPO):
         match = REPO_LINK.match(value[len(REPO):])
         if not match:
@@ -337,10 +340,18 @@ def link_problem(root, value, ids):
             if match.group("kind") == "tree" and not os.path.isdir(target):
                 return "names a directory that is not in this checkout"
         return None
-    target = value.split("#")[0]
-    if FILE.match(target) and target in FILES and target != ".nojekyll":
-        return None
-    return "leads neither to a file in %s/, nor to an id on the page, nor into the repo on GitHub" % DOCS
+    target, mark, fragment = value.partition("#")
+    nowhere = "leads neither to a file in %s/, nor to an id on the page, nor into the repo on GitHub" % DOCS
+    if target and not (FILE.match(target) and target in FILES and target != ".nojekyll"):
+        return nowhere
+    if not mark:
+        return None if target else nowhere
+    page = target or PAGE
+    if page not in ids:
+        return "has a fragment, and only a link to a page in %s/ may have a fragment" % DOCS
+    if not FRAGMENT.match(mark + fragment) or fragment not in ids[page]:
+        return "names #%s, which is not an id on %s" % (fragment, page)
+    return None
 
 
 class Page(RepoCopy, unittest.TestCase):

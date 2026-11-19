@@ -11,7 +11,7 @@ No rule is added, changed or removed in this version.
 Added:
 
 - `docs/index.html`: a landing page for GitHub Pages, served from `docs/` on `main` with no build step (`docs/.nojekyll`). It is one page with its CSS inline, no script, and nothing loaded from another origin, in light and dark. Its text is taken from `README.md`. It goes live when the maintainer turns on Pages for `main` and `/docs`, a setting of the repository.
-- `checks/test_pages.py`: a test of this repo that reads the page strictly. It fails on an element or an attribute the page may not hold, an element left open, anything loaded from another origin, a link that leads out of the repo or to a file that does not exist, a heading that skips a level, an image without alt text, a pair of colors under a contrast ratio of 4.5, and a command that is not a line of a code block in `README.md`. See [checks/README.md](checks/README.md#the-landing-page).
+- `checks/test_pages.py`: a test of this repo that reads the page strictly. It fails on an element or an attribute the page may not hold, an element left open, anything loaded from another origin, a link that leads out of the repo or to a file that does not exist, a link to the page whose fragment is not an id on it, an id twice, a heading that skips a level, an image without alt text, a pair of colors under a contrast ratio of 4.5, and a command that is not a line of a code block in `README.md`. See [checks/README.md](checks/README.md#the-landing-page).
 
 Changed:
 

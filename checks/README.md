@@ -728,6 +728,8 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 - `html.parser` reads it as well-formed: each element is one of a fixed list, with only the attributes listed for it, each once and with a value. Every element that is opened is closed, in order, and a void element is never closed. There is no comment, processing instruction or other declaration. No script, frame, object, form, base, inline SVG, style attribute or event handler is on the list.
 - Nothing is loaded from another origin. What an element loads, `img src`, `source srcset` and `link href`, is the name of a file in `docs/`, and the one `link` is the icon. The CSS, all in one `<style>`, has no at-rule but `@media`, no function but `var()`, no backslash and no `url`, so it loads nothing and no escape can spell a word the test does not see.
 - A link goes to a file in `docs/`, to an id on the page, or into the repo on GitHub: the repo, a file or a directory on `main` that exists in the checkout, a pull request or the latest release. A link elsewhere fails, and so does a path with a part that is `.` or `..`.
+- A link to the page, `#…` or `index.html#…`, names an id that is on the page, as `html.parser` reads it, character for character. The page is the one page in `docs/`, so a link to a logo has no fragment. The ids on the page stand once each.
+- A link into the repo on GitHub may end in a fragment, which must have the form of an id: lowercase letters and digits in words joined by `-`. Whether GitHub shows that id on its page is not checked.
 - `docs/` holds exactly `index.html`, `.nojekyll` and the two logos, and each logo is byte for byte its copy in `assets/`.
 - The page has `lang="en"`, one `h1`, headings that do not skip a level, and alt text on every image.
 - The colors are two palettes of custom properties, for light and for dark (`prefers-color-scheme`), and no hex color is written outside them. In each, the text, the muted text and the links on the background, and the text on the background of code, have a contrast ratio of at least 4.5 (WCAG 2, level AA).
@@ -736,7 +738,7 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 
 **Against which threat.** The page is the first thing many people read, so it must not promise more than the README, and it must not track them: no script, font, stylesheet or image from another origin. A release that moves the README and forgets the page would send people to an older version, and a link that leads nowhere would go unseen, because nothing else reads the page.
 
-**What it does not claim.** It does not claim that a browser shows the page as intended, or that Pages is turned on and serves it. It reads hex colors only, so a named color is not checked for contrast. It does not check that the text is true: it is taken from `README.md` and read by the maintainer. A link into the repo is checked against the checkout, not against GitHub.
+**What it does not claim.** It does not claim that a browser shows the page as intended, or that Pages is turned on and serves it. It reads hex colors only, so a named color is not checked for contrast. It does not check that the text is true: it is taken from `README.md` and read by the maintainer. A link into the repo is checked against the checkout, not against GitHub, so the fragment of such a link, as in the README's `#start-here`, is checked for its form only.
 
 | Case | Result |
 |---|---|
@@ -752,6 +754,9 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | A link into the repo to a file or a directory that is not there, to a directory as a file, through `..`, to another branch, to the settings | Fails |
 | A relative link to a file that is not in `docs/`, out of `docs/`, from the root, to `.nojekyll`, or to an id that is not on the page | Fails |
 | A link to `index.html#start-here` | Passes |
+| A link to the page whose fragment is not an id on it: `index.html#start-hree`, a typo for `start-here`, `index.html#Start-here`, `index.html#`, `#missing`, `#start-hree` or `#` | Fails |
+| A link with a fragment to a logo, `ratchet-light.svg#logo` | Fails |
+| An id twice on the page, here a second `start-here`, which a link names | Fails |
 | An element left open, closed out of order, a void element closed, a self-closed `p`, a comment, a CDATA section, a processing instruction, an attribute twice or one not on the list, a second `title` | Fails |
 | No `lang`, an empty or a missing alt text, an `h3` after the `h1`, no `h1` | Fails |
 | Muted text, links or the background changed to a color under 4.5, a hex color outside the palettes, or no palette for dark | Fails |
