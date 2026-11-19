@@ -235,7 +235,7 @@ footer {
 <main>
 <section>
 <h2 id="how-it-works">How the ratchet turns</h2>
-<p>A ratchet turns one way. Each failure leaves a check behind, and the next failure adds another.</p>
+<p>A ratchet turns one way. Each failure leaves a ratchet behind, a check wherever a check can see it, and the next failure adds another.</p>
 <ol class="flow loop">
 <li><strong>A failure happens.</strong> A review rejects a change, a run fails, or a bug reaches the main branch. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
 <li><strong>It becomes a lesson.</strong> What happened, the failure class, the ratchet, and whether it would apply in other projects. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a></li>
@@ -295,7 +295,7 @@ footer {
 </section>
 <section>
 <h2 id="stays-tight">How it stays tight</h2>
-<p>Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failures come back.</p>
+<p>Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
 <p id="budget" class="stat"><strong>23 experimental rules, with a cap of 25.</strong> The core holds 35 rules and is frozen: 16 name a check and 19 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
 <ul>
 <li><strong>The core is frozen.</strong> No rule is added to it or removed from it without the maintainer's decision. A new rule starts as experimental, outside the core. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></li>
