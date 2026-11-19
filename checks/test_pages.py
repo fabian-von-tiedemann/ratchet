@@ -1,4 +1,4 @@
-"""The landing page, docs/index.html, loads nothing from another origin and says only what README.md says.
+"""The landing page, docs/index.html, loads nothing from another origin and says only what the repo shows.
 
     python3 -m unittest discover -s checks -v
 
@@ -15,27 +15,38 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   a file in docs/. The CSS in the one <style> element has no at-rule but @media, no function but var(), no
   backslash and no "url", so it loads nothing either
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
-  file or a directory on main that exists in this checkout, a pull request, or the latest release. Nothing else,
-  so nothing links out to another site. A fragment on a link to the page, "#..." or "index.html#...", is an id
+  file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release. The
+  only links out of the repo are to the sources in sources.json, one each, matched whole: the repo of a source, or
+  for a source with a directory, that directory at HEAD. Nothing else links out to another site. A fragment on a link to the page, "#..." or "index.html#...", is an id
   on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the repo
   may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
 - docs/ holds exactly the page, .nojekyll and the two logos, and each logo is byte for byte its copy in assets/
 - the page has one h1, its headings do not skip a level, html has lang="en" and every image has alt text
 - the colors are a palette of custom properties, one for light and one for dark, and each pair of text and
   background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
-- every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md.
+- every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md
+- the list of sources, <ul class="sources">, holds one item for each source in sources.json, in its order. Each
+  item starts with a link to the source, named by its name, gives its license once in an element of the class
+  "license", and names in <code>, in the order of ratchet.json, exactly the rules whose source cites it
+- each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it.
 
 The line that fetches Ratchet is checked by generate.py, which writes it: it names the newest version with a date
 in CHANGELOG.md, as the command in README.md does, so a release that moves the README moves the page when
-generate.py is run, and generate.py --check fails until it is. The tests of that are here too.
+generate.py is run, and generate.py --check fails until it is. The line that gives the count of rules and the cap
+on experimental rules is written the same way, from ratchet.json. The tests of both are here too, and they read
+each line as generate.py does, after the spaces that indent it.
 
 What the test does not claim: that a browser shows the page as intended, that a named color is legible (it reads
-hex colors only), or that the text is true. The text is taken from README.md and read by the maintainer. That
+hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
+nothing that its text and its place in the list do not), or that the text is true. The text is taken
+from README.md and the files the page links to, and read by the maintainer. What a source gives Ratchet is in
+Ratchet's own words, and the test does not see whether anything was copied. That
 Pages is turned on is a setting of the repository. Each case is the page with one change, so the cases follow the
 page when it changes. Standard library only.
 """
 
 import html.parser
+import json
 import os
 import re
 import shutil
@@ -46,6 +57,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import generate  # noqa: E402
+import registry  # noqa: E402
 from test_checks import ROOT, RepoCopy, first_entry, run  # noqa: E402
 
 DOCS = "docs"
@@ -62,7 +74,7 @@ ELEMENTS = {
     "html": {"lang"}, "head": set(), "meta": {"charset", "name", "content"}, "title": set(), "link": {"rel", "href", "type"},
     "style": set(), "body": set(), "header": set(), "nav": set(), "main": set(), "section": set(), "footer": set(),
     "h1": set(), "h2": set(), "h3": set(), "p": set(), "ul": set(), "ol": set(), "li": set(), "a": {"href"},
-    "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(),
+    "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(), "span": set(),
     "picture": set(), "source": {"media", "srcset"}, "img": {"src", "width", "height", "alt"},
 }
 # What an element loads: the attribute that names a file.
@@ -73,7 +85,8 @@ FRAGMENT = re.compile(r"#[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 # A path on main: parts that may start with one dot, as .github does, so no part is "." or "..".
 REPO_PATH = re.compile(r"(?:\.?[A-Za-z0-9_][A-Za-z0-9_.-]*/)*\.?[A-Za-z0-9_][A-Za-z0-9_.-]*")
 REPO_LINK = re.compile(
-    r"(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/pull/[1-9][0-9]*|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?\Z" % REPO_PATH.pattern
+    r"(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/(?:pull|issues)/[1-9][0-9]*|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?\Z"
+    % REPO_PATH.pattern
 )
 # Characters the page may not hold: controls but the newline, and the ones that reorder or hide text.
 HIDDEN = re.compile("[\x00-\x09\x0b-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]")
@@ -84,7 +97,11 @@ PALETTE = re.compile(r"--([a-z]+(?:-[a-z]+)*):\s*(#[0-9a-f]{6});")
 ROOT_BLOCK = re.compile(r":root\s*\{([^{}]*)\}")
 DARK = "@media (prefers-color-scheme: dark)"
 # Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5.
-PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"))
+PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("fg", "box"), ("muted", "box"), ("link", "box"),
+         ("accent", "bg"), ("accent", "box"))
+# The lists whose items the test reads one by one: the sources, and the steps of a diagram.
+ITEM_LISTS = {"ul": "sources", "ol": "flow"}
+KEY = re.compile(r"ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 CONTRAST = 4.5
 
 
@@ -100,6 +117,11 @@ class PageReader(html.parser.HTMLParser):
         self.loads, self.links, self.ids, self.headings, self.images = [], [], [], [], []
         self.commands, self.styles, self.counts = [], [], {}
         self.text_in = None
+        # The classes of each open element, beside self.stack. An item of a list in ITEM_LISTS, a <li> whose list has
+        # that class, records the links in it with their text, the text of each <code>, and the text of each element
+        # of the class "license". Each capture is [depth, field, href, parts], and ends when its element is closed.
+        self.classes, self.items, self.captures = [], [], []
+        self.item, self.item_at = None, None
 
     def where(self):
         return "line %d" % self.getpos()[0]
@@ -154,8 +176,21 @@ class PageReader(html.parser.HTMLParser):
             self.headings.append((self.where(), int(tag[1])))
         if tag == "code" and self.stack[-1:] == ["pre"]:
             self.text_in = []
+        classes = (values.get("class") or "").split()
+        if tag == "li" and self.stack and ITEM_LISTS.get(self.stack[-1]) in self.classes[-1]:
+            self.item = {"list": ITEM_LISTS[self.stack[-1]], "where": self.where(), "links": [], "codes": [], "licenses": []}
+            self.items.append(self.item)
+            self.item_at = len(self.stack)
+        elif self.item is not None and tag not in VOID:
+            if tag == "a":
+                self.captures.append([len(self.stack), "links", values.get("href"), []])
+            if tag == "code":
+                self.captures.append([len(self.stack), "codes", None, []])
+            if "license" in classes:
+                self.captures.append([len(self.stack), "licenses", None, []])
         if tag not in VOID:
             self.stack.append(tag)
+            self.classes.append(classes)
 
     def handle_endtag(self, tag):
         if tag in VOID:
@@ -165,16 +200,31 @@ class PageReader(html.parser.HTMLParser):
             self.problems.append("%s: </%s> does not close the element that is open, %s"
                                  % (self.where(), tag, "<%s>" % self.stack[-1] if self.stack else "none"))
             if tag in self.stack:
-                del self.stack[self.stack.index(tag):]
+                at = self.stack.index(tag)
+                del self.stack[at:], self.classes[at:]
+                self.close_items()
             return
         self.stack.pop()
+        self.classes.pop()
+        self.close_items()
         if tag == "code" and self.text_in is not None:
             self.commands += "".join(self.text_in).split("\n")
             self.text_in = None
 
+    def close_items(self):
+        """End the captures and the item whose elements are no longer open."""
+        while self.captures and self.captures[-1][0] >= len(self.stack):
+            _, field, href, parts = self.captures.pop()
+            text = " ".join("".join(parts).split())
+            self.item[field].append((href, text) if field == "links" else text)
+        if self.item is not None and self.item_at >= len(self.stack):
+            self.item, self.item_at = None, None
+
     def handle_data(self, data):
         if data.strip():
             self.started = True
+        for capture in self.captures:
+            capture[3].append(data)
         if self.text_in is not None:
             self.text_in.append(data)
         if self.stack[-1:] == ["style"]:
@@ -306,11 +356,23 @@ def page_problems(root):
     duplicates = sorted(set(each for each in reader.ids if reader.ids.count(each) > 1))
     if duplicates:
         found.append("%s: ids that stand more than once: %s" % (name, ", ".join(duplicates)))
+    try:
+        sources = registry.load_sources(os.path.join(root, "sources.json"))
+        data = registry.load(os.path.join(root, "ratchet.json"))
+    except registry.RegistryError as error:
+        sources, data = [], None
+        found.append("%s: the sources and the rules cannot be read: %s" % (name, error))
     # The page is the one page in docs/ (FILES), so its ids, as html.parser read them, are the ids a fragment may name.
+    outside = set(source_link(source) for source in sources)
     for where, value in reader.links:
-        problem = link_problem(root, value, {PAGE: reader.ids})
+        problem = link_problem(root, value, {PAGE: reader.ids}, outside)
         if problem:
             found.append("%s: %s: the link %r %s" % (name, where, value, problem))
+    if data is not None:
+        found += ["%s: %s" % (name, problem) for problem in source_problems(reader.items, sources, data)]
+    for item in reader.items:
+        if item["list"] == "flow" and not item["links"]:
+            found.append("%s: %s: a step of a diagram that links nowhere. Each step links to where the repo shows it" % (name, item["where"]))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
@@ -323,16 +385,63 @@ def page_problems(root):
     return problems + found
 
 
-def link_problem(root, value, ids):
+def source_link(source):
+    """The one link out of the repo that the page may hold for a source in sources.json: its repo, or its directory.
+
+    The link names no commit, so a pin that moves in sources.json does not make the page stale. The commit is in
+    sources.json, which the page links to.
+    """
+    if "directory" in source:
+        return "%s/tree/HEAD/%s" % (source["repo"], source["directory"])
+    return source["repo"]
+
+
+def source_problems(items, sources, data):
+    """Why the list of sources on the page is not sources.json, with the rules in ratchet.json that cite each.
+
+    The list is a <ul class="sources"> with one <li> per source, in the order of sources.json. Each item starts with
+    a link to the source, named by its name, holds its license once in an element of the class "license", and
+    names in <code>, in the order of ratchet.json, exactly the rules whose source cites it.
+    """
+    items = [item for item in items if item["list"] == "sources"]
+    if len(items) != len(sources):
+        return ["the list of sources holds %d items, and sources.json %d sources. It holds one item for each source, in the "
+                "order of sources.json" % (len(items), len(sources))]
+    cited = {}
+    for rule in data["rules"]:
+        for each in registry.cited_names(rule):
+            cited.setdefault(each, []).append(rule["key"])
+    problems = []
+    for item, source in zip(items, sources):
+        link = (source_link(source), source["name"])
+        if item["links"][:1] != [link]:
+            problems.append("%s: the list of sources, in the order of sources.json, has here the item for %s. It starts with a link "
+                            "to %s named %s, found %r" % (item["where"], source["name"], link[0], link[1], item["links"][:1]))
+            continue
+        if item["licenses"] != [source["license"]]:
+            problems.append("%s: the item for %s gives the license %r, and sources.json %r, once, in an element of the class "
+                            "license" % (item["where"], source["name"], item["licenses"], source["license"]))
+        keys = cited.get(source["name"], [])
+        if item["codes"] != keys or not all(KEY.match(key) for key in item["codes"]):
+            problems.append("%s: the item for %s names the rules %s, and the rules in ratchet.json that cite it are %s"
+                            % (item["where"], source["name"], ", ".join(item["codes"]) or "none", ", ".join(keys) or "none"))
+    return problems
+
+
+def link_problem(root, value, ids, outside=()):
     """Why a link on the page is not allowed, or None. ids maps each page in docs/ to the ids on it.
 
     A link into the repo may end in a fragment of the form of an id, which is not checked against GitHub. A link
-    to a page in docs/, or to "#..." on this page, has a fragment only if it is an id on that page.
+    to a page in docs/, or to "#..." on this page, has a fragment only if it is an id on that page. The only links
+    out of the repo are those in outside, each matched whole: the link to each source in sources.json.
     """
+    if value in outside:
+        return None
     if value.startswith(REPO):
         match = REPO_LINK.match(value[len(REPO):])
         if not match:
-            return "goes into the repo, but not to the repo, a file or directory on main, a pull request or the latest release"
+            return ("goes into the repo, but not to the repo, a file or directory on main, a pull request, an issue or the "
+                    "latest release")
         if match.group("kind"):
             target = os.path.join(root, *match.group("path").split("/"))
             if match.group("kind") == "blob" and not os.path.isfile(target):
@@ -352,6 +461,11 @@ def link_problem(root, value, ids):
     if not FRAGMENT.match(mark + fragment) or fragment not in ids[page]:
         return "names #%s, which is not an id on %s" % (fragment, page)
     return None
+
+
+def lines_that_hold(text, marker):
+    """The lines of the page that hold marker, without the spaces that indent them, as generate.py reads them."""
+    return [line.lstrip(" ") for line in text.split("\n") if marker in line]
 
 
 class Page(RepoCopy, unittest.TestCase):
@@ -382,7 +496,8 @@ class Page(RepoCopy, unittest.TestCase):
         for words in (FETCH % released, "python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py</code>",
                       REPO + "/releases/latest", REPO + "/blob/main/LICENSE", 'href="%s"' % REPO,
                       "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", "The honest limits",
-                      "Evidence from this repo"):
+                      "Evidence from this repo", "How the ratchet turns", "How this repo is run", "What Ratchet builds on",
+                      "How it stays tight", '<a class="button" href="#start-here">Start here</a>'):
             self.assertIn(words, text)
 
     def test_no_page_fails(self):
@@ -595,7 +710,7 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
     def test_the_page_fetches_what_the_readme_fetches(self):
         version, fetched = first_entry(self.copy)
         line = "<pre><code>%s</code></pre>" % (FETCH % fetched)
-        self.assertEqual([each for each in self.page().split("\n") if "git clone" in each], [line])
+        self.assertEqual(lines_that_hold(self.page(), "git clone"), [line])
         with open(os.path.join(self.copy, "README.md"), encoding="utf-8") as handle:
             self.assertIn("   " + FETCH % fetched + "\n", handle.read())
 
@@ -623,6 +738,16 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.assertEqual(self.page(), before.replace(FETCH % fetched, FETCH % version))
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
+        self.assertEqual(page_problems(self.copy), [])
+
+    def test_an_indented_fetch_line_passes_as_generate_reads_it(self):
+        # generate.py reads the line after the spaces that indent it, so the test reads it the same way.
+        version, fetched = first_entry(self.copy)
+        line = "<pre><code>%s</code></pre>" % (FETCH % fetched)
+        self.write_page(self.page().replace(line, "  " + line, 1))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(lines_that_hold(self.page(), "git clone"), [line])
         self.assertEqual(page_problems(self.copy), [])
 
     def test_the_page_moved_ahead_of_the_readme_fails(self):
@@ -663,6 +788,212 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("is not valid UTF-8", output)
         self.assertNotIn("Traceback", output)
+
+
+
+# The line on the page that gives the count and the cap, as the test expects it. It is spelled out here and counted
+# from ratchet.json below, not taken from generate.py, so the test does not compute it the way the generator does.
+BUDGET_LINE = ('<p id="budget" class="stat"><strong>%d experimental rules, with a cap of %d.</strong> The core holds %d '
+               'rules and is frozen: %d name a check and %d are text only. Counted by <code>checks/generate.py</code> '
+               'from <code>ratchet.json</code>.</p>')
+
+
+def budget_line(root):
+    with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
+        data = json.load(handle)
+    core = [rule for rule in data["rules"] if rule["status"] == "core"]
+    experimental = [rule for rule in data["rules"] if rule["status"] == "experimental"]
+    enforced = [rule for rule in core if rule["enforcement"] == "enforced"]
+    return BUDGET_LINE % (len(experimental), data["experimental_cap"], len(core), len(enforced), len(core) - len(enforced))
+
+
+class PageBudget(RepoCopy, unittest.TestCase):
+    """generate.py writes the line on the page that gives the count of rules and the cap, and --check fails when it is stale."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def write_page(self, text):
+        with open(os.path.join(self.copy, DOCS, PAGE), "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+
+    def test_the_page_gives_the_count_and_the_cap_of_ratchet_json(self):
+        self.assertEqual(lines_that_hold(self.page(), 'id="budget"'), [budget_line(self.copy)])
+        self.assertIn("with a cap of 25.", budget_line(self.copy))
+
+    def test_a_raised_cap_fails_until_generate_moves_the_page(self):
+        before = self.page()
+        old = budget_line(self.copy)
+        self.edit("ratchet.json", '"experimental_cap": 25', '"experimental_cap": 26')
+        new = budget_line(self.copy)
+        self.assertNotEqual(old, new)
+        self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
+        code, output = run("generate.py", root=self.copy, cwd=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote docs/index.html", output)
+        self.assertEqual(self.page(), before.replace(old, new))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(page_problems(self.copy), [])
+
+    def test_a_number_edited_by_hand_fails(self):
+        line = budget_line(self.copy)
+        self.write_page(self.page().replace(line, line.replace("with a cap of 25.", "with a cap of 40."), 1))
+        self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
+
+    def test_an_indented_budget_line_passes(self):
+        line = budget_line(self.copy)
+        self.write_page(self.page().replace(line, "  " + line, 1))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+
+    def test_a_budget_line_of_another_form_fails(self):
+        line = budget_line(self.copy)
+        for new in ("", line + "\n" + line, line + " And more.", line.replace("<strong>", "<strong>about ", 1),
+                    line.replace('<p id="budget" class="stat">', '<p class="stat">\n<span id="budget"></span>', 1),
+                    line + '\n<p id="budget-old">23 experimental rules</p>'.replace("budget-old", "budget"),
+                    line.replace("with a cap of 25.", "with a cap of twenty-five.")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.write_page(self.page().replace(line, new, 1))
+                code, output = run("generate.py", "--check", root=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertIn("docs/index.html: the count of rules must be one line", output)
+                self.assertNotIn("Traceback", output)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("wrote docs/index.html", output)
+
+
+class PageSources(RepoCopy, unittest.TestCase):
+    """The list of sources on the page is sources.json, with the rules in ratchet.json that cite each."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_fails(self, *message):
+        Page.assert_fails(self, *message)
+
+    def test_each_source_stands_with_its_link_its_license_and_the_rules_that_cite_it(self):
+        # Written out here from sources.json and the sources of the rules in ratchet.json, as they stand.
+        text = self.page()
+        expected = (
+            ("https://github.com/google/elephant-goldfish-model", "google/elephant-goldfish-model", "Apache-2.0",
+             ("ratchet.fresh-context",)),
+            ("https://github.com/mattpocock/skills", "mattpocock/skills", "MIT",
+             ("ratchet.glossary", "ratchet.look-up-facts", "ratchet.grill-first", "ratchet.findings-marked", "ratchet.root-cause",
+              "ratchet.test-first", "ratchet.slices")),
+            ("https://github.com/cursor/plugins/tree/HEAD/pstack", "pstack", "MIT",
+             ("ratchet.two-rounds", "ratchet.findings-marked", "ratchet.root-cause", "ratchet.simplest",
+              "ratchet.lesson-names-check", "ratchet.si-repeat-is-signal")),
+            ("https://github.com/obra/superpowers", "obra/superpowers", "MIT",
+             ("ratchet.verify-findings", "ratchet.evidence-before-done", "ratchet.cr-verify-reports")),
+        )
+        reader = PageReader()
+        reader.feed(text)
+        items = [item for item in reader.items if item["list"] == "sources"]
+        self.assertEqual([(item["links"][0], item["licenses"], tuple(item["codes"])) for item in items],
+                         [((link, name), [license], keys) for link, name, license, keys in expected])
+
+    def test_a_source_left_out_or_out_of_order_fails(self):
+        text = self.page()
+        start, end = text.index('<ul class="sources">'), text.index("</ul>", text.index('<ul class="sources">'))
+        items = text[start:end].split("<li>")[1:]
+        for new in ("<li>".join([""] + items[1:]), "<li>".join([""] + [items[1], items[0]] + items[2:])):
+            with self.subTest(new=new[:60]):
+                self.setUp()
+                self.change(text[start:end], '<ul class="sources">\n' + new.lstrip("\n"))
+                self.assert_fails("the list of sources")
+
+    def test_a_source_added_to_sources_json_fails_until_the_page_names_it(self):
+        self.edit("sources.json", '  "sources": [\n', '  "sources": [\n    {\n      "name": "example/new",\n      "repo": '
+                  '"https://github.com/example/new",\n      "commit": "%s",\n      "license": "MIT"\n    },\n' % ("a" * 40))
+        self.assert_fails("the list of sources")
+
+    def test_a_wrong_license_fails(self):
+        self.change('<span class="license">Apache-2.0</span>', '<span class="license">MIT</span>')
+        self.assert_fails("google/elephant-goldfish-model", "license")
+
+    def test_a_rule_that_cites_a_source_and_is_not_on_the_page_fails(self):
+        path = os.path.join(self.copy, "ratchet.json")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        at = text.index('"key": "ratchet.reuse-first"')
+        cut = text.index('"source": ""', at)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text[:cut] + '"source": "obra/superpowers `example`"' + text[cut + len('"source": ""'):])
+        self.assert_fails("obra/superpowers", "ratchet.reuse-first")
+
+    def test_a_key_on_the_page_that_does_not_cite_the_source_fails(self):
+        for old, new in (("<code>ratchet.fresh-context</code>", "<code>ratchet.fresh-context</code>, <code>ratchet.simplest</code>"),
+                         ("<code>ratchet.fresh-context</code>", "")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails("google/elephant-goldfish-model", "cite it")
+
+    def test_a_link_to_a_source_in_another_form_fails(self):
+        for target in ("https://github.com/google/elephant-goldfish-model/tree/main", "https://github.com/google",
+                       "https://github.com/google/elephant-goldfish-model/", "http://github.com/google/elephant-goldfish-model",
+                       "https://github.com/cursor/plugins"):
+            with self.subTest(target=target):
+                self.setUp()
+                self.change('href="https://github.com/google/elephant-goldfish-model"', 'href="%s"' % target)
+                self.assert_fails("the link %r" % target)
+
+
+class PageDiagrams(RepoCopy, unittest.TestCase):
+    """The two diagrams are ordered lists whose every step links to where the repo shows it."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_fails(self, *message):
+        Page.assert_fails(self, *message)
+
+    def test_there_are_two_diagrams_of_steps_that_each_link_into_the_repo(self):
+        reader = PageReader()
+        reader.feed(self.page())
+        steps = [item for item in reader.items if item["list"] == "flow"]
+        self.assertEqual(self.page().count('<ol class="flow'), 2)
+        self.assertGreaterEqual(len(steps), 10)
+        self.assertTrue(all(item["links"] for item in steps))
+
+    def test_a_step_without_a_link_fails(self):
+        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a>',
+                    "templates/LESSON.md")
+        self.assert_fails("a step of a diagram that links nowhere")
+
+    def test_the_sandbox_is_linked_to_its_issue(self):
+        self.assertIn('href="%s/issues/49"' % REPO, self.page())
+
+    def test_a_link_to_an_issue_of_another_form_fails(self):
+        for target, message in (("/issues/0", "goes into the repo, but not"), ("/issues/49/../../x", "goes into the repo, but not"),
+                                ("/issues", "goes into the repo, but not"), ("/issues/new", "goes into the repo, but not")):
+            with self.subTest(target=target):
+                self.setUp()
+                self.change('href="%s/issues/49"' % REPO, 'href="%s%s"' % (REPO, target))
+                self.assert_fails(message)
+
+    def test_the_new_colors_are_held_to_the_same_contrast(self):
+        css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
+        light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
+        dark = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[1]))
+        for scheme, palette, key, faint in (("light", light, "box", "#555555"), ("dark", dark, "box", "#9a9a9a"),
+                                            ("light", light, "accent", "#ffbb66"), ("dark", dark, "accent", "#3a2a10")):
+            with self.subTest(scheme=scheme, key=key):
+                self.setUp()
+                self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
+                self.assert_fails("in the %s palette" % scheme, "--%s" % key)
 
 
 if __name__ == "__main__":
