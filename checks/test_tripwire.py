@@ -97,16 +97,16 @@ class Tripwire(FixtureTest):
         git(self.tree, "tag", "v1")
         git(self.tree, "branch", "feature")
 
-    def hook(self, payload, raw=None):
-        """(exit status, stderr) of the hook given this call."""
+    def hook(self, payload, raw=None, environ=None):
+        """(exit status, stderr) of the hook given this call, in this environment or the test's own."""
         data = raw if raw is not None else json.dumps(payload).encode("utf-8")
-        result = subprocess.run([sys.executable, HOOK], input=data, cwd=self.tree, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, env=dict(os.environ, CLAUDE_PROJECT_DIR=self.tree), timeout=60)
+        result = subprocess.run([sys.executable, HOOK], input=data, cwd=self.tree, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                env=dict(os.environ if environ is None else environ, CLAUDE_PROJECT_DIR=self.tree), timeout=60)
         return result.returncode, result.stderr.decode("utf-8", errors="replace")
 
-    def bash(self, command):
+    def bash(self, command, environ=None):
         return self.hook({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": self.tree,
-                          "tool_input": {"command": command.replace("{tree}", self.tree)}})
+                          "tool_input": {"command": command.replace("{tree}", self.tree)}}, environ=environ)
 
     def approve(self, entries):
         with open(os.path.join(self.tree, APPROVALS), "w", encoding="utf-8") as handle:
@@ -212,6 +212,26 @@ class Tripwire(FixtureTest):
             code, message = self.bash(command)
             self.assertEqual(code, 2, command)
             self.assertIn("tripwire: delete-outside", message)
+
+    def test_the_temporary_directory_is_where_mktemp_writes_whatever_TMPDIR_says(self):
+        # Claude Code's sandbox sets TMPDIR to a directory of its own, and on macOS mktemp -d ignores TMPDIR and
+        # writes to the per-user temporary directory that the system gives it. The hook looks where mktemp -d
+        # writes: a directory from mktemp -d may be deleted by its path, and a directory of the same form in TMPDIR,
+        # where mktemp -d did not write, is denied, so that setting TMPDIR does not widen the exception. Where
+        # mktemp -d writes where TMPDIR says, as on Linux, the two are the same place.
+        unrelated = os.path.realpath(self.scratch())
+        environ = dict(os.environ, TMPDIR=unrelated)
+        made = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True, check=True,
+                              env=environ).stdout.strip()
+        self.addCleanup(shutil.rmtree, made, True)
+        for command in ("rm -rf %s" % made, "rm -r %s/sub" % made):
+            self.assertEqual(self.bash(command, environ), (0, ""), command)
+        if os.path.realpath(os.path.dirname(made)) != unrelated:
+            planted = fresh(unrelated, 10, os.mkdir)
+            for command in ("rm -rf %s" % planted, "rm -r %s/sub" % planted):
+                code, message = self.bash(command, environ)
+                self.assertEqual(code, 2, command)
+                self.assertIn("tripwire: delete-outside", message)
 
     def test_a_command_with_two_steps_needs_an_entry_for_each(self):
         command = "git push --mirror origin"
