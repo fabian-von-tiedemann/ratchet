@@ -812,19 +812,51 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             self.assertIn("Version %s, not yet released. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
         self.edit("README.md", "--branch v%s " % fetched, "--branch v%s " % version)
-        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v%s", the newest version '
-                                'with a date in CHANGELOG.md' % fetched)
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
     def test_the_entry_given_its_date_is_the_release_and_the_readme_fetches_it(self):
         version, fetched = first_entry(self.copy)
         self.edit("CHANGELOG.md", "## %s (unreleased)" % version, "## %s (2026-12-01)" % version)
-        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v%s"' % version)
+        self.assert_check_fails(fetch_problem(version, 0, 1))
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
         self.assertEqual(first_entry(self.copy, "2026-12-01"), (version, version))
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             self.assertIn("Version %s, 2026-12-01. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
+
+    def test_the_pin_in_prose_does_not_stand_for_the_command(self):
+        # Round 2 of PR #50, finding 3: the real command was changed to fetch the version that has no tag yet,
+        # and prose holding the pin of the newest release was added. The check read the pin anywhere in the file.
+        version, fetched = first_entry(self.copy)
+        self.edit("README.md", "--branch v%s " % fetched, "--branch v%s " % version)
+        self.append("README.md", "\nThe pin used to say --branch v%s here.\n" % fetched)
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
+
+    def test_the_command_outside_a_code_block_does_not_count(self):
+        version, fetched = first_entry(self.copy)
+        self.edit("README.md", "   %s\n" % (FETCH % fetched), "")
+        self.append("README.md", "\n%s\n" % (FETCH % fetched))
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
+
+    def test_a_second_command_that_fetches_ratchet_fails(self):
+        version, fetched = first_entry(self.copy)
+        for other in (version, fetched):
+            with self.subTest(other=other):
+                self.setUp()
+                first_entry(self.copy)
+                self.append("README.md", "\n```sh\n%s\n```\n" % (FETCH % other))
+                self.assert_check_fails(fetch_problem(fetched, 2, 0) if other == fetched else fetch_problem(fetched, 1, 1))
+
+    def test_the_command_with_more_on_its_line_fails(self):
+        version, fetched = first_entry(self.copy)
+        self.edit("README.md", FETCH % fetched + "\n", FETCH % fetched + " && git -C .ratchet checkout main\n")
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
+
+    def test_the_command_in_a_code_block_not_marked_sh_does_not_count(self):
+        version, fetched = first_entry(self.copy)
+        self.edit("README.md", "```sh\n   %s" % (FETCH % fetched), "```\n   %s" % (FETCH % fetched))
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
     def test_only_the_first_entry_may_be_unreleased(self):
         self.edit("CHANGELOG.md", "## 0.8 (2026-11-19)\n", "## 0.8 (unreleased)\n")
@@ -840,6 +872,16 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 self.assert_check_fails('CHANGELOG.md: the first entry must be "## %s (<date>)" or "## %s (unreleased)", found %r'
                                         % (version, version, heading))
                 self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
+
+
+FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet"
+
+
+def fetch_problem(released, found, others):
+    """The message of generate.py --check when the command in README.md that fetches Ratchet is not as it must be."""
+    return ('README.md: the command that fetches Ratchet must be the line "%s", once, in a code block marked sh, and no other '
+            "line may run git clone. v%s is the newest version with a date in CHANGELOG.md. Found that line %d times in such a "
+            "block, and %d other lines that run git clone" % (FETCH % released, released, found, others))
 
 
 def first_entry(copy, date=None):

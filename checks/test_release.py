@@ -1535,6 +1535,14 @@ NOT_RELEASED = ('Ratchet 0.4 is not released: its entry in CHANGELOG.md is heade
                 "Nothing was written.\n")
 
 
+def dated_again(dated, head, version="0.4"):
+    """The message of a run at head, whose changelog heads version "(unreleased)" after commit dated on main gave it a date."""
+    return ('Ratchet %s is not finished: commit %s on main gave its entry in CHANGELOG.md a date, and at commit %s it is headed '
+            '"(unreleased)" again. A version dated on main must be released. Give the entry its date again, so that the run of '
+            "that push releases it, or rerun the release run of commit %s, the first commit on main that dated it. "
+            "Nothing was written." % (version, dated, head, dated))
+
+
 class Unreleased(unittest.TestCase):
     """D-2026-11-19-batched-releases, choice 1: the first entry may be headed "## <version> (unreleased)".
 
@@ -1683,6 +1691,82 @@ class UnreleasedOnMain(unittest.TestCase):
                 self.assertEqual(err, "release: an older version is not finished. 0.4: no tag. Rerun the release run of commit %s, "
                                       "the first commit on main whose ratchet.json names 0.4. Then rerun this run. Nothing was written.\n" % dated)
                 self.assertEqual(github.writes, [])
+
+    def cancelled_before_the_tag(self, github, sha):
+        """The run of the push of sha, cancelled before it creates the tag: it writes nothing."""
+        github.cancel = ("POST", PATH + "/git/refs")
+        with self.assertRaises(Cancelled):
+            main_with(FakeOpener(github), sha, self.checkout.directory)
+        github.cancel = None
+        self.assertNotIn("0.4", github.tags)
+
+    def late_run(self, github, sha):
+        """The run of an earlier commit on main, rerun or started late, on a checkout of that commit."""
+        git(self.checkout.directory, "checkout", "-q", "--detach", sha)
+        try:
+            return main_with(FakeOpener(github), sha, self.checkout.directory)
+        finally:
+            git(self.checkout.directory, "checkout", "-q", "main")
+
+    def test_a_dated_version_headed_unreleased_again_must_still_be_released(self):
+        # Round 2 of PR #50, finding 1: the run of the dated commit was cancelled before it tagged, and a later commit
+        # put "(unreleased)" back. Every run passed with no v0.4. Once main has dated a version, it must be released.
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        github = FakeGitHub(ancestors=[dated], **DONE_03)
+        self.cancelled_before_the_tag(github, dated)
+        head = self.checkout.commit(text=UNRELEASED_TWO)
+        for event in ("push", "schedule"):
+            with self.subTest(event=event):
+                code, out, err = main_with(FakeOpener(github), head, self.checkout.directory, event=event)
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, "release: %s\n" % dated_again(dated, head))
+                self.assertNotIn("0.4", github.tags)
+                self.assertEqual(github.writes, [("POST", PATH + "/git/refs")])
+        # The late run of the dated commit, after the revert: 0.4 was dated on main, so it is released there.
+        code, out, err = self.late_run(github, dated)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags["0.4"], ("commit", dated))
+        self.assertEqual(github.releases[-1]["body"], release_line("0.4"))
+        # main stays red while its changelog heads the released 0.4 "(unreleased)", and is green once the date is back.
+        self.assert_red_while_unreleased(github, head)
+        redated = self.checkout.commit(text=TWO)
+        code, out, err, _ = self.checkout.run(github, redated)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, "v0.4 is released at an earlier commit, and this commit does not raise the version. Nothing to do.\n")
+
+    def test_a_dated_version_released_late_and_then_headed_unreleased_again_keeps_main_red(self):
+        # The other order: the late run of the dated commit releases 0.4 before the revert reaches main.
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        github = FakeGitHub(ancestors=[dated], **DONE_03)
+        self.cancelled_before_the_tag(github, dated)
+        code, out, err, _ = self.checkout.run(github, dated)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags["0.4"], ("commit", dated))
+        head = self.checkout.commit(text=UNRELEASED_TWO)
+        self.assert_red_while_unreleased(github, head)
+
+    def test_a_dated_version_headed_unreleased_again_names_the_first_commit_that_dated_it(self):
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        self.checkout.commit(text=UNRELEASED_TWO)
+        self.checkout.commit(text=TWO + "\nDated again.\n")
+        head = self.checkout.commit(text=UNRELEASED_TWO + "\nAnd unreleased again.\n")
+        github = FakeGitHub(**DONE_03)
+        code, out, err, _ = self.checkout.run(github, head)
+        self.assertEqual((code, out, err), (1, "", "release: %s\n" % dated_again(dated, head)))
+        self.assertEqual(github.writes, [])
+
+    def assert_red_while_unreleased(self, github, head):
+        for event in ("push", "schedule"):
+            with self.subTest(event=event):
+                before = list(github.writes)
+                code, out, err = main_with(FakeOpener(github), head, self.checkout.directory, event=event)
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, 'release: the tag v0.4 exists, and the entry of 0.4 in CHANGELOG.md is headed "(unreleased)". '
+                                      "A released version stays released. Nothing was written.\n")
+                self.assertEqual(github.writes, before)
 
     def test_a_version_main_only_named_as_unreleased_needs_no_release(self):
         self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
