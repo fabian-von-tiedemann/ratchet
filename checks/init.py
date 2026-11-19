@@ -13,28 +13,38 @@ It writes what README's "Start here" sets up:
 - REGISTER.md, generated from the register.json that stands after the run, as check_register.py --write does
 - .github/workflows/ratchet.yml, from templates/ratchet-checks.yml, with the commit of the Ratchet checkout it
   runs from, read with git rev-parse HEAD, as the pin
-- the line .ratchet/ in .gitignore, when no line there already keeps .ratchet out
+- the line /.ratchet/ at the end of .gitignore, unless the last line there that mentions .ratchet is exactly
+  .ratchet/ or /.ratchet/, with no negation after it
 
 The name is the folder's name unless --name gives one. It is ASCII letters and digits, in words joined by one
 space, "-", "." or "_", at most 100 characters.
 
 It never overwrites a file. A file that exists with the content it would write is unchanged. A file that exists
 with other content, or that is not a plain file, is skipped, named, and left as it is, and the run exits 1. The one
-file it changes is .gitignore, and only by adding its line at the end. With --check it writes nothing and says
-the same. A second run says that nothing changed. At the end it runs check_register.py on register.json and
-REGISTER.md and shows the result.
+file it changes is .gitignore, and only by adding its line at the end, in one step, and only if .gitignore still
+holds what it read: when it changed meanwhile, init.py stops and leaves it as it is. With --check it writes
+nothing and says the same. A second run says that nothing changed. At the end it runs check_register.py on
+register.json and REGISTER.md and shows the result.
 
-Each file is written in full to a temporary file beside it and then linked into place, so a file is either
-missing or whole, and a file that appears meanwhile is not overwritten. A run that stops halfway leaves whole
-files, and the next run writes the rest.
+Each file is written in full to a temporary file beside it, synced, and then linked into place with a hard link,
+which fails when the file appeared meanwhile, so a file is either missing or whole and is never overwritten. On a
+file system with no hard links it stops and writes no file there, rather than write one directly. A run that
+stops halfway leaves whole files, and the next run writes the rest.
+
+It runs only from the root of a git repo: a .git directory that holds HEAD and objects/, or a .git file of the one
+line "gitdir: <path>", naming a directory that holds HEAD and commondir or objects/, as a worktree or a submodule
+has. It reads these files and does not run git there.
 
 Threat model: a person or an agent runs it in their own repo. It guards against mistakes: overwriting work, a
-pin that is not a full commit or not the commit of the files it copies, a result that is half written. It does
-not guard against a hostile Ratchet checkout, whose code it is. It never runs code from the project's repo: it
-runs git only in the Ratchet checkout, and the check at the end is Ratchet's own.
+pin that is not a full commit or not the commit of the files it copies, a result that is half written, an edit
+to .gitignore lost, a run in the wrong folder, .ratchet/ not ignored. It does not guard against a hostile Ratchet
+checkout, whose code it is, or a concurrent attacker. It never runs code from the project's repo: it runs git
+only in the Ratchet checkout, never in the project's repo, whose git config could name a program to run, and the
+check at the end is Ratchet's own.
 
 Exit code 0: everything is in place and the register passes. 1: a file was skipped, or the register does not
-pass. 2: it could not run, and wrote nothing.
+pass. 2: it could not run, and wrote nothing, or it stopped at a file it could not write or at a .gitignore that
+changed, and says how many files it wrote before.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
@@ -54,8 +64,8 @@ RATCHET = registry.ROOT
 AGENTS_TITLE = "# Working rules for %s"
 PLACEHOLDER = "<40-character commit sha>"
 WORKFLOW = os.path.join(".github", "workflows", "ratchet.yml")
-IGNORE = ".ratchet/"
-IGNORED = {".ratchet", ".ratchet/", "/.ratchet", "/.ratchet/"}
+IGNORE = "/.ratchet/"
+IGNORED = (b".ratchet/", b"/.ratchet/")
 NAME = re.compile(r"^[A-Za-z0-9]+(?:[-._ ][A-Za-z0-9]+)*\Z")
 NAME_LENGTH = 100
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
@@ -63,6 +73,10 @@ COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
 
 class InitError(Exception):
     """init.py cannot run. Nothing has been written."""
+
+
+class Changed(Exception):
+    """A file changed between the plan and the write. It was left as it is."""
 
 
 def name_problem(name):
@@ -85,6 +99,30 @@ def commit_problem(text):
     if not COMMIT.match(text):
         return "%s is not a commit: a commit is 40 characters 0-9 and a-f" % json.dumps(text)
     return None
+
+
+def git_root_problem(root):
+    """Why root is not the root of a git repo, or None. Read from the files in .git: git is not run there."""
+    dot_git = os.path.join(root, ".git")
+    if os.path.isdir(dot_git):
+        if os.path.isfile(os.path.join(dot_git, "HEAD")) and os.path.isdir(os.path.join(dot_git, "objects")):
+            return None
+        return ".git is a directory without HEAD and objects/"
+    if not os.path.isfile(dot_git):
+        return "there is no .git"
+    with open(dot_git, "rb") as handle:
+        data = handle.read(4097)
+    match = re.match(rb"gitdir: ([^\r\n]+)\r?\n?\Z", data)
+    if len(data) > 4096 or not match:
+        return 'the file .git is not one line "gitdir: <path>"'
+    named = os.fsdecode(match.group(1))
+    target = os.path.join(root, named)  # a relative path is from the folder of the .git file
+    if not os.path.isdir(target):
+        return "the file .git names %s, which is not a directory" % json.dumps(named)
+    if os.path.isfile(os.path.join(target, "HEAD")) and (os.path.isfile(os.path.join(target, "commondir"))
+                                                         or os.path.isdir(os.path.join(target, "objects"))):
+        return None
+    return "the file .git names %s, which holds no HEAD and commondir or objects/" % json.dumps(named)
 
 
 def git(*args):
@@ -183,21 +221,31 @@ def register_md_text(register_state, register_text_now, ratchet):
     return check_register.render(register), None
 
 
+def ignores_ratchet(data):
+    """Whether .gitignore, as bytes, ignores .ratchet for sure: the last line that mentions .ratchet is exactly
+    .ratchet/ or /.ratchet/, and no negation comes after it. Anything else gets the line. A leading space is part
+    of the pattern in gitignore, so it is not stripped, and neither is a trailing one."""
+    lines = [line[:-1] if line.endswith(b"\r") else line for line in data.split(b"\n")]
+    mentions = [number for number, line in enumerate(lines) if b".ratchet" in line]
+    if not mentions or lines[mentions[-1]] not in IGNORED:
+        return False
+    return not any(line.startswith(b"!") for line in lines[mentions[-1] + 1:])
+
+
 def gitignore_plan(path):
-    """(action, the bytes to write or None, what to say) for the line .ratchet/ in .gitignore."""
+    """(action, what to write or None, what to say) for the line /.ratchet/ in .gitignore. What to write is the
+    bytes of a new file, or, for "add", (the bytes read now, the bytes to put in their place)."""
     if not os.path.lexists(path):
         return "write", (IGNORE + "\n").encode("ascii"), ""
     if os.path.islink(path) or not os.path.isfile(path):
         return "skip", None, "it exists and is not a plain file. Add the line %s to it by hand" % IGNORE
     with open(path, "rb") as handle:
         data = handle.read()
-    lines = [line.strip(b" \t\r") for line in data.split(b"\n")]
-    if any(line.decode("utf-8", "replace") in IGNORED for line in lines):
+    if ignores_ratchet(data):
         return "unchanged", None, ""
     newline = b"\r\n" if b"\r\n" in data else b"\n"
-    if data and not data.endswith(b"\n"):
-        data += newline
-    return "add", data + IGNORE.encode("ascii") + newline, ""
+    after = data + (newline if data and not data.endswith(b"\n") else b"") + IGNORE.encode("ascii") + newline
+    return "add", (data, after), ""
 
 
 def temporary(path):
@@ -225,29 +273,34 @@ def write_new(path, data):
             os.link(part, path)
         except FileExistsError:
             return False
-        except OSError:
-            # A file system with no hard links. Create the file only if it does not exist, then fill it.
-            try:
-                with open(path, "xb") as handle:
-                    handle.write(data)
-            except FileExistsError:
-                return False
+        except OSError as error:
+            # No hard link, so no way here to put a whole file in place without the risk of overwriting one.
+            # Writing it directly could leave it half written, and a second run would then skip it.
+            raise OSError(error.errno, "it cannot be linked into place (%s), so it was not written, rather than "
+                                       "written directly" % (error.strerror or error), path)
         return True
     finally:
         if os.path.lexists(part):
             os.unlink(part)
 
 
-def replace_file(path, data):
-    """Write data in place of path in one step, keeping its mode. For .gitignore, which only gains a line."""
+def add_line(path, before, after):
+    """Put after in place of path in one step, keeping its mode, if path still holds before. For .gitignore, which
+    only gains a line. Changed, and path left as it is, when it no longer holds what was read."""
     mode = os.stat(path).st_mode & 0o7777
     descriptor, part = temporary(path)
     try:
         with os.fdopen(descriptor, "wb") as handle:
-            handle.write(data)
+            handle.write(after)
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(part, mode)
+        # Read again just before the file is replaced, so that an edit made since the plan is not lost.
+        if os.path.islink(path) or not os.path.isfile(path):
+            raise Changed("it is no longer a plain file")
+        with open(path, "rb") as handle:
+            if handle.read() != before:
+                raise Changed("it is not what init.py read")
         os.replace(part, path)
     finally:
         if os.path.lexists(part):
@@ -269,8 +322,10 @@ def main(argv=None, out=None):
     try:
         if os.path.realpath(root) == os.path.realpath(RATCHET):
             raise InitError("this is Ratchet's own checkout. Run init.py from the root of your own repo, with Ratchet in .ratchet")
-        if not os.path.lexists(os.path.join(root, ".git")):
-            raise InitError("%s is not the root of a git repo. Run init.py from the root of your own repo" % root)
+        problem = git_root_problem(root)
+        if problem:
+            raise InitError("%s is not the root of a git repo: %s. Run init.py from the root of your own repo"
+                            % (root, problem))
         name = args.name if args.name is not None else os.path.basename(root)
         problem = name_problem(name)
         if problem:
@@ -342,8 +397,13 @@ def main(argv=None, out=None):
                 if action == "write":
                     done = write_new(path, data)
                 else:
-                    replace_file(path, data)
+                    add_line(path, *data)
                     done = True
+            except Changed as error:
+                say("init: .gitignore changed while init.py ran (%s), so %s was not added. It was left as it is: "
+                    "run init.py again" % (error, IGNORE))
+                say("init: %d file(s) were written before it" % written)
+                return 2
             except OSError as error:
                 say("init: cannot write %s: %s" % (label, error))
                 say("init: %d file(s) were written before it. A second run writes the rest" % written)

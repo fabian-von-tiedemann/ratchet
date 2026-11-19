@@ -25,7 +25,7 @@ Changed:
 
 Added:
 
-- `checks/init.py`: one command that starts a project, run from the root of its repo with Ratchet in `.ratchet`. It writes `AGENTS.md` and `register.json` from the templates with the project's name, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of the Ratchet checkout it runs from, and adds `.ratchet/` to `.gitignore`. It never overwrites a file: a file that exists with other content is skipped and named, and the run exits 1. `--check` writes nothing. A second run changes nothing. It ends by running `check_register.py`. See [checks/README.md](checks/README.md#initpy).
+- `checks/init.py`: one command that starts a project, run from the root of its repo with Ratchet in `.ratchet`. It writes `AGENTS.md` and `register.json` from the templates with the project's name, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of the Ratchet checkout it runs from, and adds `/.ratchet/` to `.gitignore` unless the last line there on `.ratchet` is exactly `.ratchet/` or `/.ratchet/` with no negation after it. It never overwrites a file: a file that exists with other content is skipped and named, and the run exits 1. A file is linked into place whole or not written at all, a `.gitignore` edited meanwhile is left as it is, and it runs only from the root of a git repo, read from `.git` without running git there. `--check` writes nothing. A second run changes nothing. It ends by running `check_register.py`. See [checks/README.md](checks/README.md#initpy).
 
 Fixed, from the review of PR #50:
 

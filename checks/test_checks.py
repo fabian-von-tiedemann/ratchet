@@ -979,7 +979,9 @@ class StartPath(unittest.TestCase):
     """The README's start, run from an empty git repo with this repo as .ratchet, a git checkout with one commit."""
 
     def setUp(self):
-        self.project = scratch(self)
+        # A folder of a fixed, valid name: init.py takes the project's name from it, and tempfile's names are random.
+        self.project = os.path.join(scratch(self), "demo-project")
+        os.mkdir(self.project)
         ratchet = os.path.join(self.project, ".ratchet")
         shutil.copytree(ROOT, ratchet, ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures", ".claude"))
         for directory, command in ((self.project, ["init", "-q"]), (ratchet, ["init", "-q"]), (ratchet, ["add", "-A"]),

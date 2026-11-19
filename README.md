@@ -8,7 +8,7 @@
 
 **AI agents read your instructions and still don't follow them.** They say "done" without running the tests, and when something breaks, the fix is another line in a prompt that is also ignored.
 
-Ratchet turns each rule into a check that fails when the rule is broken, or says plainly that no check can see it. Every failure becomes a new check, so what was caught once cannot come back.
+Ratchet turns each rule into a check that fails when the rule is broken, or says plainly that no check can see it. Each failure becomes a check with a fixture it must fail on, so the cases that are tested cannot quietly come back.
 
 ## What Ratchet does
 
@@ -77,7 +77,7 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
    python3 .ratchet/checks/init.py
    ```
 
-   It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. Then it runs the register check. See [checks/README.md](checks/README.md#initpy).
+   It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. Then it runs the register check. See [checks/README.md](checks/README.md#initpy).
 
    `register.json` holds nine rules to start with, copied verbatim: you choose which rules you take, and you never rewrite one. Your own rules go in the list `own`, under your own prefix. `REGISTER.md` is generated: to change it, change `register.json` and write it again.
 
