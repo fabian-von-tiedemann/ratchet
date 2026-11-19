@@ -1,12 +1,12 @@
 # Changelog
 
-## 0.9 (unreleased)
+## 0.9 (2026-11-19)
 
 <!-- generated:count -->
 Ratchet 0.9, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
-No rule is added, changed or removed in this version. It changes how Ratchet is released, by the decision `D-2026-11-19-batched-releases`: changes are collected under the first entry of the changelog, headed `(unreleased)`, and released together by a pull request that gives the entry its date. The list of sources moves out of `ratchet.json`, so that a pin that moves needs no new version. It also adds `checks/init.py`, which starts a project with one command, and rewrites the README.
+No rule is added, changed or removed in this version. It changes how Ratchet is released, by the decision `D-2026-11-19-batched-releases`: changes are collected under the first entry of the changelog, headed `(unreleased)`, and released together by a pull request that gives the entry its date. The list of sources moves out of `ratchet.json`, so that a pin that moves needs no new version. It also adds `checks/init.py`, which starts a project with one command, rewrites the README, and fixes the tripwire's exception for a directory from `mktemp -d` on macOS.
 
 Changes of form:
 
@@ -21,16 +21,21 @@ Changed:
 - `checks/upgrade.py` says when a field at the top of `ratchet.json` is gone, as it says when one is new.
 - `checks/watch_sources.py` and its workflow read `sources.json`.
 - The release of a version is a pull request that replaces `(unreleased)` with the date and moves the tag that `README.md` fetches. `checks/generate.py` writes the rest, and `--check` names what is left.
-- `README.md` is rewritten: the problem first, then what Ratchet does, the evidence from this repo with a link for each claim, the honest limits, and "Start here" with `init.py`. Until 0.9 is released, "Start here" fetches 0.8, which has no `init.py`, and says to follow the steps of 0.8.
+- `README.md` is rewritten: the problem first, then what Ratchet does, the evidence from this repo with a link for each claim, the honest limits, and "Start here" with `init.py`. It fetches 0.9, the first version with `init.py`.
 
 Added:
 
-- `checks/init.py`: one command that starts a project, run from the root of its repo with Ratchet in `.ratchet`. It writes `AGENTS.md` and `register.json` from the templates with the project's name, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of the Ratchet checkout it runs from, and adds `/.ratchet/` to `.gitignore` unless the last line there on `.ratchet` is exactly `.ratchet/` or `/.ratchet/` with no negation after it. It never overwrites a file: a file that exists with other content is skipped and named, and the run exits 1. A file is linked into place whole or not written at all, a `.gitignore` edited meanwhile is left as it is, and it runs only from the root of a git repo, read from `.git` without running git there. `--check` writes nothing. A second run changes nothing. It ends by running `check_register.py`. See [checks/README.md](checks/README.md#initpy).
+- `checks/init.py`: one command that starts a project, run from the root of its repo with Ratchet in `.ratchet`. It writes `AGENTS.md` and `register.json` from the templates with the project's name, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of the Ratchet checkout it runs from, and adds `/.ratchet/` to `.gitignore` unless the last line there on `.ratchet` is exactly `.ratchet/` or `/.ratchet/` with no negation after it. It never overwrites a file: a file that exists with other content is skipped and named, and the run exits 1. A file is linked into place whole or not written at all, a `.gitignore` edited meanwhile is left as it is, and it runs only from the root of a git repo, read from `.git` without running git there, and from a Ratchet that is a git checkout of its own with no changes that are not committed. `--check` writes nothing. A second run changes nothing. It ends by running `check_register.py`. See [checks/README.md](checks/README.md#initpy).
 
 Fixed, from the review of PR #50:
 
 - `checks/generate.py` fails when the entries of the changelog do not stand newest first, each version higher than the one after it, and the command in `README.md` that fetches Ratchet names the highest version with a date. Before, it named the first entry with a date, so a changelog with an older entry moved up let a stale pin pass.
-- `checks/README.md` says that a green run of `release.py` confirms a tag and a release for every version ever dated on `main`, not every version `main` named.
+- `checks/README.md` says that a green run of `release.py` confirms a tag and a release for every version ever dated on `main`, not every version `main` named, and the tag of the version in the checkout only when its entry has a date, as the review of PR #54 asked.
+
+Fixed, from the sandbox trial in issue #49 (PR #51 and PR #55):
+
+- `checks/tripwire.py`: on macOS, the exception for deleting one's own directory from `mktemp -d` looks where `mktemp -d` writes, the per-user temporary directory that the system gives, and no longer follows `TMPDIR`. Before, a session whose `TMPDIR` was elsewhere had the deletion of a real directory from `mktemp -d` denied, and a directory of that form made in `TMPDIR` let through. When the system gives no absolute path of an existing directory, that root is not trusted at all. `/tmp` stays the second root, and Linux is unchanged. See [checks/README.md](checks/README.md#tripwirepy).
+- The tests of the tripwire write nothing to `/tmp`: a directory from `mktemp -d` stands in for it. So the suite passes in a sandbox that refuses writes to `/tmp`, as well as outside one. The hook behaves as before.
 
 ## 0.8 (2026-11-19)
 
