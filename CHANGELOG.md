@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7 (2026-11-19)
+
+<!-- generated:count -->
+Ratchet 0.7, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+One rule is added in this version, and none is changed or removed. The form of `ratchet.json` does not change. The rule comes from issue #23 and the decision `D-2026-11-17-knowledge-and-modes`, item 1. By the decision `D-2026-11-19-locks-not-parsing`, its hook is a tripwire and not a lock, and the locks sit with GitHub and the sandbox. By the decision `D-2026-11-19-tag-ruleset-scope`, the tag ruleset locks moving and deleting a tag, and not creating one.
+
+Added:
+
+- `ratchet.irreversible-waits`, experimental, in a new part of `CONTROL-ROOM.md`, "What cannot be undone": an agent goes ahead with a step that can be undone, and a step that cannot waits for an approval from the owner that names the step and the exact command. The five steps are a force push, creating or deleting a tag, creating or changing a release, deleting outside the working tree, and changing the repository's settings. The part says where each step is locked and where it is not.
+- `checks/tripwire.py`, its reference check: a `PreToolUse` hook for Claude Code that denies the usual spellings of the five steps when no approval names them, and any write by an agent to the approvals file. It is a tripwire, not a lock: it claims the cases that [checks/README.md](checks/README.md#tripwirepy) lists and no others, and another spelling gets past it. It never exits other than 0 or 2. The templates `claude-settings.json` and `ratchet-approvals.json` wire it into a project, and this repo runs it from `.claude/settings.json`.
+- `templates/tag-ruleset.json`: a ruleset for every tag, with the rules `deletion`, `update` and `non_fast_forward` and the repository admin role as the only bypass actor, for the owner to apply. It leaves creating a tag open, so the release workflow tags as before. See [checks/README.md](checks/README.md#the-tag-ruleset).
+
+Changed:
+
+- `checks/README.md` describes the rehearsal of the release of 0.7 and the upgrade fixtures from 0.3 to 0.6, which it had left at 0.5 and at 0.3 and 0.4.
+
 ## 0.6 (2026-11-19)
 
 <!-- generated:count -->

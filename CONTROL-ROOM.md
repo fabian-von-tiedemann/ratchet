@@ -52,6 +52,32 @@ A work package is explored, built or run, one at a time. The phase says what an 
 | ratchet.phases | A work package is in one phase at a time\, named in its issue\: explore\, build or run\. In explore\, an agent reads\, searches\, tries things in scratch space and writes proposals and questions\. It does not merge\, release or change the register\. Explore ends when the owner picks a proposal to build\, or drops it\. In build\, an agent works on one work package the owner approved\, on its own branch\, changes only the files the package names\, and merges only on green checks and a passed review\. Build ends when the PR is merged or the stop rule is reached\. In run\, an agent watches what is merged\, reports on it and undoes a change that fails\. A fix\, or anything new\, goes back to build\. Run ends when the owner retires what runs or opens a new phase\. | Text only\: a check cannot tell which phase a session is in\. In build\, the required checks and the review on the PR guard the merge | — |
 <!-- /generated -->
 
+## What cannot be undone
+
+An agent may go ahead with a step that can be undone, because a mistake there costs a revert. A step that cannot be undone waits for the owner. The rule names five such steps. Each of them needs a lock in a place the agent cannot get around, and a hook in the harness is not such a place: a hook that reads the shell can always be shown a spelling it does not know ([D-2026-11-19-locks-not-parsing](decisions/D-2026-11-19-locks-not-parsing.md)). So the hook is a tripwire, and the locks are with the host and in the sandbox.
+
+<!-- generated:table irreversible -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.irreversible-waits | An agent goes ahead with a step that can be undone\, and waits on a step that cannot\. A step that cannot be undone goes ahead only with an approval from the owner that names the step and the exact command\, with the last day it holds\. The steps are a force push\, creating or deleting a tag\, creating or changing a release\, deleting outside the working tree\, and changing the repository\'s settings\. | Check\: a hook in the agent\'s harness denies\, before it runs\, each of a listed set of usual spellings of the five steps that no approval names\. It is a tripwire and not a lock\: another spelling gets past it\. The locks sit with the host and the sandbox\: a tag ruleset refuses moving or deleting a tag\, the role of the agents\' account refuses the settings that only an admin may change\, the protection of the main branch refuses a force push to it\, and a sandbox keeps deletion inside the working tree\. Creating a tag or a release\, a force push to another branch\, and the secrets and variables that the role Write may change are caught by the hook alone | — |
+<!-- /generated -->
+
+Where each step is locked, in a project that is set up as Ratchet's own repo is:
+
+| Step | Locked by | Caught by the tripwire |
+|---|---|---|
+| Moving or deleting a tag | A tag ruleset at GitHub, [templates/tag-ruleset.json](templates/tag-ruleset.json), once the owner applies it. It does not block creating a tag: see [D-2026-11-19-tag-ruleset-scope](decisions/D-2026-11-19-tag-ruleset-scope.md) | Yes |
+| Changing a setting that only an admin may change: the settings page, rulesets and branch protection, webhooks and deploy keys, collaborators, topics, and configuring an environment | The role Write of the agents' account. GitHub's tables of roles reserve these to the admin of a repository ([organization](https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/repository-roles-for-an-organization)) or to its owner ([personal account](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-personal-account-settings/permission-levels-for-a-personal-account-repository), [environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)) | Yes |
+| Changing Actions secrets and variables, of the repository or of an environment, Dependabot and Codespaces secrets, and enabling or disabling a workflow | Nothing. The role Write may create, update and delete Actions secrets and variables, on the site and with the REST API, and the REST API asks only for collaborator access ([secrets](https://docs.github.com/en/rest/actions/secrets), [variables](https://docs.github.com/en/rest/actions/variables)). The docs do not reserve the others to an admin either | Yes, alone |
+| A force push to the main branch | The ruleset on the main branch, which refuses force pushes and deletion | Yes |
+| Creating a tag or a release | Nothing. A tag created by mistake publishes nothing, and the owner can delete it | Yes, alone |
+| A force push to another branch | Nothing | Yes, alone |
+| Deleting outside the working tree | Nothing yet. It waits on the trial of a sandbox for the workspaces ([D-2026-11-17-harness-sandbox-risk](decisions/D-2026-11-17-harness-sandbox-risk.md), item 2) | Yes, alone |
+
+The role Write may also change labels. They are not counted as settings: they count as harmless and can be undone ([D-2026-11-19-locks-not-parsing](decisions/D-2026-11-19-locks-not-parsing.md), item 3).
+
+The tripwire is [checks/tripwire.py](checks/tripwire.py), a `PreToolUse` hook for Claude Code. It denies the cases that [checks/README.md](checks/README.md#tripwirepy) lists, and no others. To use it, a project copies it to `.claude/hooks/tripwire.py`, copies [templates/claude-settings.json](templates/claude-settings.json) to `.claude/settings.json`, and adds `/.claude/ratchet-approvals.json` to `.gitignore`. The owner approves a step by adding an entry to `.claude/ratchet-approvals.json`, which starts as [templates/ratchet-approvals.json](templates/ratchet-approvals.json). The hook denies any agent write to that file. A project that upgrades replaces its copy of the hook with the one from the newer Ratchet.
+
 ## The review script
 
 `ratchet.cr-review` leans on the review script, like three rules in the core. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).

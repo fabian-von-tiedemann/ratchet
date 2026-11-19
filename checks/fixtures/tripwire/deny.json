@@ -1,0 +1,943 @@
+{
+  "cases": [
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push --force origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push -f origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push -uf origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push --force-with-lease origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push --force-with-lease=feature origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push origin +feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push origin +HEAD:refs/heads/main",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push --delete origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push -d origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push origin :feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git push --prune origin",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push",
+        "tag"
+      ],
+      "command": "git push --mirror origin",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git -C . push -f origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "/usr/bin/git push -f origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "env GIT_TRACE=1 git push -f origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "nohup git push -f origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "'git' push '--force' origin feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "true && git push -f origin feature",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "git status; git push --force origin feature",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "(git push -f origin feature)",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "echo \"$(git push -f origin feature)\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "gh api -X DELETE repos/o/r/git/refs/heads/feature",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "force-push"
+      ],
+      "command": "gh api -X PATCH repos/o/r/git/refs/heads/main -F force=true",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag v2",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag -a v2 -m \"Release v2\"",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag v2 HEAD~1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag -f v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag -d v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git tag --delete v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push origin v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push origin refs/tags/v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push origin tag v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push --tags",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push origin --tags",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push --follow-tags origin main",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push origin :refs/tags/v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git push --delete origin v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git update-ref refs/tags/v2 HEAD",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "git update-ref -d refs/tags/v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "gh api repos/o/r/git/refs -f ref=refs/tags/v2 -f sha=abc",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "gh api -X POST repos/o/r/git/refs --input ref.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "gh api -X PATCH repos/o/r/git/refs/tags/v1 -f sha=abc",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "gh api -X DELETE repos/o/r/git/refs/tags/v1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "tag"
+      ],
+      "command": "gh api repos/o/r/git/tags -f tag=v2 -f object=abc",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release create v2",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release create v2 --notes x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release create -R o/r v2",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release edit v1 --draft",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release delete v1 --yes",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release upload v1 file.zip",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh release delete-asset v1 file.zip",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api repos/o/r/releases -f tag_name=v2",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api -X PATCH repos/o/r/releases/1 -f draft=false",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api -X DELETE repos/o/r/releases/1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api --method DELETE /repos/o/r/releases/1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api -XDELETE repos/o/r/releases/1",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "release"
+      ],
+      "command": "gh api --method=POST repos/o/r/releases --input release.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf /etc/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -r /var/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -fr ../x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -R ../../x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm --recursive /opt/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf sub/../../x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf ~/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf ~",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf .",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf {tree}",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "/bin/rm -rf /etc/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "sudo rm -rf /etc/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "command rm -rf /etc/x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf \"$HOME/x\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf \"$d\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "rm -rf \"$(pwd)/x\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "cd /etc && rm -rf x",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "cd .. && rm -rf x",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d); d=/etc; rm -rf \"$d\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d); read d; rm -rf \"$d\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d); printf %n d; rm -rf \"$d\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d); rm -rf \"$d/sub\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d); rm -rf $d",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "delete-outside"
+      ],
+      "command": "d=$(mktemp -d /missing/tmp.XXXXXX); rm -rf \"$d\"",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PATCH repos/o/r -f description=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PATCH repos/{owner}/{repo} -F has_wiki=false",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/rulesets --input ruleset.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/rulesets/1 --input ruleset.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/branches/main/protection --input protection.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/collaborators/someone",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/hooks -f name=web",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/keys -f key=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/actions/permissions -F enabled=false",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/actions/secrets/X -f encrypted_value=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/actions/variables -f name=X -f value=y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/environments/production",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/topics -f names[]=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X POST repos/o/r/pages --input pages.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh repo edit --visibility public",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh repo delete o/r --yes",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh repo rename other",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh repo archive --yes",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh repo deploy-key add key.pub",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret delete X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable set X --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable delete X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh workflow disable checks.yml",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh workflow enable checks.yml",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X < secret.txt",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X --env production --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X --app dependabot --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set X -R o/r --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret set -f secrets.env",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret delete X --env production",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret delete X --app codespaces",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh secret remove X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable set X --env production --body y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable set -f vars.env",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh variable delete X -e production",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/actions/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api --method DELETE /repos/o/r/actions/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api --method=PUT https://api.github.com/repos/o/r/actions/secrets/X --input secret.json",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -XDELETE repos/{owner}/{repo}/actions/variables/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PATCH repos/o/r/actions/variables/X -f value=y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/environments/production/secrets/X -f encrypted_value=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api repos/o/r/environments/production/variables -f name=X -f value=y",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/environments/production/variables/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/dependabot/secrets/X -f encrypted_value=x",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X DELETE repos/o/r/codespaces/secrets/X",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "settings"
+      ],
+      "command": "gh api -X PUT repos/o/r/actions/workflows/checks.yml/disable",
+      "approvable": true
+    },
+    {
+      "steps": [
+        "approvals-file"
+      ],
+      "command": "echo x > .claude/ratchet-approvals.json",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "approvals-file"
+      ],
+      "command": "cp other.json .claude/ratchet-approvals.json",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "approvals-file"
+      ],
+      "command": "cat .claude/ratchet-approvals.json",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "approvals-file"
+      ],
+      "command": "cd .claude && rm ratchet-approvals.json",
+      "approvable": false
+    },
+    {
+      "steps": [
+        "approvals-file"
+      ],
+      "command": "tee {tree}/.claude/ratchet-approvals.json",
+      "approvable": false
+    }
+  ]
+}

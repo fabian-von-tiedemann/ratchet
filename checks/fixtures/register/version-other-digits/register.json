@@ -1,6 +1,6 @@
 {
   "project": "the example project",
-  "ratchet_version": "\u0660.\u0666",
+  "ratchet_version": "\u0660.\u0667",
   "adopted": [
     {
       "key": "ratchet.register-on-top",

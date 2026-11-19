@@ -1,6 +1,6 @@
 {
   "project": "Ratchet",
-  "ratchet_version": "0.6",
+  "ratchet_version": "0.7",
   "adopted": [
     {
       "key": "ratchet.register-on-top",
@@ -102,6 +102,14 @@
       "source": "",
       "status": "built",
       "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in a step of its own. It runs the suite in a child process through `checks/suite_runner.py`"
+    },
+    {
+      "key": "ratchet.irreversible-waits",
+      "rule": "An agent goes ahead with a step that can be undone, and waits on a step that cannot. A step that cannot be undone goes ahead only with an approval from the owner that names the step and the exact command, with the last day it holds. The steps are a force push, creating or deleting a tag, creating or changing a release, deleting outside the working tree, and changing the repository's settings.",
+      "ratchet": "Check: a hook in the agent's harness denies, before it runs, each of a listed set of usual spellings of the five steps that no approval names. It is a tripwire and not a lock: another spelling gets past it. The locks sit with the host and the sandbox: a tag ruleset refuses moving or deleting a tag, the role of the agents' account refuses the settings that only an admin may change, the protection of the main branch refuses a force push to it, and a sandbox keeps deletion inside the working tree. Creating a tag or a release, a force push to another branch, and the secrets and variables that the role Write may change are caught by the hook alone",
+      "source": "",
+      "status": "text only for now",
+      "where": "Partly built. The tripwire `checks/tripwire.py` runs from `.claude/settings.json` in every Claude Code session in this repo, and it catches the cases that `checks/README.md` lists, not every spelling. Moving or deleting a tag is locked once the maintainer applies `templates/tag-ruleset.json` and it is read back (D-2026-11-19-tag-ruleset-scope). The role Write of the agents' account locks the settings that only an admin may change, among them rulesets, branch protection, webhooks, deploy keys, collaborators and environments, and the ruleset on `main` locks a force push to `main`. The role Write may change Actions secrets and variables: they, the other secrets, enabling a workflow, creating a tag or a release and a force push to another branch are caught by the tripwire alone. Deleting outside the working tree waits on the trial of a sandbox for the workspaces"
     }
   ],
   "own": [
