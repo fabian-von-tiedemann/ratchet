@@ -17,8 +17,10 @@ ratchet.json names. Every entry after it is released text and is never rewritten
 checks/released_text.py compares it with its tag. The first entry is headed
 "## <version> (<date>)", or "## <version> (unreleased)" while its changes are being
 collected (D-2026-11-19-batched-releases). The date of a version is in that heading and
-nowhere else. The command in README.md that fetches Ratchet names the newest version
-with a date, so it never fetches a tag that does not exist yet.
+nowhere else. The command in README.md that fetches Ratchet is one exact line, in a code
+block marked sh, and names the newest version with a date. That version's tag is created by
+the release run after the merge, so for the minutes that run takes the command names a tag
+that does not exist yet. The daily release run is red if that lasts.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -41,6 +43,8 @@ END = "<!-- /generated -->"
 BLOCK = re.compile(r"(<!-- generated:([a-z-]+)(?: ([a-z0-9-]+))? -->\n)(.*?)(<!-- /generated -->)", re.S)
 MARKER = re.compile(r"^<!-- generated:[a-z-]+(?: [a-z0-9-]+)? -->$")
 FENCE = re.compile(r"^```(?:sh|json)?$")
+# The one command in README.md that fetches Ratchet, at the newest version with a date in CHANGELOG.md.
+FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet"
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
@@ -526,15 +530,38 @@ def consistency_problems(data, root, context):
     released = context["released"]
     if released is None:
         problems.append("CHANGELOG.md: no entry has a date, so there is no release for README.md to fetch")
-    elif "--branch v%s " % released not in (read(os.path.join(root, "README.md")) or ""):
-        problems.append('README.md: the command that fetches Ratchet must say "--branch v%s", the newest version with a date in '
-                        "CHANGELOG.md" % released)
+    else:
+        problems += fetch_problems(read(os.path.join(root, "README.md")) or "", released)
 
     owners = read(os.path.join(root, ".github", "CODEOWNERS"))
     rules = [line for line in (owners or "").split("\n") if line.strip() and not line.startswith("#")]
     if rules != ["* " + MAINTAINER]:
         problems.append('.github/CODEOWNERS: must hold exactly one rule, "* %s", found %r' % (MAINTAINER, rules))
     return problems
+
+
+def fetch_problems(text, released):
+    """The command in README.md that fetches Ratchet: exactly one line FETCH for the newest dated version, in a block marked sh.
+
+    The line is matched whole, after the spaces that indent it in a list. A line in any other place, or any other line
+    of the file that holds "git clone", is not it, so a pin written in prose does not stand for the command.
+    """
+    expected = FETCH % released
+    found = others = 0
+    language = None
+    for line in text.split("\n"):
+        bare = line.lstrip(" ")
+        if bare.startswith("```"):
+            language = bare[3:] if language is None else None
+        elif language == "sh" and bare == expected:
+            found += 1
+        elif "git clone" in line:
+            others += 1
+    if (found, others) == (1, 0):
+        return []
+    return ['README.md: the command that fetches Ratchet must be the line "%s", once, in a code block marked sh, and no other '
+            "line may run git clone. v%s is the newest version with a date in CHANGELOG.md. Found that line %d times in such a "
+            "block, and %d other lines that run git clone" % (expected, released, found, others)]
 
 
 def main(argv=None):

@@ -29,7 +29,8 @@ version is not finished, and otherwise passes, says so and writes nothing. That 
 and a scheduled run. The release is the push of a commit that gives the entry its date. A version must be
 released once a commit on main names it in ratchet.json with an entry that has a date: the changelog at each
 commit is read with git beside ratchet.json, and only the one exact unreleased heading, as the first entry,
-takes a commit out. A version that main only ever named as unreleased needs nothing.
+takes a commit out. A version that main only ever named as unreleased needs nothing. A version that a commit on main
+dated must be released whatever the head says: a head that heads it "(unreleased)" again fails and names that commit.
 
 publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF and GITHUB_EVENT_NAME from the
 environment. A scheduled run (GITHUB_EVENT_NAME schedule) writes nothing: it fails and names the version
@@ -605,6 +606,13 @@ def publish(version, text, history, repo, sha, api, out, report=False, pending=f
                                "A released version stays released. Nothing was written." % (tag, version))
         if mine:
             raise ReleaseError("a release for %s exists, and the tag does not. Publish or remove it by hand. Nothing was written." % tag)
+        if this in first:
+            # A commit on main dated this version, and its run did not release it. The heading that came back does not
+            # take the duty away (PR #50, round 2, finding 1).
+            raise ReleaseError('Ratchet %s is not finished: commit %s on main gave its entry in CHANGELOG.md a date, and at commit %s '
+                               'it is headed "(unreleased)" again. A version dated on main must be released. Give the entry its date '
+                               "again, so that the run of that push releases it, or rerun the release run of commit %s, the first "
+                               "commit on main that dated it. Nothing was written." % (version, first[this], sha, first[this]))
         out.write('Ratchet %s is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. '
                   "Nothing was written.\n" % version)
         return
