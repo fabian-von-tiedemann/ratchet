@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 from suite_runner import FixtureTest
@@ -147,6 +148,30 @@ class Tripwire(FixtureTest):
                 self.approve([self.entry(step, case["command"]) for step in case["steps"] if step in STEPS])
                 code, message = self.bash(case["command"])
                 self.assertEqual(code, 2, message)
+
+    def test_a_directory_from_mktemp_may_be_deleted_by_its_path_in_a_later_call(self):
+        # Shell state does not last from one Bash call to the next, so a workspace often removes its temporary
+        # directory by path. Only a real directory named tmp. and six or more letters or digits, directly in the
+        # temporary directory, and owned by this user, passes, with what is inside it.
+        made = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout.strip()
+        self.addCleanup(lambda: os.path.isdir(made) and os.rmdir(made))
+        self.assertRegex(os.path.basename(made), r"^tmp\.[A-Za-z0-9]{6,}$")
+        for command in ("rm -rf %s" % made, "rm -r %s/sub" % made):
+            self.assertEqual(self.bash(command), (0, ""), command)
+        root = os.path.dirname(made)
+        other = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(os.rmdir, other)
+        short = tempfile.mkdtemp(prefix="tmp.", suffix="")
+        os.rename(short, os.path.join(root, "tmp.ab1"))
+        self.addCleanup(os.rmdir, os.path.join(root, "tmp.ab1"))
+        link = os.path.join(root, "tmp.link%s" % os.path.basename(made)[4:])
+        os.symlink(self.tree, link)
+        self.addCleanup(os.remove, link)
+        for command in ("rm -rf %s" % root, "rm -rf %s/.." % made, "rm -rf %s" % other, "rm -rf %s" % os.path.join(root, "tmp.ab1"),
+                        "rm -rf %s" % link, "rm -rf %s/" % link):
+            code, message = self.bash(command)
+            self.assertEqual(code, 2, command)
+            self.assertIn("tripwire: delete-outside", message)
 
     def test_a_command_with_two_steps_needs_an_entry_for_each(self):
         command = "git push --mirror origin"

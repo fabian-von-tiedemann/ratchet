@@ -32,8 +32,10 @@ import functools
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 
 STEPS = ("force-push", "tag", "release", "delete-outside", "settings")
 APPROVALS = os.path.join(".claude", "ratchet-approvals.json")
@@ -427,9 +429,25 @@ def rm_steps(args, raws, cwd, tree, mktemp):
         if raw in ['"$%s"' % name for name in mktemp] + ['"${%s}"' % name for name in mktemp]:
             continue
         path = resolve(cwd, word) if literal(word) else None
-        if path is None or outside(path, tree):
+        if path is None or (outside(path, tree) and not own_temporary(path)):
             return {"delete-outside"}
     return set()
+
+
+def own_temporary(path):
+    """Whether a path is, or is inside, a directory that mktemp -d made: tmp. and at least six letters or digits,
+    directly in the temporary directory or /tmp, a real directory and not a link, owned by this user."""
+    roots = set(os.path.realpath(root) for root in (tempfile.gettempdir(), "/tmp"))
+    for root in roots:
+        if path != root and os.path.commonpath([path, root]) == root:
+            top = os.path.join(root, os.path.relpath(path, root).split(os.sep)[0])
+            try:
+                info = os.lstat(top)
+            except OSError:
+                return False
+            return (re.match(r"^tmp\.[A-Za-z0-9]{6,}\Z", os.path.basename(top)) is not None and stat.S_ISDIR(info.st_mode)
+                    and info.st_uid == os.getuid())
+    return False
 
 
 def literal(word):
