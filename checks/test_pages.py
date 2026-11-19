@@ -122,6 +122,8 @@ class PageReader(html.parser.HTMLParser):
         # of the class "license". Each capture is [depth, field, href, parts], and ends when its element is closed.
         self.classes, self.items, self.captures = [], [], []
         self.item, self.item_at = None, None
+        # Each list on the page, as (its tag, the classes of its class attribute), in order.
+        self.lists = []
 
     def where(self):
         return "line %d" % self.getpos()[0]
@@ -177,6 +179,8 @@ class PageReader(html.parser.HTMLParser):
         if tag == "code" and self.stack[-1:] == ["pre"]:
             self.text_in = []
         classes = (values.get("class") or "").split()
+        if tag in ITEM_LISTS:
+            self.lists.append((tag, classes))
         if tag == "li" and self.stack and ITEM_LISTS.get(self.stack[-1]) in self.classes[-1]:
             self.item = {"list": ITEM_LISTS[self.stack[-1]], "where": self.where(), "links": [], "codes": [], "licenses": []}
             self.items.append(self.item)
@@ -371,8 +375,9 @@ def page_problems(root):
     if data is not None:
         found += ["%s: %s" % (name, problem) for problem in source_problems(reader.items, sources, data)]
     for item in reader.items:
-        if item["list"] == "flow" and not item["links"]:
-            found.append("%s: %s: a step of a diagram that links nowhere. Each step links to where the repo shows it" % (name, item["where"]))
+        if item["list"] == "flow" and not any(into_repo(href) for href, _ in item["links"]):
+            found.append("%s: %s: a step of a diagram that links nowhere in this repo. Each step links to where the repo shows it"
+                         % (name, item["where"]))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
@@ -461,6 +466,11 @@ def link_problem(root, value, ids, outside=()):
     if not FRAGMENT.match(mark + fragment) or fragment not in ids[page]:
         return "names #%s, which is not an id on %s" % (fragment, page)
     return None
+
+
+def into_repo(href):
+    """Whether a link leads into this repo on GitHub, as a step of a diagram must: not out of it, and not to this page."""
+    return isinstance(href, str) and (href == REPO or href.startswith(REPO + "/"))
 
 
 def lines_that_hold(text, marker):
@@ -964,14 +974,29 @@ class PageDiagrams(RepoCopy, unittest.TestCase):
         reader = PageReader()
         reader.feed(self.page())
         steps = [item for item in reader.items if item["list"] == "flow"]
-        self.assertEqual(self.page().count('<ol class="flow'), 2)
+        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 2)
         self.assertGreaterEqual(len(steps), 10)
-        self.assertTrue(all(item["links"] for item in steps))
+        self.assertTrue(all(any(into_repo(href) for href, _ in item["links"]) for item in steps))
+
+    def test_a_diagram_is_counted_by_its_class_in_any_order(self):
+        # The class attribute holds a list: "loop flow" is a diagram as much as "flow loop" is.
+        self.change('<ol class="flow loop">', '<ol class="loop  flow">')
+        reader = PageReader()
+        reader.feed(self.page())
+        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 2)
+        self.assertEqual(page_problems(self.copy), [])
 
     def test_a_step_without_a_link_fails(self):
         self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a>',
                     "templates/LESSON.md")
-        self.assert_fails("a step of a diagram that links nowhere")
+        self.assert_fails("a step of a diagram that links nowhere in this repo")
+
+    def test_a_step_whose_only_link_leads_out_of_the_repo_fails(self):
+        # A link to a source in sources.json is allowed on the page, but it does not show where this repo does the step.
+        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a>',
+                    '<a href="https://github.com/mattpocock/skills">mattpocock/skills</a>')
+        self.assert_fails("a step of a diagram that links nowhere in this repo")
+        self.assertEqual(len([problem for problem in page_problems(self.copy) if "links nowhere" in problem]), 1)
 
     def test_the_sandbox_is_linked_to_its_issue(self):
         self.assertIn('href="%s/issues/49"' % REPO, self.page())

@@ -25,6 +25,7 @@
       "key": "ratchet.added",
       "part": "one",
       "status": "experimental",
+      "since": "9.9",
       "enforcement": "enforced",
       "rule": "The main branch takes changes only through PRs.",
       "ratchet": "Check: branch protection with required checks",

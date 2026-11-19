@@ -9,6 +9,7 @@ pin that moves needs no new version (D-2026-11-19-batched-releases).
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import datetime
 import json
 import os
 import re
@@ -59,8 +60,16 @@ EMOJI_NAME = re.compile(":[%s_+\\-]+:" % "".join("%s-%s" % (chr(first), chr(last
 
 STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
-RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check"}
-REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"}
+RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since", "kept_by"}
+# The fields of an experimental rule only: the version it entered Ratchet, which every experimental rule names from
+# 0.10, and the decision that kept it once more (D-2026-11-19-one-point-oh, choice 4). The ratchet.json of an older
+# version has neither.
+AGE_FIELDS = ("since", "kept_by")
+REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"} - set(AGE_FIELDS)
+# An experimental rule that has stood through this many releases and this many days, with no decision, fails.
+AGE_RELEASES = 3
+AGE_DAYS = 60
+DECISION_ID = re.compile(r"^D-([0-9]{4}-[0-9]{2}-[0-9]{2})-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 TOP_FIELDS = {"version", "experimental_cap", "start", "parts", "rules"}
 # The fields that ratchet.json had up to 0.8 and no longer has: the date, which is in the heading of the entry in
 # CHANGELOG.md, and the sources, which are in sources.json (D-2026-11-19-batched-releases). The ratchet.json of an
@@ -275,9 +284,10 @@ def validate(data, root, older=False):
     """Every problem with a parsed ratchet.json, or nothing.
 
     With older=True, the ratchet.json of an older version, which checks/upgrade.py compares with this one: it may
-    lack the cap, which came in 0.5, and may hold the date and the sources, which left in 0.9. Its sources are not
-    read, the files of its reference checks are not looked for, and the budget is not counted. Everything else is
-    read as strictly as this version's own file.
+    lack the cap, which came in 0.5, may hold the date and the sources, which left in 0.9, and its experimental
+    rules may lack "since", which came in 0.10. Its sources are not read, the files of its reference checks and of
+    the decisions in "kept_by" are not looked for, and the budget is not counted. Everything else is read as
+    strictly as this version's own file.
     """
     problems = []
     if not isinstance(data, dict):
@@ -353,6 +363,7 @@ def validate(data, root, older=False):
             problems.append('%s: a text-only rule has a ratchet that starts with "Text only"' % name)
         if ratchet_problem(rule["ratchet"]):
             problems.append("%s: %s" % (name, ratchet_problem(rule["ratchet"])))
+        problems += ["%s: %s" % (name, problem) for problem in age_field_problems(rule, root, older)]
         reference = rule.get("reference_check")
         if reference is not None:
             if not PATH.match(reference) or ".." in reference:
@@ -375,6 +386,90 @@ def validate(data, root, older=False):
     if older or problems:
         return problems
     return budget_problems(data)
+
+
+def version_key(version):
+    """A version of the form MAJOR.MINOR as a pair of integers, so that 0.10 is newer than 0.9."""
+    major, minor = version.split(".")
+    return int(major), int(minor)
+
+
+def decision_date(value):
+    """The date in the id of a decision, D-YYYY-MM-DD-<slug>, or None when it is not of that form or the date does not exist."""
+    match = DECISION_ID.match(value) if isinstance(value, str) else None
+    if not match:
+        return None
+    try:
+        return datetime.date(*map(int, match.group(1).split("-")))
+    except ValueError:
+        return None
+
+
+def age_field_problems(rule, root, older):
+    """Why "since" and "kept_by" of one rule break their form, or nothing.
+
+    An experimental rule names "since", the version it entered Ratchet. It may name "kept_by", the id of the decision
+    that kept it once more, whose file is in decisions/. A core rule names neither. That "since" names a version with
+    an entry in the changelog, or this version, is read by age_problems, which has the changelog: so a version later
+    than this one fails there. The reader does not compare it with "version", which the tests of release.py rewrite.
+    """
+    problems = []
+    if rule["status"] != "experimental":
+        return ["only an experimental rule has %s" % field for field in AGE_FIELDS if field in rule]
+    if "since" not in rule:
+        if not older:
+            problems.append("an experimental rule has since, the version it entered Ratchet")
+    elif not VERSION.match(rule["since"]):
+        problems.append("since must look like 0.2")
+    if "kept_by" in rule:
+        if decision_date(rule["kept_by"]) is None:
+            problems.append("kept_by must be the id of a decision, D-YYYY-MM-DD-<slug>, with a date that exists")
+        elif not older and not os.path.isfile(os.path.join(root, "decisions", rule["kept_by"] + ".md")):
+            problems.append("kept_by names %s, and decisions/%s.md does not exist" % (rule["kept_by"], rule["kept_by"]))
+    return problems
+
+
+def age_problems(data, releases):
+    """Why an experimental rule has stood too long with no decision, one problem per rule, or nothing.
+
+    releases maps each version that has an entry with a date in CHANGELOG.md to that date. The age is measured at
+    the newest of them, so it changes only when a release is dated, and the pull request of a release is where it
+    fails: in the clean-out at a release (D-2026-11-17-improvement-loop, item 4). A rule has stood too long when
+    AGE_RELEASES releases have come after the version in "since" and the newest is AGE_DAYS days or more after the
+    date of that version. When "kept_by" names a decision, both are counted from the decision's date instead: the
+    releases dated after it, and the days since it. So keeping a rule keeps it once more, not for good. A rule that
+    entered in this version, which has no date yet, has no age.
+    """
+    if not releases:
+        return []
+    newest = max(releases, key=version_key)
+    problems = []
+    for rule in data["rules"]:
+        if rule["status"] != "experimental":
+            continue
+        since = rule["since"]
+        if since not in releases and since != data["version"]:
+            problems.append("%s: since is %s, which has no entry with a date in CHANGELOG.md and is not this version, %s"
+                            % (rule["key"], since, data["version"]))
+            continue
+        if "kept_by" in rule:
+            start = decision_date(rule["kept_by"])
+            after = [version for version, date in releases.items() if date > start]
+            told = "was kept by %s and has stood through %%d releases and %%d days since then" % rule["kept_by"]
+        elif since in releases:
+            start = releases[since]
+            after = [version for version in releases if version_key(version) > version_key(since)]
+            told = "is experimental since %s and has stood through %%d releases and %%d days" % since
+        else:
+            continue
+        days = (releases[newest] - start).days
+        if len(after) >= AGE_RELEASES and days >= AGE_DAYS:
+            problems.append(
+                ("%s " + told + ", up to %s (%s)%s. In the clean-out of this release, move it into the core, merge it with "
+                 "another rule, remove it, or keep it once more by a decision named in kept_by (D-2026-11-19-one-point-oh)")
+                % (rule["key"], len(after), days, newest, releases[newest].isoformat(),
+                   "" if "kept_by" in rule else ", with no decision to keep it"))
+    return problems
 
 
 def load_sources(path=SOURCES_PATH):

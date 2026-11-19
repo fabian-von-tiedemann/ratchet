@@ -25,11 +25,16 @@ docs/index.html, holds the same command as one line of its own, and the generato
 version in it, so the page fetches what README.md fetches. It writes one more line of the page, the
 count of rules and the cap on experimental rules, from ratchet.json.
 
+--check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
+decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
+D-2026-11-19-one-point-oh).
+
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
 import argparse
 import copy
+import datetime
 import difflib
 import glob
 import json
@@ -542,6 +547,24 @@ def version_key(version):
     return int(major), int(minor)
 
 
+def release_dates(text):
+    """({version: date} for each heading of a changelog entry with a date, [problems]).
+
+    Only the headings of the exact form are read. A heading whose date does not exist is a problem, and its version
+    has no date.
+    """
+    releases, problems = {}, []
+    for line in text.split("\n"):
+        match = HEADING.match(line)
+        if not match:
+            continue
+        try:
+            releases[match.group(1)] = datetime.date(*map(int, match.group(2).split("-")))
+        except ValueError:
+            problems.append("CHANGELOG.md: %r has a date that does not exist" % line)
+    return releases, problems
+
+
 def first_entry_end(text):
     """Where the first entry of a changelog ends: at the second line that starts with "## ", or at the end."""
     starts = [match.start() for match in re.finditer(r"^## ", text, re.M)]
@@ -595,6 +618,10 @@ def consistency_problems(data, root, context):
                 (HEADING.match(older) or UNRELEASED.match(older)).group(1)):
             problems.append("CHANGELOG.md: the entries must stand newest first, each version higher than the one after it. "
                             "%r stands before %r" % (newer, older))
+
+    releases, found = release_dates(changelog)
+    problems += found
+    problems += ["ratchet.json: %s" % problem for problem in registry.age_problems(data, releases)]
 
     released = context["released"]
     if released is None:
