@@ -1,5 +1,5 @@
 {
-  "version": "0.6",
+  "version": "0.7",
   "date": "2026-11-19",
   "experimental_cap": 25,
   "start": [
@@ -53,6 +53,11 @@
       "id": "phases",
       "file": "CONTROL-ROOM.md",
       "title": "The phases"
+    },
+    {
+      "id": "irreversible",
+      "file": "CONTROL-ROOM.md",
+      "title": "What cannot be undone"
     },
     {
       "id": "tightening",
@@ -526,6 +531,16 @@
       "rule": "A work package is in one phase at a time, named in its issue: explore, build or run. In explore, an agent reads, searches, tries things in scratch space and writes proposals and questions. It does not merge, release or change the register. Explore ends when the owner picks a proposal to build, or drops it. In build, an agent works on one work package the owner approved, on its own branch, changes only the files the package names, and merges only on green checks and a passed review. Build ends when the PR is merged or the stop rule is reached. In run, an agent watches what is merged, reports on it and undoes a change that fails. A fix, or anything new, goes back to build. Run ends when the owner retires what runs or opens a new phase.",
       "ratchet": "Text only: a check cannot tell which phase a session is in. In build, the required checks and the review on the PR guard the merge",
       "source": ""
+    },
+    {
+      "key": "ratchet.irreversible-waits",
+      "part": "irreversible",
+      "status": "experimental",
+      "enforcement": "enforced",
+      "rule": "An agent goes ahead with a step that can be undone, and waits on a step that cannot. A step that cannot be undone goes ahead only with an approval from the owner that names the step and the exact command, with the last day it holds. The steps are a force push, creating or deleting a tag, creating or changing a release, deleting outside the working tree, and changing the repository's settings.",
+      "ratchet": "Check: a hook in the agent's harness denies, before it runs, each of a listed set of usual spellings of the five steps that no approval names. It is a tripwire and not a lock: another spelling gets past it. The locks sit with the host and the sandbox: a tag ruleset refuses moving or deleting a tag, the role of the agents' account cannot change settings, the protection of the main branch refuses a force push to it, and a sandbox keeps deletion inside the working tree. Creating a tag or a release and a force push to another branch are caught by the hook alone",
+      "source": "",
+      "reference_check": "checks/tripwire.py"
     },
     {
       "key": "ratchet.si-harden",
