@@ -429,24 +429,37 @@ def rm_steps(args, raws, cwd, tree, mktemp):
         if raw in ['"$%s"' % name for name in mktemp] + ['"${%s}"' % name for name in mktemp]:
             continue
         path = resolve(cwd, word) if literal(word) else None
-        if path is None or (outside(path, tree) and not own_temporary(path)):
+        if path is None or (outside(path, tree) and not own_temporary(cwd, word)):
             return {"delete-outside"}
     return set()
 
 
-def own_temporary(path):
-    """Whether a path is, or is inside, a directory that mktemp -d made: tmp. and at least six letters or digits,
-    directly in the temporary directory or /tmp, a real directory and not a link, owned by this user."""
-    roots = set(os.path.realpath(root) for root in (tempfile.gettempdir(), "/tmp"))
-    for root in roots:
-        if path != root and os.path.commonpath([path, root]) == root:
-            top = os.path.join(root, os.path.relpath(path, root).split(os.sep)[0])
-            try:
-                info = os.lstat(top)
-            except OSError:
+def own_temporary(cwd, word):
+    """Whether a word names, as written, a directory that mktemp -d made, or a path inside it: tmp. and at least six
+    letters or digits, directly in the temporary directory or /tmp, a real directory owned by this user. The entry
+    and every part after it are read as they stand, with lstat and before any link is followed: none may be a link,
+    "." or "..". A part that does not exist ends the walk, since nothing below it exists either."""
+    parts = [part for part in os.path.join(cwd, os.path.expanduser(word)).split("/") if part]
+    for root in (tempfile.gettempdir(), "/tmp"):
+        for form in set((os.path.abspath(root), os.path.realpath(root))):
+            prefix = [part for part in form.split("/") if part]
+            rest = parts[len(prefix):]
+            if parts[:len(prefix)] != prefix or not rest:
+                continue
+            if not re.match(r"^tmp\.[A-Za-z0-9]{6,}\Z", rest[0]) or set(rest) & {".", ".."}:
                 return False
-            return (re.match(r"^tmp\.[A-Za-z0-9]{6,}\Z", os.path.basename(top)) is not None and stat.S_ISDIR(info.st_mode)
-                    and info.st_uid == os.getuid())
+            path = os.path.realpath(root)
+            for number, part in enumerate(rest):
+                path = os.path.join(path, part)
+                try:
+                    info = os.lstat(path)
+                except FileNotFoundError:
+                    return number > 0
+                except OSError:
+                    return False
+                if stat.S_ISLNK(info.st_mode) or (number == 0 and not (stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid())):
+                    return False
+            return True
     return False
 
 

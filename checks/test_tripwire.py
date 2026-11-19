@@ -178,13 +178,11 @@ class Tripwire(FixtureTest):
         root = os.path.dirname(made)
         other = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(os.rmdir, other)
-        short = tempfile.mkdtemp(prefix="tmp.", suffix="")
-        os.rename(short, os.path.join(root, "tmp.ab1"))
-        self.addCleanup(os.rmdir, os.path.join(root, "tmp.ab1"))
-        link = os.path.join(root, "tmp.link%s" % os.path.basename(made)[4:])
-        os.symlink(self.tree, link)
+        short = fresh(root, 5, os.mkdir)
+        self.addCleanup(os.rmdir, short)
+        link = fresh(root, 10, lambda path: os.symlink(self.tree, path))
         self.addCleanup(os.remove, link)
-        for command in ("rm -rf %s" % root, "rm -rf %s/.." % made, "rm -rf %s" % other, "rm -rf %s" % os.path.join(root, "tmp.ab1"),
+        for command in ("rm -rf %s" % root, "rm -rf %s/.." % made, "rm -rf %s" % other, "rm -rf %s" % short,
                         "rm -rf %s" % link, "rm -rf %s/" % link):
             code, message = self.bash(command)
             self.assertEqual(code, 2, command)
@@ -343,7 +341,8 @@ class Rule(FixtureTest):
         rule = rules[0]
         self.assertEqual((rule["status"], rule["enforcement"], rule.get("reference_check")), ("experimental", "enforced", "checks/tripwire.py"))
         self.assertEqual(parts[rule["part"]], "CONTROL-ROOM.md")
-        for words in ("tripwire", "not a lock", "tag ruleset", "role", "main branch", "sandbox"):
+        for words in ("tripwire", "not a lock", "tag ruleset", "role", "main branch", "sandbox", "only an admin",
+                      "secrets and variables that the role Write may change are caught by the hook alone"):
             self.assertIn(words, rule["ratchet"])
         self.assertEqual(registry.counts(data)["experimental"]["rules"], 23)
 
@@ -353,7 +352,7 @@ class Rule(FixtureTest):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["status"], "text only for now")
         for words in ("`checks/tripwire.py`", "`.claude/settings.json`", "`templates/tag-ruleset.json`", "role Write", "`main`",
-                      "sandbox", "D-2026-11-19-tag-ruleset-scope"):
+                      "sandbox", "D-2026-11-19-tag-ruleset-scope", "only an admin", "The role Write may change Actions secrets and variables"):
             self.assertIn(words, entries[0]["where"])
 
     def test_checks_readme_lists_every_claimed_case(self):
