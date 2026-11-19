@@ -1,10 +1,6 @@
 {
   "version": "9.8",
-  "date": "2026-01-01",
   "experimental_cap": 10,
-  "start": [
-    "ratchet.keep"
-  ],
   "parts": [
     {
       "id": "one",

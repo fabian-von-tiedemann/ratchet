@@ -532,18 +532,15 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 self.assert_check_fails("ratchet.one-approver: " + outside("rule", code))
                 self.edit("ratchet.json", "Only the owner %s approves decisions." % escape, "Only the owner approves decisions.")
 
-    def test_a_version_or_a_date_in_other_digits_fails(self):
+    def test_a_version_in_other_digits_fails(self):
         with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
             data = json.load(handle)
-        for field, message in (("version", "version must look like 0.2"), ("date", "date must look like 2026-01-31")):
-            with self.subTest(field=field):
-                other = "".join(chr(0x0660 + int(c)) if c in string.digits else c for c in data[field])
-                self.edit("ratchet.json", '"%s": "%s"' % (field, data[field]), '"%s": "%s"' % (field, other))
-                self.assert_check_fails(message)
-                self.edit("ratchet.json", '"%s": "%s"' % (field, other), '"%s": "%s"' % (field, data[field]))
+        other = "".join(chr(0x0660 + int(c)) if c in string.digits else c for c in data["version"])
+        self.edit("ratchet.json", '"version": "%s"' % data["version"], '"version": "%s"' % other)
+        self.assert_check_fails("version must look like 0.2")
 
     def test_a_file_that_is_not_utf8_fails_the_check_of_the_generated_text(self):
-        for name in ("README.md", "CHANGELOG.md", "REGISTER.md", "ratchet.json", "register.json", os.path.join(".github", "CODEOWNERS")):
+        for name in ("README.md", "CHANGELOG.md", "REGISTER.md", "ratchet.json", "sources.json", "register.json", os.path.join(".github", "CODEOWNERS")):
             path = os.path.join(self.copy, name)
             with open(path, "rb") as handle:
                 original = handle.read()
@@ -564,13 +561,88 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 handle.write(original)
 
     def test_a_source_of_the_wrong_kind_fails_without_a_traceback(self):
-        path = os.path.join(self.copy, "ratchet.json")
+        path = os.path.join(self.copy, "sources.json")
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
         data["sources"][0]["commit"] = [data["sources"][0]["commit"]]
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        self.assert_check_fails("the commit must be a full 40-character sha")
+        self.assert_check_fails("sources.json: source google/elephant-goldfish-model: the commit must be a full 40-character sha")
+
+    def sources_text(self):
+        with open(os.path.join(self.copy, "sources.json"), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def test_sources_json_is_read_strictly(self):
+        # D-2026-11-19-batched-releases, choice 3: the list of sources is a data file of its own, read as every data file is.
+        valid = self.sources_text()
+        self.assertTrue(valid.startswith('{\n  "sources": [\n'))
+        cases = {
+            "a field twice": (valid.replace('{\n  "sources": [', '{\n  "sources": [],\n  "sources": [', 1),
+                              "sources.json: not a valid data file: the field 'sources' appears twice in one object"),
+            "an unknown field": (valid.replace('{\n  "sources"', '{\n  "rules": [],\n  "sources"', 1), "sources.json: unknown field 'rules'"),
+            "no field sources": ('{}\n', "sources.json: missing field 'sources'"),
+            "not an object": ("[]\n", "sources.json: the top level must be an object"),
+            "a list of the wrong kind": ('{"sources": {}}\n', "sources.json: sources must be a list"),
+            "NaN": ('{"sources": NaN}\n', "sources.json: not a valid data file: NaN is not allowed"),
+            "not JSON": (valid[:-3], "sources.json: not a valid data file"),
+            "a name twice": (valid.replace('"name": "pstack"', '"name": "obra/superpowers"'), "sources.json: source obra/superpowers: the name is used twice"),
+        }
+        path = os.path.join(self.copy, "sources.json")
+        for case, (text, message) in cases.items():
+            with self.subTest(case=case):
+                with open(path, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(text)
+                self.assert_check_fails(message)
+        os.remove(path)
+        self.assert_check_fails("sources.json: not a valid data file")
+
+    def test_the_sources_in_ratchet_md_come_from_sources_json(self):
+        self.edit("sources.json", '"license": "Apache-2.0"', '"license": "Apache-2.0, as read again"')
+        self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
+        code, output = run("generate.py", root=self.copy)
+        self.assertEqual(code, 0, output)
+        with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
+            self.assertIn("| Apache\\-2\\.0, as read again |", handle.read())
+        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
+            self.assertNotIn("as read again", handle.read())
+
+    def test_ratchet_json_holds_no_sources_and_no_date(self):
+        for field, value in (("sources", "[]"), ("date", '"2026-11-19"')):
+            with self.subTest(field=field):
+                self.edit("ratchet.json", '  "experimental_cap"', '  "%s": %s,\n  "experimental_cap"' % (field, value))
+                self.assert_check_fails("ratchet.json: unknown field %r" % field)
+                self.edit("ratchet.json", '  "%s": %s,\n  "experimental_cap"' % (field, value), '  "experimental_cap"')
+
+    def test_a_rule_cites_its_sources_by_their_names_in_sources_json(self):
+        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
+            rules = json.load(handle)["rules"]
+        cited = [rule for rule in rules if rule["source"]]
+        self.assertTrue(cited)
+        self.edit("ratchet.json", '"source": "pstack `principle-attack-the-premise`"', '"source": "pstak `principle-attack-the-premise`"')
+        self.assert_check_fails('ratchet.json: ratchet.two-rounds: the source cites "pstak", which is not the name of a source in sources.json. '
+                                'A source is a list of names from sources.json, each with what is taken from it, separated by "; "')
+        self.edit("ratchet.json", '"source": "pstak `principle-attack-the-premise`"', '"source": "pstack `principle-attack-the-premise`"')
+        # A source that a rule cites cannot leave sources.json.
+        with open(os.path.join(self.copy, "sources.json"), encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["sources"] = [source for source in data["sources"] if source["name"] != "obra/superpowers"]
+        with open(os.path.join(self.copy, "sources.json"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2) + "\n")
+        self.assertNotIn("Traceback", run("generate.py", root=self.copy)[1])
+        self.assert_check_fails('the source cites "obra/superpowers", which is not the name of a source in sources.json')
+
+    def test_every_source_is_cited_by_a_rule_as_written(self):
+        # Every citation in today's rules is read the same way: names from sources.json, separated by "; ".
+        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
+            rules = json.load(handle)["rules"]
+        with open(os.path.join(self.copy, "sources.json"), encoding="utf-8") as handle:
+            names = set(source["name"] for source in json.load(handle)["sources"])
+        cited = set()
+        for rule in rules:
+            for part in filter(None, rule["source"].split("; ")):
+                cited.add(re.split(r"[ ,]", part, 1)[0])
+        self.assertEqual(cited, names)
 
     def test_a_glossary_file_in_the_repo_changes_nothing(self):
         with open(os.path.join(self.copy, "glossary.json"), "w", encoding="utf-8") as handle:
@@ -729,6 +801,48 @@ class GeneratedText(RepoCopy, unittest.TestCase):
             with self.subTest(heading=heading):
                 self.setUp()
                 self.edit("CHANGELOG.md", "## 0.3 (2026-11-16)\n", heading + "\n")
+                self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
+
+    def first_heading(self):
+        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
+            return re.search(r"(?m)^## .*$", handle.read()).group(0)
+
+    def test_the_first_entry_may_be_unreleased_and_then_the_readme_fetches_the_newest_release(self):
+        # D-2026-11-19-batched-releases, choice 1. The README never fetches a tag that does not exist yet.
+        version = json.loads(read("ratchet.json"))["version"]
+        self.assertEqual(self.first_heading(), "## %s (unreleased)" % version)
+        with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
+            self.assertIn("Version %s, not yet released. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
+        self.edit("README.md", "--branch v0.8 ", "--branch v%s " % version)
+        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v0.8", the newest version '
+                                'with a date in CHANGELOG.md')
+
+    def test_the_entry_given_its_date_is_the_release_and_the_readme_fetches_it(self):
+        version = json.loads(read("ratchet.json"))["version"]
+        self.edit("CHANGELOG.md", "## %s (unreleased)" % version, "## %s (2026-12-01)" % version)
+        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v%s"' % version)
+        self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
+        self.edit("README.md", "--branch v0.8 ", "--branch v%s " % version)
+        code, output = run("generate.py", root=self.copy)
+        self.assertEqual(code, 0, output)
+        with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
+            self.assertIn("Version %s, 2026-12-01. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+
+    def test_only_the_first_entry_may_be_unreleased(self):
+        self.edit("CHANGELOG.md", "## 0.8 (2026-11-19)\n", "## 0.8 (unreleased)\n")
+        self.assert_check_fails("CHANGELOG.md: '## 0.8 (unreleased)' is headed (unreleased), and only the first entry may be")
+
+    def test_an_unreleased_heading_of_another_form_fails(self):
+        version = json.loads(read("ratchet.json"))["version"]
+        for heading in ("## %s (Unreleased)", "## %s (unreleased) ", "## %s unreleased", "## Unreleased"):
+            heading = heading % version if "%s" in heading else heading
+            with self.subTest(heading=heading):
+                self.setUp()
+                self.edit("CHANGELOG.md", "## %s (unreleased)\n" % version, heading + "\n")
+                self.assert_check_fails('CHANGELOG.md: the first entry must be "## %s (<date>)" or "## %s (unreleased)", found %r'
+                                        % (version, version, heading))
                 self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
 
 

@@ -33,9 +33,9 @@ ENTRIES = {
 }
 TITLE = "# Changelog\n\n"
 # A ratchet.json that registry.validate accepts: the guard reads it as strictly as every other check does.
-RATCHET = '{\n  "version": "%s",\n  "date": "2026-01-01",\n  "experimental_cap": 0,\n  "start": [],\n  "parts": [],\n  "sources": [],\n  "rules": []\n}\n'
+RATCHET = '{\n  "version": "%s",\n  "experimental_cap": 0,\n  "start": [],\n  "parts": [],\n  "rules": []\n}\n'
 # One rule, with the part it is in, in place of the empty lists.
-A_RULE = ('"parts": [{"id": "core", "file": "RATCHET.md", "title": "The core"}],\n  "sources": [],\n  "rules": [{"key": "ratchet.new", '
+A_RULE = ('"parts": [{"id": "core", "file": "RATCHET.md", "title": "The core"}],\n  "rules": [{"key": "ratchet.new", '
           '"part": "core", "status": "core", "enforcement": "text-only", "rule": "A new rule.", "ratchet": "Text only, as a test.", "source": ""}]')
 
 
@@ -134,6 +134,63 @@ class Guard(unittest.TestCase):
         code, output = self.guard()
         self.assertEqual(code, 0, output)
 
+    def test_an_unreleased_first_entry_passes_and_ratchet_json_may_change_under_it(self):
+        # D-2026-11-19-batched-releases: changes are collected under the first entry until a PR gives it a date.
+        self.edit("## 0.4 (2026-04-01)", "## 0.4 (unreleased)")
+        code, output = self.guard()
+        self.assertEqual(code, 0, output)
+        self.assertIn("ratchet.json names 0.4, which has no tag yet. The first entry, 0.4, is unreleased.", output)
+        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "rules": []', A_RULE) % "0.4")
+        self.edit("Four rules.", "Four rules, and one more.")
+        code, output = self.guard()
+        self.assertEqual(code, 0, output)
+
+    def test_the_release_is_the_entry_given_a_date(self):
+        self.edit("## 0.4 (2026-04-01)", "## 0.4 (unreleased)")
+        self.assertEqual(self.guard()[0], 0)
+        self.edit("## 0.4 (unreleased)", "## 0.4 (2026-04-02)")
+        code, output = self.guard()
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("unreleased", output)
+        commit_and_tag(self.root, "v0.4")
+        code, output = self.guard()
+        self.assertEqual(code, 0, output)
+        self.assertIn("ratchet.json is as it stood at the tag v0.4.", output)
+        # From its tag on, the entry and ratchet.json are frozen as before.
+        self.edit("## 0.4 (2026-04-02)", "## 0.4 (unreleased)")
+        self.assert_fails('CHANGELOG.md: the entry ## 0.4 (unreleased) is headed "(unreleased)", and the tag v0.4 exists. '
+                          "A released version stays released",
+                          "CHANGELOG.md: the entry ## 0.4 (unreleased) is not as it stood at the tag v0.4")
+
+    def test_an_unreleased_entry_that_is_not_first_fails(self):
+        self.edit("## 0.4 (2026-04-01)", "## 0.5 (2026-05-01)\n\n- Five.\n\n## 0.4 (unreleased)")
+        self.assert_fails('CHANGELOG.md: the entry ## 0.4 (unreleased) is headed "(unreleased)", and only the first entry may be. '
+                          "An entry is released from the moment it has a date")
+
+    def test_two_unreleased_entries_fail(self):
+        self.edit("## 0.4 (2026-04-01)", "## 0.5 (unreleased)\n\n- Five.\n\n## 0.4 (unreleased)")
+        self.assert_fails('CHANGELOG.md: the entry ## 0.4 (unreleased) is headed "(unreleased)", and only the first entry may be')
+
+    def test_an_unreleased_heading_for_a_released_version_fails(self):
+        write(self.root, "CHANGELOG.md", changelog("0.3", "0.2", "0.1").replace("## 0.3 (2026-03-01)", "## 0.3 (unreleased)"))
+        write(self.root, "ratchet.json", RATCHET % "0.3")
+        self.assert_fails('CHANGELOG.md: the entry ## 0.3 (unreleased) is headed "(unreleased)", and the tag v0.3 exists')
+
+    def test_an_unreleased_heading_of_another_form_fails(self):
+        for heading in ("## 0.4 (Unreleased)", "## 0.4 (unreleased) ", "## 0.4 unreleased", "## 0.4(unreleased)",
+                        "## 0.4 (unreleased", "## 0.4 (unreleased)\u00a0", "## Unreleased (unreleased)"):
+            with self.subTest(heading=heading):
+                write(self.root, "CHANGELOG.md", changelog("0.4", "0.3", "0.2", "0.1").replace("## 0.4 (2026-04-01)", heading))
+                self.assert_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
+
+    def test_ratchet_json_with_the_fields_that_moved_out_fails(self):
+        # D-2026-11-19-batched-releases, choice 3: the sources are in sources.json, and the date is in the changelog.
+        valid = RATCHET % "0.4"
+        for field, value in (("sources", "[]"), ("date", '"2026-01-01"')):
+            with self.subTest(field=field):
+                write(self.root, "ratchet.json", valid.replace('"start"', '"%s": %s,\n  "start"' % (field, value)))
+                self.assert_fails("ratchet.json: unknown field %r" % field)
+
     def test_a_word_changed_in_a_released_entry_fails(self):
         self.edit("- The icon.", "- The icons.")
         self.assert_fails("CHANGELOG.md: the entry ## 0.2 (2026-02-01) is not as it stood at the tag v0.2",
@@ -193,7 +250,7 @@ class Guard(unittest.TestCase):
 
     def test_the_rules_of_a_released_version_changed_fails(self):
         write(self.root, "CHANGELOG.md", changelog("0.3", "0.2", "0.1"))
-        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "sources": [],\n  "rules": []', A_RULE) % "0.3")
+        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "rules": []', A_RULE) % "0.3")
         with open(os.path.join(self.root, "ratchet.json"), encoding="utf-8") as handle:
             self.assertIn("ratchet.new", handle.read())
         self.assert_fails("ratchet.json: names 0.3, which is released, and is not as it stood at the tag v0.3. A change to the rules raises the version")
@@ -218,9 +275,9 @@ class Guard(unittest.TestCase):
                                         "ratchet.json: not a valid data file: NaN is not allowed"),
             "the probe of the review, without NaN": ('{"version":"0.3","version":"0.4","unknown":true,"rules":[]}\n',
                                                      "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
-            "a field twice": (valid.replace('"date"', '"version": "0.4",\n  "date"'),
+            "a field twice": (valid.replace('"start"', '"version": "0.4",\n  "start"'),
                               "ratchet.json: not a valid data file: the field 'version' appears twice in one object"),
-            "an unknown field": (valid.replace('"date"', '"unknown": true,\n  "date"'), "ratchet.json: unknown field 'unknown'"),
+            "an unknown field": (valid.replace('"start"', '"unknown": true,\n  "start"'), "ratchet.json: unknown field 'unknown'"),
             "a missing field": (valid.replace('  "start": [],\n', ""), "ratchet.json: missing field 'start'"),
             "NaN": (valid.replace('"rules": []', '"rules": NaN'), "ratchet.json: not a valid data file: NaN is not allowed"),
             "Infinity": (valid.replace('"rules": []', '"rules": Infinity'), "ratchet.json: not a valid data file: Infinity is not allowed"),
@@ -235,7 +292,7 @@ class Guard(unittest.TestCase):
 
     def test_a_ratchet_json_that_is_not_utf8_fails(self):
         with open(os.path.join(self.root, "ratchet.json"), "wb") as handle:
-            handle.write((RATCHET % "0.4").encode("utf-8").replace(b"2026", b"2\xff026", 1))
+            handle.write((RATCHET % "0.4").encode("utf-8").replace(b"0.4", b"0.\xff4", 1))
         self.assert_fails("ratchet.json: is not valid UTF-8")
 
     def test_a_tag_of_another_form_fails(self):
@@ -262,14 +319,17 @@ class Guard(unittest.TestCase):
 
 
 class ReleaseSteps(unittest.TestCase):
-    """The steps of the release of 0.8 on a copy of this repo, and the state after it.
+    """The unreleased 0.9 on a copy of this repo, its release, and the state after it (D-2026-11-19-batched-releases).
 
-    The version is already 0.8 in ratchet.json, so a release renames nothing: the release workflow runs
-    checks/release.py, which tags the merge and writes its one fixed line (D-2026-11-17-release-links). Every
-    step is release.py's own code, never a copy of it. The copy gets tags that hold the changelog of each
-    released version as it stands in the copy, which the guard in CI shows to be the changelog at the real tags,
-    and a ratchet.json as main had it: none at v0.1 and v0.2, and one that names 0.3 at v0.3.
+    ratchet.json names 0.9 and the first entry of the changelog is headed "## 0.9 (unreleased)", so a merge publishes
+    nothing. The release is a pull request that gives the entry its date and moves the command in the README that
+    fetches Ratchet to the new tag; checks/generate.py writes the rest. Every step is release.py's own code, never a
+    copy of it. The copy gets tags that hold the changelog of each released version as it stands in the copy, which
+    the guard in CI shows to be the changelog at the real tags, and a ratchet.json as main had it: none at v0.1 and
+    v0.2, and one from v0.3 on.
     """
+
+    DATE = "2026-11-26"
 
     def setUp(self):
         self.copy = os.path.join(tempfile.mkdtemp(prefix="ratchet-test-"), "ratchet")
@@ -277,8 +337,11 @@ class ReleaseSteps(unittest.TestCase):
         shutil.copytree(ROOT, self.copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
             self.version = json.load(handle)["version"]
-        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8", newline="") as handle:
-            self.changelog = handle.read()
+        self.changelog = self.read("CHANGELOG.md")
+
+    def read(self, name):
+        with open(os.path.join(self.copy, name), encoding="utf-8", newline="") as handle:
+            return handle.read()
 
     def entries(self):
         """[(version, text of the entry)], newest first."""
@@ -287,16 +350,15 @@ class ReleaseSteps(unittest.TestCase):
         return [(text.split(" ", 2)[1], text) for text in texts]
 
     def tag_the_releases_before(self):
-        """Tags for every version before the one being released, oldest first, each with the changelog up to its own entry.
+        """Tags for every version before the one not yet released, oldest first, each with the changelog up to its own entry.
 
-        ratchet.json is first on main in 0.3, as in this repo, so the history that release.py reads names 0.3, 0.4, 0.5, 0.6, 0.7 and 0.8.
+        ratchet.json is first on main in 0.3, as in this repo, so the history that release.py reads names 0.3 to 0.9.
         """
         git(self.copy, "init", "-q")
         entries = self.entries()
         self.assertEqual(entries[0][0], self.version)
         title = self.changelog[:self.changelog.index("## ")]
-        with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8", newline="") as handle:
-            data = handle.read()
+        data = self.read("ratchet.json")
         named = '"version": "%s",' % self.version
         self.assertEqual(data.count(named), 1)
         released = entries[1:]
@@ -317,61 +379,83 @@ class ReleaseSteps(unittest.TestCase):
         write(self.copy, "ratchet.json", data)
 
     def github(self):
-        """GitHub as it stands before 0.8: a tag for each older version, and a published release for each but 0.1."""
+        """GitHub as it stands before 0.9: a tag for each older version, and a published release for each but 0.1."""
         tags = dict((version, ("commit", git(self.copy, "rev-parse", "v%s^{commit}" % version).strip()))
                     for version, _ in self.entries()[1:])
         releases = [{"tag_name": "v" + version, "draft": False} for version in tags if version not in release.BEFORE_RELEASES]
         return test_release.FakeGitHub(tags=tags, releases=releases)
 
+    def merge(self, message):
+        git(self.copy, "add", "-A")
+        git(self.copy, "commit", "-q", "--allow-empty", "-m", message)
+        return git(self.copy, "rev-parse", "HEAD").strip()
+
     def publish(self, github, sha, **report):
         """release.py's publish, on the history of main in the copy, read with git as the release workflow reads it."""
         out = io.StringIO()
-        release.publish(self.version, self.changelog, release.main_history(self.copy, sha), test_release.REPO, sha, github, out, **report)
+        history = release.main_history(self.copy, sha)
+        release.publish(self.version, self.read("CHANGELOG.md"), history, test_release.REPO, sha, github, out,
+                        pending=release.read_pending(self.copy, history), **report)
         return out.getvalue()
 
-    def test_the_release_of_0_8_finds_its_entry_and_everything_passes_after_it(self):
-        self.assertEqual(self.version, "0.8")
-        # The checks that the release workflow runs before it tags.
-        for script, args in (("generate.py", ["--check"]), ("check_register.py", ["register.json", "--markdown", "REGISTER.md"])):
+    def checks_pass(self):
+        """The checks that the job checks runs, and that the release workflow runs before it tags."""
+        for script, args in (("generate.py", ["--check"]), ("check_register.py", ["register.json", "--markdown", "REGISTER.md"]), (GUARD, [])):
             with self.subTest(step=script):
                 code, output = run(script, *args, root=self.copy, cwd=self.copy)
                 self.assertEqual(code, 0, output)
-        # The release text, as release.py prints it, with no token and no network.
-        code, output = run("release.py", "notes", "--repo", test_release.REPO, root=self.copy, cwd=self.copy)
-        self.assertEqual((code, output), (0, release.release_text(self.version, test_release.REPO) + "\n"))
-        # release.py reads only the headings of the changelog. It finds this version first, and nothing newer.
-        self.assertEqual(release.changelog_versions(self.changelog), [version for version, _ in self.entries()])
-        # What the entry of 0.8 says: no rule is added, changed or removed, the count stays at 23 of 25 outside the core,
-        # the form of ratchet.json does not change, and the two sources that the watch found moved are pinned at the
-        # heads that its issues name.
-        entry = self.entries()[0][1]
-        for words in ("Ratchet 0.8, computed from `ratchet.json`", "Outside the core there are 23 experimental rules, under a cap of 25",
-                      "No rule is added, changed or removed in this version.", "The form of `ratchet.json` does not change.",
-                      "Changed:", "`sources`", "`google/elephant-goldfish-model`", "`pstack`",
-                      "`70406c4d22cc7ea8299637c2c5b44625c48b3f08`", "`35a90942a7f02e1ebbc2443643179815f2147954`", "#40", "#41"):
-            self.assertIn(words, entry)
-        for words in ("Added:", "Removed:", "Changes of form:", "nreleased"):
-            self.assertNotIn(words, entry)
-        # The release: release.py tags the merge and writes its one line, after every check it makes.
-        self.tag_the_releases_before()
-        code, output = run(GUARD, root=self.copy, cwd=self.copy)
+
+    def give_the_entry_its_date(self):
+        """The pull request that releases 0.9: the date in its heading and the tag that the README fetches. generate.py writes the rest."""
+        heading = "## %s (unreleased)" % self.version
+        self.assertEqual(self.changelog.count(heading + "\n"), 1)
+        write(self.copy, "CHANGELOG.md", self.changelog.replace(heading, "## %s (%s)" % (self.version, self.DATE), 1))
+        readme = self.read("README.md")
+        self.assertEqual(readme.count("--branch v0.8 "), 1)
+        write(self.copy, "README.md", readme.replace("--branch v0.8 ", "--branch v%s " % self.version))
+        code, output = run("generate.py", root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
-        git(self.copy, "add", "-A")
-        git(self.copy, "commit", "-q", "--allow-empty", "-m", "Merge 0.8")
-        sha = git(self.copy, "rev-parse", "HEAD").strip()
+        self.changelog = self.read("CHANGELOG.md")
+
+    def test_the_unreleased_0_9_publishes_nothing_and_the_entry_given_its_date_releases_it(self):
+        self.assertEqual(self.version, "0.9")
+        self.assertTrue(self.changelog.startswith("# Changelog\n\n## 0.9 (unreleased)\n"))
+        # What the entry of 0.9 says: no rule is added, changed or removed, the count stays at 23 of 25 outside the
+        # core, and date and sources leave ratchet.json, a change of form.
+        entry = self.entries()[0][1]
+        for words in ("Ratchet 0.9, computed from `ratchet.json`", "Outside the core there are 23 experimental rules, under a cap of 25",
+                      "No rule is added, changed or removed in this version.", "Changes of form:", "`sources.json`",
+                      "D-2026-11-19-batched-releases"):
+            self.assertIn(words, entry)
+        # RATCHET.md says the version is not yet released, and the README fetches the latest release.
+        self.assertIn("Version 0.9, not yet released.", self.read("RATCHET.md"))
+        self.assertIn("git clone --branch v0.8 https://github.com/fabian-von-tiedemann/ratchet .ratchet", self.read("README.md"))
+        self.tag_the_releases_before()
+        self.checks_pass()
+        # A merge while the entry is unreleased: the release workflow writes nothing, on a push and on its schedule.
+        sha = self.merge("Merge a change to 0.9")
         github = self.github()
-        self.assertEqual(self.publish(github, sha), "Tagged v0.8 at %s and released Ratchet 0.8.\n" % sha)
+        said = 'Ratchet 0.9 is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. Nothing was written.\n'
+        self.assertEqual(self.publish(github, sha), said)
+        self.assertEqual(self.publish(github, sha, report=True), said)
+        self.assertEqual(github.writes, [])
+        # The release: the entry gets its date. Then the checks pass, and the merge is tagged and released.
+        self.give_the_entry_its_date()
+        self.assertIn("Version 0.9, %s." % self.DATE, self.read("RATCHET.md"))
+        self.checks_pass()
+        sha = self.merge("Release 0.9")
+        self.assertEqual(self.publish(github, sha), "Tagged v0.9 at %s and released Ratchet 0.9.\n" % sha)
         path = "/repos/%s" % test_release.REPO
         self.assertEqual(github.writes, [("POST", path + "/git/refs"), ("POST", path + "/releases")])
         self.assertEqual(github.releases[-1]["body"], release.release_text(self.version, test_release.REPO))
-        git(self.copy, "tag", "v0.8")
+        git(self.copy, "tag", "v0.9")
         # The next scheduled run of the release workflow finds every version finished, and writes nothing.
         writes = list(github.writes)
-        self.assertEqual(self.publish(github, sha, report=True), "v0.8 is tagged at this commit and released. Nothing to do.\n")
+        self.assertEqual(self.publish(github, sha, report=True), "v0.9 is tagged at this commit and released. Nothing to do.\n")
         self.assertEqual(github.writes, writes)
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
-        self.assertIn("in 8 tags", output)
+        self.assertIn("in 9 tags", output)
         # After it, the full suite passes in the copy, run by the check that every expected test ran. This module
         # holds no test in that run, so that it does not run itself again.
         write(self.copy, "checks/test_released_text.py", '"""Left out of the run inside ReleaseSteps, which runs this module."""\n')
@@ -379,23 +463,48 @@ class ReleaseSteps(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertIn("expected_tests: every expected test ran and passed", output)
 
-    def test_after_the_release_a_rule_changed_without_a_new_version_fails_the_guard(self):
+    def test_while_0_9_is_unreleased_a_rule_may_change_and_after_its_release_only_with_a_new_version(self):
         self.tag_the_releases_before()
-        commit_and_tag(self.copy, "v0.8")
         rule = "Only the owner approves decisions."
-        for name in ("ratchet.json", "register.json"):
-            path = os.path.join(self.copy, name)
-            with open(path, encoding="utf-8", newline="") as handle:
-                text = handle.read()
-            self.assertIn(rule, text)
-            write(self.copy, name, text.replace(rule, "Only the owner approves every decision."))
-        code, output = run("generate.py", root=self.copy, cwd=self.copy)
-        self.assertEqual(code, 0, output)
+
+        def change_the_rule(old, new):
+            for name in ("ratchet.json", "register.json"):
+                text = self.read(name)
+                self.assertIn(old, text)
+                write(self.copy, name, text.replace(old, new))
+            code, output = run("generate.py", root=self.copy, cwd=self.copy)
+            self.assertEqual(code, 0, output)
+
+        change_the_rule(rule, "Only the owner approves every decision.")
+        self.checks_pass()
+        self.give_the_entry_its_date()
+        self.merge("Release 0.9")
+        git(self.copy, "tag", "v0.9")
+        self.checks_pass()
+        change_the_rule("Only the owner approves every decision.", rule)
         code, output = run("generate.py", "--check", root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 1, output)
-        self.assertIn("ratchet.json: names 0.8, which is released, and is not as it stood at the tag v0.8. A change to the rules raises the version", output)
+        self.assertIn("ratchet.json: names 0.9, which is released, and is not as it stood at the tag v0.9. A change to the rules raises the version", output)
+
+    def test_after_the_release_a_pin_moves_in_sources_json_with_no_new_version(self):
+        # D-2026-11-19-batched-releases, choice 3: the list of sources is not part of what is released.
+        self.tag_the_releases_before()
+        self.give_the_entry_its_date()
+        self.merge("Release 0.9")
+        git(self.copy, "tag", "v0.9")
+        before = dict((name, self.read(name)) for name in ("ratchet.json", "CHANGELOG.md", "README.md", "REGISTER.md"))
+        sources = self.read("sources.json")
+        pin = json.loads(sources)["sources"][0]["commit"]
+        moved = "0123456789abcdef0123456789abcdef01234567"
+        write(self.copy, "sources.json", sources.replace(pin, moved))
+        code, output = run("generate.py", root=self.copy, cwd=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertEqual([line for line in output.splitlines() if line.startswith("wrote ")], ["wrote RATCHET.md"])
+        self.assertIn("`%s`" % moved, self.read("RATCHET.md"))
+        self.assertEqual(dict((name, self.read(name)) for name in before), before)
+        self.checks_pass()
 
 
 if __name__ == "__main__":

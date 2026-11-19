@@ -159,13 +159,19 @@ def made_up_history(text, version, sha):
     return [(sha, version)] + [(commit_of(v), v) for v in sorted(older, key=release.version_key, reverse=True)]
 
 
-def publish(text, version="0.4", github=None, sha=SHA, history=None, report=False):
-    """Run the script's publish step on a changelog. Returns (error text or None, output, fake)."""
+def publish(text, version="0.4", github=None, sha=SHA, history=None, report=False, pending=None):
+    """Run the script's publish step on a changelog. Returns (error text or None, output, fake).
+
+    pending is the set of commits on main whose changelog heads the version they name "(unreleased)".
+    """
     github = github if github is not None else FakeGitHub()
     history = history if history is not None else made_up_history(text, version, sha)
     out = io.StringIO()
+    options = {"report": True} if report else {}
+    if pending is not None:
+        options["pending"] = frozenset(pending)
     try:
-        release.publish(version, text, history, REPO, sha, github, out, **({"report": True} if report else {}))
+        release.publish(version, text, history, REPO, sha, github, out, **options)
     except release.ReleaseError as error:
         return str(error), out.getvalue(), github
     return None, out.getvalue(), github
@@ -1517,6 +1523,200 @@ class Scheduled(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertIn("GITHUB_REF is not refs/heads/main", err)
                 self.assertEqual(opener.requests, [])
+
+
+def unreleased(version, text, *older):
+    """A changelog whose first entry, of version, is headed "(unreleased)", with the dated entries (version, text) after it."""
+    return changelog(*older).replace("# Changelog\n", "# Changelog\n\n## %s (unreleased)\n\n%s\n" % (version, text), 1)
+
+
+UNRELEASED_TWO = unreleased("0.4", "Four, collected.", ("0.3", "Three."))
+NOT_RELEASED = ('Ratchet 0.4 is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. '
+                "Nothing was written.\n")
+
+
+class Unreleased(unittest.TestCase):
+    """D-2026-11-19-batched-releases, choice 1: the first entry may be headed "## <version> (unreleased)".
+
+    While it is, no run publishes that version: a run of a push or by hand passes and says so, and a scheduled run
+    passes too. Every older version must still be finished, as before. Every other place or form of the heading fails.
+    """
+
+    def test_an_unreleased_first_entry_publishes_nothing_and_passes(self):
+        for report in (False, True):
+            with self.subTest(scheduled=report):
+                error, out, github = publish(UNRELEASED_TWO, github=FakeGitHub(**DONE_03), report=report, pending={SHA})
+                self.assertIsNone(error)
+                self.assertEqual(out, NOT_RELEASED)
+                self.assertEqual(github.writes, [])
+                self.assertNotIn("0.4", github.tags)
+
+    def test_an_unreleased_first_entry_still_needs_every_older_version_finished(self):
+        for report in (False, True):
+            with self.subTest(scheduled=report):
+                github = FakeGitHub(tags={"0.3": ("commit", EARLIER)})
+                error, out, github = publish(UNRELEASED_TWO, github=github, report=report, pending={SHA})
+                self.assertIn("an older version is not finished. 0.3: a tag and no published release", error)
+                self.assertIn("Nothing was written", error)
+                self.assertEqual(github.writes, [])
+
+    def test_an_unreleased_entry_of_a_version_that_has_a_tag_fails(self):
+        for tags, releases in (({"0.4": ("commit", EARLIER)}, []), ({"0.4": ("commit", SHA)}, [{"tag_name": "v0.4", "draft": False}])):
+            with self.subTest(tags=tags):
+                github = FakeGitHub(tags=dict(DONE_03["tags"], **tags), releases=DONE_03["releases"] + releases)
+                error, _, github = publish(UNRELEASED_TWO, github=github, pending={SHA})
+                self.assertEqual(error, 'the tag v0.4 exists, and the entry of 0.4 in CHANGELOG.md is headed "(unreleased)". '
+                                        "A released version stays released. Nothing was written.")
+                self.assertEqual(github.writes, [])
+
+    def test_an_unreleased_entry_with_a_release_and_no_tag_fails(self):
+        github = FakeGitHub(tags=DONE_03["tags"], releases=DONE_03["releases"] + [{"tag_name": "v0.4", "draft": True}])
+        error, _, github = publish(UNRELEASED_TWO, github=github, pending={SHA})
+        self.assertEqual(error, "a release for v0.4 exists, and the tag does not. Publish or remove it by hand. Nothing was written.")
+        self.assertEqual(github.writes, [])
+
+    def test_an_unreleased_heading_that_is_not_first_or_stands_twice_fails_before_any_request(self):
+        cases = (
+            (changelog(("0.4", "Four.")).replace("# Changelog\n", "# Changelog\n\n## 0.5 (unreleased)\n\nFive.\n\n## 0.3 (unreleased)\n\nThree.\n"),
+             "0.5", "CHANGELOG.md, line 7: the entry of 0.3 is headed (unreleased), and only the first entry may be. Nothing was written."),
+            (unreleased("0.4", "Four.", ("0.3", "Three.")).replace("## 0.3 (2026-11-17)", "## 0.3 (unreleased)"),
+             "0.4", "CHANGELOG.md, line 7: the entry of 0.3 is headed (unreleased), and only the first entry may be. Nothing was written."),
+            (unreleased("0.4", "Four.", ("0.4", "Four, dated."), ("0.3", "Three.")),
+             "0.4", "CHANGELOG.md: the version 0.4 has 2 headings. Nothing was written."),
+        )
+        for text, version, message in cases:
+            with self.subTest(message=message):
+                error, _, github = publish(text, version=version, github=FakeGitHub(**DONE_03), pending={SHA})
+                self.assertEqual(error, message)
+                self.assertEqual(github.calls, [])
+
+    def test_an_unreleased_heading_of_another_form_is_no_entry(self):
+        for heading in ("## 0.4 (Unreleased)", "## 0.4 (unreleased) ", "## 0.4 unreleased", "## 0.4(unreleased)", "## 0.4 (unreleased",
+                        "## Unreleased", "## 0.4 (unreleased)\u00a0", "##  0.4 (unreleased)", "## 0.4 (unreleased, soon)"):
+            with self.subTest(heading=heading):
+                text = UNRELEASED_TWO.replace("## 0.4 (unreleased)", heading)
+                self.assertEqual(release.changelog_versions(text), ["0.3"])
+                error, _, github = publish(text, github=FakeGitHub(**DONE_03), pending={SHA})
+                self.assertEqual(error, "CHANGELOG.md has no entry for 0.4, the version in ratchet.json")
+                self.assertEqual(github.calls, [])
+
+    def test_the_checkout_and_its_commit_must_agree_on_whether_the_version_is_released(self):
+        error, _, github = publish(UNRELEASED_TWO, github=FakeGitHub(**DONE_03), pending=set())
+        self.assertEqual(error, 'CHANGELOG.md in the checkout heads 0.4 "(unreleased)", and at commit %s it does not. Nothing was written.' % SHA)
+        self.assertEqual(github.calls, [])
+        error, _, github = publish(TWO, github=FakeGitHub(**DONE_03), pending={SHA})
+        self.assertEqual(error, 'CHANGELOG.md at commit %s heads 0.4 "(unreleased)", and in the checkout it does not. Nothing was written.' % SHA)
+        self.assertEqual(github.calls, [])
+
+    def test_a_dated_entry_is_released_as_before(self):
+        error, out, github = publish(TWO, github=FakeGitHub(**DONE_03), pending=set())
+        self.assertIsNone(error)
+        self.assertEqual(github.writes, [("POST", PATH + "/git/refs"), ("POST", PATH + "/releases")])
+
+
+class UnreleasedOnMain(unittest.TestCase):
+    """The history of main, read with git, with commits whose changelog heads the version "(unreleased)".
+
+    A version must be released once a commit on main names it with a dated entry. A version that main only ever named
+    as unreleased needs nothing. The rerun that a message names is the first commit on main that names the version
+    with a date, since a rerun of an unreleased commit publishes nothing.
+    """
+
+    def setUp(self):
+        self.checkout = Checkout()
+        self.addCleanup(self.checkout.close)
+        self.three = self.checkout.commit("0.3", changelog(("0.3", "Three.")))
+
+    def schedule(self, github, sha):
+        return main_with(FakeOpener(github), sha, self.checkout.directory, event="schedule")
+
+    def test_the_commits_that_head_their_version_unreleased_are_read_from_main(self):
+        first = self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        second = self.checkout.commit(text=unreleased("0.4", "Four, and more.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        history = self.checkout.history()
+        self.assertEqual(history, [(dated, "0.4"), (second, "0.4"), (first, "0.4"), (self.three, "0.3")])
+        self.assertEqual(release.read_pending(self.checkout.directory, history), {first, second})
+
+    def test_a_push_of_an_unreleased_version_passes_and_writes_nothing(self):
+        head = self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        github = FakeGitHub(**DONE_03)
+        code, out, err, opener = self.checkout.run(github, head)
+        self.assertEqual((code, out, err), (0, NOT_RELEASED, ""))
+        self.assertEqual(github.writes, [])
+        self.assertEqual(set(r.get_method() for r in opener.requests), {"GET"})
+        code, out, err = self.schedule(github, head)
+        self.assertEqual((code, out, err), (0, NOT_RELEASED, ""))
+
+    def test_the_release_is_the_push_that_dates_the_entry(self):
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        self.checkout.commit(text=unreleased("0.4", "Four, and more.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        github = FakeGitHub(**DONE_03)
+        code, out, err, _ = self.checkout.run(github, dated)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(github.tags["0.4"], ("commit", dated))
+        self.assertEqual(github.releases[-1]["body"], release_line("0.4"))
+
+    def test_a_dated_entry_left_without_its_tag_is_named_by_the_scheduled_run_with_the_commit_that_dated_it(self):
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        head = self.checkout.commit(text=TWO + "\nA later change.\n")
+        github = FakeGitHub(**DONE_03)
+        code, out, err = self.schedule(github, head)
+        self.assertEqual((code, out), (1, ""))
+        self.assertEqual(err, "release: Ratchet 0.4 is not finished: there is no tag v0.4 and no release, and ratchet.json at the "
+                              "head of main, commit %s, names 0.4. A scheduled run writes nothing. Rerun the release run of commit "
+                              "%s, the first commit on main whose ratchet.json names 0.4, or start the workflow by hand on main.\n"
+                              % (head, dated))
+        self.assertEqual(github.writes, [])
+
+    def test_a_dated_version_left_unreleased_stops_the_next_unreleased_one_and_names_the_commit_that_dated_it(self):
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        dated = self.checkout.commit(text=TWO)
+        head = self.checkout.commit("0.5", unreleased("0.5", "Five.", ("0.4", "Four."), ("0.3", "Three.")))
+        for event in ("push", "schedule"):
+            with self.subTest(event=event):
+                github = FakeGitHub(**DONE_03)
+                code, out, err = main_with(FakeOpener(github), head, self.checkout.directory, event=event)
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, "release: an older version is not finished. 0.4: no tag. Rerun the release run of commit %s, "
+                                      "the first commit on main whose ratchet.json names 0.4. Then rerun this run. Nothing was written.\n" % dated)
+                self.assertEqual(github.writes, [])
+
+    def test_a_version_main_only_named_as_unreleased_needs_no_release(self):
+        self.checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")))
+        head = self.checkout.commit("0.5", changelog(("0.5", "Five, which took the place of 0.4."), ("0.3", "Three.")))
+        github = FakeGitHub(**DONE_03)
+        code, out, err, _ = self.checkout.run(github, head)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(sorted(github.tags), ["0.3", "0.5"])
+
+    def test_a_commit_whose_changelog_heads_the_version_in_another_form_counts_as_released(self):
+        # Fail closed: only the one exact form "## <version> (unreleased)", as the first entry, takes a commit out.
+        for heading in ("## 0.4 (Unreleased)", "## 0.4 (unreleased) ", "## 0.4"):
+            with self.subTest(heading=heading):
+                checkout = Checkout()
+                self.addCleanup(checkout.close)
+                checkout.commit("0.3", changelog(("0.3", "Three.")))
+                odd = checkout.commit("0.4", unreleased("0.4", "Four.", ("0.3", "Three.")).replace("## 0.4 (unreleased)", heading))
+                head = checkout.commit("0.5", unreleased("0.5", "Five.", ("0.3", "Three.")))
+                self.assertEqual(release.read_pending(checkout.directory, checkout.history()), {head})
+                github = FakeGitHub(**DONE_03)
+                code, out, err, _ = checkout.run(github, head)
+                self.assertEqual(code, 1)
+                self.assertIn("0.4: no tag. Rerun the release run of commit %s," % odd, err)
+                self.assertEqual(github.writes, [])
+
+    def test_a_changelog_on_main_that_is_not_utf8_fails(self):
+        data = unreleased("0.4", "F\xffour.", ("0.3", "Three.")).encode("latin-1")
+        self.checkout.write("CHANGELOG.md", data)
+        bad = self.checkout.commit("0.4")
+        head = self.checkout.commit(text=UNRELEASED_TWO)
+        with self.assertRaises(release.ReleaseError) as caught:
+            release.read_pending(self.checkout.directory, self.checkout.history(head))
+        self.assertEqual(str(caught.exception), "CHANGELOG.md at commit %s on main: it is not valid UTF-8, at byte %d (0xFF). "
+                                                "Nothing was written." % (bad, data.index(b"\xff")))
 
 
 class Token(unittest.TestCase):

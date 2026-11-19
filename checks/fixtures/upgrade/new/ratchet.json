@@ -1,6 +1,5 @@
 {
   "version": "9.9",
-  "date": "2026-01-01",
   "start": [
     "ratchet.keep"
   ],
@@ -11,7 +10,6 @@
       "title": "One"
     }
   ],
-  "sources": [],
   "rules": [
     {
       "key": "ratchet.keep",
