@@ -102,6 +102,7 @@ The nine rules to start with:
 - [sources.json](sources.json): the sources that rules cite, each pinned at a commit. It is not part of what is released, so a pin that moves needs no new version.
 - [checks/](checks/): the reference checks, the generator, `init.py` for the start and `upgrade.py` for an upgrade, in Python with no dependencies.
 - [GLOSSARY.md](GLOSSARY.md): the terms Ratchet uses.
+- [docs/](docs/): the landing page, served by GitHub Pages from `main`, with its text taken from this README.
 - [templates/](templates/): `AGENTS.md`, `register.json`, `DECISION.md`, `GLOSSARY.md`, `LESSON.md`, `SOURCE.md` (for a skill copied from another repo), `ratchet-checks.yml` and `CONTROL-ROOM-HANDBOOK.md`.
 - [MIGRATING.md](MIGRATING.md): how to move a register written for 0.2.
 - [UPGRADING.md](UPGRADING.md): how to move a register to a newer version, with `checks/upgrade.py`.
