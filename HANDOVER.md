@@ -28,6 +28,9 @@ Replaced, not appended to, after every important event. The [decision](decisions
 
 1. 0.5 is released, with the upgrade path, `checks/upgrade.py` with `UPGRADING.md`, and the rule budget. Its follow-ups are #33 and #35.
 2. `CONTRIBUTING.md` and the issue form for proposals are on `main`, without a release. The label `proposal` exists, and a follow-up PR makes the form set it, with the form's test extended to read that key strictly.
-3. Next in the build order from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): #23 together with the phases, and then the parts of the loop: measuring, the daily reading of moved sources, the clean-out and the search.
+3. #23 and the phases are split by [D-2026-11-19-locks-not-parsing](decisions/D-2026-11-19-locks-not-parsing.md). First 0.6, with the phases as one experimental rule, `ratchet.phases`, which brings the rules outside the core to 22 of 25.
+4. Then 0.7: the hook from #23 as a tripwire whose claim is limited to the usual spellings, a ruleset for tags that the maintainer applies, after a check that the release workflow can still tag, and the role Write as the lock on settings. #42 is closed in favor of 0.6 and 0.7.
+5. Deletion outside the working tree goes with the trial of a sandbox for the worker threads ([D-2026-11-17-harness-sandbox-risk](decisions/D-2026-11-17-harness-sandbox-risk.md), item 2), not with the hook.
+6. After these, the parts of the loop from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md): measuring, the daily reading of moved sources, the clean-out and the search.
 
 Proposal (P), not decided by the maintainer: a secret scan for this repo, which issue #17 waits on, comes after these.
