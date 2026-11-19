@@ -20,7 +20,9 @@ collected (D-2026-11-19-batched-releases). The date of a version is in that head
 nowhere else. The command in README.md that fetches Ratchet is one exact line, in a code
 block marked sh, and names the newest version with a date. That version's tag is created by
 the release run after the merge, so for the minutes that run takes the command names a tag
-that does not exist yet. The daily release run is red if that lasts.
+that does not exist yet. The daily release run is red if that lasts. The landing page,
+docs/index.html, holds the same command as one line of its own, and the generator writes the
+version in it, so the page fetches what README.md fetches.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -45,6 +47,9 @@ MARKER = re.compile(r"^<!-- generated:[a-z-]+(?: [a-z0-9-]+)? -->$")
 FENCE = re.compile(r"^```(?:sh|json)?$")
 # The one command in README.md that fetches Ratchet, at the newest version with a date in CHANGELOG.md.
 FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet"
+# The landing page that GitHub Pages serves from docs/, and its one line that fetches Ratchet, which the generator writes.
+PAGE = "docs/index.html"
+PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
@@ -465,7 +470,36 @@ def expected_files(data, root, context):
         directory = os.path.dirname(name)
         expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory, context) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
+
+    path = os.path.join(root, *PAGE.split("/"))
+    current = read(path)
+    if current is None:
+        problems.append("%s: the file is missing. It is the landing page, and holds the command that fetches Ratchet" % PAGE)
+    elif context["released"] is not None:
+        expected, problem = page_text(current, context["released"])
+        if problem:
+            problems.append(problem)
+        else:
+            result[path] = (current, expected)
     return result, problems
+
+
+def page_text(text, released):
+    """(the landing page with its command that fetches Ratchet at the newest dated version, a problem or None).
+
+    The command is one line of the page, after the spaces that indent it, "<pre><code>" FETCH "</code></pre>", with
+    any version. No other line of the page may hold "git clone", so the page shows no second command that is not written.
+    """
+    lines = text.split("\n")
+    found = [number for number, line in enumerate(lines) if PAGE_FETCH.match(line.lstrip(" "))]
+    others = sum(1 for number, line in enumerate(lines) if "git clone" in line and number not in found)
+    line = "<pre><code>%s</code></pre>" % (FETCH % released)
+    if (len(found), others) != (1, 0):
+        return None, ('%s: the command that fetches Ratchet must be one line "%s", once, and no other line may hold git clone. '
+                      "Found that line %d times, with any version, and %d other lines that hold git clone" % (PAGE, line, len(found), others))
+    at = found[0]
+    lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
+    return "\n".join(lines), None
 
 
 def changelog_context(root):
