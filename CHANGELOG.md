@@ -21,7 +21,7 @@ Changed:
 ## 0.6 (2026-11-19)
 
 <!-- generated:count -->
-Ratchet 0.7, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.6, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 22 experimental rules, under a cap of 25: 10 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 One rule is added in this version, and none is changed or removed. The form of `ratchet.json` does not change. The rule comes from the decision `D-2026-11-17-knowledge-and-modes`, item 4, and is one rule rather than three by the decision `D-2026-11-19-locks-not-parsing`, item 5.
