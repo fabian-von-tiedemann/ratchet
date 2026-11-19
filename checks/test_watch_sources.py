@@ -395,7 +395,7 @@ class Watch(Base):
 
     def test_with_no_arguments_the_watch_reads_sources_json_in_this_repo(self):
         # D-2026-11-19-batched-releases, choice 3: the list of sources left ratchet.json.
-        self.assertEqual(registry.SOURCES_PATH, os.path.join(ROOT, "sources.json"))
+        self.assertEqual(os.path.realpath(registry.SOURCES_PATH), os.path.realpath(os.path.join(ROOT, "sources.json")))
         with open(registry.SOURCES_PATH, encoding="utf-8") as handle:
             sources = json.load(handle)["sources"]
         for source in sources:

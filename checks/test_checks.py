@@ -603,7 +603,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         code, output = run("generate.py", root=self.copy)
         self.assertEqual(code, 0, output)
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
-            self.assertIn("| Apache\\-2\\.0, as read again |", handle.read())
+            self.assertIn("| Apache\\-2\\.0\\, as read again |", handle.read())
         with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
             self.assertNotIn("as read again", handle.read())
 
@@ -803,28 +803,24 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 self.edit("CHANGELOG.md", "## 0.3 (2026-11-16)\n", heading + "\n")
                 self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
 
-    def first_heading(self):
-        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
-            return re.search(r"(?m)^## .*$", handle.read()).group(0)
-
     def test_the_first_entry_may_be_unreleased_and_then_the_readme_fetches_the_newest_release(self):
         # D-2026-11-19-batched-releases, choice 1. The README never fetches a tag that does not exist yet.
-        version = json.loads(read("ratchet.json"))["version"]
-        self.assertEqual(self.first_heading(), "## %s (unreleased)" % version)
+        version, fetched = first_entry(self.copy)
+        self.assertNotEqual(version, fetched)
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             self.assertIn("Version %s, not yet released. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
-        self.edit("README.md", "--branch v0.8 ", "--branch v%s " % version)
-        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v0.8", the newest version '
-                                'with a date in CHANGELOG.md')
+        self.edit("README.md", "--branch v%s " % fetched, "--branch v%s " % version)
+        self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v%s", the newest version '
+                                'with a date in CHANGELOG.md' % fetched)
 
     def test_the_entry_given_its_date_is_the_release_and_the_readme_fetches_it(self):
-        version = json.loads(read("ratchet.json"))["version"]
+        version, fetched = first_entry(self.copy)
         self.edit("CHANGELOG.md", "## %s (unreleased)" % version, "## %s (2026-12-01)" % version)
         self.assert_check_fails('README.md: the command that fetches Ratchet must say "--branch v%s"' % version)
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
-        self.edit("README.md", "--branch v0.8 ", "--branch v%s " % version)
-        code, output = run("generate.py", root=self.copy)
-        self.assertEqual(code, 0, output)
+        self.assertEqual(first_entry(self.copy, "2026-12-01"), (version, version))
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             self.assertIn("Version %s, 2026-12-01. See [CHANGELOG.md](CHANGELOG.md)." % version, handle.read())
         code, output = run("generate.py", "--check", root=self.copy)
@@ -835,15 +831,44 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("CHANGELOG.md: '## 0.8 (unreleased)' is headed (unreleased), and only the first entry may be")
 
     def test_an_unreleased_heading_of_another_form_fails(self):
-        version = json.loads(read("ratchet.json"))["version"]
         for heading in ("## %s (Unreleased)", "## %s (unreleased) ", "## %s unreleased", "## Unreleased"):
-            heading = heading % version if "%s" in heading else heading
             with self.subTest(heading=heading):
                 self.setUp()
+                version, _ = first_entry(self.copy)
+                heading = heading % version if "%s" in heading else heading
                 self.edit("CHANGELOG.md", "## %s (unreleased)\n" % version, heading + "\n")
                 self.assert_check_fails('CHANGELOG.md: the first entry must be "## %s (<date>)" or "## %s (unreleased)", found %r'
                                         % (version, version, heading))
                 self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
+
+
+def first_entry(copy, date=None):
+    """Head the first entry of the changelog in a copy of this repo with date, or "(unreleased)" when date is None.
+
+    Then point the command in README.md that fetches Ratchet at the newest version that has a date, and run
+    generate.py. Returns (the version of the first entry, the version that README.md fetches). This is the state
+    before and after the pull request that releases a version (D-2026-11-19-batched-releases), whichever the repo is in.
+    """
+    path = os.path.join(copy, "CHANGELOG.md")
+    with open(path, encoding="utf-8", newline="") as handle:
+        text = handle.read()
+    headings = re.findall(r"(?m)^## ([0-9]+\.[0-9]+) \((?:unreleased|[0-9]{4}-[0-9]{2}-[0-9]{2})\)$", text)
+    version = headings[0]
+    text, count = re.subn(r"(?m)^## %s \((?:unreleased|[0-9]{4}-[0-9]{2}-[0-9]{2})\)$" % re.escape(version),
+                          "## %s (%s)" % (version, date or "unreleased"), text, count=1)
+    assert count == 1
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    fetched = version if date else headings[1]
+    path = os.path.join(copy, "README.md")
+    with open(path, encoding="utf-8", newline="") as handle:
+        text = handle.read()
+    assert len(re.findall(r"--branch v[0-9]+\.[0-9]+ ", text)) == 1
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(re.sub(r"--branch v[0-9]+\.[0-9]+ ", "--branch v%s " % fetched, text))
+    code, output = run("generate.py", root=copy, cwd=copy)
+    assert code == 0, output
+    return version, fetched
 
 
 class CodeOwnership(RepoCopy, unittest.TestCase):

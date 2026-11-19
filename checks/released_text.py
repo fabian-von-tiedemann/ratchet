@@ -14,12 +14,19 @@ fails, naming each problem, when:
   the first entry may be a version that is not yet released.
 - ratchet.json names a version that has a tag, and is not as it stood at that tag.
   A change to the rules raises the version (D-2026-11-17-new-approaches).
-- an entry is headed in any way but "## <version> (<date>)", or stands twice
+- an entry is headed in any way but "## <version> (<date>)", or stands twice. The first
+  entry may also be headed "## <version> (unreleased)", while its changes are being
+  collected (D-2026-11-19-batched-releases); an entry after the first may not, and
+  neither may a version that has a tag. An entry with a date is released by the next
+  push to main, and from its tag on it is compared as every released entry is.
 - there are no tags, or a tag of another form, or the tags cannot be listed.
 
 - ratchet.json is not a valid data file, read as every check reads it: strict JSON,
   with no field twice, no NaN or Infinity, and no field it does not know
   (registry.strict_loads and registry.validate).
+
+sources.json is not read: it is not part of what is released, so a pin that moves
+needs no new version.
 
 A file is read as strict UTF-8, and CRLF is read as LF, as every check here reads it.
 
@@ -37,6 +44,7 @@ import registry
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TAG = re.compile(r"^v([0-9]+\.[0-9]+)\Z")
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \([0-9]{4}-[0-9]{2}-[0-9]{2}\)\Z")
+UNRELEASED = re.compile(r"^## ([0-9]+\.[0-9]+) \(unreleased\)\Z")
 
 
 class GitError(Exception):
@@ -69,7 +77,7 @@ def entries(changelog):
 
 
 def version_of(heading):
-    match = HEADING.match(heading)
+    match = HEADING.match(heading) or UNRELEASED.match(heading)
     return match.group(1) if match else None
 
 
@@ -108,7 +116,8 @@ def check(root):
     for heading, entry in current:
         version = version_of(heading)
         if version is None:
-            problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)"' % heading)
+            problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)", and the '
+                            'first may be headed "## <version> (unreleased)"' % heading)
             continue
         counted[version] = counted.get(version, 0) + 1
         by_version.setdefault(version, (heading, entry))
@@ -133,9 +142,19 @@ def check(root):
                 problems.append("CHANGELOG.md has no entry %s, which the tag %s holds" % (heading, tag))
             elif now != (heading, entry):
                 problems.append("CHANGELOG.md: the entry %s is not as it stood at the tag %s" % (now[0], tag))
+    pending = None
     for number, (heading, _) in enumerate(current):
         version = version_of(heading)
-        if number > 0 and version is not None and version not in released:
+        if UNRELEASED.match(heading):
+            if number > 0:
+                problems.append('CHANGELOG.md: the entry %s is headed "(unreleased)", and only the first entry may be. '
+                                "An entry is released from the moment it has a date" % heading)
+            elif version in released:
+                problems.append('CHANGELOG.md: the entry %s is headed "(unreleased)", and the tag %s exists. '
+                                "A released version stays released" % (heading, released[version]))
+            else:
+                pending = version
+        elif number > 0 and version is not None and version not in released:
             problems.append("CHANGELOG.md: the entry %s has no tag v%s. Only the first entry may be a version that is not yet released" % (heading, version))
 
     path = os.path.join(root, "ratchet.json")
@@ -175,6 +194,8 @@ def check(root):
                     state = "ratchet.json is as it stood at the tag %s." % released[version]
             else:
                 state = "ratchet.json names %s, which has no tag yet." % version
+    if pending is not None:
+        state = ((state or "") + " The first entry, %s, is unreleased." % pending).strip()
     summary = "%d entries in %d tags, each as it stood there. Every tag has an entry. %s" % (compared, len(released), state or "")
     return problems, summary.strip()
 

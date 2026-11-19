@@ -1,6 +1,5 @@
 {
-  "version": "0.8",
-  "date": "2026-11-19",
+  "version": "0.9",
   "experimental_cap": 25,
   "start": [
     "ratchet.register-on-top",
@@ -68,34 +67,6 @@
       "id": "promoted",
       "file": "SELF-IMPROVEMENT.md",
       "title": "Rules promoted from projects"
-    }
-  ],
-  "sources": [
-    {
-      "name": "google/elephant-goldfish-model",
-      "repo": "https://github.com/google/elephant-goldfish-model",
-      "commit": "70406c4d22cc7ea8299637c2c5b44625c48b3f08",
-      "license": "Apache-2.0"
-    },
-    {
-      "name": "mattpocock/skills",
-      "repo": "https://github.com/mattpocock/skills",
-      "commit": "5863806dd4e15c63174bee4e7515a4256792ecfa",
-      "license": "MIT"
-    },
-    {
-      "name": "pstack",
-      "repo": "https://github.com/cursor/plugins",
-      "directory": "pstack",
-      "author": "Lauren Tan",
-      "commit": "35a90942a7f02e1ebbc2443643179815f2147954",
-      "license": "MIT"
-    },
-    {
-      "name": "obra/superpowers",
-      "repo": "https://github.com/obra/superpowers",
-      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
-      "license": "MIT"
     }
   ],
   "rules": [

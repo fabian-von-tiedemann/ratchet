@@ -1,7 +1,10 @@
-"""Load and validate ratchet.json, the single source for every Ratchet rule.
+"""Load and validate ratchet.json, the single source for every Ratchet rule, and sources.json, the list of sources.
 
 Also the two things every check shares: a strict reader for JSON data files, and
 the comparison of a generated file with what its data file generates.
+
+sources.json is not part of what is released: checks/released_text.py does not compare it with a tag, so a
+pin that moves needs no new version (D-2026-11-19-batched-releases).
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -12,6 +15,7 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "ratchet.json")
+SOURCES_PATH = os.path.join(ROOT, "sources.json")
 
 KEY = re.compile(r"^ratchet\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\Z")
@@ -57,7 +61,11 @@ STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
 RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check"}
 REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"}
-TOP_FIELDS = {"version", "date", "experimental_cap", "start", "parts", "sources", "rules"}
+TOP_FIELDS = {"version", "experimental_cap", "start", "parts", "rules"}
+# The fields that ratchet.json had up to 0.8 and no longer has: the date, which is in the heading of the entry in
+# CHANGELOG.md, and the sources, which are in sources.json (D-2026-11-19-batched-releases). The ratchet.json of an
+# older version may hold them.
+GONE_FIELDS = {"date", "sources"}
 # The budget: the most experimental rules there may be (D-2026-11-17-pull-and-budget). Raising it is a decision.
 CAP = "experimental_cap"
 
@@ -267,29 +275,30 @@ def validate(data, root, older=False):
     """Every problem with a parsed ratchet.json, or nothing.
 
     With older=True, the ratchet.json of an older version, which checks/upgrade.py compares with this one: it may
-    lack the cap, which came in 0.5, its sources are not read, the files of its reference checks are not looked
-    for, and the budget is not counted. Everything else is read as strictly as this version's own file.
+    lack the cap, which came in 0.5, and may hold the date and the sources, which left in 0.9. Its sources are not
+    read, the files of its reference checks are not looked for, and the budget is not counted. Everything else is
+    read as strictly as this version's own file.
     """
     problems = []
     if not isinstance(data, dict):
         return ["the top level must be an object"]
     for field in sorted(TOP_FIELDS - set(data) - ({CAP} if older else set())):
         problems.append("missing field %r" % field)
-    for field in sorted(set(data) - TOP_FIELDS):
+    for field in sorted(set(data) - TOP_FIELDS - (GONE_FIELDS if older else set())):
         problems.append("unknown field %r" % field)
     if problems:
         return problems
 
     if not isinstance(data["version"], str) or not VERSION.match(data["version"]):
         problems.append("version must look like 0.2")
-    if not isinstance(data["date"], str) or not DATE.match(data["date"]):
+    if "date" in data and (not isinstance(data["date"], str) or not DATE.match(data["date"])):
         problems.append("date must look like 2026-01-31")
     cap = data.get(CAP)
     if CAP in data and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
         problems.append("%s must be a whole number from 0, found %s" % (CAP, json.dumps(cap)))
 
     for field in ("start", "parts", "sources", "rules"):
-        if not isinstance(data[field], list):
+        if field in data and not isinstance(data[field], list):
             problems.append("%s must be a list" % field)
     if problems:
         return problems
@@ -363,11 +372,53 @@ def validate(data, root, older=False):
         if key not in keys:
             problems.append("start names %s, which is not a rule" % key)
 
-    if older:
+    if older or problems:
         return problems
-    problems.extend(source_problems(data["sources"]))
-    if not problems:
-        problems.extend(budget_problems(data))
+    return budget_problems(data)
+
+
+def load_sources(path=SOURCES_PATH):
+    """The list of sources in sources.json, or RegistryError naming every problem.
+
+    The file is read as strictly as every data file: strict UTF-8, no field twice, no NaN. It is an object with
+    the one field "sources", and every source has the form that source_problems describes.
+    """
+    name = os.path.basename(path)
+    try:
+        data = load_json(path)
+    except RegistryError as error:
+        raise RegistryError("%s: %s" % (name, error))
+    problems = sources_file_problems(data)
+    if problems:
+        raise RegistryError("\n".join("%s: %s" % (name, problem) for problem in problems))
+    return data["sources"]
+
+
+def sources_file_problems(data):
+    """Why a parsed sources.json breaks its form, or nothing."""
+    if not isinstance(data, dict):
+        return ["the top level must be an object"]
+    problems = [] if "sources" in data else ["missing field 'sources'"]
+    problems += ["unknown field %r" % field for field in sorted(set(data) - {"sources"})]
+    return problems or source_problems(data["sources"])
+
+
+def citation_problems(data, sources):
+    """Why the source of a rule does not cite the sources by their names in sources.json, or nothing.
+
+    The source of a rule is empty, or one or more citations separated by "; ". A citation starts with the name of
+    a source in sources.json, and then, after a space or a comma, says what is taken from it.
+    """
+    names = set(source["name"] for source in sources)
+    problems = []
+    for rule in data["rules"]:
+        if not rule["source"]:
+            continue
+        for part in rule["source"].split("; "):
+            name = re.split(r"[ ,]", part, 1)[0]
+            if name not in names:
+                problems.append('%s: the source cites "%s", which is not the name of a source in sources.json. A source is a list '
+                                'of names from sources.json, each with what is taken from it, separated by "; "' % (rule["key"], name))
     return problems
 
 

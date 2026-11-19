@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.9, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+No rule is added, changed or removed in this version. It changes how Ratchet is released, by the decision `D-2026-11-19-batched-releases`: changes are collected under the first entry of the changelog, headed `(unreleased)`, and released together by a pull request that gives the entry its date. The list of sources moves out of `ratchet.json`, so that a pin that moves needs no new version.
+
+Changes of form:
+
+- `date` is gone from `ratchet.json`. The date of a version is in the heading of its entry in `CHANGELOG.md`, and nowhere else.
+- `sources` is gone from `ratchet.json`. The list is in `sources.json`, an object with the one field `sources`, read as strictly as every data file. `checks/released_text.py` does not compare it with a tag, so it is not part of what is released. A rule cites its sources by their names in `sources.json`, and `checks/generate.py` fails on a name that is not there. A project that only runs the checks in `.ratchet` has nothing to do: see [UPGRADING.md](UPGRADING.md).
+
+Changed:
+
+- `CHANGELOG.md`: the first entry may be headed `## <version> (unreleased)`. While it is, the release workflow publishes nothing for that version, on a push and on its schedule, and `ratchet.json` may name that version and change. An entry with a date is released by the next push to `main`, and from its tag on it is frozen as before. An unreleased heading anywhere but first, twice, of another form, or for a version that has a tag, fails. See [checks/README.md](checks/README.md#releasepy).
+- `checks/release.py` reads, with git, the changelog at each commit on `main` beside `ratchet.json`. A version must be released once a commit on `main` names it with an entry that has a date. A version that `main` only named as unreleased needs nothing.
+- `checks/generate.py`: `RATCHET.md` says that the version is not yet released, and the command in `README.md` that fetches Ratchet names the newest version with a date, so it never fetches a tag that does not exist yet.
+- `checks/upgrade.py` says when a field at the top of `ratchet.json` is gone, as it says when one is new.
+- `checks/watch_sources.py` and its workflow read `sources.json`.
+- The release of a version is a pull request that replaces `(unreleased)` with the date and moves the tag that `README.md` fetches. `checks/generate.py` writes the rest, and `--check` names what is left.
+
 ## 0.8 (2026-11-19)
 
 <!-- generated:count -->

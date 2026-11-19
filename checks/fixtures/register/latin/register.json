@@ -1,6 +1,6 @@
 {
   "project": "the éxample project",
-  "ratchet_version": "0.8",
+  "ratchet_version": "0.9",
   "adopted": [
     {
       "key": "ratchet.register-on-top",

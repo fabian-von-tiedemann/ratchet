@@ -9,12 +9,16 @@
 
 From ratchet.json: the text between "<!-- generated:NAME -->" and "<!-- /generated -->"
 in the markdown files, templates/register.json and the registers under
-checks/fixtures/register/. From register.json: REGISTER.md. Which blocks each file
-must hold is listed in required_blocks().
+checks/fixtures/register/. From sources.json: the table of sources in RATCHET.md. From
+register.json: REGISTER.md. Which blocks each file must hold is listed in required_blocks().
 
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
-checks/released_text.py compares it with its tag.
+checks/released_text.py compares it with its tag. The first entry is headed
+"## <version> (<date>)", or "## <version> (unreleased)" while its changes are being
+collected (D-2026-11-19-batched-releases). The date of a version is in that heading and
+nowhere else. The command in README.md that fetches Ratchet names the newest version
+with a date, so it never fetches a tag that does not exist yet.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -41,8 +45,10 @@ KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 NOT_KEYS = {"json"}
-# The heading of a changelog entry. The release workflow finds an entry by "^## <version> \(".
-HEADING = re.compile(r"^## [0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)\Z")
+# The heading of a changelog entry, released or to be released when it is merged. checks/release.py reads the same form.
+HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
+# The heading of the first entry while its changes are being collected, which no run publishes.
+UNRELEASED = re.compile(r"^## ([0-9]+\.[0-9]+) \(unreleased\)\Z")
 # Files that record history verbatim are not checked for mentions of keys that no longer exist.
 HISTORY = ("CHANGELOG.md",)
 # The only lines that may start with "<" in a file that holds generated blocks.
@@ -96,15 +102,20 @@ def count_text(data):
     )
 
 
-def render(data, name, argument, directory):
-    """The text of one generated block. directory is where the document lives, relative to the root."""
+def render(data, name, argument, directory, context):
+    """The text of one generated block. directory is where the document lives, relative to the root.
+
+    context holds what does not come from ratchet.json: "sources", from sources.json, and "date", the date in the
+    heading of the first entry of the changelog, or None while it is unreleased.
+    """
     if name == "table":
         rules = [rule for rule in data["rules"] if rule["part"] == argument]
         if not rules:
             raise registry.RegistryError("no rules in part %r" % argument)
         return table(rules)
     if name == "version":
-        return "Version %s, %s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], data["date"])
+        when = context["date"] or "not yet released"
+        return "Version %s, %s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], when)
     if name == "count":
         return count_text(data)
     if name == "start":
@@ -118,7 +129,7 @@ def render(data, name, argument, directory):
         return "\n".join(lines)
     if name == "sources":
         lines = ["| Name | Repo | Commit | License |", "|---|---|---|---|"]
-        lines += ["| %s | %s | `%s` | %s |" % (registry.cell(s["name"]), registry.cell(registry.source_repo_text(s)), s["commit"], registry.cell(s["license"])) for s in data["sources"]]
+        lines += ["| %s | %s | `%s` | %s |" % (registry.cell(s["name"]), registry.cell(registry.source_repo_text(s)), s["commit"], registry.cell(s["license"])) for s in context["sources"]]
         return "\n".join(lines)
     raise registry.RegistryError("unknown generated block %r" % name)
 
@@ -397,7 +408,7 @@ def structure_problems(name, text):
     return problems
 
 
-def expected_files(data, root):
+def expected_files(data, root, context):
     """Return ({path: (current text or None, expected text)}, problems)."""
     result = {}
     problems = []
@@ -448,9 +459,20 @@ def expected_files(data, root):
         if name in required:
             problems += structure_problems(name, current)
         directory = os.path.dirname(name)
-        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory) + "\n" + m.group(5), live) + released
+        expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory, context) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
     return result, problems
+
+
+def changelog_context(root):
+    """(the date of the first entry, or None while it is unreleased, the newest version with a date, or None).
+
+    Only the headings of the exact forms are read. A heading of another form is named by consistency_problems.
+    """
+    headings = [line for line in (read(os.path.join(root, "CHANGELOG.md")) or "").split("\n") if line.startswith("## ")]
+    first = HEADING.match(headings[0]) if headings else None
+    dated = next((HEADING.match(line).group(1) for line in headings if HEADING.match(line)), None)
+    return (first.group(2) if first else None), dated
 
 
 def first_entry_end(text):
@@ -466,9 +488,9 @@ def link_problem(path, target):
     return not os.path.exists(os.path.join(os.path.dirname(path), target))
 
 
-def consistency_problems(data, root):
+def consistency_problems(data, root, context):
     """Checks on the hand-written text that the generated blocks cannot cover."""
-    problems = []
+    problems = ["ratchet.json: %s" % problem for problem in registry.citation_problems(data, context["sources"])]
     keys = set(registry.rules_by_key(data))
     for path in markdown_files(root):
         name = os.path.relpath(path, root).replace(os.sep, "/")
@@ -486,18 +508,27 @@ def consistency_problems(data, root):
                 if link_problem(path, target):
                     problems.append("%s:%d: the link to %s leads nowhere" % (name, number, target))
 
-    heading = "## %s (%s)" % (data["version"], data["date"])
     changelog = read(os.path.join(root, "CHANGELOG.md")) or ""
-    first = next((line.strip() for line in changelog.splitlines() if line.startswith("## ")), None)
-    if first != heading:
-        problems.append('CHANGELOG.md: the first entry must be "%s", found %r' % (heading, first))
-    for line in changelog.splitlines():
-        if line.startswith("## ") and not HEADING.match(line):
-            problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)", such as "%s"' % (line, heading))
+    headings = [line for line in changelog.split("\n") if line.startswith("## ")]
+    first = headings[0] if headings else None
+    dated, unreleased = HEADING.match(first or ""), UNRELEASED.match(first or "")
+    if not ((dated and dated.group(1) == data["version"]) or (unreleased and unreleased.group(1) == data["version"])):
+        problems.append('CHANGELOG.md: the first entry must be "## %s (<date>)" or "## %s (unreleased)", found %r'
+                        % (data["version"], data["version"], first))
+    for number, line in enumerate(headings):
+        if UNRELEASED.match(line) and number > 0:
+            problems.append("CHANGELOG.md: %r is headed (unreleased), and only the first entry may be. An entry after the first "
+                            "is released" % line)
+        elif not HEADING.match(line) and not UNRELEASED.match(line):
+            problems.append('CHANGELOG.md: %r is not the heading of an entry. An entry is headed "## <version> (<date>)", and the '
+                            'first may be headed "## <version> (unreleased)"' % line)
 
-    pinned = "--branch v%s " % data["version"]
-    if pinned not in (read(os.path.join(root, "README.md")) or ""):
-        problems.append('README.md: the command that fetches Ratchet must say "%s"' % pinned.strip())
+    released = context["released"]
+    if released is None:
+        problems.append("CHANGELOG.md: no entry has a date, so there is no release for README.md to fetch")
+    elif "--branch v%s " % released not in (read(os.path.join(root, "README.md")) or ""):
+        problems.append('README.md: the command that fetches Ratchet must say "--branch v%s", the newest version with a date in '
+                        "CHANGELOG.md" % released)
 
     owners = read(os.path.join(root, ".github", "CODEOWNERS"))
     rules = [line for line in (owners or "").split("\n") if line.strip() and not line.startswith("#")]
@@ -527,8 +558,10 @@ def main(argv=None):
         if args.count:
             print(count_text(data))
             return 0
-        files, problems = expected_files(data, root)
-        problems += consistency_problems(data, root)
+        date, released = changelog_context(root)
+        context = {"sources": registry.load_sources(os.path.join(root, "sources.json")), "date": date, "released": released}
+        files, problems = expected_files(data, root, context)
+        problems += consistency_problems(data, root, context)
     except registry.RegistryError as error:
         print("generate: %s" % error, file=sys.stderr)
         return 1

@@ -1490,7 +1490,7 @@ class Scheduled(unittest.TestCase):
 
     def test_main_gives_a_scheduled_run_only_the_read_only_api(self):
         # Whatever publish asks for in a scheduled run, a write is not sent.
-        def writes_anyway(version, text, history, repo, sha, api, out, report=False):
+        def writes_anyway(version, text, history, repo, sha, api, out, report=False, pending=frozenset()):
             api("POST", PATH + "/git/refs", {"ref": "refs/tags/v0.4", "sha": sha})
         github = FakeGitHub(**DONE_03)
         opener = FakeOpener(github)
@@ -1724,10 +1724,11 @@ class Token(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # A checkout with today's ratchet.json and CHANGELOG.md, at one commit.
+        # A checkout with today's ratchet.json and CHANGELOG.md, at one commit, with the first entry given a date if it
+        # is unreleased, so that the run comes to its writes.
         cls.checkout = Checkout()
         with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as handle:
-            cls.checkout.commit(NOW, handle.read())
+            cls.checkout.commit(NOW, handle.read().replace("## %s (unreleased)\n" % NOW, "## %s (2026-11-26)\n" % NOW, 1))
 
     @classmethod
     def tearDownClass(cls):

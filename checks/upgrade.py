@@ -14,8 +14,9 @@ is the newer Ratchet. The script compares the two, rule by rule, and prints:
 - when every adopted rule was removed, a step to adopt at least one rule
 - the new rules, each with the entry to paste if the project adopts it
 - the changed and removed rules that the register does not adopt, by key
-- when the fields at the top of ratchet.json differ between the two, a note for a
-  project that keeps a copy of a Ratchet check, or a check of its own, that reads it.
+- when the fields at the top of ratchet.json differ between the two, a field new or
+  gone, a note for a project that keeps a copy of a Ratchet check, or a check of its
+  own, that reads it.
 
 It writes nothing. It runs offline, on the files it is given. Before it prints a
 step, it checks that the register passes check_register.py against the older
@@ -111,12 +112,15 @@ def own_entry(rule, before, prefix, taken):
 
 
 def form_changes(old, new):
-    """The fields at the top of ratchet.json that the newer version has and the older lacks, as text.
+    """The fields at the top of ratchet.json that one version has and the other lacks, as text, sorted by the field.
 
-    The older file is read with registry.validate(older=True), which allows it to lack only the cap and refuses a
-    field it does not know, so a field can be new but not gone.
+    The older file is read with registry.validate(older=True), which allows it to lack the cap and to hold the date
+    and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases), and refuses any other field it
+    does not know. So a field can be new, or gone.
     """
-    return ['"%s" is new' % field for field in sorted(set(new) - set(old))]
+    changes = [(field, '"%s" is new' % field) for field in set(new) - set(old)]
+    changes += [(field, '"%s" is gone' % field) for field in set(old) - set(new)]
+    return [text for _, text in sorted(changes)]
 
 
 def changed_fields(old, new):
