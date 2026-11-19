@@ -356,9 +356,10 @@ class Page(RepoCopy, unittest.TestCase):
         with open(os.path.join(self.copy, DOCS, PAGE), "w", encoding="utf-8", newline="") as handle:
             handle.write(text.replace(old, new, 1))
 
-    def assert_fails(self, message):
+    def assert_fails(self, *message):
+        """One problem holds every part of the message."""
         problems = page_problems(self.copy)
-        self.assertTrue(any(message in problem for problem in problems), "%r not in %r" % (message, problems))
+        self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
     def test_the_page_as_it_stands_passes(self):
         self.assertEqual(page_problems(ROOT), [])
@@ -491,6 +492,23 @@ class Page(RepoCopy, unittest.TestCase):
     def test_a_relative_link_to_the_page_passes(self):
         self.change('href="#start-here"', 'href="index.html#start-here"')
         self.assertEqual(page_problems(self.copy), [])
+
+    def test_a_fragment_that_is_not_an_id_on_its_page_fails(self):
+        # The first is a typo for the id start-here, in a link to the page by its name.
+        for target in ("index.html#start-hree", "index.html#Start-here", "index.html#", "#missing", "#start-hree", "#"):
+            with self.subTest(target=target):
+                self.setUp()
+                self.change('href="#start-here"', 'href="%s"' % target)
+                self.assert_fails("the link %r" % target, "is not an id on")
+
+    def test_a_fragment_on_a_link_to_a_file_that_is_not_a_page_fails(self):
+        self.change('href="#start-here"', 'href="ratchet-light.svg#logo"')
+        self.assert_fails("the link 'ratchet-light.svg#logo'", "only a link to a page in docs/ may have a fragment")
+
+    def test_an_id_twice_on_the_page_fails(self):
+        # The second start-here is one a link names, so the link would lead to either.
+        self.change('<h2 id="limits">', '<h2 id="start-here">')
+        self.assert_fails("ids that stand more than once: start-here")
 
     def test_an_element_left_open_or_closed_out_of_order_fails(self):
         for old, new, message in (("</main>", "", "</body> does not close the element that is open, <main>"),
