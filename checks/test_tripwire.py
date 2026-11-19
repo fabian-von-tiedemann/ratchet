@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from suite_runner import FixtureTest
 from test_checks import ROOT, read
@@ -28,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import registry  # noqa: E402
+import tripwire  # noqa: E402
 
 HOOK = os.path.join(HERE, "tripwire.py")
 APPROVALS = os.path.join(".claude", "ratchet-approvals.json")
@@ -231,6 +233,74 @@ class Tripwire(FixtureTest):
             for command in ("rm -rf %s" % planted, "rm -r %s/sub" % planted):
                 code, message = self.bash(command, environ)
                 self.assertEqual(code, 2, command)
+                self.assertIn("tripwire: delete-outside", message)
+
+    def decide(self, command):
+        """The hook's decision on a Bash call, made in this process so that a test can mock what the hook reads."""
+        call = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": self.tree, "tool_input": {"command": command}}
+        return tripwire.decide(call, {"CLAUDE_PROJECT_DIR": self.tree}, datetime.date.today())
+
+    def mktemp_in_tmp(self):
+        """A real directory that mktemp -d makes directly in /tmp, of mktemp -d's own form, removed after the test."""
+        made = subprocess.run(["mktemp", "-d", "/tmp/tmp.XXXXXXXXXX"], stdout=subprocess.PIPE, universal_newlines=True,
+                              check=True).stdout.strip()
+        self.addCleanup(shutil.rmtree, made, True)
+        self.assertRegex(made, r"^/tmp/tmp\.[A-Za-z0-9]{10}$")
+        return made
+
+    def test_on_macOS_a_system_temporary_directory_it_cannot_establish_is_not_trusted(self):
+        # On macOS the hook reads where mktemp -d writes from confstr(_CS_DARWIN_USER_TEMP_DIR). When that fails, or
+        # gives no absolute path of an existing directory, no directory takes its place: not TMPDIR, which the harness
+        # sets, and not a default. /tmp stays the second root. Elsewhere the temporary directory is TMPDIR's, as before.
+        unrelated = os.path.realpath(self.scratch())
+        planted = fresh(unrelated, 10, os.mkdir)
+        in_tmp = self.mktemp_in_tmp()
+        failures = {"OSError": {"side_effect": OSError(22, "Invalid argument")}, "ValueError": {"side_effect": ValueError("unknown")},
+                    "None": {"return_value": None}, "empty": {"return_value": ""}, "relative": {"return_value": "var/T"},
+                    "missing": {"return_value": os.path.join(unrelated, "missing") + "/"}}
+
+        def on(platform, **confstr):
+            return (mock.patch.object(tripwire.sys, "platform", platform), mock.patch.object(tripwire.os, "confstr", **confstr),
+                    mock.patch.object(tripwire.tempfile, "gettempdir", return_value=unrelated))
+
+        for name, confstr in sorted(failures.items()):
+            with self.subTest(confstr=name):
+                first, second, third = on("darwin", **confstr)
+                with first, second, third:
+                    for command in ("rm -rf %s" % planted, "rm -r %s/sub" % planted):
+                        message = self.decide(command)
+                        self.assertIsNotNone(message, command)
+                        self.assertIn("tripwire: delete-outside", message)
+                    for command in ("rm -rf %s" % in_tmp, "rm -r %s/sub" % in_tmp):
+                        self.assertIsNone(self.decide(command), command)
+        for platform, confstr in (("darwin", {"return_value": unrelated + "/"}), ("linux", failures["OSError"])):
+            with self.subTest(platform=platform):
+                first, second, third = on(platform, **confstr)
+                with first, second, third:
+                    for command in ("rm -rf %s" % planted, "rm -r %s/sub" % planted, "rm -rf %s" % in_tmp):
+                        self.assertIsNone(self.decide(command), command)
+
+    def test_a_directory_from_mktemp_in_tmp_may_be_deleted_by_its_path_in_a_later_call(self):
+        # /tmp is the second root, whatever TMPDIR says and wherever the system's temporary directory is: a real
+        # directory of mktemp -d's form, made directly in /tmp, and a path inside it, pass.
+        environ = dict(os.environ, TMPDIR=os.path.realpath(self.scratch()))
+        made = self.mktemp_in_tmp()
+        for command in ("rm -rf %s" % made, "rm -r %s/sub" % made, "rm -rf %s/" % made):
+            self.assertEqual(self.bash(command, environ), (0, ""), command)
+
+    def test_a_directory_of_another_owner_is_never_deleted(self):
+        # The entry from mktemp -d must be owned by the user the hook runs as. With the hook running as another uid,
+        # the same directory, and a path inside it, are denied, in the temporary directory and in /tmp.
+        made = subprocess.run(["mktemp", "-d"], stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout.strip()
+        self.addCleanup(shutil.rmtree, made, True)
+        in_tmp = self.mktemp_in_tmp()
+        commands = ["rm -rf %s" % path for path in (made, in_tmp)] + ["rm -r %s/sub" % path for path in (made, in_tmp)]
+        for command in commands:
+            self.assertIsNone(self.decide(command), command)
+        with mock.patch.object(tripwire.os, "getuid", return_value=os.getuid() + 1):
+            for command in commands:
+                message = self.decide(command)
+                self.assertIsNotNone(message, command)
                 self.assertIn("tripwire: delete-outside", message)
 
     def test_a_command_with_two_steps_needs_an_entry_for_each(self):
