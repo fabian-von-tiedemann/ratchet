@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8 (2026-11-19)
+
+<!-- generated:count -->
+Ratchet 0.8, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+No rule is added, changed or removed in this version. The form of `ratchet.json` does not change. Two pins in its list `sources` move. `checks/released_text.py` fails when `ratchet.json` names a released version and is not as it stood at that tag, so the move is a version of its own.
+
+Changed:
+
+- `sources`: `google/elephant-goldfish-model` is pinned at `70406c4d22cc7ea8299637c2c5b44625c48b3f08`, in place of `403d8881d62022490637d740657b33f01e321ea8`, and `pstack` at `35a90942a7f02e1ebbc2443643179815f2147954`, in place of `bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7`. These are the heads that the source watch named in #40 and #41. Each new commit is ahead of the old pin, with none behind. The change between the two was read in the maintainer's notes and reviewed by a model from another family: nothing that a rule relies on changed. The proposals that came from that reading are issues of their own, #46 and #47, and change nothing here.
+- The table of sources in `RATCHET.md` shows the new pins.
+
 ## 0.7 (2026-11-19)
 
 <!-- generated:count -->
