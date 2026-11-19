@@ -58,3 +58,15 @@ So choices 1, 2, 3 and 5 are taken, and choice 4 is not: there is no patch level
 Observation (O): item 3 of [D-2026-11-17-new-approaches](D-2026-11-17-new-approaches.md) chose a version for each change, so that no heading `## Unreleased` was needed, because such a heading had been the way released text was rewritten. This decision brings back an unreleased heading, in one exact form, only for the first entry. Released text stays protected as before: an entry is compared with its tag from the tag on, and an entry with a date is published by the next push to `main`.
 
 Proposal (P), which the maintainer did not decide, and which the PR builds: the date of a version is no longer in `ratchet.json`, only in the heading of its entry in `CHANGELOG.md`, so that the release PR sets it in one place. `date` and `sources` leave `ratchet.json`, a change of form that a minor version before 1.0 may make ([D-2026-11-18-form-change-before-1-0](D-2026-11-18-form-change-before-1-0.md)), and the changelog lists it.
+
+## Round 2 of the review
+
+The review from another model family of [PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50), round 1, found three faults in what the PR built. They are fixed in the same PR, and change nothing that the maintainer decided.
+
+- Observation (O): a version dated on `main` and then headed `(unreleased)` again, with the run of the dated commit cancelled before it tagged, passed every later run with no tag. Now, once a commit on `main` has dated a version, it must be released whatever the head says: a head that heads it `(unreleased)` again fails and names the commit that dated it.
+- Observation (O): the pull request of a release moves the command in `README.md` that fetches Ratchet to the version it dates, before the tag exists. So the claim that the command never fetches a tag that does not exist yet was false. The claim is now narrower: the command names the newest version with a date, whose tag the release run creates after the merge. For the minutes that run takes, the command fails, and longer if the run is cancelled, while the daily release run is red.
+- Observation (O): `generate.py` accepted the pin anywhere in `README.md`. It now reads the command as one exact line in a code block marked `sh`, and no other line may run `git clone`.
+
+Question (Q) for the maintainer: should the pin in `README.md` move in a pull request of its own, after the tag exists, so that the command never names a missing tag? `generate.py --check` would then read the tags and require the newest tag, which takes a second pull request for each release and makes the check depend on the tags being fetched. **Advice: no.** Keep the narrower claim above: the window is the minutes of one run, and a run that does not finish is already red each day.
+
+Proposal (P) above, unchanged: `date` leaves `ratchet.json`. The review found it consistent and left it to the maintainer.
