@@ -346,14 +346,23 @@ class Rule(FixtureTest):
             self.assertIn(words, rule["ratchet"])
         self.assertEqual(registry.counts(data)["experimental"]["rules"], 23)
 
-    def test_this_repo_adopts_it_as_text_only_for_now_and_says_what_is_locked_and_what_is_not(self):
+    def test_this_repo_adopts_it_as_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
+        # Built since the maintainer applied the tag ruleset and the control room read it back on 2026-11-19
+        # (D-2026-11-19-tripwire-and-settings). The tripwire is the check the rule names, and the place where it
+        # lives says which steps a lock refuses and which the tripwire alone catches.
         register = registry.parse_json(read("register.json").encode("utf-8"))
         entries = [entry for entry in register["adopted"] if entry["key"] == "ratchet.irreversible-waits"]
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["status"], "text only for now")
-        for words in ("`checks/tripwire.py`", "`.claude/settings.json`", "`templates/tag-ruleset.json`", "role Write", "`main`",
-                      "sandbox", "D-2026-11-19-tag-ruleset-scope", "only an admin", "The role Write may change Actions secrets and variables"):
-            self.assertIn(words, entries[0]["where"])
+        self.assertEqual(entries[0]["status"], "built")
+        where = entries[0]["where"]
+        for words in ("`checks/tripwire.py`", "`.claude/settings.json`", "not every spelling", "`templates/tag-ruleset.json`",
+                      "`tags-stay`", "read back on 2026-11-19", "D-2026-11-19-tag-ruleset-scope", "role Write", "only an admin",
+                      "`main`", "caught by the tripwire alone", "creating a tag or a release", "a force push to another branch",
+                      "Actions secrets and variables", "sandbox", "D-2026-11-19-tripwire-and-settings"):
+            self.assertIn(words, where)
+        locked, alone = where.split("caught by the tripwire alone", 1)
+        for words in ("creating a tag or a release", "a force push to another branch", "Actions secrets and variables"):
+            self.assertNotIn(words, locked)
 
     def test_checks_readme_lists_every_claimed_case(self):
         text = read("checks", "README.md")
