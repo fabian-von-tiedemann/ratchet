@@ -229,9 +229,9 @@ class Upgrade(FixtureTest):
                 self.assertNotIn("Traceback", output)
 
     def test_this_repos_register_at_each_released_version_upgrades_to_this_ratchet(self):
-        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3, v0.4 and v0.5.
+        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3, v0.4, v0.5 and v0.6.
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
-        for version in ("0.3", "0.4", "0.5"):
+        for version in ("0.3", "0.4", "0.5", "0.6"):
             with self.subTest(version=version):
                 register = self.fixture_file("upgrade/released/%s/register.json" % version)
                 old = self.fixture_file("upgrade/released/%s/ratchet.json" % version)
@@ -250,8 +250,13 @@ class Upgrade(FixtureTest):
                     # From 0.5 the form and ratchet.si-version stay as they were.
                     self.assertNotIn("experimental_cap", output)
                     self.assertNotIn(si_version, output)
-                # The rule that 0.6 adds is new to each of them.
-                self.assertIn("- ratchet.phases: new. The register may adopt it.", output)
+                # The rule that 0.6 adds is new to each register before it, and the rule that 0.7 adds is new to each of them.
+                phases = "- ratchet.phases: new. The register may adopt it."
+                if version == "0.6":
+                    self.assertNotIn(phases, output)
+                else:
+                    self.assertIn(phases, output)
+                self.assertIn("- ratchet.irreversible-waits: new. The register may adopt it.", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
@@ -396,17 +401,17 @@ class RemovedRules(FixtureTest):
 
 
 class UpgradingSteps(FixtureTest):
-    """The steps in UPGRADING.md, run from the root of a project whose register is this repo's own at 0.5."""
+    """The steps in UPGRADING.md, run from the root of a project whose register is this repo's own at 0.6."""
 
     def test_every_command_in_the_steps_runs_from_the_root_of_a_project(self):
         project = self.scratch()
         shutil.copytree(ROOT, os.path.join(project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        shutil.copyfile(self.fixture_file("upgrade/released/0.5/register.json"), os.path.join(project, "register.json"))
-        shutil.copyfile(self.fixture_file("upgrade/released/0.5/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.6/register.json"), os.path.join(project, "register.json"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.6/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
         text = read("UPGRADING.md")
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
         self.assertIn("git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet" % new["version"], text)
-        self.assertIn("git -C .ratchet show v0.5:ratchet.json > .ratchet/from.json", text)
+        self.assertIn("git -C .ratchet show v0.6:ratchet.json > .ratchet/from.json", text)
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", text)
         self.assertEqual([command.split()[1] for command in commands],
                          [".ratchet/checks/upgrade.py", ".ratchet/checks/check_register.py", ".ratchet/checks/check_register.py"])
