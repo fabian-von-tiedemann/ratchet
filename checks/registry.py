@@ -412,14 +412,21 @@ def citation_problems(data, sources):
     names = set(source["name"] for source in sources)
     problems = []
     for rule in data["rules"]:
-        if not rule["source"]:
-            continue
-        for part in rule["source"].split("; "):
-            name = re.split(r"[ ,]", part, 1)[0]
+        for name in cited_names(rule):
             if name not in names:
                 problems.append('%s: the source cites "%s", which is not the name of a source in sources.json. A source is a list '
                                 'of names from sources.json, each with what is taken from it, separated by "; "' % (rule["key"], name))
     return problems
+
+
+def cited_names(rule):
+    """The names of the sources a rule cites, in the order it cites them, each once. Empty when its source is empty."""
+    names = []
+    for part in rule["source"].split("; ") if rule["source"] else []:
+        name = re.split(r"[ ,]", part, 1)[0]
+        if name not in names:
+            names.append(name)
+    return names
 
 
 def budget_problems(data):

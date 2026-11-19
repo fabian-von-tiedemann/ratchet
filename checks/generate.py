@@ -22,7 +22,8 @@ block marked sh, and names the newest version with a date. That version's tag is
 the release run after the merge, so for the minutes that run takes the command names a tag
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
-version in it, so the page fetches what README.md fetches.
+version in it, so the page fetches what README.md fetches. It writes one more line of the page, the
+count of rules and the cap on experimental rules, from ratchet.json.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -50,6 +51,11 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 # The landing page that GitHub Pages serves from docs/, and its one line that fetches Ratchet, which the generator writes.
 PAGE = "docs/index.html"
 PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
+# The page's one line that gives the count of rules and the cap on experimental rules, which the generator writes.
+BUDGET = ('<p id="budget" class="stat"><strong>%d experimental rules, with a cap of %d.</strong> The core holds %d '
+          'rules and is frozen: %d name a check and %d are text only. Counted by <code>checks/generate.py</code> '
+          'from <code>ratchet.json</code>.</p>')
+PAGE_BUDGET = re.compile(re.escape(BUDGET).replace("%d", "[0-9]+") + r"\Z")
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
@@ -476,30 +482,46 @@ def expected_files(data, root, context):
     if current is None:
         problems.append("%s: the file is missing. It is the landing page, and holds the command that fetches Ratchet" % PAGE)
     elif context["released"] is not None:
-        expected, problem = page_text(current, context["released"])
-        if problem:
-            problems.append(problem)
+        expected, found = page_text(current, context["released"], data)
+        if found:
+            problems += found
         else:
             result[path] = (current, expected)
     return result, problems
 
 
-def page_text(text, released):
-    """(the landing page with its command that fetches Ratchet at the newest dated version, a problem or None).
+def budget_text(data):
+    """The line of the landing page that gives the count of rules and the cap on experimental rules."""
+    numbers = registry.counts(data)
+    core = numbers["core"]
+    return BUDGET % (numbers["experimental"]["rules"], data[registry.CAP], core["rules"], core["enforced"], core["text_only"])
 
-    The command is one line of the page, after the spaces that indent it, "<pre><code>" FETCH "</code></pre>", with
-    any version. No other line of the page may hold "git clone", so the page shows no second command that is not written.
+
+def page_text(text, released, data):
+    """(the landing page with its two generated lines written, or None, and the problems, if any).
+
+    Each generated line is one line of the page, after the spaces that indent it, of a fixed form with any numbers:
+    the command that fetches Ratchet, "<pre><code>" FETCH "</code></pre>", at the newest dated version, and the
+    count of rules, BUDGET, from ratchet.json. No other line of the page may hold "git clone", or 'id="budget"', so
+    the page shows no second command and no second count that is not written.
     """
     lines = text.split("\n")
-    found = [number for number, line in enumerate(lines) if PAGE_FETCH.match(line.lstrip(" "))]
-    others = sum(1 for number, line in enumerate(lines) if "git clone" in line and number not in found)
-    line = "<pre><code>%s</code></pre>" % (FETCH % released)
-    if (len(found), others) != (1, 0):
-        return None, ('%s: the command that fetches Ratchet must be one line "%s", once, and no other line may hold git clone. '
-                      "Found that line %d times, with any version, and %d other lines that hold git clone" % (PAGE, line, len(found), others))
-    at = found[0]
-    lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
-    return "\n".join(lines), None
+    problems = []
+    fetch = "<pre><code>%s</code></pre>" % (FETCH % released)
+    for pattern, marker, line, what, form in (
+            (PAGE_FETCH, "git clone", fetch, "the command that fetches Ratchet", "with any version"),
+            (PAGE_BUDGET, 'id="budget"', budget_text(data), "the count of rules", "with any numbers")):
+        found = [number for number, each in enumerate(lines) if pattern.match(each.lstrip(" "))]
+        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
+        if (len(found), others) != (1, 0):
+            problems.append('%s: %s must be one line "%s", once, and no other line may hold %s. Found that line %d times, %s, '
+                            "and %d other lines that hold %s" % (PAGE, what, line, marker, len(found), form, others, marker))
+            continue
+        at = found[0]
+        lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
+    if problems:
+        return None, problems
+    return "\n".join(lines), []
 
 
 def changelog_context(root):

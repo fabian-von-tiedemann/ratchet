@@ -17,6 +17,13 @@ Added:
 Changed:
 
 - `checks/generate.py` writes the version in the line of `docs/index.html` that fetches Ratchet, the newest version with a date, as the command in `README.md` names it. `--check` fails when the line is not current, is missing, stands twice, or another line of the page holds `git clone`. So the pull request of a release moves the page with the README when it runs `generate.py`.
+- `docs/index.html` explains the concept. A shorter opening says the problem and the promise and leads to "Start here". Two diagrams, ordered lists styled as boxes with arrows by CSS, with no script and no SVG, show how the ratchet turns, from a failure to a lesson, a check, the register and the release, and how this repo is run, from the control room to a reviewed and approved merge. Each step links to where the repo shows it. "What Ratchet builds on" lists the four sources in `sources.json`, each with its license, what Ratchet takes from it in Ratchet's own words, and the rules that cite it. "How it stays tight" gives the frozen core, the cap on experimental rules, batched releases, the daily watch of the sources, review before every merge, and the clean-out, which is planned and not built yet. The honest limits stay as they were.
+- `checks/generate.py` also writes the line of `docs/index.html` that gives the count of rules and the cap on experimental rules, from `ratchet.json`. `--check` fails when it is not current, is missing, stands twice, is of another form, or another line of the page holds `id="budget"`.
+- `checks/test_pages.py` reads the list of sources on the page against `sources.json` and the rules in `ratchet.json` that cite each, and fails on a source left out or out of order, a license that differs, or a rule too many or too few. A link out of the repo is allowed only to a source in `sources.json`, matched whole, and a link to an issue of the repo is allowed. Each step of a diagram must link into the repo. The new colors of the boxes and the accent are held to a contrast ratio of 4.5 in light and dark. See [checks/README.md](checks/README.md#the-landing-page).
+
+Fixed:
+
+- `checks/test_pages.py` read the line of the page that fetches Ratchet without stripping the spaces that indent it, so an indented line passed `generate.py --check` and failed the test. It now reads the line as `generate.py` does.
 
 ## 0.9 (2026-11-19)
 
