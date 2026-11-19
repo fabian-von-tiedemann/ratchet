@@ -858,6 +858,28 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.edit("README.md", "```sh\n   %s" % (FETCH % fetched), "```\n   %s" % (FETCH % fetched))
         self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
+    def test_entries_out_of_order_fail_and_the_readme_fetches_the_highest_dated_version(self):
+        # Review of PR #50, round 2, nonblocking: the generator took the first entry with a date for the pin, not the
+        # newest version. With the intact entry of 0.6 moved above 0.8 and 0.7, a README pinned to v0.6 passed.
+        version, fetched = first_entry(self.copy)
+        path = os.path.join(self.copy, "CHANGELOG.md")
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        start, end = text.index("## 0.6 ("), text.index("## 0.5 (")
+        moved, rest = text[start:end], text[:start] + text[end:]
+        at = rest.index("## %s (" % fetched)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(rest[:at] + moved + rest[at:])
+        self.edit("README.md", "--branch v%s " % fetched, "--branch v0.6 ")
+        self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
+                                "it. '## 0.6 (2026-11-19)' stands before '## %s (2026-11-19)'" % fetched)
+        self.assert_check_fails(fetch_problem(fetched, 0, 1))
+
+    def test_a_version_twice_in_the_changelog_fails(self):
+        self.edit("CHANGELOG.md", "## 0.6 (2026-11-19)\n", "## 0.7 (2026-11-19)\n")
+        self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
+                                "it. '## 0.7 (2026-11-19)' stands before '## 0.7 (2026-11-19)'")
+
     def test_only_the_first_entry_may_be_unreleased(self):
         self.edit("CHANGELOG.md", "## 0.8 (2026-11-19)\n", "## 0.8 (unreleased)\n")
         self.assert_check_fails("CHANGELOG.md: '## 0.8 (unreleased)' is headed (unreleased), and only the first entry may be")
