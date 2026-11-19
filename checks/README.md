@@ -188,7 +188,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 | An expected failure | A test marked `expectedFailure` fails, which does not fail a unittest run. | `Runs.test_an_expected_failure_fails` | Fails |
 | A skip decorator on a class | Every test of the class is skipped. | `Runs.test_a_skip_decorator_on_a_class_fails` | Fails |
 | A module that fails to import | discover gives a test that errors in its place. | `Runs.test_a_module_that_fails_to_import_fails` | Fails |
-| The release steps | The release of the version that `ratchet.json` names, 0.7 here, on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
+| The release steps | The release of the version that `ratchet.json` names, 0.8 here, on a copy: the workflow's regex finds the entry, the guard passes before and after the tag, and the full suite passes after it, run by this check. | `test_released_text.ReleaseSteps` | Passes |
 | A killed child | A test kills its own process. | `Runs.test_a_killed_child_fails` | Fails: the signal, no completion record, a test with no outcome |
 | A record of an unknown form | An unknown kind, an unknown or missing field, an instance that is not a whole number from 1, an unknown outcome, a sha256 or a name of another form, a line that is not one JSON object, a field twice, a line cut off, bytes that are not UTF-8. | `Records.test_a_record_of_a_form_the_check_does_not_know_fails` and the six after it | Fails |
 | A complete set | Nothing. Every fixture is loaded by a test that passes, as bytes, as text, as a copied file or as a copied directory. | `Runs.test_a_complete_set_passes`, `Runs.test_every_way_of_loading_counts`, `Records.test_a_complete_run_passes` | Passes |
@@ -282,7 +282,7 @@ Before it sends a request, the watch matches its path in full against one of the
 
 ```json
 {"name": "pstack", "repo": "https://github.com/cursor/plugins", "directory": "pstack",
- "author": "Lauren Tan", "commit": "bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7", "license": "MIT"}
+ "author": "Lauren Tan", "commit": "35a90942a7f02e1ebbc2443643179815f2147954", "license": "MIT"}
 ```
 
 - **The name** is lowercase letters, digits, `.`, `-` and `/`, starts with a letter or a digit, and is at most 100 characters long. It has no `_`, since the gate allows no `_` outside a link: in Markdown an `_` can start emphasis. 100 characters keep `Source pin missing: ` and the name at 120 characters, well within the 256 that GitHub takes for a title, so a title is never cut. A name that would be longer is refused. A name is used once, so two sources never share a title.
@@ -434,7 +434,7 @@ It also fails when a tag has no entry in the changelog (`ratchet.si-version`), w
 | A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
 | An annotated tag | Passes |
 | No tags, or no git checkout | Fails |
-| The release of the version that `ratchet.json` names, 0.7 here, on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before it, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
+| The release of the version that `ratchet.json` names, 0.8 here, on a copy of this repo, with `release.py`'s own code and no copy of it: `release.py notes` prints its one line, `release.publish` tags the merge and releases it on the history of `main` in the copy, read with `release.main_history`, against a fake GitHub that holds the tags and releases from before it, and the next scheduled run writes nothing. The guard passes before the tag and after it, and the full suite passes after it. Finding 3 of round 1 of the new approach | Passes |
 | After that release, a rule changed without a new version | Fails |
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right.
@@ -710,7 +710,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
 
-**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3`, `v0.4`, `v0.5` and `v0.6`, under `released/`.
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3`, `v0.4`, `v0.5`, `v0.6` and `v0.7`, under `released/`.
 
 | Case | Fixture | Result |
 |---|---|---|
@@ -718,7 +718,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3, 0.4, 0.5 and 0.6, upgraded to this version, and the steps in `UPGRADING.md` run on the register at 0.6 | `released/0.3/`, `released/0.4/`, `released/0.5/`, `released/0.6/` | Passes |
+| This repo's register at 0.3, 0.4, 0.5, 0.6 and 0.7, upgraded to this version, and the steps in `UPGRADING.md` run on the register at 0.7 | `released/0.3/`, `released/0.4/`, `released/0.5/`, `released/0.6/`, `released/0.7/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |

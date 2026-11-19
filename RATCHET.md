@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.7, 2026-11-19. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.8, 2026-11-19. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 Each rule has a **key**, a **ratchet** and a **source**.
@@ -24,7 +24,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.7, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.8, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -126,9 +126,9 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 <!-- generated:sources -->
 | Name | Repo | Commit | License |
 |---|---|---|---|
-| google\/elephant\-goldfish\-model | https\:\/\/github\.com\/google\/elephant\-goldfish\-model | `403d8881d62022490637d740657b33f01e321ea8` | Apache\-2\.0 |
+| google\/elephant\-goldfish\-model | https\:\/\/github\.com\/google\/elephant\-goldfish\-model | `70406c4d22cc7ea8299637c2c5b44625c48b3f08` | Apache\-2\.0 |
 | mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `5863806dd4e15c63174bee4e7515a4256792ecfa` | MIT |
-| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7` | MIT |
+| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `35a90942a7f02e1ebbc2443643179815f2147954` | MIT |
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
 <!-- /generated -->
 

@@ -6,14 +6,14 @@ This works for a register on 0.3 or later. A register written for 0.2 is moved b
 
 ## Steps
 
-Run these in the root of your own repo, on a branch of their own. The commands below move a register from 0.6 to 0.7. Put in the version your register states and the version you move to.
+Run these in the root of your own repo, on a branch of their own. The commands below move a register from 0.7 to 0.8. Put in the version your register states and the version you move to.
 
 1. Fetch the newer Ratchet into `.ratchet`, in place of the old one. Then take the `ratchet.json` of the version your register states from its tag, and keep it beside the new Ratchet.
 
    ```sh
    rm -rf .ratchet
-   git clone --branch v0.7 https://github.com/fabian-von-tiedemann/ratchet .ratchet
-   git -C .ratchet show v0.6:ratchet.json > .ratchet/from.json
+   git clone --branch v0.8 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git -C .ratchet show v0.7:ratchet.json > .ratchet/from.json
    ```
 
 2. Print what the register must do.
@@ -29,7 +29,7 @@ Run these in the root of your own repo, on a branch of their own. The commands b
    When every rule the register adopts was removed, the register must adopt at least one rule, because a register that adopts none does not pass the check. The script then says so, and prints the entries to choose from: the new rules, or the rules to start with when there are no new ones.
 4. Choose which new rules, if any, the project adopts. Each comes with its entry. Add a rule when a failure shows you need it, not because it is new. Before 1.0, a new version may rename a key: the changelog lists every rename, and the old key shows as removed and the new one as new. Before 1.0, a new version may also change the form of `ratchet.json`: the changelog lists every change of form.
 
-   When the fields at the top of `ratchet.json` differ between the two versions, the script says so after the steps. Nothing changes in the register for it. The checks in `.ratchet` come with the `ratchet.json` of their own version, so they need nothing. If the project keeps a copy of a Ratchet check, or has a check of its own, that reads `ratchet.json`, replace the copy with the one from the newer Ratchet, or change the check: Ratchet's checks read `ratchet.json` strictly, so the checks of one version refuse the `ratchet.json` of another whose form differs. From 0.4 to 0.5, `experimental_cap` is new. From 0.5 to 0.6, and from 0.6 to 0.7, the form does not change.
+   When the fields at the top of `ratchet.json` differ between the two versions, the script says so after the steps. Nothing changes in the register for it. The checks in `.ratchet` come with the `ratchet.json` of their own version, so they need nothing. If the project keeps a copy of a Ratchet check, or has a check of its own, that reads `ratchet.json`, replace the copy with the one from the newer Ratchet, or change the check: Ratchet's checks read `ratchet.json` strictly, so the checks of one version refuse the `ratchet.json` of another whose form differs. From 0.4 to 0.5, `experimental_cap` is new. From 0.5 to 0.6, from 0.6 to 0.7 and from 0.7 to 0.8, the form does not change.
 
    A rule whose check runs in the agent's harness, not in CI, needs that check copied into the project. From 0.7, that is `ratchet.irreversible-waits`, whose check is the hook `checks/tripwire.py`: a project that adopts the rule keeps a copy at `.claude/hooks/tripwire.py`, as [CONTROL-ROOM.md](CONTROL-ROOM.md#what-cannot-be-undone) says, and replaces it with the one from the newer Ratchet at each upgrade.
 5. Write `REGISTER.md` again and check it.
@@ -42,7 +42,7 @@ Run these in the root of your own repo, on a branch of their own. The commands b
 6. In `.github/workflows/ratchet.yml`, put in the commit of the new tag. This prints it.
 
    ```sh
-   git -C .ratchet rev-parse "v0.7^{commit}"
+   git -C .ratchet rev-parse "v0.8^{commit}"
    ```
 
 7. Open the PR. Its description holds the output of `upgrade.py` and of the check, and says which new rules the project adopted and why. Read why each rule changed in the newer Ratchet's [CHANGELOG.md](CHANGELOG.md), in the entries after your old version.
