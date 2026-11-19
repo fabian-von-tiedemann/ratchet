@@ -6,11 +6,15 @@
 
 ## Question
 
-Five choices put to the maintainer together, each with a recommendation. They came after Codex rejected PR #42 twice for the same kind of fault. The reasoning that came with them, in Swedish and in English, is given here in summary, not verbatim.
+Five choices put to the maintainer together, each with a recommendation. They came after Codex rejected PR #42 twice for the same kind of fault. The text that came with them, in the original Swedish (with the link to #42 as plain text) and in English:
 
-> Codex underkände #42 två gånger av samma skäl: det fanns vägar förbi en krok som skulle läsa skalkommandon säkert. En krok som läser skalet kan aldrig bli ett lås. Det som måste vara ett riktigt lås ska därför sitta där det inte går att ta sig förbi, hos GitHub och i sandlådan.
+> Codex har underkänt #42 två gånger av samma skäl. Kroken skulle tolka shellkommandon säkert, men båda gångerna fanns det sätt att ta sig förbi den. I runda 2 hittade Codex åtta sådana, bland annat `printf %n d` och `find . -delete`. Kontrollerna gick igenom, och testerna gav samma resultat i fem körningar. Enligt regeln kör jag ingen tredje runda. Granskningen ligger som kommentar på PR:en.
+>
+> **Slutsatsen är att en krok som tolkar skalet aldrig kan bli ett lås.** Det som behöver vara ett riktigt lås bör sitta där det inte går att ta sig förbi: hos GitHub och i sandlådan. Här är det nya angreppssättet i fem val:
 
-> Codex rejected #42 twice for the same reason: there were ways past a hook that was meant to read shell commands safely. A hook that reads the shell can never become a lock. What must be a real lock therefore sits where it cannot be got around, at GitHub and in the sandbox.
+> Codex has rejected #42 twice for the same reason. The hook was meant to read shell commands safely, but both times there were ways past it. In round 2 Codex found eight, among them `printf %n d` and `find . -delete`. The checks passed, and the tests gave the same result in five runs. By the rule, I run no third round. The review is a comment on the PR.
+>
+> **The conclusion is that a hook that reads the shell can never become a lock.** What needs to be a real lock should sit where it cannot be got around: at GitHub and in the sandbox. Here is the new approach in five choices:
 
 Original, in Swedish:
 
