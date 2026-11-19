@@ -60,10 +60,8 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
 1. Fetch Ratchet at the latest release into `.ratchet`.
 
    ```sh
-   git clone --branch v0.8 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git clone --branch v0.9 https://github.com/fabian-von-tiedemann/ratchet .ratchet
    ```
-
-   `init.py` is new in 0.9, which is not released yet, and 0.8 does not have it. Until 0.9 is released, follow [Start here in 0.8](https://github.com/fabian-von-tiedemann/ratchet/blob/v0.8/README.md#start-here) instead.
 
 2. See what it would write. This writes nothing.
 
