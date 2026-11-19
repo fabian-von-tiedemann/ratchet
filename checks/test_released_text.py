@@ -262,9 +262,9 @@ class Guard(unittest.TestCase):
 
 
 class ReleaseSteps(unittest.TestCase):
-    """The steps of the release of 0.5 on a copy of this repo, and the state after it.
+    """The steps of the release of 0.6 on a copy of this repo, and the state after it.
 
-    The version is already 0.5 in ratchet.json, so a release renames nothing: the release workflow runs
+    The version is already 0.6 in ratchet.json, so a release renames nothing: the release workflow runs
     checks/release.py, which tags the merge and writes its one fixed line (D-2026-11-17-release-links). Every
     step is release.py's own code, never a copy of it. The copy gets tags that hold the changelog of each
     released version as it stands in the copy, which the guard in CI shows to be the changelog at the real tags,
@@ -289,7 +289,7 @@ class ReleaseSteps(unittest.TestCase):
     def tag_the_releases_before(self):
         """Tags for every version before the one being released, oldest first, each with the changelog up to its own entry.
 
-        ratchet.json is first on main in 0.3, as in this repo, so the history that release.py reads names 0.3, 0.4 and 0.5.
+        ratchet.json is first on main in 0.3, as in this repo, so the history that release.py reads names 0.3, 0.4, 0.5 and 0.6.
         """
         git(self.copy, "init", "-q")
         entries = self.entries()
@@ -317,7 +317,7 @@ class ReleaseSteps(unittest.TestCase):
         write(self.copy, "ratchet.json", data)
 
     def github(self):
-        """GitHub as it stands before 0.5: a tag for each older version, and a published release for each but 0.1."""
+        """GitHub as it stands before 0.6: a tag for each older version, and a published release for each but 0.1."""
         tags = dict((version, ("commit", git(self.copy, "rev-parse", "v%s^{commit}" % version).strip()))
                     for version, _ in self.entries()[1:])
         releases = [{"tag_name": "v" + version, "draft": False} for version in tags if version not in release.BEFORE_RELEASES]
@@ -329,8 +329,8 @@ class ReleaseSteps(unittest.TestCase):
         release.publish(self.version, self.changelog, release.main_history(self.copy, sha), test_release.REPO, sha, github, out, **report)
         return out.getvalue()
 
-    def test_the_release_of_0_5_finds_its_entry_and_everything_passes_after_it(self):
-        self.assertEqual(self.version, "0.5")
+    def test_the_release_of_0_6_finds_its_entry_and_everything_passes_after_it(self):
+        self.assertEqual(self.version, "0.6")
         # The checks that the release workflow runs before it tags.
         for script, args in (("generate.py", ["--check"]), ("check_register.py", ["register.json", "--markdown", "REGISTER.md"])):
             with self.subTest(step=script):
@@ -341,36 +341,36 @@ class ReleaseSteps(unittest.TestCase):
         self.assertEqual((code, output), (0, release.release_text(self.version, test_release.REPO) + "\n"))
         # release.py reads only the headings of the changelog. It finds this version first, and nothing newer.
         self.assertEqual(release.changelog_versions(self.changelog), [version for version, _ in self.entries()])
-        # What the entry of 0.5 says: the upgrade path and the budget that 0.5 releases, the one rule it changes, and
-        # the change of form that the changed rule allows before 1.0, with what a project does about it.
+        # What the entry of 0.6 says: the one rule it adds, the phases, the decisions it comes from, the count that
+        # brings the rules outside the core to 22 of 25, and that the form of ratchet.json does not change.
         entry = self.entries()[0][1]
-        for words in ("Ratchet 0.5, computed from `ratchet.json`", "under a cap of 25", "No rule is added or removed in this version, and one is changed.",
-                      "Added:", "`checks/upgrade.py`", "`UPGRADING.md`", "`experimental_cap`", "`D-2026-11-17-pull-and-budget`",
-                      "Changed:", "`ratchet.si-version`", "`D-2026-11-18-form-change-before-1-0`",
-                      "Changes of form:", "a required field", "A project whose checks are those in `.ratchet`"):
+        for words in ("Ratchet 0.6, computed from `ratchet.json`", "Outside the core there are 22 experimental rules, under a cap of 25",
+                      "One rule is added in this version, and none is changed or removed.", "The form of `ratchet.json` does not change.",
+                      "`D-2026-11-17-knowledge-and-modes`", "`D-2026-11-19-locks-not-parsing`", "Added:", "`ratchet.phases`", "explore, build and run"):
             self.assertIn(words, entry)
-        self.assertNotIn("No rule is added, changed or removed", entry)
+        self.assertNotIn("Changes of form:", entry)
+        self.assertNotIn("irreversible", entry)
         self.assertNotIn("nreleased", entry)
         # The release: release.py tags the merge and writes its one line, after every check it makes.
         self.tag_the_releases_before()
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
         git(self.copy, "add", "-A")
-        git(self.copy, "commit", "-q", "--allow-empty", "-m", "Merge 0.5")
+        git(self.copy, "commit", "-q", "--allow-empty", "-m", "Merge 0.6")
         sha = git(self.copy, "rev-parse", "HEAD").strip()
         github = self.github()
-        self.assertEqual(self.publish(github, sha), "Tagged v0.5 at %s and released Ratchet 0.5.\n" % sha)
+        self.assertEqual(self.publish(github, sha), "Tagged v0.6 at %s and released Ratchet 0.6.\n" % sha)
         path = "/repos/%s" % test_release.REPO
         self.assertEqual(github.writes, [("POST", path + "/git/refs"), ("POST", path + "/releases")])
         self.assertEqual(github.releases[-1]["body"], release.release_text(self.version, test_release.REPO))
-        git(self.copy, "tag", "v0.5")
+        git(self.copy, "tag", "v0.6")
         # The next scheduled run of the release workflow finds every version finished, and writes nothing.
         writes = list(github.writes)
-        self.assertEqual(self.publish(github, sha, report=True), "v0.5 is tagged at this commit and released. Nothing to do.\n")
+        self.assertEqual(self.publish(github, sha, report=True), "v0.6 is tagged at this commit and released. Nothing to do.\n")
         self.assertEqual(github.writes, writes)
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
-        self.assertIn("in 5 tags", output)
+        self.assertIn("in 6 tags", output)
         # After it, the full suite passes in the copy, run by the check that every expected test ran. This module
         # holds no test in that run, so that it does not run itself again.
         write(self.copy, "checks/test_released_text.py", '"""Left out of the run inside ReleaseSteps, which runs this module."""\n')
@@ -380,7 +380,7 @@ class ReleaseSteps(unittest.TestCase):
 
     def test_after_the_release_a_rule_changed_without_a_new_version_fails_the_guard(self):
         self.tag_the_releases_before()
-        commit_and_tag(self.copy, "v0.5")
+        commit_and_tag(self.copy, "v0.6")
         rule = "Only the owner approves decisions."
         for name in ("ratchet.json", "register.json"):
             path = os.path.join(self.copy, name)
@@ -394,7 +394,7 @@ class ReleaseSteps(unittest.TestCase):
         self.assertEqual(code, 0, output)
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 1, output)
-        self.assertIn("ratchet.json: names 0.5, which is released, and is not as it stood at the tag v0.5. A change to the rules raises the version", output)
+        self.assertIn("ratchet.json: names 0.6, which is released, and is not as it stood at the tag v0.6. A change to the rules raises the version", output)
 
 
 if __name__ == "__main__":
