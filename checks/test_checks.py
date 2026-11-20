@@ -31,6 +31,10 @@ VERSION = "must be exactly a version like"
 NOT_GENERATED = "REGISTER.md: is not what register.json generates"
 NOT_UTF8 = "is not valid UTF-8"
 EMOJI_NAME = "which is a name between two colons"
+INSTRUCTIONS = "instructions must be the path of a Markdown file in the repo"
+BLOCK_NOT_GENERATED = "AGENTS.md: the block between the markers is not what register.json generates"
+MARKERS = "AGENTS.md: the markers of the generated block are broken"
+MARKER_LINE = "must be exactly <!-- ratchet:"
 
 
 def outside(field, code):
@@ -138,7 +142,67 @@ FAILING_DATA = {
     "project-emoji-name": "project must be the project's name: it has :example:, " + EMOJI_NAME,
     "where-emoji-name": "ratchet.register-on-top: where has :example:, " + EMOJI_NAME,
     "version-other-digits": VERSION,
+    # The register may name an instruction file, which holds the block that the check generates (D-2026-11-20-generated-block).
+    "instructions-outside": INSTRUCTIONS,
+    "instructions-absolute": INSTRUCTIONS,
+    "instructions-not-markdown": INSTRUCTIONS,
+    "instructions-not-text": INSTRUCTIONS,
+    "instructions-hidden": INSTRUCTIONS,
+    "instructions-marker-in-code": "a value holds ratchet:end in code, and the block of rules for AGENTS.md would hold it outside",
+    # An adopted rule may carry a translation, bound to the English rule by its sha256 (#77).
+    "translation-wrong-hash": "ratchet.register-on-top: the translation is bound to sha256 ",
+    "translation-hash-form": "ratchet.register-on-top: translation sha256 must be 64 characters 0 to 9 and a to f",
+    "translation-on-own": "example.changelog: an own rule has no translation",
+    "translation-on-unknown": "ratchet.ship-first is not a rule in Ratchet",
+    "translation-unknown-field": "ratchet.register-on-top: translation: unknown field 'reviewed_by'",
+    "translation-missing-field": "ratchet.register-on-top: translation: missing field 'sha256'",
+    "translation-not-object": "ratchet.register-on-top: translation must be an object with the fields language, text and sha256",
+    "translation-not-text": "ratchet.register-on-top: translation: every field must be a string",
+    "translation-cyrillic-letter": "ratchet.register-on-top: " + outside("translation text", "0430"),
+    "translation-han-letter": "ratchet.register-on-top: " + outside("translation text", "4E2D"),
+    "translation-zero-width": "ratchet.register-on-top: " + outside("translation text", "200B"),
+    "translation-language": "ratchet.register-on-top: translation language must be a language code",
+    "translation-no-words": "ratchet.register-on-top: the translation holds no words",
+    # A rule of the project's own may say where its check stands, on the same terms as an adopted rule (#60).
+    "own-status-on-text-only": "example.changelog is text only. It cannot have a status or a place where its check lives",
+    "own-built-nowhere": "example.changelog is marked built but does not say where the check lives",
+    "own-status-invalid": 'the status of example.changelog is "done". It must be "built" or "text only for now"',
+    "own-where-without-status": 'example.changelog says where its check lives and has no status',
+    "own-where-hidden": "example.changelog: " + outside("where", "200B"),
+    "own-unknown-field": "example.changelog: unknown field 'waived'",
+    "own-missing-field": "example.changelog: missing field 'source'",
 }
+
+# Fixtures with a clean register.json that names AGENTS.md, and an AGENTS.md whose block is not what it generates,
+# or whose markers are broken. Fixture name -> the text the check must print.
+FAILING_BLOCK = {
+    "block-edited": BLOCK_NOT_GENERATED,
+    "block-row-in-comment": BLOCK_NOT_GENERATED,
+    "block-extra-line": BLOCK_NOT_GENERATED,
+    "block-stale": BLOCK_NOT_GENERATED,
+    "block-translation-edited": BLOCK_NOT_GENERATED,
+    "block-crlf-inside": BLOCK_NOT_GENERATED,
+    "block-no-markers": "AGENTS.md: holds no generated block, and register.json names it in instructions",
+    "block-missing-begin": MARKERS,
+    "block-missing-end": MARKERS,
+    "block-doubled-begin": MARKERS,
+    "block-doubled": MARKERS,
+    "block-marker-in-code-block": MARKERS,
+    "block-marker-spaces": MARKER_LINE,
+    "block-marker-no-spaces": MARKER_LINE,
+    "block-marker-indented": MARKER_LINE,
+    "block-marker-trailing-space": MARKER_LINE,
+    "block-marker-text-after": MARKER_LINE,
+    "block-marker-case": MARKER_LINE,
+    "block-crlf-marker": MARKER_LINE,
+    "block-crlf": MARKER_LINE,
+    "block-end-no-newline": MARKER_LINE,
+    "block-end-before-begin": "AGENTS.md: the line <!-- ratchet:end --> stands before <!-- ratchet:begin -->",
+    "block-not-utf8": "AGENTS.md: " + NOT_UTF8,
+    "block-file-missing": "AGENTS.md: the file is missing. register.json names it in instructions",
+}
+# Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates.
+PASSING_BLOCK = ("block-clean", "block-crlf-outside")
 
 # Fixtures with a clean register.json and a REGISTER.md that is not what it generates.
 FAILING_MARKDOWN = (
@@ -395,7 +459,8 @@ class RegisterCheck(FixtureTest):
 
     def test_every_fixture_has_an_expectation(self):
         self.assertEqual(sorted(os.listdir(REGISTERS)), sorted(
-            list(FAILING_DATA) + list(FAILING_MARKDOWN) + ["clean", "escaped", "latin", "references", "md-missing", "md-not-utf8"]))
+            list(FAILING_DATA) + list(FAILING_MARKDOWN) + list(FAILING_BLOCK) + list(PASSING_BLOCK)
+            + ["clean", "escaped", "latin", "references", "md-missing", "md-not-utf8"]))
 
     def test_the_template_and_this_repos_register_pass(self):
         code, output = run("check_register.py", os.path.join(ROOT, "templates", "register.json"))
@@ -440,6 +505,140 @@ class RegisterCheck(FixtureTest):
         self.assertEqual(code, 1, output)
         self.assertIn("the rule of ratchet.example-one differs from Ratchet 9.9", output)
         self.assertIn("FAIL: 1 problem(s)", output)
+
+
+class RegisterBlock(FixtureTest):
+    """The block that check_register.py generates into the instruction file the register names (D-2026-11-20-generated-block)."""
+
+    def block(self, name, *args):
+        """A copy of the fixture's directory, and what the check says about its register.json and the file it names."""
+        directory = self.fixture_directory("register/" + name)
+        return directory, run("check_register.py", os.path.join(directory, "register.json"), *args)
+
+    def agents(self, directory):
+        with open(os.path.join(directory, "AGENTS.md"), "rb") as handle:
+            return handle.read()
+
+    def test_a_block_that_is_what_the_register_generates_passes(self):
+        for name in PASSING_BLOCK:
+            with self.subTest(fixture=name):
+                directory, (code, output) = self.block(name)
+                self.assertEqual(code, 0, output)
+                self.assertIn("AGENTS.md: the block between the markers is what register.json generates", output)
+                code, output = run("check_register.py", os.path.join(directory, "register.json"),
+                                   "--markdown", os.path.join(directory, "REGISTER.md"), "--agents", os.path.join(directory, "AGENTS.md"))
+                self.assertEqual(code, 0, output)
+        self.assertIn("1 translated", self.block("block-clean")[1][1])
+
+    def test_every_fault_in_the_block_fails_for_its_own_reason(self):
+        for name, message in sorted(FAILING_BLOCK.items()):
+            with self.subTest(fixture=name):
+                directory, (code, output) = self.block(name)
+                self.assertEqual(code, 1, output)
+                self.assertIn(message, output)
+                self.assertIn("FAIL: 1 problem(s)", output, "a fixture carries exactly one fault")
+                self.assertNotIn("Traceback", output)
+
+    def test_the_block_shows_the_translation_the_english_rule_and_where_each_check_stands(self):
+        text = self.fixture_text("register/block-clean/AGENTS.md")
+        self.assertEqual(text.count("<!-- ratchet:begin -->\n"), 1)
+        self.assertEqual(text.count("<!-- ratchet:end -->\n"), 1)
+        block = text.split("<!-- ratchet:begin -->\n")[1].split("<!-- ratchet:end -->\n")[0]
+        register = json.loads(self.fixture_text("register/block-clean/register.json"))
+        translated = next(entry for entry in register["adopted"] if "translation" in entry)
+        sys.path.insert(0, HERE)
+        import registry
+        for line in (
+            "Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand",
+            registry.row(translated),
+            "| %s | %s | %s |" % (translated["key"], translated["translation"]["language"], registry.cell(translated["translation"]["text"])),
+            "| example.changelog | built | `checks/changelog.sh` |",
+        ):
+            self.assertIn(line, block)
+        self.assertIn("Varje regel", block, "Swedish letters stand as themselves")
+        self.assertIn("\u00e5", block)
+        # The rest of the file is the project's own, and is never read.
+        self.assertTrue(text.startswith("# Working rules for the example project\n"))
+        self.assertIn("<!-- a comment of the project's own -->", text.split("<!-- ratchet:begin -->")[0])
+
+    def test_a_translation_is_bound_to_the_sha256_of_the_english_rule(self):
+        import hashlib
+        register = json.loads(self.fixture_text("register/block-clean/register.json"))
+        rules = json.loads(read("ratchet.json"))["rules"]
+        by_key = dict((rule["key"], rule) for rule in rules)
+        translated = [entry for entry in register["adopted"] if "translation" in entry]
+        self.assertTrue(translated)
+        for entry in translated:
+            self.assertEqual(entry["translation"]["sha256"], hashlib.sha256(by_key[entry["key"]]["rule"].encode("utf-8")).hexdigest())
+
+    def test_writing_the_block_changes_only_the_block_and_gives_what_the_check_accepts(self):
+        clean = self.fixture_bytes("register/block-clean/AGENTS.md")
+        begin, end = clean.index(b"<!-- ratchet:begin -->"), clean.index(b"<!-- ratchet:end -->\n") + len(b"<!-- ratchet:end -->\n")
+        for name in ("block-edited", "block-stale", "block-row-in-comment", "block-extra-line", "block-translation-edited", "block-crlf-inside"):
+            with self.subTest(fixture=name):
+                directory, (code, output) = self.block(name, "--write-block")
+                self.assertEqual(code, 0, output)
+                self.assertIn("wrote the block in", output)
+                self.assertEqual(self.agents(directory), clean)
+        directory, (code, output) = self.block("block-no-markers", "--write-block")
+        self.assertEqual(code, 0, output)
+        before = self.fixture_bytes("register/block-no-markers/AGENTS.md")
+        self.assertEqual(self.agents(directory), before + b"\n" + clean[begin:end])
+        self.assertEqual(self.block("block-no-markers")[1][0], 1, "the fixture fails before the block is written")
+        code, output = run("check_register.py", os.path.join(directory, "register.json"))
+        self.assertEqual(code, 0, output)
+
+    def test_writing_the_block_keeps_the_rest_of_the_file_byte_for_byte(self):
+        directory, (code, output) = self.block("block-crlf-outside", "--write-block")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.agents(directory), self.fixture_bytes("register/block-crlf-outside/AGENTS.md"))
+
+    def test_a_new_file_holds_only_the_block(self):
+        clean = self.fixture_bytes("register/block-clean/AGENTS.md")
+        begin, end = clean.index(b"<!-- ratchet:begin -->"), clean.index(b"<!-- ratchet:end -->\n") + len(b"<!-- ratchet:end -->\n")
+        directory, (code, output) = self.block("block-file-missing", "--write-block")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.agents(directory), clean[begin:end])
+
+    def test_no_block_is_written_where_the_markers_are_broken(self):
+        for name in sorted(FAILING_BLOCK):
+            if FAILING_BLOCK[name] not in (MARKERS, MARKER_LINE) and name not in ("block-not-utf8", "block-end-before-begin"):
+                continue
+            with self.subTest(fixture=name):
+                directory = self.fixture_directory("register/" + name)
+                before = self.agents(directory)
+                code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
+                self.assertEqual(code, 1, output)
+                self.assertIn("AGENTS.md: the block is not written", output)
+                self.assertEqual(self.agents(directory), before)
+                self.assertNotIn("Traceback", output)
+
+    def test_no_block_is_written_from_a_register_that_fails(self):
+        directory = self.fixture_directory("register/block-clean")
+        path = os.path.join(directory, "register.json")
+        with open(path, encoding="utf-8") as handle:
+            register = json.load(handle)
+        register["own"][0]["status"] = "done"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(register, handle)
+        before = self.agents(directory)
+        code, output = run("check_register.py", path, "--write-block")
+        self.assertEqual(code, 1, output)
+        self.assertEqual(self.agents(directory), before)
+
+    def test_writing_the_block_needs_an_instruction_file_in_the_register(self):
+        code, output = run("check_register.py", self.fixture_file("register/clean/register.json"), "--write-block")
+        self.assertEqual(code, 1, output)
+        self.assertIn("register.json names no instruction file in instructions, so there is no block to write", output)
+
+    def test_a_block_typed_by_hand_passes_and_its_translation_is_bound_by_a_hash_typed_by_hand(self):
+        handwritten = self.fixture_directory("handwritten")
+        source = os.path.join(handwritten, "ratchet.json")
+        code, output = run("check_register.py", "--source", source, os.path.join(handwritten, "block", "register.json"),
+                           "--markdown", os.path.join(handwritten, "block", "REGISTER.md"))
+        self.assertEqual(code, 0, output)
+        self.assertIn("block/AGENTS.md: the block between the markers is what register.json generates", output)
+        self.assertIn("1 rules of the project's own, 1 with a status: 1 built", output)
 
 
 class RepoCopy:
@@ -670,6 +869,30 @@ class GeneratedText(RepoCopy, unittest.TestCase):
     def test_this_repos_register_edited_by_hand_fails(self):
         self.edit("REGISTER.md", "| ratchet.no-secrets | text only for now |", "| ratchet.no-secrets | built |")
         self.assert_check_fails("REGISTER.md: generated text is out of date or was edited by hand")
+
+    def test_this_repos_agents_md_carries_the_block_and_an_edit_to_it_fails(self):
+        code, output = run("check_register.py", os.path.join(self.copy, "register.json"))
+        self.assertEqual(code, 0, output)
+        self.assertIn("AGENTS.md: the block between the markers is what register.json generates", output)
+        self.edit("AGENTS.md", "| ratchet.no-secrets | text only for now |", "| ratchet.no-secrets | built |")
+        code, output = run("check_register.py", os.path.join(self.copy, "register.json"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("AGENTS.md: the block between the markers is not what register.json generates", output)
+        self.assert_check_fails("AGENTS.md: generated text is out of date or was edited by hand")
+
+    def test_generate_writes_the_block_of_this_repos_agents_md(self):
+        self.edit("AGENTS.md", "| ratchet.no-secrets | text only for now |", "| ratchet.no-secrets | built |")
+        code, output = run("generate.py", root=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote AGENTS.md", output)
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+        with open(os.path.join(self.copy, "AGENTS.md"), "rb") as handle:
+            self.assertEqual(handle.read(), read("AGENTS.md").encode("utf-8"))
+
+    def test_broken_markers_in_this_repos_agents_md_fail_the_generator(self):
+        self.edit("AGENTS.md", "<!-- ratchet:end -->", "<!-- ratchet:end -->\n<!-- ratchet:end -->")
+        self.assert_check_fails("AGENTS.md: the markers of the generated block are broken")
 
     def test_this_repos_register_data_with_a_changed_rule_fails(self):
         self.edit("register.json", "Only the owner approves decisions.", "The owner usually approves decisions.")

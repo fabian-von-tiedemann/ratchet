@@ -1,0 +1,30 @@
+{
+  "project": "a project written by hand",
+  "ratchet_version": "9.9",
+  "instructions": "AGENTS.md",
+  "adopted": [
+    {
+      "key": "ratchet.example-one",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": "",
+      "status": "built",
+      "where": "`.github/workflows/tests.yml`",
+      "translation": {
+        "language": "sv",
+        "text": "Varje ändring har ett test.",
+        "sha256": "7db12398307fdd419705f08843faff5a0b308b6c8e3111b1098f6e7a59b80785"
+      }
+    }
+  ],
+  "own": [
+    {
+      "key": "hand.lint",
+      "rule": "Every file passes the lint.",
+      "ratchet": "Check: the lint runs on every PR",
+      "source": "",
+      "status": "built",
+      "where": "`.github/workflows/lint.yml`"
+    }
+  ]
+}

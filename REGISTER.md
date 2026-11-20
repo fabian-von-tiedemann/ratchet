@@ -30,7 +30,7 @@ Ratchet version: 0.10. The rows below are copied verbatim from Ratchet at that v
 
 ## Where each check stands
 
-One row for each adopted rule whose ratchet starts with "Check:". The status is "built" or "text only for now". A built check says where it lives.
+One row for each adopted rule whose ratchet starts with "Check:". The status is "built" or "text only for now". A built check says where it lives. Then one row for each of the project's own rules that has a status.
 
 | Key | Status | Where the check lives |
 |---|---|---|
@@ -45,6 +45,10 @@ One row for each adopted rule whose ratchet starts with "Check:". The status is 
 | ratchet.irreversible-waits | built | The tripwire `checks/tripwire.py` runs from `.claude/settings.json` in every Claude Code session in this repo and denies the cases that `checks/README.md` lists\, not every spelling\. Three locks sit with GitHub\. The tag ruleset `tags-stay`\, which the maintainer applied from `templates/tag-ruleset.json` and the control room read back on 2026\-11\-19 with the agents\' account\, refuses moving or deleting a tag \(D\-2026\-11\-19\-tag\-ruleset\-scope\)\. The release workflow created the tag `v0.7` under it\. No deletion or move of a tag has been tried\. The role Write of the agents\' account refuses the settings that only an admin may change\, among them rulesets\, branch protection\, webhooks\, deploy keys\, collaborators and environments\. The ruleset on `main` refuses a force push to `main`\. No lock refuses the rest\, which is caught by the tripwire alone\: creating a tag or a release\, a force push to another branch\, the Actions secrets and variables that the role Write may change\, the other secrets and enabling a workflow \(D\-2026\-11\-19\-tripwire\-and\-settings\)\. So is deleting outside the working tree\, until the trial of a sandbox for the workspaces locks it |
 | ratchet.si-harden | text only for now | Followed\, not built\. AGENTS\.md makes it the work of this repo now\. `checks/generate.py` writes the count of rules by kind of ratchet into every entry of CHANGELOG\.md\, so the count is made at each version and not at a fixed interval\, and it does not show which checks have failed on a real or seeded violation |
 | ratchet.expected-tests-ran | built | `checks/expected_tests.py`\, run by `.github/workflows/checks.yml` in a step of its own\. It runs the suite in a child process through `checks/suite_runner.py` |
+| repo.rules-as-data | built | `checks/generate.py --check`\, run by `.github/workflows/checks.yml` |
+| repo.checks-fail-on-fixtures | built | `checks/test_checks.py`\, run by `.github/workflows/checks.yml` |
+| repo.version | built | `checks/released_text.py`\, run by `.github/workflows/checks.yml` |
+| repo.new-rule-used | built | `checks/generate.py --check`\, run by `.github/workflows/checks.yml` |
 
 ## The project's own rules
 

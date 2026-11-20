@@ -10,10 +10,31 @@ rewrites one.
     python3 checks/check_register.py register.json --write REGISTER.md
     python3 checks/check_register.py register.json --markdown REGISTER.md
     python3 checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
+    python3 checks/check_register.py register.json --write-block
 
 REGISTER.md is generated from the data file. With --markdown the check also fails
 unless REGISTER.md is, byte for byte, what the data file generates. The check
 never reads rules out of Markdown.
+
+The register may name, in "instructions", the project's own instruction file, such as
+AGENTS.md or CLAUDE.md, relative to the register. The check then generates a block of
+the rules from the register and fails unless the file holds exactly one line
+"<!-- ratchet:begin -->" and one line "<!-- ratchet:end -->", each alone on its line
+and ending in LF, and between them, byte for byte, the block. A line that holds
+"ratchet:begin" or "ratchet:end" in any other form, in any case, is a broken marker.
+Nothing else in the file is read: it must be UTF-8, and the rest of it is the
+project's own. --write-block writes the block between the markers, or at the end of
+a file that has none, and changes no other byte of the file
+(D-2026-11-20-generated-block).
+
+An adopted rule may carry a translation of its rule: a language code, the text, and
+the sha256 of the English rule it translates. The check fails when the sha256 is not
+that of the rule's text in Ratchet at the version the register states, so a rule
+that changes fails until its translation is made again. The translation is text from
+the same fixed list as every value: Latin script only.
+
+An own rule may say where its check stands, with "status" and "where", on the same
+terms as an adopted rule, but it does not have to.
 
 With --agents the check also fails while the file given still holds a placeholder
 of templates/AGENTS.md, from the fixed list PLACEHOLDERS, and names each. It looks
@@ -35,6 +56,7 @@ Standard library only. Run on Python 3.9 and 3.12.
 """
 
 import argparse
+import hashlib
 import os
 import re
 import sys
@@ -44,6 +66,20 @@ import registry
 TOP_FIELDS = ("project", "ratchet_version", "adopted", "own")
 RULE_FIELDS = ("key", "rule", "ratchet", "source")
 STATUS_FIELDS = ("status", "where")
+# The fields a register may leave out, from 0.10 (D-2026-11-20-generated-block). A register without them is as before.
+INSTRUCTIONS = "instructions"
+TRANSLATION = "translation"
+TRANSLATION_FIELDS = ("language", "text", "sha256")
+# A language code: two or three lowercase letters, and a region of two capitals after a hyphen if needed, such as sv or pt-BR.
+LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?\Z")
+SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
+# One part of the path of the instruction file: letters, digits, ".", "_" and "-". The whole path ends in ".md".
+PATH_PART = re.compile(r"^[A-Za-z0-9._-]+\Z")
+PATH_LENGTH = 200
+BEGIN = "<!-- ratchet:begin -->"
+END = "<!-- ratchet:end -->"
+# The words of the two markers, in any case, wherever they stand in the instruction file. Each must stand once.
+MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
 STATUSES = ("built", "text only for now")
 OWN_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 
@@ -61,6 +97,17 @@ STANDS = (
 )
 OWN = "Same form as Ratchet's. The keys use the project's own prefix, never `ratchet.`."
 NO_OWN = "None yet."
+STANDS_OWN = " Then one row for each of the project's own rules that has a status."
+TRANSLATIONS = (
+    "A translation is there for the people who read the rules in that language. The English text above is the rule. "
+    "Each translation is bound to the English text it translates by that text's sha256, so a rule that changes fails "
+    "the check until its translation is made again."
+)
+BLOCK_INTRO = (
+    "Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` "
+    "and write the block again with `check_register.py register.json --write-block`. The check fails on any other text "
+    "between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo."
+)
 
 # The placeholders of templates/AGENTS.md, exactly as they stand there and in the order they start. A placeholder
 # inside another one is on the list on its own, after it, since an edit may take the outer one away and leave the
@@ -89,7 +136,7 @@ def check(register, ratchet):
     if not isinstance(register, dict):
         return ["the register must be one object with the fields %s" % ", ".join(TOP_FIELDS)], None
     problems = ["missing field %r" % field for field in TOP_FIELDS if field not in register]
-    problems += ["unknown field %r" % field for field in sorted(set(register) - set(TOP_FIELDS))]
+    problems += ["unknown field %r" % field for field in sorted(set(register) - set(TOP_FIELDS) - {INSTRUCTIONS})]
     if problems:
         return problems, None
 
@@ -106,12 +153,14 @@ def check(register, ratchet):
     for field in ("adopted", "own"):
         if not isinstance(register[field], list):
             problems.append("%s must be a list" % field)
+    if INSTRUCTIONS in register and instructions_problem(register[INSTRUCTIONS]):
+        problems.append(instructions_problem(register[INSTRUCTIONS]))
     if problems:
         return problems, None
 
     by_key = registry.rules_by_key(ratchet)
     seen = set()
-    built = needs = core = 0
+    built = needs = core = translated = 0
     for number, entry in enumerate(register["adopted"], 1):
         name = "adopted rule %d" % number
         if not isinstance(entry, dict):
@@ -120,12 +169,12 @@ def check(register, ratchet):
         if isinstance(entry.get("key"), str):
             name = entry["key"]
         missing = [field for field in RULE_FIELDS if field not in entry]
-        unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS))
+        unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS) - {TRANSLATION})
         if missing or unknown:
             problems += ["%s: missing field %r" % (name, field) for field in missing]
             problems += ["%s: unknown field %r" % (name, field) for field in unknown]
             continue
-        if not all(isinstance(value, str) for value in entry.values()):
+        if not all(isinstance(value, str) for field, value in entry.items() if field != TRANSLATION):
             problems.append("%s: every field must be a string" % name)
             continue
         if entry["key"] not in by_key:
@@ -145,6 +194,12 @@ def check(register, ratchet):
                 )
         if differs:
             continue
+        if TRANSLATION in entry:
+            found = translation_problem(entry[TRANSLATION], rule["rule"], version)
+            if found:
+                problems.append("%s: %s" % (name, found))
+                continue
+            translated += 1
         core += rule["status"] == "core"
         if rule["enforcement"] != "enforced":
             if "status" in entry or "where" in entry:
@@ -153,16 +208,13 @@ def check(register, ratchet):
         needs += 1
         if "status" not in entry:
             problems.append('%s names a check, so it needs a status: "built" or "text only for now"' % name)
-        elif entry["status"] not in STATUSES:
-            problems.append('the status of %s is "%s". It must be "built" or "text only for now"' % (name, entry["status"]))
-        elif registry.text_problem(entry.get("where", "")):
-            problems.append("%s: where %s" % (name, registry.text_problem(entry.get("where", ""))))
-        elif entry["status"] == "built" and not entry.get("where"):
-            problems.append("%s is marked built but does not say where the check lives" % name)
+        elif status_problem(name, entry):
+            problems.append(status_problem(name, entry))
         else:
             built += entry["status"] == "built"
 
     own = set()
+    own_status = own_built = 0
     for number, entry in enumerate(register["own"], 1):
         name = "own rule %d" % number
         if not isinstance(entry, dict):
@@ -170,9 +222,15 @@ def check(register, ratchet):
             continue
         if isinstance(entry.get("key"), str):
             name = entry["key"]
-        if set(entry) != set(RULE_FIELDS):
-            problems.append("%s: an own rule has exactly the fields %s" % (name, ", ".join(RULE_FIELDS)))
-        elif any(registry.text_problem(value) for value in entry.values()):
+        missing = [field for field in RULE_FIELDS if field not in entry]
+        unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS))
+        if TRANSLATION in unknown:
+            problems.append("%s: an own rule has no translation. A translation is bound to a rule of Ratchet; the project "
+                            "writes its own rules in the language it chooses" % name)
+        elif missing or unknown:
+            problems += ["%s: missing field %r" % (name, field) for field in missing]
+            problems += ["%s: unknown field %r" % (name, field) for field in unknown]
+        elif any(registry.text_problem(entry[field]) for field in RULE_FIELDS):
             field = next(field for field in RULE_FIELDS if registry.text_problem(entry[field]))
             problems.append("%s: %s %s" % (name if field != "key" else "own rule %d" % number, field, registry.text_problem(entry[field])))
         elif name.startswith("ratchet."):
@@ -185,36 +243,229 @@ def check(register, ratchet):
             problems.append("%s: the rule holds no words" % name)
         elif registry.ratchet_problem(entry["ratchet"]):
             problems.append("%s: %s" % (name, registry.ratchet_problem(entry["ratchet"])))
+        elif not entry["ratchet"].startswith("Check: ") and ("status" in entry or "where" in entry):
+            problems.append("%s is text only. It cannot have a status or a place where its check lives" % name)
+        elif "where" in entry and "status" not in entry:
+            problems.append('%s says where its check lives and has no status. Give it the status "built" or "text only for now"' % name)
+        elif "status" in entry and status_problem(name, entry):
+            problems.append(status_problem(name, entry))
+        elif "status" in entry:
+            own_status += 1
+            own_built += entry["status"] == "built"
         own.add(name)
 
     if not register["adopted"] and not problems:
         problems.append("no rules from Ratchet. A register that adopts nothing has nothing to check")
-    summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now. %d rules of the project's own." % (
-        len(seen), version, core, len(seen) - core, needs, built, needs - built, len(own),
+    if INSTRUCTIONS in register and not problems:
+        block = render_block(register)
+        for word, pattern in MARKER_WORDS:
+            if len(pattern.findall(block)) != 1:
+                problems.append("a value holds %s in code, and the block of rules for %s would hold it outside its marker. "
+                                "Write it another way" % (word, register[INSTRUCTIONS]))
+    summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now." % (
+        len(seen), version, core, len(seen) - core, needs, built, needs - built,
     )
+    if translated:
+        summary += " %d translated." % translated
+    if own_status:
+        summary += " %d rules of the project's own, %d with a status: %d built, %d text only for now." % (
+            len(own), own_status, own_built, own_status - own_built)
+    else:
+        summary += " %d rules of the project's own." % len(own)
     return problems, summary
 
 
-def render(register):
-    """The one REGISTER.md that a valid register.json generates."""
+def status_problem(name, entry):
+    """Why the status and the "where" of a rule that names a check break their form, or None. The rule has a status."""
+    if entry["status"] not in STATUSES:
+        return 'the status of %s is "%s". It must be "built" or "text only for now"' % (name, entry["status"])
+    if not isinstance(entry.get("where", ""), str) or registry.text_problem(entry.get("where", "")):
+        return "%s: where %s" % (name, registry.text_problem(entry.get("where", "")))
+    if entry["status"] == "built" and not entry.get("where"):
+        return "%s is marked built but does not say where the check lives" % name
+    return None
+
+
+def instructions_problem(value):
+    """Why the path of the instruction file breaks its form, or None.
+
+    A path inside the repo, relative to the register: parts of letters, digits, ".", "_" and "-", joined by single "/",
+    none of them "." or "..", ending in ".md", at most PATH_LENGTH characters. So the block is written into a Markdown
+    file of the project's own and nowhere else.
+    """
+    form = ("instructions must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
+            "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..', ending in .md")
+    if not isinstance(value, str) or len(value) > PATH_LENGTH or not value.endswith(".md"):
+        return form
+    if any(not PATH_PART.match(part) or part in (".", "..") for part in value.split("/")):
+        return form
+    return None
+
+
+def rule_sha256(text):
+    """The sha256 of a rule's English text, its UTF-8 bytes, in lowercase hex. A translation names it."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def translation_problem(translation, rule, version):
+    """Why a translation breaks its form or is not bound to the rule's text at this version, or None."""
+    if not isinstance(translation, dict):
+        return "translation must be an object with the fields language, text and sha256"
+    missing = [field for field in TRANSLATION_FIELDS if field not in translation]
+    unknown = sorted(set(translation) - set(TRANSLATION_FIELDS))
+    if missing or unknown:
+        return "; ".join(["translation: missing field %r" % field for field in missing]
+                         + ["translation: unknown field %r" % field for field in unknown])
+    if not all(isinstance(value, str) for value in translation.values()):
+        return "translation: every field must be a string"
+    if not LANGUAGE.match(translation["language"]):
+        return ("translation language must be a language code: two or three lowercase letters, and a region of two capitals "
+                "after a hyphen if needed, such as sv or pt-BR")
+    if registry.text_problem(translation["text"]):
+        return "translation text %s" % registry.text_problem(translation["text"])
+    if not registry.WORD.search(translation["text"]):
+        return "the translation holds no words"
+    if not SHA256.match(translation["sha256"]):
+        return "translation sha256 must be 64 characters 0 to 9 and a to f: the sha256 of the rule's English text"
+    if translation["sha256"] != rule_sha256(rule):
+        return ("the translation is bound to sha256 %s, and the rule's text in Ratchet %s has sha256 %s. The rule has changed "
+                "since it was translated: translate it again, and set sha256 to the new one" % (translation["sha256"], version, rule_sha256(rule)))
+    return None
+
+
+def sections(register, level):
+    """The sections of the rules, each headed at the level given: the rules from Ratchet, their translations if there
+    are any, where each check stands, and the project's own rules. REGISTER.md and the block both hold them."""
     rows = [registry.row(entry) for entry in register["adopted"]]
+    translations = [
+        "| %s | %s | %s |" % (entry["key"], entry[TRANSLATION]["language"], registry.cell(entry[TRANSLATION]["text"]))
+        for entry in register["adopted"] if TRANSLATION in entry
+    ]
+    stated = [entry for entry in register["adopted"] if "status" in entry]
+    own_stated = [entry for entry in register["own"] if "status" in entry]
     stands = [
         "| %s | %s | %s |" % (entry["key"], entry["status"], registry.cell(entry.get("where", "")))
-        for entry in register["adopted"] if "status" in entry
+        for entry in stated + own_stated
     ]
     lines = [
-        "# Register for %s" % registry.cell(register["project"]), "", INTRO, "",
-        "## Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
-        registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [
-        "", "## Where each check stands", "", STANDS, "",
+        level + " Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
+        registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [""]
+    if translations:
+        lines += [level + " Translations", "", TRANSLATIONS, "", "| Key | Language | Translation |", "|---|---|---|"]
+        lines += translations + [""]
+    lines += [
+        level + " Where each check stands", "", STANDS + (STANDS_OWN if own_stated else ""), "",
         "| Key | Status | Where the check lives |", "|---|---|---|"] + stands + [
-        "", "## The project's own rules", ""]
+        "", level + " The project's own rules", ""]
     if register["own"]:
         lines += [OWN, "", registry.TABLE_HEADER, registry.TABLE_RULE]
         lines += [registry.row(entry) for entry in register["own"]]
     else:
         lines.append(NO_OWN)
+    return lines
+
+
+def render(register):
+    """The one REGISTER.md that a valid register.json generates."""
+    lines = ["# Register for %s" % registry.cell(register["project"]), "", INTRO, ""] + sections(register, "##")
     return "\n".join(lines) + "\n"
+
+
+def render_block(register):
+    """The one block, with its two markers, that a valid register.json generates into its instruction file."""
+    lines = [BEGIN, "## Rules in force", "", BLOCK_INTRO, ""] + sections(register, "###") + [END]
+    return "\n".join(lines) + "\n"
+
+
+def find_block(text, name):
+    """(start, end) of the block with its two markers in the text of an instruction file, or (None, problems).
+
+    The file holds "ratchet:begin" and "ratchet:end" once each, in any case, and each stands in its exact marker line,
+    alone, at the start of its line, ending in LF. Nothing else of the file is read.
+    """
+    found = [[match.start() for match in pattern.finditer(text)] for _, pattern in MARKER_WORDS]
+    begins, ends = len(found[0]), len(found[1])
+    if begins == ends == 0:
+        return None, ["%s: holds no generated block, and register.json names it in instructions. Write it with "
+                      "check_register.py register.json --write-block" % name]
+    if begins != 1 or ends != 1:
+        return None, ["%s: the markers of the generated block are broken: ratchet:begin stands %d times and ratchet:end %d "
+                      "times. Each stands once, in its own line %s or %s" % (name, begins, ends, BEGIN, END)]
+    places = []
+    for (word, _), marker, at in zip(MARKER_WORDS, (BEGIN, END), (found[0][0], found[1][0])):
+        start = text.rfind("\n", 0, at) + 1
+        stop = text.find("\n", at)
+        line = text[start:] if stop < 0 else text[start:stop + 1]
+        if line != marker + "\n":
+            return None, ["%s: the line that holds %s must be exactly %s, alone on its line and ending in LF, found %r"
+                          % (name, word, marker, line)]
+        places.append((start, start + len(line)))
+    if places[1][0] < places[0][0]:
+        return None, ["%s: the line %s stands before %s" % (name, END, BEGIN)]
+    return (places[0][0], places[1][1]), []
+
+
+def block_problems(name, data, register):
+    """Every problem with the block in the bytes of an instruction file, or nothing."""
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: %s. Every file a check reads is UTF-8" % (name, registry.not_utf8(error))]
+    place, problems = find_block(text, name)
+    if problems:
+        return problems
+    found, expected = text[place[0]:place[1]], render_block(register)
+    if found == expected:
+        return []
+    have, want = found.split("\n"), expected.split("\n")
+    line = next((n for n, (a, b) in enumerate(zip(have, want), 1) if a != b), min(len(have), len(want)) + 1)
+    def show(lines):
+        each = lines[line - 1] if line <= len(lines) else "(the block ends)"
+        return repr(each if len(each) <= 100 else each[:97] + "...")
+    return ["%s: the block between the markers is not what register.json generates. It is generated: change register.json "
+            "and write it again with --write-block, never by hand. First difference at line %d of the file\n  expected: %s\n  found:    %s"
+            % (name, text.count("\n", 0, place[0]) + line, show(want), show(have))]
+
+
+def with_block(text, register, name):
+    """(the text of the instruction file with the block written, or None, problems).
+
+    The block goes between the markers, or, in a file with no marker, at its end after an empty line. No other
+    character of the file changes. Where the markers are broken, nothing is written.
+    """
+    if text and not any(pattern.search(text) for _, pattern in MARKER_WORDS):
+        return text + ("\n" if text.endswith("\n") else "\n\n") + render_block(register), []
+    if not text:
+        return render_block(register), []
+    place, problems = find_block(text, name)
+    if problems:
+        return None, problems
+    return text[:place[0]] + render_block(register) + text[place[1]:], []
+
+
+def instruction_path(register_path, register):
+    return os.path.join(os.path.dirname(register_path), *register[INSTRUCTIONS].split("/"))
+
+
+def write_block(path, register):
+    """Write the block into the instruction file at path. Returns the problems, and writes nothing if there are any."""
+    if os.path.islink(path) or (os.path.exists(path) and not os.path.isfile(path)):
+        return ["%s: the block is not written: it is not a plain file" % path]
+    data = b""
+    if os.path.exists(path):
+        with open(path, "rb") as handle:
+            data = handle.read()
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: the block is not written: it %s. Every file a check reads is UTF-8" % (path, registry.not_utf8(error))]
+    new, problems = with_block(text, register, path)
+    if problems:
+        return ["%s: the block is not written, since the markers are broken. Mend them by hand first" % path] + problems
+    if new != text or not os.path.exists(path):
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(new)
+    return []
 
 
 def main(argv=None):
@@ -223,6 +474,8 @@ def main(argv=None):
     parser.add_argument("--markdown", metavar="REGISTER.md", help="also fail unless this file is what the register generates")
     parser.add_argument("--write", metavar="REGISTER.md", help="write the generated register to this file")
     parser.add_argument("--agents", metavar="AGENTS.md", help="also fail while this file holds a placeholder of templates/AGENTS.md")
+    parser.add_argument("--write-block", action="store_true",
+                        help="write the block of rules into the instruction file that the register names in instructions")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
     try:
@@ -239,6 +492,7 @@ def main(argv=None):
     else:
         problems, summary = check(register, ratchet)
     problems = ["%s: %s" % (args.register, problem) for problem in problems]
+    block = None
     if not problems:
         expected = render(register)
         if args.write:
@@ -250,6 +504,24 @@ def main(argv=None):
                 problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))
             except registry.RegistryError as error:
                 problems.append(str(error))
+        block = instruction_path(args.register, register) if INSTRUCTIONS in register else None
+        found = []
+        if args.write_block and block is None:
+            problems.append("%s: register.json names no instruction file in instructions, so there is no block to write" % args.register)
+        elif args.write_block:
+            found = write_block(block, register)
+            problems += found
+            if not found:
+                print("wrote the block in %s" % block)
+        if block is not None and not found:
+            if not os.path.isfile(block):
+                problems.append("%s: the file is missing. register.json names it in instructions. Write the block into it with "
+                                "check_register.py register.json --write-block" % block)
+            else:
+                with open(block, "rb") as handle:
+                    problems += block_problems(block, handle.read(), register)
+    elif args.write_block:
+        problems.append("the block is not written from a register that does not pass")
     if args.agents:
         try:
             text = registry.read(args.agents)
@@ -267,6 +539,8 @@ def main(argv=None):
         print("FAIL: %d problem(s)" % len(problems))
         return 1
     print("%s: %s" % (args.register, summary))
+    if block is not None:
+        print("%s: the block between the markers is what register.json generates" % block)
     if args.agents:
         print("%s: holds no placeholder of templates/AGENTS.md" % args.agents)
     return 0

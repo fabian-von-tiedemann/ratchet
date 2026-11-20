@@ -8,6 +8,7 @@ which two rules that registers on 9.8 adopt are removed. Each test loads what it
 Standard library only.
 """
 
+import hashlib
 import io
 import json
 import os
@@ -49,6 +50,16 @@ FORM = ("The form of ratchet.json changed from Ratchet %s to %s: %s. This is for
         ".ratchet come with their own version and need nothing. A copy of a Ratchet check kept in the project, or a check "
         "of the project's own, that reads ratchet.json must be updated: replace the copy with the one from Ratchet %s, or "
         "change the check.")
+
+# What the upgrade says to a register that moves from a version before 0.10 to 0.10 or later.
+REGISTER_FORM = ('The form of register.json grew in Ratchet 0.10 (D-2026-11-20-generated-block). It may name an instruction '
+                 'file in "instructions", and check_register.py then checks the block of rules it generates into that file. '
+                 'An adopted rule may carry a "translation", bound to its English rule by a sha256. An own rule may carry '
+                 '"status" and "where". A register without them stays valid, so none of this is a step.')
+
+
+def sha256(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def entries(output):
@@ -101,7 +112,47 @@ class Upgrade(FixtureTest):
         self.assertNotIn("ratchet.keep", output, "a rule that did not change is not listed")
         self.assertNotIn("ratchet.left-out", output, "a rule that did not change is not listed, adopted or not")
         self.assertNotIn("The form of ratchet.json changed", output, "9.8 and 9.9 have the same fields")
+        self.assertNotIn("The form of register.json", output, "the change of form of 0.10 is not between 9.8 and 9.9")
+        self.assertNotIn("--write-block", output, "the register names no instruction file")
         self.assertNotIn("Traceback", output)
+
+    def test_a_translation_of_a_rule_whose_text_changed_must_be_made_again(self):
+        # #77: a translation is bound to the English rule by its sha256. An upgrade that changes the rule names the
+        # translation that must be made again, and prints the entry without it, so that the steps give a register that
+        # passes. A translation of a rule whose text did not change stays.
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        old_by, new_by = registry.rules_by_key(old), registry.rules_by_key(new)
+        for item in register["adopted"]:
+            item["translation"] = {"language": "sv", "text": "En regel p\u00e5 svenska.", "sha256": sha256(old_by[item["key"]]["rule"])}
+        self.assertEqual(check_register.check(register, old)[0], [])
+        out = io.StringIO()
+        code = upgrade.report("register.json", register, old, new, out, "check_register.py")
+        output = out.getvalue()
+        self.assertEqual(code, 0, output)
+        self.assertIn('ratchet.reworded: changed: the rule. The register adopts it: replace its entry with this one. Its rule '
+                      'changed, so its translation must be made again, and the entry has none. Translate the new rule and add '
+                      'its "translation" with "sha256": "%s".' % sha256(new_by["ratchet.reworded"]["rule"]), output)
+        self.assertIn('ratchet.dropped: removed. Remove it from "adopted".', output)
+        self.assertIn("An own rule has no translation, so the entry has none.", output)
+        printed = dict((entry["key"], entry) for entry in entries(output))
+        self.assertNotIn("translation", printed["ratchet.reworded"])
+        self.assertNotIn("translation", printed["example.dropped"])
+        self.assertEqual(printed["ratchet.new-ratchet"]["translation"]["sha256"], sha256(new_by["ratchet.new-ratchet"]["rule"]),
+                         "the rule did not change, only its ratchet, so the translation stays")
+        self.assertNotIn("ratchet.new-ratchet: changed: the ratchet and the source. The register adopts it: replace its entry with "
+                         "this one. Its rule changed", output)
+        steps, after = upgrade.plan(register, old, new)
+        self.assertEqual(after["adopted"][0]["translation"], register["adopted"][0]["translation"], "ratchet.keep keeps it")
+        self.assertEqual(check_register.check(after, new)[0], [])
+
+    def test_a_register_that_names_an_instruction_file_is_told_to_write_its_block_again(self):
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        register["instructions"] = "AGENTS.md"
+        out = io.StringIO()
+        code = upgrade.report("register.json", register, old, new, out, "check_register.py")
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("Then write REGISTER.md and the block in AGENTS.md again and check them:", out.getvalue())
+        self.assertIn("    python3 check_register.py register.json --write-block\n", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -279,6 +330,8 @@ class Upgrade(FixtureTest):
                 else:
                     form = '"date" is gone, "principles" is new, "sources" is gone, ' + since
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
+                # 0.10 also changes the form of register.json, and every new field is optional (D-2026-11-20-generated-block).
+                self.assertIn(REGISTER_FORM, output)
                 # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
                 # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
                 for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk"),
@@ -335,8 +388,8 @@ class RemovedRules(FixtureTest):
         self.assertEqual(code, 0, output)
         for line in (
             'ratchet.dropped-checked: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add '
-            'this entry to "own". Its key has the prefix "example", from the register\'s first own rule. An own rule has only '
-            'the fields key, rule, ratchet and source, so the entry has no status and no "where".',
+            'this entry to "own". Its key has the prefix "example", from the register\'s first own rule. An own rule may say '
+            'where its check stands, so the entry keeps its status and its "where".',
             'ratchet.dropped: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add this entry '
             'to "own". Its key has the prefix "example", from the register\'s first own rule. The key "example.dropped" is '
             'taken, so the entry has "example.dropped-2". The changelog of Ratchet 9.9 says why it was removed. When it was '
@@ -348,25 +401,28 @@ class RemovedRules(FixtureTest):
         old = registry.rules_by_key(self.loaded("old.json"))
         own = [entry for entry in entries(output) if not entry["key"].startswith("ratchet.")]
         self.assertEqual([entry["key"] for entry in own], ["example.dropped-checked", "example.dropped-2"])
-        for entry, key in zip(own, ("ratchet.dropped-checked", "ratchet.dropped")):
+        for entry, key, fields in zip(own, ("ratchet.dropped-checked", "ratchet.dropped"),
+                                      (check_register.RULE_FIELDS + check_register.STATUS_FIELDS, check_register.RULE_FIELDS)):
             with self.subTest(key=key):
-                self.assertEqual(list(entry), list(check_register.RULE_FIELDS))
+                self.assertEqual(list(entry), list(fields))
                 for field in ("rule", "ratchet", "source"):
                     self.assertEqual(entry[field], old[key][field])
+        self.assertEqual((own[0]["status"], own[0]["where"]), ("built", "checks/status.sh"))
         register = self.loaded("register.json")
         for after in (self.done(register, own), self.done(register, [])):
             self.assertEqual(check_register.check(after, self.loaded("new.json"))[0], [])
 
     def test_the_check_of_the_steps_covers_a_removed_rule_kept_in_own(self):
-        # If the entry for "own" kept the status and the "where", the steps would give a register that fails. The
+        # If the entry for "own" gave a rule that is text only a status, the steps would give a register that fails. The
         # script must then fail too, not print the steps.
+        own_entry = upgrade.own_entry
         def with_status(rule, before, prefix, taken):
-            return before
+            return dict(own_entry(rule, before, prefix, taken), status="built", where="checks/status.sh")
         with mock.patch.object(upgrade, "own_entry", with_status):
             out = io.StringIO()
             code = upgrade.main(self.files("register.json"), out=out)
         self.assertEqual(code, 1, out.getvalue())
-        self.assertIn("an own rule has exactly the fields key, rule, ratchet, source", out.getvalue())
+        self.assertIn("example.dropped-2 is text only. It cannot have a status or a place where its check lives", out.getvalue())
         self.assertIn("FAIL: the steps would not give a register that passes against Ratchet 9.9.", out.getvalue())
         self.assertNotIn("Steps for", out.getvalue())
 

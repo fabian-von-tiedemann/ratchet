@@ -50,23 +50,33 @@ python3 checks/check_register.py register.json
 python3 checks/check_register.py register.json --write REGISTER.md
 python3 checks/check_register.py register.json --markdown REGISTER.md
 python3 checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
+python3 checks/check_register.py register.json --write-block
 ```
 
 **What it claims.** Every rule that `register.json` adopts is a rule in Ratchet at the version the register states, and its rule, ratchet and source are Ratchet's own, character for character. With `--markdown`, the file given is exactly what the data generates. With `--agents`, the file given exists and holds none of the placeholders of `templates/AGENTS.md`, a fixed list of exact texts, `PLACEHOLDERS`, a placeholder nested in another one on it on its own, and each one it still holds is named. It does not parse the file, so it does not see a placeholder that is not on the list. The workflow that `init.py` writes passes `--agents AGENTS.md`, so the project's CI stays red until `AGENTS.md` is filled in. The cases are in [test_init.py](test_init.py) and in `test_check_register_fails_on_the_placeholders_of_the_agents_template` in [test_checks.py](test_checks.py): the template fails naming each placeholder, a file with only the handover's `<n>` left fails naming it, this repo's `AGENTS.md` passes, and a missing file fails.
 
-**Against which threat.** An agent, or a person, softens an adopted rule in the project's own copy, or adds a rule of its own under Ratchet's name, and nobody notices because the register still looks like Ratchet.
+When the register names an instruction file in `instructions`, the check also generates a block of the rules from the register, the same sections as `REGISTER.md` under a heading of its own, and fails unless that file holds exactly one begin marker and one end marker, in that order, the HTML comments `BEGIN` and `END` in `check_register.py`, which hold `ratchet:begin` and `ratchet:end` with one space on each side between the comment's marks, each alone on its line, at its start, ending in LF, and between them, byte for byte, the block. A line that holds `ratchet:begin` or `ratchet:end` in any other form, in any case, anywhere in the file, inside a code block or a comment too, is a broken marker. Nothing else in the file is read: it must be UTF-8, and the rest of it is the project's own, never parsed. `--write-block` writes the block between the markers, or, in a file with no marker, at its end after an empty line, and creates a file that does not exist. It changes no other byte of the file, and it writes nothing where the markers are broken, where the file is not UTF-8 or not a plain file, or from a register that does not pass. This is `D-2026-11-20-generated-block`, from issues #76 and #89: the project keeps its rules where its agents read, and the check sees the text of each rule, not a marker that stands for it.
+
+An adopted rule may carry a translation of its rule (#77): a language code, the text, and the sha256 of the rule's English text, its UTF-8 bytes in lowercase hex. The check fails when that sha256 is not the one of the rule's text in Ratchet at the version the register states, and names both. So an upgrade that changes the rule fails until its translation is made again, and `upgrade.py` names it. Only the rule is translated, not its ratchet: the rule is what the people who work in the project's language must follow, and the ratchet names a check, its files and its commands, for whoever builds it. The translation stands in `REGISTER.md` and in the block, in a table of its own under the English rules, which stay the rule. It is text from the fixed list of characters, like every value: Latin script, Swedish letters among them, passes, and every other script is refused.
+
+A rule of the project's own may carry `status` and `where` (#60). It does not have to, so a register written before 0.10 stays valid. When it does, they are read as an adopted rule's: the rule's ratchet starts with "Check:", the status is `built` or `text only for now`, a built check says where it lives, and a `where` needs a status. Each own rule with a status gets a row under "Where each check stands", after the adopted rules, and the summary counts them apart.
+
+**Against which threat.** An agent, or a person, softens an adopted rule in the project's own copy, or adds a rule of its own under Ratchet's name, and nobody notices because the register still looks like Ratchet. With an instruction file named: the copy of the rules in the file the agents read is edited by hand, or drifts from the register, or a second, softer copy is put next to it under a marker that looks like the real one. With a translation: the English rule changes and its translation in the block still says what the old rule said.
 
 **The data file.**
 
 ```json
 {"project": "the project's name",
- "ratchet_version": "0.4",
+ "ratchet_version": "0.10",
+ "instructions": "AGENTS.md",
  "adopted": [{"key": "...", "rule": "...", "ratchet": "...", "source": "...",
-              "status": "built", "where": "path to the check"}],
- "own": [{"key": "project.key", "rule": "...", "ratchet": "Check: ...", "source": ""}]}
+              "status": "built", "where": "path to the check",
+              "translation": {"language": "sv", "text": "...", "sha256": "..."}}],
+ "own": [{"key": "project.key", "rule": "...", "ratchet": "Check: ...", "source": "",
+          "status": "built", "where": "path to the check"}]}
 ```
 
-`status` and `where` stand on a rule whose ratchet starts with "Check:", and only there. The status is `built` or `text only for now`, and a built check says where it lives.
+`status` and `where` stand on a rule whose ratchet starts with "Check:", and only there. The status is `built` or `text only for now`, and a built check says where it lives. An adopted rule that names a check must have a status, and an own rule may. `instructions` and `translation` may be left out. `instructions` is a path relative to `register.json`: parts of letters, digits, `.`, `_` and `-` joined by `/`, none of them `.` or `..`, ending in `.md`, at most 200 characters. A language is two or three lowercase letters, with a region of two capitals after a hyphen if needed, such as `sv` or `pt-BR`. A translation has exactly the three fields, and only an adopted rule has one.
 
 **The cases in the data.** Each is a `register.json` under [fixtures/register/](fixtures/register/) and a test in [test_checks.py](test_checks.py).
 
@@ -115,6 +125,17 @@ python3 checks/check_register.py register.json --markdown REGISTER.md --agents A
 | `nested-too-deep` | A file nested so deeply that it cannot be read. | Fails |
 | `not-an-object`, `not-json` | The file is not a register at all. | Fails |
 | `not-utf8` | The file holds a byte that is not UTF-8. | Fails |
+| `instructions-outside`, `instructions-absolute`, `instructions-not-markdown`, `instructions-not-text`, `instructions-hidden` | The instruction file is outside the repo, an absolute path, not a Markdown file, not text, or holds a character that shows as nothing. | Fails |
+| `instructions-marker-in-code` | An own rule holds the word of the end marker in code, in capitals, which the block would hold outside its marker. | Fails |
+| `translation-wrong-hash` | A translation bound to another English text than the rule's, as after the rule changed. | Fails |
+| `translation-hash-form` | The sha256 is in capitals. | Fails |
+| `translation-on-own`, `translation-on-unknown` | A translation on a rule of the project's own, or on a rule that is not in Ratchet. | Fails |
+| `translation-unknown-field`, `translation-missing-field`, `translation-not-object`, `translation-not-text` | A translation with a field the check does not know, without its sha256, that is not an object, or with a language that is not text. | Fails |
+| `translation-cyrillic-letter`, `translation-han-letter`, `translation-zero-width` | A translation with a letter of another script, or a character that shows as nothing. | Fails |
+| `translation-language`, `translation-no-words` | A language that is not a language code, or a translation with no words. | Fails |
+| `own-status-on-text-only` | An own rule that is text only is marked built. | Fails |
+| `own-built-nowhere`, `own-status-invalid`, `own-where-without-status`, `own-where-hidden` | An own rule that names a check is built without saying where, has a status other than the two, says where without a status, or where with a character that shows as nothing. | Fails |
+| `own-unknown-field`, `own-missing-field` | An own rule with a field the check does not know, or without its source. | Fails |
 
 In a fixture that fails, every character outside ASCII stands as its JSON escape, such as `\u05be`, so that the file shows which character it holds and none of them hides or reorders a line of the fixture itself.
 
@@ -132,6 +153,30 @@ In a fixture that fails, every character outside ASCII stands as its JSON escape
 | `md-escaped-pipe` | A pipe was escaped so that the cells moved. | Fails |
 | `md-extra-text` | A sentence was added at the end. | Fails |
 | `md-missing` | There is no `REGISTER.md`. | Fails |
+
+**The cases in the instruction file.** Each has the register of `block-clean`, which names `AGENTS.md`, adopts a rule with a translation into Swedish, and has an own rule whose check is built. Its `AGENTS.md` holds the project's own text, with a comment, before and after the block. Each other fixture changes that file. Each is a test in [test_checks.py](test_checks.py), `RegisterBlock`.
+
+| Fixture | What was done to `AGENTS.md` | Result |
+|---|---|---|
+| `block-clean` | Nothing. | Passes |
+| `block-crlf-outside` | The project's own text has CRLF, and the block LF. | Passes: the rest of the file is not read |
+| `block-edited`, `block-translation-edited` | A row, or the translation, was changed by hand. | Fails |
+| `block-row-in-comment` | A row was put inside a comment. | Fails |
+| `block-extra-line` | A sentence was added before the end marker. | Fails |
+| `block-stale` | The block is what the register generated before its last change. | Fails |
+| `block-crlf-inside` | One line inside the block ends in CRLF. | Fails |
+| `block-no-markers` | No block. | Fails |
+| `block-missing-begin`, `block-missing-end`, `block-doubled-begin`, `block-doubled` | A marker is missing, stands twice, or the whole block stands twice. | Fails |
+| `block-marker-in-code-block` | A second end marker stands in a code block after the block. | Fails |
+| `block-marker-spaces`, `block-marker-no-spaces`, `block-marker-indented`, `block-marker-trailing-space`, `block-marker-text-after`, `block-marker-case` | The begin marker with two spaces, with none, indented, with a space at its end, with text after it, or in capitals. | Fails |
+| `block-crlf-marker`, `block-crlf`, `block-end-no-newline` | The begin marker, or the whole block, ends its lines in CRLF, or the end marker has no line ending at the end of the file. | Fails |
+| `block-end-before-begin` | The two markers are swapped. | Fails |
+| `block-not-utf8` | A byte that is not UTF-8, outside the block. | Fails |
+| `block-file-missing` | There is no `AGENTS.md`. | Fails |
+
+`--write-block` gives `block-clean`'s file from `block-edited`, `block-stale`, `block-row-in-comment`, `block-extra-line`, `block-translation-edited` and `block-crlf-inside`, the file with the block added at its end from `block-no-markers`, and the block alone from `block-file-missing`. It leaves `block-crlf-outside` byte for byte as it was. It writes nothing, and fails, for every fixture whose markers are broken, for `block-not-utf8`, and from a register that does not pass.
+
+[fixtures/handwritten/block/](fixtures/handwritten/block/) holds a register with a translation and an own rule with a status, its `REGISTER.md` and an `AGENTS.md` with its block, all typed by hand, with the sha256 taken with `shasum -a 256`, not with Python.
 
 One more has a clean `register.json` and fails for a reason of its own: in `md-not-utf8`, one byte of `REGISTER.md` is not UTF-8. The check does not read that byte as some other character and compare. It fails because the file cannot be read.
 
@@ -151,6 +196,10 @@ The registers above are generated from `ratchet.json`. [fixtures/handwritten/](f
 - The others are not shut out. A value may hold `@name`, `@group/team`, `#123`, `owner/repo#123` and the id of a commit, short or full, and the check accepts them (fixture `references`). They are written with a backslash before each `@`, `#`, `/` and `-`, and Markdown shows them as text. A site that makes links of people, issues and commits after Markdown is done sees the same text with the backslashes as without, and may still make a link of it. Whether it does depends on the site and on the kind of page.
 - It does not claim that two characters on the list cannot be taken for one another: see [The characters a value may hold](#the-characters-a-value-may-hold).
 - A project may leave a rule out. A missing rule is a choice, not drift.
+- It does not read the instruction file outside the block. What the project writes there, a rule that contradicts the block among it, is the project's own. The block says that `REGISTER.md` takes precedence.
+- It does not see whether a translation says what the English rule says. A check cannot judge meaning. A changed translation is reviewed like any change to the register.
+- A translation is in Latin script only, from the fixed list, and a rule has one translation, in one language.
+- The block is written with LF. A project whose instruction file has CRLF keeps it in the rest of the file, and the block, with its markers, has LF.
 - It runs from the version of Ratchet it was fetched at. The project's workflow pins that version by commit, and a change to the workflow is a change to a check (`ratchet.checks-owner-read`).
 
 ## expected_tests.py
@@ -898,11 +947,13 @@ This one checks no rule in a register. It is the upgrade path for a project ([UP
 **What it claims.** It reads three data files strictly, and when they are valid it prints, rule by rule, what is different between the two versions of Ratchet and what the register must do about it:
 
 - a rule the register adopts that changed: which of its status, enforcement, rule, ratchet and source changed, and the entry to put in its place. The entry is the newer rule, character for character. It keeps the status and the place of the check when the rule still names a check, gets `text only for now` when its ratchet now names one, and loses both when it is text only now. When the ratchet of a rule marked `built` changed, it says to look at the check again.
-- a rule the register adopts that was removed: take it out of `adopted`, and, to keep it, add the printed entry to `own`. The entry is the older rule with only the fields of an own rule, `key`, `rule`, `ratchet` and `source`, so a status and a `where` are dropped. Its key is the prefix of the register's first own rule, or one made from the project's name, then a dot and the name in Ratchet's key, with `-2` and so on when that key is taken. A name that gives no prefix, or gives `ratchet`, gives `project`.
+- a rule the register adopts that was removed: take it out of `adopted`, and, to keep it, add the printed entry to `own`. The entry is the older rule with the fields of an own rule, `key`, `rule`, `ratchet` and `source`, and the status and the `where` it had, which an own rule may have from 0.10. A translation is dropped, since an own rule has none. Its key is the prefix of the register's first own rule, or one made from the project's name, then a dot and the name in Ratchet's key, with `-2` and so on when that key is taken. A name that gives no prefix, or gives `ratchet`, gives `project`.
 - when every rule the register adopts was removed: adopt at least one rule, from the new rules, or from the rules to start with when there are no new ones, each printed with its entry. A register that adopts no rule does not pass `check_register.py`.
 - a new rule: the entry to add, if the project adopts it.
 - a rule that changed or was removed and is not adopted: its key, with nothing to do.
 - when the fields of `ratchet.json` differ between the two versions, at the top or in its rules: which are new and which are gone, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack the cap and may hold `date` and `sources`, which left `ratchet.json` in 0.9 ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)), and no other field the newer one does not know. A field of a rule is new when some rule of the newer file holds it and no rule of the older one does, as `since` is from 0.10 ([D-2026-11-19-one-point-oh](../decisions/D-2026-11-19-one-point-oh.md)), and gone the other way round.
+- a rule the register adopts with a translation, whose rule changed: the translation must be made again. The entry is printed without it, with the sha256 of the new text. A translation of a rule whose text did not change, only its ratchet or its source, stays in the entry.
+- when the register moves past a version that changed the form of `register.json`, what changed. In 0.10 the fields `instructions`, `translation` and the status of an own rule came, all of which may be left out, so none of it is a step. A register that names an instruction file is told to write its block again with `--write-block`.
 
 Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. It writes nothing, and reads no file but the three it is given. It runs offline.
 
@@ -926,7 +977,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, and the steps in `UPGRADING.md` run on the register at 0.8. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
+| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, a note that the form of `register.json` grew in 0.10, and the steps in `UPGRADING.md` run on the register at 0.8. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
@@ -935,8 +986,10 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | A `ratchet.json`, older or newer, with a field twice, not JSON, not UTF-8, a field it does not know at the top or in a rule, a field missing, a character not on the list, a version that is a number, a key twice, a rule in a part that does not exist | `faults/` | Cannot run, with the fault named |
 | A file that does not exist, or no `--from` | none | Cannot run |
 | An older `ratchet.json` without the cap, as at `v0.3` and `v0.4`, and two with the same fields | `old-source-form/ratchet.json`, `released/`, and `old/ratchet.json` with the cap taken out in the test | Passes, with a note that `experimental_cap` is new, after the steps, and that `date` and `sources` are gone where the older file holds them. With the same fields, no note |
-| A removed rule marked `built` with a `where`, and one whose key in `own` is taken, each kept in `own` by the printed entry | `removed/register.json`, `removed/old.json`, `removed/new.json` | Passes, with an entry that has the fields of an own rule only, and `-2` on the taken key |
-| The same, with an entry for `own` that keeps the status and the `where` | the same, with the entry changed in the test | Fails: no step is printed |
+| A removed rule marked `built` with a `where`, and one whose key in `own` is taken, each kept in `own` by the printed entry | `removed/register.json`, `removed/old.json`, `removed/new.json` | Passes, with an entry that keeps its status and its `where`, and `-2` on the taken key |
+| The same, with an entry for `own` that gives the rule that is text only a status | the same, with the entry changed in the test | Fails: no step is printed |
+| Every adopted rule carries a translation: the one whose rule changed, the one whose ratchet changed, the one removed | `register.json`, `old/ratchet.json`, `new/ratchet.json`, with the translations added in the test | Passes, naming the translation to make again with the new sha256, keeping the one whose rule did not change, and dropping the one moved to `own` |
+| A register that names an instruction file | the same, with `instructions` added in the test | Passes, with the command that writes the block again |
 | A register that adopts only rules that were removed | `removed/register-only-removed.json` | Passes, with the removals, the new rules and a step to adopt one |
 | The same, against a Ratchet with no new rule | the same, with the new rule left out in the test | Passes, with the rules to start with |
 | A register without own rules whose project name gives no prefix, or gives `ratchet` | the same, with the name changed in the test | Passes, with the prefix `project` |
