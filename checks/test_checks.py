@@ -1054,6 +1054,23 @@ class StartPath(unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("AGENTS.md: the file is missing", output)
 
+    def test_check_register_fails_on_a_placeholder_left_inside_a_filled_in_one(self):
+        # The status issue chosen for the handover, its number not filled in, every other placeholder filled in.
+        import check_register
+        register = os.path.join(ROOT, "templates", "register.json")
+        text = read("templates", "AGENTS.md").replace("<`HANDOVER.md`, or the status issue (#<n>)>", "status issue #N-LEFT")
+        for placeholder in check_register.PLACEHOLDERS:
+            text = text.replace(placeholder, "Filled in.")
+        text = text.replace("N-LEFT", "<n>")
+        self.assertIn("\n3. The latest handover: status issue #<n>.\n", text)
+        path = os.path.join(scratch(self), "AGENTS.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        code, output = run("check_register.py", register, "--agents", path)
+        self.assertEqual(code, 1, output)
+        self.assertIn("AGENTS.md: still holds the template's placeholder <n>", output)
+        self.assertIn("FAIL: 1 problem(s)", output)
+
     def test_the_readme_starts_with_init(self):
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)
         self.assertEqual(commands[:2], ["python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py"])

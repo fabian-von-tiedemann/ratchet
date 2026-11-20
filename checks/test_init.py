@@ -65,6 +65,22 @@ def filled_in(text):
     return text
 
 
+def bracketed(text):
+    """Every part of text in angle brackets, in the order the parts start, a part nested in another one included.
+    Each ">" closes the "<" last opened. A bracket with no partner fails."""
+    parts, opened = [], []
+    for index, character in enumerate(text):
+        if character == "<":
+            opened.append((index, len(parts)))
+            parts.append(None)
+        elif character == ">":
+            assert opened, "a > with no < before it at %d" % index
+            start, slot = opened.pop()
+            parts[slot] = text[start:index + 1]
+    assert not opened, "a < with no > after it at %s" % [start for start, slot in opened]
+    return parts
+
+
 def no_link(*args, **kwargs):
     raise OSError(errno.EPERM, "no hard links here")
 
@@ -706,19 +722,46 @@ os.link = link
         self.assertEqual(init.PLACEHOLDER, PLACEHOLDER)
 
     def test_the_list_of_placeholders_is_the_templates(self):
-        # Every part of templates/AGENTS.md in angle brackets is on the fixed list that check_register.py --agents
-        # fails on, except <name>, which stands for any skill's name, and the lines that mark what --solo leaves out.
+        # Every part of templates/AGENTS.md in angle brackets, a part nested in another one included, is on the fixed
+        # list that check_register.py --agents fails on, in the order the parts start in the template. The exceptions
+        # are <name>, which stands for any skill's name, and the lines that mark what --solo leaves out. The parts are
+        # found by pairing each ">" with the "<" before it, so a placeholder inside another one is found on its own.
         import check_register
         text = read_template("AGENTS.md")
         for placeholder in check_register.PLACEHOLDERS:
             with self.subTest(placeholder=placeholder):
                 self.assertEqual(text.count(placeholder), 1)
-        rest = without_markers(text)
-        for placeholder in check_register.PLACEHOLDERS:
-            rest = rest.replace(placeholder, "")
-        self.assertEqual(re.findall(r"<[^>\n]*>", rest), ["<name>"])
+        parts = [part for part in bracketed(without_markers(text)) if part != "<name>"]
+        self.assertIn("<n>", parts)
+        self.assertEqual(parts, list(check_register.PLACEHOLDERS))
         self.assertEqual(check_register.placeholders(filled_in(text)), [])
         self.assertEqual(check_register.placeholders(text), list(check_register.PLACEHOLDERS))
+
+    def test_bracketed_finds_nested_parts_and_refuses_unpaired_brackets(self):
+        self.assertEqual(bracketed("a <b (#<n>)> c <d>"), ["<b (#<n>)>", "<n>", "<d>"])
+        for text in ("a <b", "a b>", "<a <b>", "<a>>"):
+            with self.subTest(text=text):
+                with self.assertRaises(AssertionError):
+                    bracketed(text)
+
+    def test_a_placeholder_left_inside_a_filled_in_one_is_named(self):
+        # A partial edit: the outer placeholder chosen and its brackets taken away, the one inside it left, everything
+        # else filled in. For the handover that is "3. The latest handover: status issue #<n>.".
+        import check_register
+        text = read_template("AGENTS.md")
+        handover = "<`HANDOVER.md`, or the status issue (#<n>)>"
+        self.assertEqual(text.count(handover), 1)
+        edited = filled_in(text.replace(handover, "status issue #N-LEFT")).replace("N-LEFT", "<n>")
+        self.assertIn("\n3. The latest handover: status issue #<n>.\n", edited)
+        self.assertEqual(check_register.placeholders(edited), ["<n>"])
+        # The same for every placeholder that holds another one: its brackets taken away, the inner one kept.
+        nested = [(outer, inner) for outer in check_register.PLACEHOLDERS for inner in check_register.PLACEHOLDERS
+                  if inner != outer and inner in outer]
+        self.assertIn((handover, "<n>"), nested)
+        for outer, inner in nested:
+            with self.subTest(outer=outer):
+                edited = filled_in(text.replace(outer, outer[1:-1].replace(inner, "INNER-LEFT"))).replace("INNER-LEFT", inner)
+                self.assertEqual(check_register.placeholders(edited), [inner])
 
     def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
         keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]
