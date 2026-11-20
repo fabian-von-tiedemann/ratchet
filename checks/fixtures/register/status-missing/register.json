@@ -31,9 +31,10 @@
     },
     {
       "key": "ratchet.root-cause",
-      "rule": "Fix the root cause, not the symptom. First build a fast run that goes red on exactly this bug. Hypotheses come after that.",
-      "ratchet": "Text only. Measured as fixes rejected because the bug was never reproduced",
-      "source": "mattpocock/skills `diagnosing-bugs`; pstack `principle-fix-root-causes`"
+      "rule": "Fix the root cause, not the symptom. First build a fast run that goes red on exactly this bug. Hypotheses come after that. The run stays, as a test tagged with the defect's issue, and is merged with the fix. When the bug is one case of a failure class, the fix closes the class and not only the case. A guard is removed only when a test shows that its case is still caught.",
+      "ratchet": "Check: a PR that links an issue labeled as a defect adds or changes a test tagged with that issue, or says in a required field why no test can catch it, and a registry of the tagged tests, generated from the tags, is checked in every PR. A finding that names a failure class is closed by a test that lists every place where the class can occur and fails on each place that lacks the guard. A PR that removes a tagged test or a guard shows a run in which a test still catches its case. It catches a fix merged without its test and a guard removed on a belief. It does not see whether the cause found is the root cause, and a sweep does not catch a spelling built to get past it",
+      "source": "mattpocock/skills `diagnosing-bugs`; pstack `principle-fix-root-causes`",
+      "status": "text only for now"
     },
     {
       "key": "ratchet.evidence-before-done",

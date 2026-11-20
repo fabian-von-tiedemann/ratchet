@@ -10,7 +10,10 @@ is the newer Ratchet. The script compares the two, rule by rule, and prints:
 - a step for each adopted rule that changed, with the entry to paste in place of
   the old one
 - a step for each adopted rule that was removed: take it out of "adopted", and to
-  keep it, add the printed entry to "own", which has the fields of an own rule only
+  keep it, add the printed entry to "own", which has the fields of an own rule only.
+  A rule merged into another, or moved into Ratchet's own register, shows as removed:
+  the step says that the changelog says why, and that the rule it was merged into may
+  be adopted in its place
 - when every adopted rule was removed, a step to adopt at least one rule
 - the new rules, each with the entry to paste if the project adopts it
 - the changed and removed rules that the register does not adopt, by key
@@ -47,6 +50,10 @@ import registry
 # The fields of a rule that the comparison reads, in the order a change names them.
 COMPARED = (("status", "the status"), ("enforcement", "the enforcement"), ("rule", "the rule"),
             ("ratchet", "the ratchet"), ("source", "the source"))
+# What the step for a removed rule that the register adopts adds. A rule may leave because it was merged into another,
+# or moved into Ratchet's own register, which ratchet.json does not show: the changelog does.
+MERGED = ("The changelog of Ratchet %s says why it was removed. When it was merged into another rule, the register may "
+          "adopt that rule in its place.")
 
 
 class UpgradeError(Exception):
@@ -192,6 +199,7 @@ def plan(register, old, new):
                     text.append('The key "%s.%s" is taken, so the entry has "%s".' % (prefix, key.split(".", 1)[1], step["entry"]["key"]))
                 if "status" in adopted[key] or "where" in adopted[key]:
                     text.append('An own rule has only the fields key, rule, ratchet and source, so the entry has no status and no "where".')
+                text.append(MERGED % new["version"])
                 step["text"] = " ".join(text)
             steps.append(step)
 

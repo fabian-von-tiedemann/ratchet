@@ -261,9 +261,11 @@ class Upgrade(FixtureTest):
                 self.assertIn("register.json is on Ratchet %s." % version, output)
                 self.assertIn('Set "ratchet_version" to "%s".' % new["version"], output)
                 self.assertIn("passes check_register.py against Ratchet %s" % new["version"], output)
-                # ratchet.si-version, which this repo adopts, changed in 0.5 (D-2026-11-18-form-change-before-1-0) and in
-                # 0.10, which states what 1.0 promises (D-2026-11-19-one-point-oh).
-                self.assertIn("ratchet.si-version: changed: the rule. The register adopts it: replace its entry with this one.", output)
+                # ratchet.si-version and ratchet.si-maintainer-approves, which this repo adopted, left in 0.10 for its own
+                # rules (D-2026-11-20-proposal-triage, choice 5). The steps say to keep each in "own".
+                for key in ("ratchet.si-version", "ratchet.si-maintainer-approves"):
+                    self.assertIn('%s: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add '
+                                  'this entry to "own".' % key, output)
                 # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
                 since = '"since" in a rule is new'
                 if version in ("0.3", "0.4"):
@@ -277,16 +279,21 @@ class Upgrade(FixtureTest):
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
                 # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
-                for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk")):
+                for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk"),
+                                    ("0.10", "ratchet.one-exact-form")):
                     line = "- %s: new. The register may adopt it." % rule
                     if tuple(map(int, version.split("."))) < tuple(map(int, added.split("."))):
                         self.assertIn(line, output)
                     else:
                         self.assertNotIn(line, output)
                 if version == "0.9":
-                    # 0.10 changes two rules, ratchet.si-version and ratchet.si-subtract, and adds one, ratchet.review-by-risk.
-                    self.assertIn("In Ratchet %s, 3 rules are new, changed or removed." % new["version"], output)
-                    self.assertIn("Not adopted, so nothing to do: ratchet.si-subtract (changed).", output)
+                    # 0.10 adds two rules, ratchet.review-by-risk and ratchet.one-exact-form, changes three, ratchet.root-cause,
+                    # ratchet.cr-wake and ratchet.si-subtract, and removes six: ratchet.cr-background-wait, merged into
+                    # ratchet.cr-wake, three more and the two this repo moved to its own rules (D-2026-11-20-proposal-triage).
+                    self.assertIn("In Ratchet %s, 11 rules are new, changed or removed." % new["version"], output)
+                    self.assertIn("Not adopted, so nothing to do: ratchet.cr-background-wait (removed), ratchet.cr-lead-with-ask "
+                                  "(removed), ratchet.cr-reads-first (removed), ratchet.cr-review (removed), ratchet.cr-wake "
+                                  "(changed), ratchet.root-cause (changed), ratchet.si-subtract (changed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
@@ -330,7 +337,8 @@ class RemovedRules(FixtureTest):
             'the fields key, rule, ratchet and source, so the entry has no status and no "where".',
             'ratchet.dropped: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add this entry '
             'to "own". Its key has the prefix "example", from the register\'s first own rule. The key "example.dropped" is '
-            'taken, so the entry has "example.dropped-2".',
+            'taken, so the entry has "example.dropped-2". The changelog of Ratchet 9.9 says why it was removed. When it was '
+            'merged into another rule, the register may adopt that rule in its place.',
             'Checked: with the steps above and no new rule adopted, register.json passes check_register.py against Ratchet 9.9, '
             'whether each removed rule is taken out or also moved to "own" with the entry printed.',
         ):

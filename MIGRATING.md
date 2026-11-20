@@ -18,7 +18,7 @@ A register takes Ratchet's wording at the version it states, so these change whe
 - `ratchet.work-in-issues`: the handover may be a file in the repo.
 - `ratchet.lesson-names-check`: the rule no longer holds a link.
 - `ratchet.one-approver` and `ratchet.checks-owner-read`: the ratchet is now a check, a required review by the owner through code ownership.
-- `ratchet.cr-reads-first`: reads "the latest handover".
+- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
 
 ## Steps
 

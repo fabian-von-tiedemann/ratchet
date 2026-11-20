@@ -24,7 +24,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 24 experimental rules, under a cap of 25: 11 name a check and 13 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 19 experimental rules, under a cap of 23: 8 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -80,7 +80,7 @@ Three rules in this part lean on one script that the project writes: `ratchet.fr
 <!-- generated:table building -->
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
-| ratchet.root-cause | Fix the root cause\, not the symptom\. First build a fast run that goes red on exactly this bug\. Hypotheses come after that\. | Text only\. Measured as fixes rejected because the bug was never reproduced | mattpocock\/skills `diagnosing-bugs`\; pstack `principle-fix-root-causes` |
+| ratchet.root-cause | Fix the root cause\, not the symptom\. First build a fast run that goes red on exactly this bug\. Hypotheses come after that\. The run stays\, as a test tagged with the defect\'s issue\, and is merged with the fix\. When the bug is one case of a failure class\, the fix closes the class and not only the case\. A guard is removed only when a test shows that its case is still caught\. | Check\: a PR that links an issue labeled as a defect adds or changes a test tagged with that issue\, or says in a required field why no test can catch it\, and a registry of the tagged tests\, generated from the tags\, is checked in every PR\. A finding that names a failure class is closed by a test that lists every place where the class can occur and fails on each place that lacks the guard\. A PR that removes a tagged test or a guard shows a run in which a test still catches its case\. It catches a fix merged without its test and a guard removed on a belief\. It does not see whether the cause found is the root cause\, and a sweep does not catch a spelling built to get past it | mattpocock\/skills `diagnosing-bugs`\; pstack `principle-fix-root-causes` |
 | ratchet.reuse-first | Prefer proven tools\, libraries and skills to writing your own code and text\. New code is justified against a requirement and a simpler alternative\. | Text only\: a check cannot judge whether an alternative existed | — |
 | ratchet.simplest | Choose the simplest solution that meets the requirements\. Try removing something before adding something\. After repeated patches to the same area\, stop and assess the whole\. | Text only\: simplicity is a judgment | pstack `principle-subtract-before-you-add` |
 | ratchet.run-early | Run it for real as early as possible\. A desk review finds edge cases without end\. A run shows which ones matter\. | Text only\: when to run is a judgment\. A standing approval for local experiments at no cost removes the excuse | — |
@@ -90,6 +90,16 @@ Three rules in this part lean on one script that the project writes: `ratchet.fr
 | ratchet.slices | Work is split into vertical slices that each fit in a fresh context\, with dependencies and acceptance criteria\. | Text only\: slice size is a judgment | mattpocock\/skills `to-tickets` |
 | ratchet.experiment-plan | An experiment states its hypothesis\, the alternatives\, how the result is measured\, the threshold for success and what would falsify the hypothesis\. An experiment that costs money needs the owner\'s approval of scope\, cost cap\, account and timing before anything is created\. | Text only\: a check cannot see spending before it happens\. A spending limit on the account is the backstop | — |
 <!-- /generated -->
+
+### The check for the root cause
+
+`ratchet.root-cause` names a check from 0.10 (`D-2026-11-20-proposal-triage`, choice 4). Ratchet does not ship it, since how a test is tagged and how a registry is read depends on the project's language and tools. This is what it must do:
+
+- **Tag.** The test that went red on the bug, and is green with the fix, carries the issue of the defect, in one exact form the project chooses, such as a comment or a test name that holds the issue's number.
+- **Registry.** A script reads the tags and writes a registry of the tagged tests: the issue, the file and the test. The check fails when the registry in the repo is not what the tags give, so a tagged test cannot be removed without the registry showing it.
+- **Link.** A PR that links an issue labeled as a defect adds or changes a tagged test for that issue, or says in a required field of the PR template why no test can catch it. The check fails when it does neither.
+- **Class.** When a finding names a failure class, a guard that must be present at every place of some kind, the fix adds a test that lists every such place in the tree and fails on each that lacks the guard, with a fixture of the faulty place that it must fail on (`ratchet.test-can-fail`). It catches an honest omission, a place written the usual way without the guard. It does not claim to catch a spelling built to get past it.
+- **Removal.** A PR that removes a tagged test, or a guard, shows a run in which a test still catches its case without it. If there is no such test, the PR adds it first, on the code as it stands.
 
 ## 5. Security and secrets
 

@@ -408,6 +408,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 - there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 - an experimental rule has stood through three releases and 60 days with no decision, `since` or `kept_by` breaks its form, or a heading of the changelog has a date that does not exist or is earlier than that of the version before it (see [The age of an experimental rule](#the-age-of-an-experimental-rule)).
+- an experimental rule enters in this version and this repo's register does not adopt it nor does the rule say why Ratchet cannot use it, or the register adopts a rule that says so (see [A rule that enters is used](#a-rule-that-enters-is-used)).
 
 From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
 
@@ -424,7 +425,7 @@ python3 checks/released_text.py
 - every entry of `CHANGELOG.md` that a tag holds, from its heading to the next one, with the same entry at that tag, byte for byte after CRLF is read as LF. Every tag that holds a changelog is compared with every entry it holds, so an entry is compared with each later tag too.
 - `ratchet.json`, when it names a version that has a tag, with `ratchet.json` at that tag. A change to the rules raises the version (`D-2026-11-17-new-approaches`). It is read first as every check reads it, with `registry.strict_loads` and `registry.validate`, and fails when it is not a valid data file.
 
-It also fails when a tag has no entry in the changelog (`ratchet.si-version`), when an entry after the first has no tag, when a heading is not of the form `## <version> (<date>)` or a version stands twice, when there are no tags, when a tag is of another form, and when the tags cannot be read.
+It also fails when a tag has no entry in the changelog (`repo.version`, this repo's own rule), when an entry after the first has no tag, when a heading is not of the form `## <version> (<date>)` or a version stands twice, when there are no tags, when a tag is of another form, and when the tags cannot be read.
 
 **An unreleased first entry** ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). The first entry may be headed `## <version> (unreleased)`, exactly. It passes while its version has no tag, and `ratchet.json` may name that version and change: nothing of it is released. An entry after the first headed so fails, and so does the first when its version has a tag: a released version stays released. Once the heading has a date, the next push to `main` releases it, and from its tag on the entry and `ratchet.json` are compared as every released one is. `sources.json` is not read: the list of sources is not part of what is released, so a pin that moves needs no new version. The threat here is the one that item 3 of [D-2026-11-17-new-approaches](../decisions/D-2026-11-17-new-approaches.md) named: an unreleased heading was once how released text got rewritten. So the heading has one exact form, only the first entry may have it, and released text is compared from its tag on as before.
 
@@ -681,7 +682,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 ## The budget
 
-`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)). It is 25: there were 20 experimental rules in `ratchet.json` at the commit on `main` that added that decision, and the decision put the cap at that number plus five.
+`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)). It is 23. It was 25: there were 20 experimental rules in `ratchet.json` at the commit on `main` that added that decision, and the decision put the cap at that number plus five. In 0.10 two rules that applied only to Ratchet moved into this repo's own register, and the cap went down by two, so that the move freed no place (`D-2026-11-20-proposal-triage`, choice 5).
 
 **What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when there are more experimental rules than the cap, so `generate.py --check` is red and nothing is generated. It fails the same way when the cap is missing, stands twice, or is anything but a whole number from 0: text, `true`, `2.0` or a negative number. The count of rules, in the README, `RATCHET.md`, `SELF-IMPROVEMENT.md` and the first entry of the changelog, states the cap.
 
@@ -697,7 +698,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 | `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
 | `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
 
-The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 25, and one experimental rule over it fails the check.
+The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 23, with 19 experimental rules under it, and one experimental rule over it fails the check.
 
 ## The age of an experimental rule
 
@@ -722,9 +723,31 @@ Every experimental rule in `ratchet.json` names `since`, the version it entered 
 | `age/form/since-not-a-version.json`, `age/form/since-number.json` | `since` is `9.8.1` or a number | Fails |
 | `age/form/kept-by-not-an-id.json`, `age/form/kept-by-no-such-date.json`, `age/form/kept-by-no-file.json` | `kept_by` is not the id of a decision, names 2026-02-30, or names a decision with no file | Fails |
 | `age/form/kept-by-misspelled.json`, `age/form/since-twice.json` | `keptby` in place of `kept_by`, and `since` twice | Fails |
-| This repo, and a copy with 0.9 dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes today. Fails at 60 days, naming the twenty rules since 0.2 and no other, and passes at 59 |
+| This repo, and a copy with 0.9 dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes today. Fails at 60 days, naming the fourteen rules since 0.2 and no other, and passes at 59 |
 
 The tests are in [test_age.py](test_age.py). The faults of form run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does. The age is tested on `registry.age_problems`, with the dates that `generate.release_dates` reads from the fixture's changelog, and on a copy of this repo.
+
+## A rule that enters is used
+
+A new experimental rule is already used by Ratchet itself, or says why Ratchet cannot use it (`D-2026-11-20-proposal-triage`, choice 5). A rule says so in `not_used_because`, a field of an experimental rule in `ratchet.json`: text from the fixed list, with at least one letter or digit.
+
+**What it claims.** `generate.py --check` fails, with one line per rule that names it, when an experimental rule has `since` equal to the version of `ratchet.json`, this repo's `register.json` does not adopt it, and the rule has no `not_used_because`. It fails, naming the rule, when the register adopts a rule that has `not_used_because`, whatever its `since`, so a rule does not both claim to be used and give a reason it is not. Every check that reads `ratchet.json` through `registry.load` fails on a misspelling such as `not_used_becuase` in a rule, as an unknown field, when a core rule has `not_used_because`, and when the reason is not a string, holds a character outside the list, or holds no letter or digit. When `register.json` does not pass `check_register.py`, this part says nothing: the register is named as failing already.
+
+**Against which threat.** A mistake in the bookkeeping of rules: a rule enters Ratchet that Ratchet itself does not use, and nobody notices that it was never tried here, or a rule is said to be used when the register does not adopt it.
+
+**What it does not claim.** It reads the register, not the repo: it does not see whether Ratchet follows a rule that the register adopts, or whether a check marked "built" works. It does not judge the reason, only that it is words. It holds a rule only in the version it enters, as `since` gives it, so it does not see a rule that was in Ratchet before 0.10, and a rule whose `since` is changed to an older version passes, which the maintainer reads in the pull request (`ratchet.checks-owner-read`) and issue #74 would catch.
+
+| Case | Result |
+|---|---|
+| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` enter in 0.10, and the register adopts both | Passes |
+| A copy whose register does not adopt `ratchet.review-by-risk` | Fails, naming it |
+| The same, with `not_used_because` in the rule | Passes |
+| A copy in which `ratchet.one-exact-form`, which the register adopts, has `not_used_because` | Fails, naming it |
+| `ratchet.cr-handover`, since 0.2, which the register does not adopt | Passes |
+| `not_used_because` on a core rule, empty, `.`, with U+200B, or `true` | Fails |
+| `not_used_becuase` | Fails, as an unknown field |
+
+The tests are in [test_budget.py](test_budget.py), on a copy of this repo.
 
 ## The issue form
 
