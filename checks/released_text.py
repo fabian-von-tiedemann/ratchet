@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when released text is not as it stood at its tag (ratchet.si-version, repo.tags-stay).
+"""Fail when released text is not as it stood at its tag (repo.version, repo.tags-stay).
 
     python3 checks/released_text.py
 

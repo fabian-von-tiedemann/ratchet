@@ -457,8 +457,9 @@ class Rule(FixtureTest):
         for words in ("tripwire", "not a lock", "tag ruleset", "role", "main branch", "sandbox", "only an admin",
                       "secrets and variables that the role Write may change are caught by the hook alone"):
             self.assertIn(words, rule["ratchet"])
-        # 23 when it was added in 0.7, and 24 since 0.10 adds ratchet.review-by-risk (D-2026-11-19-review-by-risk).
-        self.assertEqual(registry.counts(data)["experimental"]["rules"], 24)
+        # 23 when it was added in 0.7. 0.10 adds ratchet.review-by-risk (D-2026-11-19-review-by-risk) and
+        # ratchet.one-exact-form, and takes six out (D-2026-11-20-proposal-triage): 19.
+        self.assertEqual(registry.counts(data)["experimental"]["rules"], 19)
 
     def test_this_repo_adopts_it_as_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
         # Built since the maintainer applied the tag ruleset and the control room read it back on 2026-11-19
