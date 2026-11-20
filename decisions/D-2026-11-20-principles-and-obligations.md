@@ -48,3 +48,52 @@ Translation:
 - A pull request that merges rules carries a table of the failure classes each rule covers before and after, with the evidence for each (a decision or an issue), and the cross-family review checks the merge against it. A class that loses its check, or a lock that becomes a tripwire, blocks the merge.
 - A proposal names its principle and says whether it adds an obligation or tightens one. The open proposals that were to be the second round of `D-2026-11-20-proposal-triage` are sorted under the principles in the same way. The proposal form asks for the principle once the principles stand in `ratchet.json`.
 - Fable's proposal and Codex's review are not copied into this repo. The eleven principle texts are written in the first pull request, starting from Fable's eleven and amended for Codex's findings, and reviewed there.
+
+## Amendment, the same day: a principle is a question, not a claim
+
+The first pull request (#96) wrote the eleven principles as statements. Two rounds of review from another model family each found principle texts that promised more than the rules under them, the same kind of finding both times, so no third round started. The control room took the cause to the maintainer: a principle is meant to apply to cases no rule lists, and so it always reads wider than its rules.
+
+Original, in Swedish:
+
+> ## Vad som egentligen är fel
+>
+> Det handlar inte om slarv, utan om en motsägelse i beslutet. En princip ska gälla **fall som ingen har räknat upp**, som en trafikregel. Samtidigt får den **inte lova mer än reglerna under den**. Men en princip som täcker oförutsedda fall lovar alltid mer än reglerna, för det är just poängen med den. Hur många rundor vi än kör hittar Codex nästa ställe där principen är bredare.
+>
+> ## Tre val
+>
+> 1. **Principerna blir frågor att ställa, inte påståenden om skydd.** Varje princip formuleras som den fråga en agent ställer sig när ingen regel passar, till exempel "Kan jag ångra det här själv? Om inte, eller om det är ägarens beslut: stanna och fråga." Varje princip märks som vägledning, alltså bara text. Det som faktiskt kontrolleras är reglerna under den, och det står tydligt. En fråga kan inte lova ett skydd, men den kan styra beteendet i fall ingen har tänkt på. Det är trafikregeln.
+>    - Beslutet ändras: en princip är en fråga eller ett mål, aldrig ett påstående om skydd.
+>    - En ny arbetstråd skriver om alla elva, och Codex granskar mot just den regeln.
+>
+>    **Mitt råd:** ja. Det löser motsägelsen i stället för att lappa den.
+> 2. **Bara rubriker tills vidare.** De elva titlarna och kartan slås ihop nu utan texter, och texterna kommer senare. Det är säkert men tappar det som gör principerna värda något.
+> 3. **Pausa kartan** och börja i stället med sammanslagningarna, med tabellen över täckningen. Principerna får vänta tills reglerna är färre.
+
+Translation:
+
+> ## What is really wrong
+>
+> It is not carelessness but a contradiction in the decision. A principle is to apply to **cases no one has listed**, like a traffic rule. At the same time it may **not promise more than the rules under it**. But a principle that covers unforeseen cases always promises more than the rules, because that is its whole point. However many rounds we run, the review will find the next place where the principle is wider.
+>
+> ## Three choices
+>
+> 1. **The principles become questions to ask, not claims of protection.** Each principle is phrased as the question an agent asks itself when no rule fits, for example "Can I undo this myself? If not, or if it is the owner's decision: stop and ask." Each principle is marked as guidance, that is, text only. What is actually checked is the rules under it, and that is stated plainly. A question cannot promise a protection, but it can steer behavior in cases no one thought of. That is the traffic rule.
+>    - The decision changes: a principle is a question or an aim, never a claim of protection.
+>    - A new workspace rewrites all eleven, and the review from another family checks against exactly that rule.
+>
+>    **My recommendation:** yes. It resolves the contradiction instead of patching it.
+> 2. **Only headings for now.** The eleven titles and the map are merged now without texts, and the texts come later. It is safe but loses what makes the principles worth anything.
+> 3. **Pause the map** and start with the merges instead, with the table of coverage. The principles wait until there are fewer rules.
+
+Answer, original:
+
+> Ja
+
+Translation:
+
+> Yes
+
+What follows:
+
+- A principle is the question an agent asks when no rule fits, or an aim, and never a claim that something is protected. Every principle is marked as guidance, text only, and what is checked is only the rules under it, each with its own ratchet. This replaces the sentences above that a principle claims nothing beyond the obligations under it: a question claims nothing.
+- The review of the principle texts checks each against this: a text that states as a fact that something is protected, prevented or covered is a finding.

@@ -4,6 +4,13 @@
   "start": [
     "ratchet.keep"
   ],
+  "principles": [
+    {
+      "key": "principle.one",
+      "title": "One",
+      "text": "One principle over every rule."
+    }
+  ],
   "parts": [
     {
       "id": "one",
@@ -15,6 +22,7 @@
     {
       "key": "ratchet.keep",
       "part": "one",
+      "principle": "principle.one",
       "status": "core",
       "enforcement": "text-only",
       "rule": "Every change has a reason.",
@@ -24,6 +32,7 @@
     {
       "key": "ratchet.overdue",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.1",
       "enforcement": "text-only",
@@ -34,6 +43,7 @@
     {
       "key": "ratchet.two-releases",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.2",
       "enforcement": "text-only",
@@ -44,6 +54,7 @@
     {
       "key": "ratchet.kept",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.1",
       "kept_by": "D-2026-05-01-keep-again",
@@ -55,6 +66,7 @@
     {
       "key": "ratchet.kept-early",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.1",
       "kept_by": "D-2025-12-31-keep-early",
@@ -66,6 +78,7 @@
     {
       "key": "ratchet.unreleased",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.5",
       "enforcement": "text-only",

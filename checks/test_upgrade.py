@@ -188,9 +188,10 @@ class Upgrade(FixtureTest):
         self.assertEqual(code, 0, output)
         self.assertIn("In Ratchet 9.9, 9 rules are new, changed or removed.", output)
         # That older file has no cap, and has the date and the sources, which left ratchet.json in 0.9: the form changed.
-        # Its rules lack "since", which every experimental rule has from 0.10.
-        self.assertIn(FORM % ("9.8", "9.9", '"date" is gone, "experimental_cap" is new, "sources" is gone and "since" in a rule is new',
-                              "9.8", "9.9", "9.9"), output)
+        # Its rules lack "since", which every experimental rule has from 0.10, and it has no principles, which came in 0.10
+        # with a principle for every rule (D-2026-11-20-principles-and-obligations).
+        self.assertIn(FORM % ("9.8", "9.9", '"date" is gone, "experimental_cap" is new, "principles" is new, "sources" is gone, '
+                              '"principle" in a rule is new and "since" in a rule is new', "9.8", "9.9", "9.9"), output)
 
     def test_a_change_of_form_is_told_to_a_project_with_a_copy_that_reads_ratchet_json(self):
         # The fields at the top of ratchet.json, which Ratchet's checks read strictly: a reader of the older version
@@ -267,15 +268,16 @@ class Upgrade(FixtureTest):
                     self.assertIn('%s: removed. Remove it from "adopted". To keep it as a rule of the project\'s own, also add '
                                   'this entry to "own".' % key, output)
                 # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
-                since = '"since" in a rule is new'
+                # 0.10 adds the principles, and every rule names one (D-2026-11-20-principles-and-obligations).
+                since = '"principle" in a rule is new and "since" in a rule is new'
                 if version in ("0.3", "0.4"):
                     # Neither has the cap, which came in 0.5 as a change of form. Every version before 0.9 has the date
                     # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
-                    form = '"date" is gone, "experimental_cap" is new, "sources" is gone and ' + since
+                    form = '"date" is gone, "experimental_cap" is new, "principles" is new, "sources" is gone, ' + since
                 elif version == "0.9":
-                    form = since
+                    form = '"principles" is new, ' + since
                 else:
-                    form = '"date" is gone, "sources" is gone and ' + since
+                    form = '"date" is gone, "principles" is new, "sources" is gone, ' + since
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
                 # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.

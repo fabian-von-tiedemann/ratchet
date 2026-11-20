@@ -388,7 +388,7 @@ python3 checks/generate.py            # write the generated text
 python3 checks/generate.py --check    # fail if any generated text is out of date
 ```
 
-[ratchet.json](../ratchet.json) is the one place a rule is written. From it the generator writes the rule tables, the count of rules, [templates/register.json](../templates/register.json) and the registers under [fixtures/register/](fixtures/register/). From this repo's [register.json](../register.json) it writes `REGISTER.md`. With `--check` it changes nothing and fails when:
+[ratchet.json](../ratchet.json) is the one place a rule is written. From it the generator writes the rule tables, the section of the principles in `RATCHET.md` and the list of their titles in `README.md`, the count of rules, [templates/register.json](../templates/register.json) and the registers under [fixtures/register/](fixtures/register/). From this repo's [register.json](../register.json) it writes `REGISTER.md`. With `--check` it changes nothing and fails when:
 
 - a generated table, count, file or fixture differs from what its data file gives
 - a file does not hold exactly the generated blocks it must hold, once each, or a marker is missing or broken
@@ -408,6 +408,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 - there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 - an experimental rule has stood through three releases and 60 days with no decision, `since` or `kept_by` breaks its form, or a heading of the changelog has a date that does not exist or is earlier than that of the version before it (see [The age of an experimental rule](#the-age-of-an-experimental-rule)).
+- a principle or the principle of a rule breaks its form, or a markdown file in the root, in `templates/` or in `checks/` mentions a principle that is not in `ratchet.json` (see [The principles](#the-principles)).
 - an experimental rule enters in this version and this repo's register does not adopt it nor does the rule say why Ratchet cannot use it, or the register adopts a rule that says so (see [A rule that enters is used](#a-rule-that-enters-is-used)).
 
 From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
@@ -748,6 +749,33 @@ A new experimental rule is already used by Ratchet itself, or says why Ratchet c
 | `not_used_becuase` | Fails, as an unknown field |
 
 The tests are in [test_budget.py](test_budget.py), on a copy of this repo.
+
+## The principles
+
+`ratchet.json` holds a list `principles`, and every rule names one of them in `principle` (`D-2026-11-20-principles-and-obligations`). A principle is a question an agent asks when no rule fits, or an aim, never a claim that something is protected. It is guidance, text only, and what is checked is only the rules under it. A principle has exactly a `key`, `principle.` followed by lowercase words joined by hyphens, a `title` and a `text`. The generator writes each principle in `RATCHET.md`, under "The principles", with its title as a heading, its text, the mark "Guidance, text only", and the keys of the rules under it, each marked "names a check" or "text only", and "experimental" where it is. It writes the titles as a list in `README.md`.
+
+**What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when the list is missing or is not a list, a principle is not an object, lacks a field or has one it does not know, such as a `check`, a field is not text, a key is not of its form or is used twice, a title holds no words, has two spaces in a row or a space at an end, is longer than 60 characters, or is the title of another principle without regard to case, a text holds no words, does not end with a full stop, a question mark or an exclamation mark, or has more than three sentences, a title or a text holds a character outside [the list](#the-characters-a-value-may-hold), a rule has no `principle`, names one that is not in the list, or has the field misspelled, or a principle has no rule under it. A sentence ends at a `.`, `?` or `!` followed by a space or the end of the text. `generate.py --check` fails when the section or the list is not what the data generates, and when a markdown file mentions a principle that does not exist. An older `ratchet.json`, which `upgrade.py` reads, may lack the list, and then no rule of it may name a principle. One that has the list is read as strictly as this one.
+
+**Against which threat.** A principle that reads as more than guidance: a heading with no rule under it, a principle that names a check of its own, a generated section that drops the mark "Guidance, text only", or a text rewritten in the generated file. And two titles that differ only in their spaces, which HTML shows as one. And the bookkeeping: a rule with no principle, or one that names a principle that is gone.
+
+**What it does not claim.** It does not judge whether a rule stands under the right principle, or whether a text is a question or an aim rather than a claim of protection. The pull request that adds or moves a principle shows the map, and the review and the maintainer read it. The principle of a rule is not part of a register: `check_register.py` and `upgrade.py` compare the key, the rule, the ratchet and the source, so moving a rule to another principle asks nothing of a project. It counts sentences by their marks, so a text that writes an abbreviation with a full stop is counted as more sentences, and one that leaves out a full stop between two sentences as fewer.
+
+| Fixture | What is wrong | Result |
+|---|---|---|
+| `principles/clean.json` | Nothing. Two principles, one over a core rule and one over two experimental rules. | Passes |
+| `principles/older.json` | The form before 0.10: no principles, and no rule names one. | Passes as an older `ratchet.json`, fails as this one |
+| `principles/missing-principles.json`, `principles/principles-not-list.json`, `principles/principle-not-object.json` | No list, a list that is an object, a principle that is a text. | Fails |
+| `principles/principle-missing-field.json`, `principles/principle-unknown-field.json`, `principles/principle-not-text.json` | A principle with no text, one that names a check, one whose text is a list. | Fails |
+| `principles/key-form.json`, `principles/key-rule-prefix.json`, `principles/key-twice.json` | A key with capitals and `_`, a key with the prefix of a rule, a key used twice. | Fails |
+| `principles/title-twice.json`, `principles/title-twice-case.json` | Two principles with one title, the second in capitals. | Fails |
+| `principles/title-outside-list.json`, `principles/text-outside-list.json` | A zero-width space in a title, a control that changes the order of a line in a text. | Fails |
+| `principles/title-no-words.json`, `principles/text-no-words.json`, `principles/title-too-long.json` | A title or a text of marks alone, a title of 65 characters. | Fails |
+| `principles/title-repeated-space.json`, `principles/title-padded.json` | A title with two spaces in a row, and one with a space at its end, each of which HTML shows like a title without. | Fails |
+| `principles/text-four-sentences.json`, `principles/text-no-full-stop.json` | A text of four sentences, a text whose sentences cannot be counted. | Fails |
+| `principles/rule-without-principle.json`, `principles/rule-unknown-principle.json`, `principles/rule-principle-misspelled.json`, `principles/rule-principle-not-text.json` | A rule with no principle, one that names a principle that is not in the list, `principal` in its place, a list in its place. | Fails |
+| `principles/principle-without-rule.json` | A principle with no rule under it. | Fails |
+
+The tests are in [test_principles.py](test_principles.py). The faults run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does, and the data file fails before anything else is read. The generated text is tested against a section typed by hand, and a title and a text that hold Markdown are written as text. On a copy of this repo, a principle edited by hand in `RATCHET.md`, a rule moved to another principle without running the generator, the list missing from `README.md`, and a principle mentioned that does not exist each fail the check. This repo's `ratchet.json` has eleven principles, each over at least one rule, and every rule under one.
 
 ## The issue form
 

@@ -692,7 +692,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assertEqual(found, 1)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(changed)
-        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: count, reference-checks, start. Missing: count")
+        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: count, principle-list, reference-checks, start. Missing: count")
 
     def test_a_block_added_twice_fails(self):
         self.edit("SELF-IMPROVEMENT.md", "## Ratchet's own count", "<!-- generated:count -->\n<!-- /generated -->\n\n## Ratchet's own count")

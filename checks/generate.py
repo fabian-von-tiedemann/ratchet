@@ -65,6 +65,7 @@ BUDGET = ('<p id="budget" class="stat"><strong>%d experimental rules, with a cap
           'from <code>ratchet.json</code>.</p>')
 PAGE_BUDGET = re.compile(re.escape(BUDGET).replace("%d", "[0-9]+") + r"\Z")
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
+PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 NOT_KEYS = {"json"}
@@ -125,6 +126,28 @@ def count_text(data):
     )
 
 
+def kind(rule):
+    """What a rule under a principle is, in the section of the principles: experimental or not, and its kind of ratchet."""
+    ratchet = "names a check" if rule["enforcement"] == "enforced" else "text only"
+    return "experimental, " + ratchet if rule["status"] == "experimental" else ratchet
+
+
+def principles_text(data):
+    """Each principle: its title as a heading, its text, marked as guidance, and the rules under it with what each is.
+
+    A principle is a question to ask when no rule fits, or an aim, and text only. It names no check and claims no
+    protection, so the section marks it as guidance and says for each rule under it whether its ratchet names a check
+    or is text only, and whether it is experimental: what is checked is the rules, not the principle
+    (D-2026-11-20-principles-and-obligations, the amendment).
+    """
+    blocks = []
+    for principle in data["principles"]:
+        rules = ", ".join("`%s` (%s)" % (rule["key"], kind(rule)) for rule in registry.rules_under(data, principle["key"]))
+        blocks.append("### %s\n\n%s\n\nGuidance, text only. Rules under it: %s"
+                      % (registry.cell(principle["title"]), registry.cell(principle["text"]), rules))
+    return "\n\n".join(blocks)
+
+
 def render(data, name, argument, directory, context):
     """The text of one generated block. directory is where the document lives, relative to the root.
 
@@ -141,6 +164,10 @@ def render(data, name, argument, directory, context):
         return "Version %s, %s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], when)
     if name == "count":
         return count_text(data)
+    if name == "principles":
+        return principles_text(data)
+    if name == "principle-list":
+        return "\n".join("- %s" % registry.cell(principle["title"]) for principle in data["principles"])
     if name == "start":
         return ", ".join("`%s`" % key for key in data["start"])
     if name == "reference-checks":
@@ -160,8 +187,8 @@ def render(data, name, argument, directory, context):
 def required_blocks(data):
     """Which generated blocks each file must hold, exactly once each."""
     required = {
-        "RATCHET.md": ["version", "count", "sources"],
-        "README.md": ["count", "reference-checks", "start"],
+        "RATCHET.md": ["version", "count", "principles", "sources"],
+        "README.md": ["count", "principle-list", "reference-checks", "start"],
         "SELF-IMPROVEMENT.md": ["count"],
         "CHANGELOG.md": ["count"],
         "checks/README.md": ["reference-checks"],
@@ -593,6 +620,7 @@ def consistency_problems(data, root, context):
     """Checks on the hand-written text that the generated blocks cannot cover."""
     problems = ["ratchet.json: %s" % problem for problem in registry.citation_problems(data, context["sources"])]
     keys = set(registry.rules_by_key(data))
+    principles = set(principle["key"] for principle in data["principles"])
     for path in markdown_files(root):
         name = os.path.relpath(path, root).replace(os.sep, "/")
         text = read(path)
@@ -601,6 +629,9 @@ def consistency_problems(data, root, context):
                 for match in KEY_MENTION.finditer(line):
                     if match.group(1) not in NOT_KEYS and match.group(0) not in keys:
                         problems.append("%s:%d: %s is not a rule in ratchet.json" % (name, number, match.group(0)))
+                for match in PRINCIPLE_MENTION.finditer(line):
+                    if match.group(0) not in principles:
+                        problems.append("%s:%d: %s is not a principle in ratchet.json" % (name, number, match.group(0)))
             targets = [match.group(1) for match in LINK.finditer(line)]
             definition = LINK_DEFINITION.match(line)
             if definition:
