@@ -1,0 +1,36 @@
+{
+  "version": "9.9",
+  "experimental_cap": 1,
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "kept_by": "D-2026-01-15-keep",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.reworded",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.8",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    }
+  ]
+}

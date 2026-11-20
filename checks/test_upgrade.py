@@ -188,7 +188,9 @@ class Upgrade(FixtureTest):
         self.assertEqual(code, 0, output)
         self.assertIn("In Ratchet 9.9, 9 rules are new, changed or removed.", output)
         # That older file has no cap, and has the date and the sources, which left ratchet.json in 0.9: the form changed.
-        self.assertIn(FORM % ("9.8", "9.9", '"date" is gone, "experimental_cap" is new and "sources" is gone', "9.8", "9.9", "9.9"), output)
+        # Its rules lack "since", which every experimental rule has from 0.10.
+        self.assertIn(FORM % ("9.8", "9.9", '"date" is gone, "experimental_cap" is new, "sources" is gone and "since" in a rule is new',
+                              "9.8", "9.9", "9.9"), output)
 
     def test_a_change_of_form_is_told_to_a_project_with_a_copy_that_reads_ratchet_json(self):
         # The fields at the top of ratchet.json, which Ratchet's checks read strictly: a reader of the older version
@@ -210,6 +212,20 @@ class Upgrade(FixtureTest):
         output = out.getvalue()
         self.assertLess(output.index("Steps for register.json:"), output.index("The form of ratchet.json changed"))
         self.assertLess(output.index("The form of ratchet.json changed"), output.index("Then write REGISTER.md again"))
+
+    def test_a_field_of_a_rule_that_is_new_or_gone_is_a_change_of_form(self):
+        # A field that some rule holds in one version and no rule holds in the other. 0.10 gives every experimental
+        # rule "since" (D-2026-11-19-one-point-oh), and a reader of 0.9 refuses it as an unknown field.
+        old, new = self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        for rule in old["rules"]:
+            rule.pop("since", None)
+        self.assertEqual(upgrade.form_changes(old, new), ['"since" in a rule is new'])
+        self.assertEqual(upgrade.form_changes(new, old), ['"since" in a rule is gone'])
+        del old["experimental_cap"]
+        self.assertEqual(upgrade.form_changes(old, new), ['"experimental_cap" is new', '"since" in a rule is new'])
+        new["rules"][0]["kept_by"] = "D-2026-01-15-keep"
+        self.assertEqual(upgrade.form_changes(old, new), ['"experimental_cap" is new', '"kept_by" in a rule is new',
+                                                          '"since" in a rule is new'])
 
     def test_a_ratchet_data_file_with_a_fault_fails_as_either_file(self):
         self.assertEqual(sorted(FAULTS), sorted(name[:-len(".json")] for name in os.listdir(os.path.join(self.fixtures, "upgrade", "faults"))))
@@ -234,9 +250,9 @@ class Upgrade(FixtureTest):
                 self.assertNotIn("Traceback", output)
 
     def test_this_repos_register_at_each_released_version_upgrades_to_this_ratchet(self):
-        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3 to v0.8.
+        # Ratchet's own register.json and ratchet.json as they stood at the tags v0.3 to v0.9.
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
-        for version in ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8"):
+        for version in ("0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"):
             with self.subTest(version=version):
                 register = self.fixture_file("upgrade/released/%s/register.json" % version)
                 old = self.fixture_file("upgrade/released/%s/ratchet.json" % version)
@@ -245,16 +261,19 @@ class Upgrade(FixtureTest):
                 self.assertIn("register.json is on Ratchet %s." % version, output)
                 self.assertIn('Set "ratchet_version" to "%s".' % new["version"], output)
                 self.assertIn("passes check_register.py against Ratchet %s" % new["version"], output)
-                si_version = "ratchet.si-version: changed: the rule. The register adopts it: replace its entry with this one."
+                # ratchet.si-version, which this repo adopts, changed in 0.5 (D-2026-11-18-form-change-before-1-0) and in
+                # 0.10, which states what 1.0 promises (D-2026-11-19-one-point-oh).
+                self.assertIn("ratchet.si-version: changed: the rule. The register adopts it: replace its entry with this one.", output)
+                # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
+                since = '"since" in a rule is new'
                 if version in ("0.3", "0.4"):
-                    # Neither has the cap, which came in 0.5 as a change of form. Every released version has the date
+                    # Neither has the cap, which came in 0.5 as a change of form. Every version before 0.9 has the date
                     # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
-                    form = '"date" is gone, "experimental_cap" is new and "sources" is gone'
-                    # ratchet.si-version, which this repo adopts, changed in 0.5 (D-2026-11-18-form-change-before-1-0).
-                    self.assertIn(si_version, output)
+                    form = '"date" is gone, "experimental_cap" is new, "sources" is gone and ' + since
+                elif version == "0.9":
+                    form = since
                 else:
-                    form = '"date" is gone and "sources" is gone'
-                    self.assertNotIn(si_version, output)
+                    form = '"date" is gone, "sources" is gone and ' + since
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
                 # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
@@ -264,9 +283,10 @@ class Upgrade(FixtureTest):
                         self.assertIn(line, output)
                     else:
                         self.assertNotIn(line, output)
-                if version == "0.8":
-                    # The one rule is ratchet.review-by-risk, which 0.10 adds.
-                    self.assertIn("In Ratchet %s, 1 rule is new, changed or removed." % new["version"], output)
+                if version == "0.9":
+                    # 0.10 changes two rules, ratchet.si-version and ratchet.si-subtract, and adds one, ratchet.review-by-risk.
+                    self.assertIn("In Ratchet %s, 3 rules are new, changed or removed." % new["version"], output)
+                    self.assertIn("Not adopted, so nothing to do: ratchet.si-subtract (changed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])

@@ -1,0 +1,77 @@
+{
+  "version": "9.5",
+  "experimental_cap": 10,
+  "start": [
+    "ratchet.keep"
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "status": "core",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.overdue",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.1",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.two-releases",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.0",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.kept",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.1",
+      "kept_by": "D-2026-01-15-keep",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.kept-early",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.1",
+      "kept_by": "D-2025-12-31-keep-early",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.unreleased",
+      "part": "one",
+      "status": "experimental",
+      "since": "9.5",
+      "enforcement": "text-only",
+      "rule": "Every change has a reason.",
+      "ratchet": "Text only: a reason is a judgment",
+      "source": ""
+    }
+  ]
+}

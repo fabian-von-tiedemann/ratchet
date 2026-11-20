@@ -80,8 +80,28 @@
       "source": ""
     },
     {
+      "key": "ratchet.cr-does-not-build",
+      "rule": "The control room does not build the product. It may make small fixes after a review and maintain its own tools. Building happens in workspaces.",
+      "ratchet": "Text only: a check cannot tell which session wrote a commit",
+      "source": ""
+    },
+    {
+      "key": "ratchet.cr-verify-reports",
+      "rule": "The control room verifies a workspace's report against the repo, the PR and the running processes before acting on it (see `ratchet.evidence-before-done`).",
+      "ratchet": "Text only: a check cannot see whether a report was verified",
+      "source": "obra/superpowers `verification-before-completion`"
+    },
+    {
+      "key": "ratchet.si-harden",
+      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. The share of rules enforced by a check is the measure of how tight a project is. A check counts only if it has failed at least once on a real or seeded violation.",
+      "ratchet": "Check: the periodic count of rules by kind of ratchet",
+      "source": "",
+      "status": "text only for now",
+      "where": "Followed, not built. AGENTS.md makes it the work of this repo now. `checks/generate.py` writes the count of rules by kind of ratchet into every entry of CHANGELOG.md, so the count is made at each version and not at a fixed interval, and it does not show which checks have failed on a real or seeded violation"
+    },
+    {
       "key": "ratchet.si-version",
-      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules. A major version changes the form, renames keys or removes rules that a check now covers. Before 1.0, a minor version may also rename keys and change the form, and the changelog lists every rename and every change of form.",
+      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
       "ratchet": "Check: the changelog has an entry for every tag",
       "source": "",
       "status": "built",

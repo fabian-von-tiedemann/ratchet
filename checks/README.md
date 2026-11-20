@@ -406,6 +406,7 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 - the source of a rule cites a name that is not a source in `sources.json`. The source of a rule is empty, or citations separated by `; `, each of which starts with the name of a source and then, after a space or a comma, says what is taken from it
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 - there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
+- an experimental rule has stood through three releases and 60 days with no decision, `since` or `kept_by` breaks its form, or a heading of the changelog has a date that does not exist or is earlier than that of the version before it (see [The age of an experimental rule](#the-age-of-an-experimental-rule)).
 
 From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
 
@@ -697,6 +698,33 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 25, and one experimental rule over it fails the check.
 
+## The age of an experimental rule
+
+Every experimental rule in `ratchet.json` names `since`, the version it entered Ratchet, and may name `kept_by`, the id of a decision that kept it once more ([D-2026-11-19-one-point-oh](../decisions/D-2026-11-19-one-point-oh.md), choice 4). How the age is counted is in [SELF-IMPROVEMENT.md](../SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule).
+
+**What it claims.** `generate.py --check` fails, with one line per rule that names it, when an experimental rule has stood through three releases and 60 days with no decision. The releases are the versions with a date in the changelog after `since`, and the days run from the date of `since` to the date of the newest of them. A rule with `kept_by` stands one age more, counted the same way from the release at which it first stood too long, and then fails with only three outcomes: move it into the core, merge it, or remove it. The date of the decision does not move the count, so naming a later decision in `kept_by` keeps the rule no longer: a rule is kept once. The age moves only when a release is dated, so the check first fails in the pull request of a release, and never on a day with no change. Every check that reads `ratchet.json` through `registry.load` fails when an experimental rule has no `since`, when a core rule has `since` or `kept_by`, when `since` is not a version, when `kept_by` is not the id of a decision with a date that exists, or names a decision with no file in `decisions/`, and, as before, on a field it does not know or a field twice. `generate.py --check` also fails when `since` does not name a version with an entry with a date in the changelog, or the version of the file, so a version later than the file's fails there. It fails, naming both entries, when a release is dated before the version before it, since the age is measured at the newest version, and a year mistyped there would hide every rule. Two versions may have the same date.
+
+**Against which threat.** A mistake in the bookkeeping of rules: an experimental rule that lingers release after release with no one deciding on it, and a field misspelled so that the reader passes over it.
+
+**What it does not claim.** It does not see whether `since` is true. It was read from the tags once, for 0.10, and a released `ratchet.json` cannot change after its tag (`released_text.py`), but between two releases a pull request can change it, as it can raise the cap, and the maintainer reads it (`ratchet.checks-owner-read`). A check that it stays as it was at the last tag is issue #74. It does not judge the decision in `kept_by`, only that it exists. A rule removed and added again under another key starts a new age, which the maintainer reads in the pull request. It reads no clock: a rule that has stood long since the last release is not caught until the next one is dated. The check passes today, because every tag is from 2026-11-16 to 2026-11-19.
+
+| Fixture | What is wrong | Result |
+|---|---|---|
+| `age/ratchet.json` with `age/CHANGELOG.md` | One rule since a version three releases and 60 days before the newest, one with two releases and 60 days, two of the same age as the first and kept by a decision, one dated between the releases and one before the first, one that entered in the version not yet released | Fails, naming only the first |
+| `age/ratchet.json` with `age/CHANGELOG-day-59.md` | The same, with the newest release a day earlier: 59 days | Passes |
+| `age/ratchet.json` with `age/CHANGELOG-kept-out.md` | Three releases more, the newest 60 days after the release at which the kept rules first stood too long | Fails, naming the two kept rules too, with only move, merge or remove. With two releases more, or 59 days, the kept rules pass |
+| `age/second-keep.json` with `age/CHANGELOG-kept-out.md`, and the decision of one kept rule named for the other in the test | A kept rule whose keep has run out names a second, later decision in `kept_by` | Fails, as with the first decision |
+| `age/CHANGELOG-date-backwards.md`, and a copy of this repo with 0.9 dated 2026-01-16 | A release dated before the version before it, a year mistyped, which leaves the age check silent | Fails, naming both entries |
+| `age/no-entry.json`, and `age/ratchet.json` with `since` set to 9.10 in the test | `since` names a version with no entry in the changelog, or one later than the version of the file | Fails |
+| `age/form/since-missing.json` | An experimental rule with no `since` | Fails. An older `ratchet.json`, which `upgrade.py` reads, may lack it |
+| `age/form/since-on-core.json`, `age/form/kept-by-on-core.json` | A core rule with `since` or `kept_by` | Fails |
+| `age/form/since-not-a-version.json`, `age/form/since-number.json` | `since` is `9.8.1` or a number | Fails |
+| `age/form/kept-by-not-an-id.json`, `age/form/kept-by-no-such-date.json`, `age/form/kept-by-no-file.json` | `kept_by` is not the id of a decision, names 2026-02-30, or names a decision with no file | Fails |
+| `age/form/kept-by-misspelled.json`, `age/form/since-twice.json` | `keptby` in place of `kept_by`, and `since` twice | Fails |
+| This repo, and a copy with 0.9 dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes today. Fails at 60 days, naming the twenty rules since 0.2 and no other, and passes at 59 |
+
+The tests are in [test_age.py](test_age.py). The faults of form run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does. The age is tested on `registry.age_problems`, with the dates that `generate.release_dates` reads from the fixture's changelog, and on a copy of this repo.
+
 ## The issue form
 
 A proposal starts as an issue with the form [proposal.yml](../.github/ISSUE_TEMPLATE/proposal.yml), which asks for the five fields of [D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md): what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source. See [CONTRIBUTING.md](../CONTRIBUTING.md). The form is a test of this repo, not a reference check.
@@ -737,7 +765,7 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 - The colors are two palettes of custom properties, for light and for dark (`prefers-color-scheme`), and no hex color is written outside them. In each, the text, the muted text and the links on the background and on the background of a box, the accent of the diagrams and the counts on both, and the text on the background of code, have a contrast ratio of at least 4.5 (WCAG 2, level AA). The border of a box, `--edge`, is not checked: a box says nothing that its text and its place in the list do not.
 - Every command on the page, a line of a `<pre><code>` block, is a line of a code block marked `sh` in `README.md`.
 - The list of sources, `<ul class="sources">`, holds one item for each source in `sources.json`, in its order. Each item starts with a link to the source, named by its name, gives its license once in an element of the class `license`, and names in `<code>`, in the order of `ratchet.json`, exactly the rules whose source cites it. So a rule that starts citing a source, a source added or dropped, or a license that changes fails the test until the page says so.
-- The two diagrams are ordered lists, `<ol class="flow">`, styled as boxes with arrows by the CSS and read as numbered lists without it. Each step links to where the repo shows it. They are drawn with HTML and CSS only: there is no inline SVG, which stays off the list of elements.
+- The two diagrams are ordered lists of the class `flow`, in any order among their classes, styled as boxes with arrows by the CSS and read as numbered lists without it. Each step links to where the repo shows it: at least one of its links goes into this repo on GitHub, so a step whose only link goes to a source does not pass. They are drawn with HTML and CSS only: there is no inline SVG, which stays off the list of elements.
 - The line that fetches Ratchet and the line that gives the count of rules and the cap are written by `generate.py`, and `--check` fails when either is not current (see [generate.py](#generatepy)). So the pull request of a release, which moves the command in `README.md` and runs `generate.py`, moves the page with it, and so does a change to the rules or the cap. The test reads each line as `generate.py` does, after the spaces that indent it.
 
 **Against which threat.** The page is the first thing many people read, so it must not promise more than the repo shows, and it must not track them: no script, font, stylesheet or image from another origin. A release that moves the README and forgets the page would send people to an older version, a count written by hand would go stale at the next rule, a credit to a source would drift from the rules that cite it, and a link that leads nowhere would go unseen, because nothing else reads the page.
@@ -772,7 +800,8 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | A license that is not the one in `sources.json` | Fails |
 | A rule that starts citing a source and is not on the page, a rule on the page that does not cite the source, or a rule left out | Fails |
 | Two diagrams, every step with a link, the sandbox linked to issue #49 | Passes |
-| A step of a diagram without a link | Fails |
+| A step of a diagram without a link, or whose only link goes to a source in `sources.json` | Fails |
+| A diagram whose class attribute lists `flow` after another class | Passes, and is counted |
 | The background of a box or the accent changed to a color under 4.5, in light or in dark | Fails |
 | The count of rules and the cap as they stand, counted in the test from `ratchet.json` | Passes |
 | The cap raised in `ratchet.json`, before `generate.py` is run | `generate.py --check` fails on `docs/index.html`, and `generate.py` writes it |
@@ -801,13 +830,13 @@ This one checks no rule in a register. It is the upgrade path for a project ([UP
 - when every rule the register adopts was removed: adopt at least one rule, from the new rules, or from the rules to start with when there are no new ones, each printed with its entry. A register that adopts no rule does not pass `check_register.py`.
 - a new rule: the entry to add, if the project adopts it.
 - a rule that changed or was removed and is not adopted: its key, with nothing to do.
-- when the fields at the top of `ratchet.json` differ between the two versions: which are new and which are gone, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack the cap and may hold `date` and `sources`, which left `ratchet.json` in 0.9 ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)), and no other field the newer one does not know.
+- when the fields of `ratchet.json` differ between the two versions, at the top or in its rules: which are new and which are gone, and that a copy of a Ratchet check kept in the project, or a check of the project's own, that reads `ratchet.json` must be updated. The checks in `.ratchet` need nothing, and nothing in the register changes. The older file may lack the cap and may hold `date` and `sources`, which left `ratchet.json` in 0.9 ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)), and no other field the newer one does not know. A field of a rule is new when some rule of the newer file holds it and no rule of the older one does, as `since` is from 0.10 ([D-2026-11-19-one-point-oh](../decisions/D-2026-11-19-one-point-oh.md)), and gone the other way round.
 
 Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. It writes nothing, and reads no file but the three it is given. It runs offline.
 
 **Against which threat.** A project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's.
 
-**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with four things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, it may hold `date` and `sources`, which left in 0.9, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
+**The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with these things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, it may hold `date` and `sources`, which left in 0.9, its experimental rules may lack `since`, which came in 0.10, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks and of the decisions in `kept_by` are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
 
 **What it does not claim.**
 
@@ -817,7 +846,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
 
-**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` to `v0.8`, under `released/`.
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and this repo's own `register.json` and `ratchet.json` as they stood at the tags `v0.3` to `v0.9`, under `released/`.
 
 | Case | Fixture | Result |
 |---|---|---|
@@ -825,7 +854,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3 to 0.8, upgraded to this version, with a note that `date` and `sources` are gone, and the steps in `UPGRADING.md` run on the register at 0.8. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.8/` | Passes |
+| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, and the steps in `UPGRADING.md` run on the register at 0.8. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |

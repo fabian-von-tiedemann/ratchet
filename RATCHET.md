@@ -15,11 +15,11 @@ A project's register is a data file, `register.json`. It holds the rules the pro
 
 Ratchet ships a reference check for some of the rules, listed in [checks/README.md](checks/README.md). For every other rule, "Check:" says what the project's check must do.
 
-The name comes from the tool: a ratchet turns one way. Protection only gets tighter. A rule leaves only when a check covers it, and agents may propose tightening a check, never loosening it. Loosening a check is the owner's decision, written down like any other decision.
+The name comes from the tool: a ratchet turns one way. Protection only gets tighter. A core rule leaves only when a check covers it, and agents may propose tightening a check, never loosening it. An experimental rule may also leave in the clean-out at a release, once it has stood too long with no decision to keep it: see [The age of an experimental rule](SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule). Loosening a check is the owner's decision, written down like any other decision.
 
 ## The core is frozen
 
-The six parts below are the core. From version 0.3 the core is frozen: no rule is added to it or removed from it without a decision by Ratchet's maintainer. A new rule starts as experimental, outside the core. The wording of a core rule changes only to correct an error or to make a rule and its ratchet say the same thing, and the changelog lists every such change. A ratchet may go from text only to a check in any version: that is the direction a ratchet turns.
+The six parts below are the core. From version 0.3 the core is frozen: no rule is added to it or removed from it without a decision by Ratchet's maintainer. A new rule starts as experimental, outside the core. It moves in by a decision that cites the criteria in [Rules promoted from projects](SELF-IMPROVEMENT.md#rules-promoted-from-projects), and from 1.0 only in a major version: see [What 1.0 promises](SELF-IMPROVEMENT.md#what-10-promises). The wording of a core rule changes only to correct an error or to make a rule and its ratchet say the same thing, and the changelog lists every such change. A ratchet may go from text only to a check in any version: that is the direction a ratchet turns.
 
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
