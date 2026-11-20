@@ -919,12 +919,12 @@ class PageBudget(RepoCopy, unittest.TestCase):
 
     def test_the_page_gives_the_count_and_the_cap_of_ratchet_json(self):
         self.assertEqual(lines_that_hold(self.page(), 'id="budget"'), [budget_line(self.copy)])
-        self.assertIn("with a cap of 25.", budget_line(self.copy))
+        self.assertIn("with a cap of 23.", budget_line(self.copy))
 
     def test_a_raised_cap_fails_until_generate_moves_the_page(self):
         before = self.page()
         old = budget_line(self.copy)
-        self.edit("ratchet.json", '"experimental_cap": 25', '"experimental_cap": 26')
+        self.edit("ratchet.json", '"experimental_cap": 23', '"experimental_cap": 24')
         new = budget_line(self.copy)
         self.assertNotEqual(old, new)
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
@@ -938,7 +938,7 @@ class PageBudget(RepoCopy, unittest.TestCase):
 
     def test_a_number_edited_by_hand_fails(self):
         line = budget_line(self.copy)
-        self.write_page(self.page().replace(line, line.replace("with a cap of 25.", "with a cap of 40."), 1))
+        self.write_page(self.page().replace(line, line.replace("with a cap of 23.", "with a cap of 40."), 1))
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
 
     def test_an_indented_budget_line_passes(self):
@@ -952,7 +952,7 @@ class PageBudget(RepoCopy, unittest.TestCase):
         for new in ("", line + "\n" + line, line + " And more.", line.replace("<strong>", "<strong>about ", 1),
                     line.replace('<p id="budget" class="stat">', '<p class="stat">\n<span id="budget"></span>', 1),
                     line + '\n<p id="budget-old">23 experimental rules</p>'.replace("budget-old", "budget"),
-                    line.replace("with a cap of 25.", "with a cap of twenty-five.")):
+                    line.replace("with a cap of 23.", "with a cap of twenty-three.")):
             with self.subTest(new=new):
                 self.setUp()
                 self.write_page(self.page().replace(line, new, 1))
