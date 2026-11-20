@@ -30,6 +30,8 @@ import registry  # noqa: E402
 
 KEY_FORM = "a key is principle. followed by lowercase words joined by hyphens"
 SAME_TITLE = "principle.name-it: its title is the title of principle.test-everything, compared without regard to case"
+# Two titles that differ only in their spaces look the same in HTML, so a title has single spaces between words.
+SPACED = "principle.keep-it-simple: the title has two spaces in a row, and HTML shows them as one"
 
 # Fixture under principles/ -> what generate.py --check must say when that file is ratchet.json.
 FAILING = {
@@ -48,6 +50,8 @@ FAILING = {
     "title-outside-list": "principle.test-everything: title holds U+200B",
     "title-no-words": "principle.test-everything: the title holds no words",
     "title-too-long": "principle.test-everything: the title is 65 characters long, and a title is at most 60",
+    "title-repeated-space": SPACED,
+    "title-padded": "principle.keep-it-simple: title must be one line, without | and without spaces at the ends",
     "text-outside-list": "principle.test-everything: text holds U+202E",
     "text-no-words": "principle.test-everything: the text holds no words",
     "text-four-sentences": "principle.test-everything: the text has 4 sentences, and a principle has at most 3",
@@ -67,13 +71,13 @@ SECTION = (
     "\n"
     "Every change is tested before it is merged\\. A test that never failed proves nothing\\.\n"
     "\n"
-    "Rules under it: `ratchet.keep` (names a check)\n"
+    "Guidance, text only. Rules under it: `ratchet.keep` (names a check)\n"
     "\n"
     "### Keep it simple\n"
     "\n"
     "Choose the simple solution\\, and name what you decide\\.\n"
     "\n"
-    "Rules under it: `ratchet.reworded` (experimental, text only), `ratchet.now-checked` (experimental, text only)"
+    "Guidance, text only. Rules under it: `ratchet.reworded` (experimental, text only), `ratchet.now-checked` (experimental, text only)"
 )
 TITLES = "- Test everything\n- Keep it simple"
 

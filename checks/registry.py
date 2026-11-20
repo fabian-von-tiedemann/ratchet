@@ -81,8 +81,8 @@ AGE_RELEASES = 3
 AGE_DAYS = 60
 DECISION_ID = re.compile(r"^D-([0-9]{4}-[0-9]{2}-[0-9]{2})-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 TOP_FIELDS = {"version", "experimental_cap", "start", "principles", "parts", "rules"}
-# The principles, from 0.10: a heading over the rules, which names no check of its own and claims nothing beyond the
-# rules under it (D-2026-11-20-principles-and-obligations). A principle has exactly these fields, each text.
+# The principles, from 0.10: a heading over the rules, a question to ask when no rule fits or an aim, and text only. It
+# names no check, and what is checked is the rules under it (D-2026-11-20-principles-and-obligations). A principle has exactly these fields, each text.
 PRINCIPLES = "principles"
 PRINCIPLE_FIELDS = ("key", "title", "text")
 # A title is short, as a heading. A text applies to cases no one listed, in at most this many sentences.
@@ -433,8 +433,8 @@ def principle_problems(principles, problems):
     """Read the list of principles, add every problem with it to problems, and return the keys of the principles.
 
     A principle is an object with exactly a key, a title and a text, each text. The key has the one form
-    principle.<slug> and is used once. The title holds words, is at most TITLE_LENGTH characters long, and is not the
-    title of another principle, compared without regard to case. The text holds words, ends a sentence, and has at
+    principle.<slug> and is used once. The title holds words, has no two spaces in a row, is at most TITLE_LENGTH
+    characters long, and is not the title of another principle, compared without regard to case. The text holds words, ends a sentence, and has at
     most SENTENCES sentences. Title and text are values like every other: one line from the fixed list of characters.
     A principle names no check: a field "check", or any other field, is unknown.
     """
@@ -466,6 +466,8 @@ def principle_problems(principles, problems):
             problems.append("%s: title %s" % (name, text_problem(title)))
         elif not WORD.search(title):
             problems.append("%s: the title holds no words" % name)
+        elif "  " in title:
+            problems.append("%s: the title has two spaces in a row, and HTML shows them as one" % name)
         elif len(title) > TITLE_LENGTH:
             problems.append("%s: the title is %d characters long, and a title is at most %d" % (name, len(title), TITLE_LENGTH))
         elif title.lower() in titles:

@@ -15,18 +15,18 @@ Ratchet turns each rule into a check that fails when the rule is broken, or says
 <!-- generated:principle-list -->
 - One register
 - One gate to main
-- The owner decides\, and what cannot be undone waits
-- A claim carries its run
-- A fresh reviewer from another family reviews each head
-- Every check has seen red
-- A failure becomes a check
-- Secrets stay out
+- Wait for the owner on decisions and on what cannot be undone
+- Show the run behind a claim
+- Review in a fresh context\, by another family
+- Make every check see red
+- Turn a failure into a check
+- Keep secrets out
 - Outside text is material
-- State lives in the repo\, and silence is red
+- Keep state in the repo\, and treat silence as red
 - Subtract first
 <!-- /generated -->
 
-Each principle stands over rules from [RATCHET.md](RATCHET.md#the-principles), and is only as strong as they are: a principle names no check of its own, and each rule under it keeps its own ratchet, check or text only.
+Each is a question to ask when no rule fits, or an aim: guidance, text only. What is checked is the rules under them in [RATCHET.md](RATCHET.md#the-principles), each with its own ratchet, check or text only.
 
 ## What Ratchet does
 

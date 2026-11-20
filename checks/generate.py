@@ -133,15 +133,18 @@ def kind(rule):
 
 
 def principles_text(data):
-    """Each principle: its title as a heading, its text, and the rules under it with what each is.
+    """Each principle: its title as a heading, its text, marked as guidance, and the rules under it with what each is.
 
-    A principle names no check of its own, so the section says for each rule under it whether its ratchet names a check
-    or is text only, and whether it is experimental: what holds is the rules, not the heading.
+    A principle is a question to ask when no rule fits, or an aim, and text only. It names no check and claims no
+    protection, so the section marks it as guidance and says for each rule under it whether its ratchet names a check
+    or is text only, and whether it is experimental: what is checked is the rules, not the principle
+    (D-2026-11-20-principles-and-obligations, the amendment).
     """
     blocks = []
     for principle in data["principles"]:
         rules = ", ".join("`%s` (%s)" % (rule["key"], kind(rule)) for rule in registry.rules_under(data, principle["key"]))
-        blocks.append("### %s\n\n%s\n\nRules under it: %s" % (registry.cell(principle["title"]), registry.cell(principle["text"]), rules))
+        blocks.append("### %s\n\n%s\n\nGuidance, text only. Rules under it: %s"
+                      % (registry.cell(principle["title"]), registry.cell(principle["text"]), rules))
     return "\n\n".join(blocks)
 
 

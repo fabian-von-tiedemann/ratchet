@@ -8,7 +8,7 @@ Ratchet's own terms. Ratchet follows `ratchet.glossary`: the rules, the template
 |---|---|---|
 | ratchet | The check that fails when a rule is broken, or the words "text only" with the reason no check can see the rule. Also the name of this set of rules. | |
 | rule | One row: a key, the rule, its ratchet and its source. | |
-| principle | A heading over rules: a key `principle.` followed by lowercase words, a title and a text of at most three sentences, in `ratchet.json`. Every rule stands under one. A principle names no check of its own and claims nothing beyond the rules under it. | |
+| principle | A heading over rules: a key `principle.` followed by lowercase words, a title and a text of at most three sentences, in `ratchet.json`. Every rule stands under one. A principle is a question an agent asks when no rule fits, or an aim, never a claim that something is protected. It is guidance, text only: it names no check, and what is checked is the rules under it. | |
 | key | The stable name of a rule, `ratchet.` followed by lowercase words. A project's own rules use the project's prefix. | |
 | check | Something that runs without an agent choosing to run it and fails when the rule is broken: a CI job, a hook, a required setting. | |
 | enforced | A rule whose ratchet names a check. Whether the check is built is stated per project, in the register. | |
