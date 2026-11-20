@@ -1116,6 +1116,17 @@ class PageDiagrams(RepoCopy, unittest.TestCase):
                 self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
                 self.assert_fails("in the %s palette" % scheme, "--%s" % key)
 
+    def test_the_prompt_on_the_code_of_the_orange_band_is_held_to_the_same_contrast(self):
+        # The "$" before a command is --ink-accent, and in the orange band it stands on --go-code-bg. The new background
+        # keeps --go-code-fg legible, so only that pair fails.
+        for scheme, old in (("light", "\n  --go-code-bg: #15140f;"), ("dark", "\n    --go-code-bg: #15140f;")):
+            with self.subTest(scheme=scheme):
+                self.setUp()
+                self.change(old, old.replace("#15140f", "#555555"))
+                problems = [problem for problem in page_problems(self.copy) if "contrast ratio" in problem]
+                self.assertEqual(len(problems), 1, problems)
+                self.assert_fails("in the %s palette, --ink-accent on --go-code-bg" % scheme)
+
 
 # The first figure, where a case below puts what it adds. Each insert stands at the first of its kind on the page.
 FIGURE = '<svg class="fig fig-ratchet"'
@@ -1242,11 +1253,29 @@ class PageMotion(RepoCopy, unittest.TestCase):
                      ".fig{animation:wheel-tick 1s}", "html { scroll-behavior: smooth; }",
                      "@media (prefers-reduced-motion: reduce) { .fig { animation: wheel-tick 1s; } }",
                      "@media (min-width: 1px) { .fig { animation: wheel-tick 1s; } }",
-                     "@media (prefers-reduced-motion: no-preference), (min-width: 1px) { .fig { animation: wheel-tick 1s; } }"):
+                     "@media (prefers-reduced-motion: no-preference), (min-width: 1px) { .fig { animation: wheel-tick 1s; } }",
+                     ".wheel-tick { -webkit-animation: wheel-tick 3.8s linear infinite; }",
+                     ".fig { -webkit-animation-name: wheel-tick; }", ".fig { -moz-animation: wheel-tick 1s; }",
+                     ".fig { -o-animation-duration: 1s; }", ".fig { -MS-Animation: wheel-tick 1s; }",
+                     "html { -webkit-scroll-behavior: smooth; }"):
             with self.subTest(rule=rule):
                 self.setUp()
                 self.change("</style>", rule + "\n</style>")
                 self.assert_fails("moves the page outside %s" % REDUCED)
+
+    def test_a_prefixed_animation_inside_the_query_passes_as_the_unprefixed_one_does(self):
+        # A vendor prefix changes nothing: the property is held to the query as the unprefixed one is.
+        for rule in ("-webkit-animation: wheel-tick 1s", "-webkit-animation-name: wheel-tick", "-moz-animation: wheel-tick 1s"):
+            with self.subTest(rule=rule):
+                self.assertEqual(motion_problems("%s { .fig { %s; } }" % (REDUCED, rule)), [])
+                self.assertEqual(len(motion_problems(".fig { %s; }" % rule)), 1)
+
+    def test_a_prefixed_keyframes_fails_as_an_at_rule_the_css_may_not_hold(self):
+        for rule in ("@-webkit-keyframes wheel-tick { from { opacity: 0; } }", "@-moz-keyframes wheel-tick { to { opacity: 1; } }"):
+            with self.subTest(rule=rule):
+                self.setUp()
+                self.change("</style>", rule + "\n</style>")
+                self.assert_fails("the CSS holds @%s" % rule[1:].split()[0], "the only at-rules it may hold are @media and @keyframes")
 
     def test_the_query_taken_away_fails(self):
         self.change(REDUCED + " {", "@media (min-width: 0) {")
