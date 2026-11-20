@@ -5,10 +5,14 @@
 Every experimental rule in ratchet.json names "since", the version it entered Ratchet, and may name "kept_by", the
 decision that kept it once more (D-2026-11-19-one-point-oh, choice 4). A rule that has stood through three releases
 and 60 days with no decision fails the check, measured at the newest version with a date in CHANGELOG.md, so it is
-caught in the clean-out at a release. A decision in "kept_by" starts the count again from its date.
+caught in the clean-out at a release. A rule kept by a decision in "kept_by" stands one age more, counted from the
+release at which it first stood too long, not from the decision: so it is kept once, and naming another decision in
+"kept_by" keeps it no longer. The dates of the releases must not go back as the versions rise, or a mistyped year
+would hide every rule.
 
-The fixtures are under checks/fixtures/age/: a ratchet.json with a rule for each case, two changelogs whose newest
-release is 60 and 59 days after the first, the two decisions that rules name in "kept_by", and under form/ data files
+The fixtures are under checks/fixtures/age/: a ratchet.json with a rule for each case, second-keep.json with a rule
+kept by a second, later decision, changelogs whose newest release is 60 and 59 days after the first, one with three
+releases more, and one with a year mistyped, the decisions that rules name in "kept_by", and under form/ data files
 with one fault each in the new fields. Each test loads what it uses through FixtureTest. Standard library only.
 """
 
@@ -29,9 +33,14 @@ import registry  # noqa: E402
 
 OVERDUE = ("ratchet.overdue is experimental since 9.1 and has stood through 3 releases and 60 days, up to 9.4 (2026-03-02), "
            "with no decision to keep it")
-KEPT_EARLY = "ratchet.kept-early was kept by D-2025-12-31-keep-early and has stood through 4 releases and %d days since then, up to 9.4 (%s)"
 CHOOSE = ("In the clean-out of this release, move it into the core, merge it with another rule, remove it, or keep it once "
           "more by a decision named in kept_by (D-2026-11-19-one-point-oh)")
+KEPT_OUT = ("%s was kept by %s and has stood through 3 releases and 60 days more since it first stood too long, at 9.4 "
+            "(2026-03-02), up to 9.7 (2026-05-01). It has had its one keep, and another decision in kept_by keeps it no "
+            "longer. In the clean-out of this release, move it into the core, merge it with another rule, or remove it "
+            "(D-2026-11-19-one-point-oh)")
+BACKWARDS = ("CHANGELOG.md: '## 9.4 (2025-03-02)' is dated before '## 9.3 (2026-01-20)', the entry of the version before it. "
+             "The dates of the entries must not go back as the versions rise")
 
 # Fixture under age/form/ -> what generate.py --check must say when that file is ratchet.json.
 FAILING = {
@@ -73,7 +82,7 @@ class Age(FixtureTest):
         """A scratch root with the fixture's ratchet.json, the two decisions, and the changelog given."""
         root = self.scratch()
         os.makedirs(os.path.join(root, "decisions"))
-        for name in ("D-2026-01-15-keep.md", "D-2025-12-31-keep-early.md"):
+        for name in ("D-2026-01-15-keep.md", "D-2025-12-31-keep-early.md", "D-2026-05-01-keep-again.md"):
             with open(os.path.join(root, "decisions", name), "wb") as handle:
                 handle.write(self.fixture_bytes("age/decisions/" + name))
         with open(os.path.join(root, "ratchet.json"), "wb") as handle:
@@ -89,30 +98,59 @@ class Age(FixtureTest):
         self.assertEqual(releases, {"9.1": day(2026, 1, 1), "9.2": day(2026, 1, 1), "9.3": day(2026, 1, 20), "9.4": day(2026, 3, 2)})
 
     def test_three_releases_and_60_days_with_no_decision_fail_and_name_the_rule(self):
+        # ratchet.kept and ratchet.kept-early entered in 9.1 too, and were kept: they stand one age more from 9.4.
         data, releases = self.project()
-        self.assertEqual(registry.age_problems(data, releases), [
-            "%s. %s" % (OVERDUE, CHOOSE),
-            "%s. %s" % (KEPT_EARLY % (61, "2026-03-02"), CHOOSE),
-        ])
+        self.assertEqual(registry.age_problems(data, releases), ["%s. %s" % (OVERDUE, CHOOSE)])
 
     def test_59_days_are_not_yet_too_old(self):
-        # The same releases, the newest a day earlier: ratchet.overdue has 3 releases and 59 days. A rule kept by a
-        # decision is counted from the decision, which is 60 days before the newest release, so it still fails.
+        # The same releases, the newest a day earlier: ratchet.overdue has 3 releases and 59 days.
         data, releases = self.project(changelog="CHANGELOG-day-59.md")
-        self.assertEqual(registry.age_problems(data, releases), ["%s. %s" % (KEPT_EARLY % (60, "2026-03-01"), CHOOSE)])
+        self.assertEqual(registry.age_problems(data, releases), [])
 
     def test_two_releases_are_not_yet_too_old_whatever_the_days(self):
         # ratchet.two-releases entered in 9.2, 60 days before 9.4, and has stood through two releases since.
         data, releases = self.project()
         self.assertNotIn("ratchet.two-releases", " ".join(registry.age_problems(data, releases)))
 
-    def test_a_decision_in_kept_by_starts_the_count_again(self):
-        # ratchet.kept entered in 9.1 with ratchet.overdue, and was kept on 2026-01-15: two releases since then.
+    def test_a_decision_in_kept_by_keeps_the_rule_once_more(self):
+        # ratchet.kept entered in 9.1 with ratchet.overdue, and was kept: it passes at 9.4, where ratchet.overdue fails.
         data, releases = self.project()
         self.assertNotIn("ratchet.kept ", " ".join(registry.age_problems(data, releases)))
         rule = registry.rules_by_key(data)["ratchet.kept"]
         del rule["kept_by"]
         self.assertIn("ratchet.kept is experimental since 9.1", " ".join(registry.age_problems(data, releases)))
+
+    def test_a_kept_rule_fails_after_one_age_more_and_is_not_offered_another_keep(self):
+        # Three releases more, 9.5 to 9.7, and 9.7 is 60 days after 9.4, where the rules since 9.1 first stood too long.
+        # Both kept rules fail, whatever the date of their decision: one is from before 9.1, the other from before 9.4.
+        data, releases = self.project(changelog="CHANGELOG-kept-out.md")
+        overdue = ("ratchet.overdue is experimental since 9.1 and has stood through 6 releases and 120 days, up to 9.7 "
+                   "(2026-05-01), with no decision to keep it")
+        two = ("ratchet.two-releases is experimental since 9.2 and has stood through 5 releases and 120 days, up to 9.7 "
+               "(2026-05-01), with no decision to keep it")
+        self.assertEqual(registry.age_problems(data, releases), [
+            "%s. %s" % (overdue, CHOOSE),
+            "%s. %s" % (two, CHOOSE),
+            KEPT_OUT % ("ratchet.kept", "D-2026-01-15-keep"),
+            KEPT_OUT % ("ratchet.kept-early", "D-2025-12-31-keep-early"),
+        ])
+        self.assertNotIn("keep it once more", " ".join(registry.age_problems(data, releases)[2:]))
+
+    def test_a_second_keep_fails(self):
+        # The keep of ratchet.kept has run out, and a second decision, dated the day of 9.7, is named in its place.
+        data, releases = self.project(ratchet="second-keep.json", changelog="CHANGELOG-kept-out.md")
+        self.assertIn(KEPT_OUT % ("ratchet.kept", "D-2026-05-01-keep-again"), registry.age_problems(data, releases))
+        # The same with the decision of ratchet.kept named for ratchet.kept-early, which is later than its own.
+        registry.rules_by_key(data)["ratchet.kept-early"]["kept_by"] = "D-2026-01-15-keep"
+        self.assertIn(KEPT_OUT % ("ratchet.kept-early", "D-2026-01-15-keep"), registry.age_problems(data, releases))
+
+    def test_the_age_more_of_a_kept_rule_needs_three_releases_and_60_days(self):
+        data, releases = self.project(changelog="CHANGELOG-kept-out.md")
+        two = dict(releases)
+        del two["9.7"]
+        self.assertNotIn(" was kept by ", " ".join(registry.age_problems(data, two)))
+        day_59 = dict(releases, **{"9.7": datetime.date(2026, 4, 30)})
+        self.assertNotIn(" was kept by ", " ".join(registry.age_problems(data, day_59)))
 
     def test_a_rule_that_entered_in_the_version_not_yet_released_has_no_age(self):
         data, releases = self.project()
@@ -129,6 +167,14 @@ class Age(FixtureTest):
         registry.rules_by_key(data)["ratchet.two-releases"]["since"] = "9.10"
         self.assertIn("ratchet.two-releases: since is 9.10, which has no entry with a date in CHANGELOG.md and is not this "
                       "version, 9.5", registry.age_problems(data, releases))
+
+    def test_a_release_dated_before_the_version_before_it_fails(self):
+        # 9.4 with its year mistyped, 2025 for 2026. The age is measured at the newest version, so the mistake would
+        # hide ratchet.overdue, and every other rule, if the date were not refused.
+        releases, problems = generate.release_dates(self.fixture_text("age/CHANGELOG-date-backwards.md"))
+        self.assertEqual(problems, [BACKWARDS])
+        data, _ = self.project()
+        self.assertEqual(registry.age_problems(data, releases), [])
 
     def test_a_date_in_a_heading_that_does_not_exist_fails(self):
         releases, problems = generate.release_dates("# Changelog\n\n## 9.2 (2026-02-30)\n\nTwo.\n\n## 9.1 (2026-01-01)\n\nOne.\n")
@@ -185,6 +231,21 @@ class RepoAge(RepoCopy, unittest.TestCase):
         self.assertNotIn("ratchet.phases is", output)
         self.assertNotIn("ratchet.irreversible-waits is", output)
         self.assertNotIn("ratchet.expected-tests-ran is", output)
+
+    def test_a_release_dated_before_the_one_before_fails_the_check(self):
+        # The newest release with its year mistyped, 2026-01-16 for 2027-01-16: before 0.8, and the age check silent.
+        heading, newest, _ = self.newest_release()
+        with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
+            releases, _ = generate.release_dates(handle.read())
+        before = max((version for version in releases if registry.version_key(version) < registry.version_key(newest)),
+                     key=registry.version_key)
+        self.edit("CHANGELOG.md", heading, "## %s (2026-01-16)" % newest)
+        run("generate.py", root=self.copy)
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 1, output)
+        self.assertIn("CHANGELOG.md: '## %s (2026-01-16)' is dated before '## %s (%s)', the entry of the version before it"
+                      % (newest, before, releases[before].isoformat()), output)
+        self.assertNotIn("ratchet.json:", output)
 
     def test_59_days_on_pass(self):
         heading, newest, _ = self.newest_release()
