@@ -9,208 +9,1162 @@
 <link rel="icon" href="ratchet-light.svg" type="image/svg+xml">
 <style>
 :root {
-  --bg: #ffffff;
-  --fg: #1b1b1b;
-  --muted: #4d4d4d;
-  --link: #0b57b8;
-  --code-bg: #f3f4f6;
-  --rule: #d4d4d4;
-  --box: #f1f5fb;
-  --edge: #c9d5e6;
-  --accent: #a84608;
+  --bg: #f4f1e8;
+  --fg: #15140f;
+  --muted: #56524a;
+  --link: #15140f;
+  --accent: #b23a04;
+  --signal: #f26a1b;
+  --box: #fbf9f3;
+  --code-bg: #e8e3d5;
+  --code-fg: #15140f;
+  --edge: #cfc8b5;
+  --ink-bg: #15140f;
+  --ink-fg: #f1eee4;
+  --ink-muted: #aaa595;
+  --ink-accent: #ff9648;
+  --ink-box: #201e17;
+  --ink-code: #2a2720;
+  --ink-edge: #3d392e;
+  --go-fg: #15140f;
+  --go-code-bg: #15140f;
+  --go-code-fg: #f1eee4;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121212;
-    --fg: #ececec;
-    --muted: #b5b5b5;
-    --link: #8cb4ff;
-    --code-bg: #1f2328;
-    --rule: #3a3a3a;
-    --box: #1b222b;
-    --edge: #34404e;
-    --accent: #f2a65a;
+    --bg: #11100c;
+    --fg: #edeadf;
+    --muted: #a6a192;
+    --link: #edeadf;
+    --accent: #ff9648;
+    --signal: #ff9648;
+    --box: #1a1813;
+    --code-bg: #23201a;
+    --code-fg: #edeadf;
+    --edge: #37342a;
+    --ink-bg: #1a1813;
+    --ink-fg: #edeadf;
+    --ink-muted: #a6a192;
+    --ink-accent: #ff9648;
+    --ink-box: #23211a;
+    --ink-code: #2c2921;
+    --ink-edge: #423e32;
+    --go-fg: #15140f;
+    --go-code-bg: #15140f;
+    --go-code-fg: #f1eee4;
   }
 }
+
 html {
   background: var(--bg);
   color: var(--fg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 body {
-  margin: 0 auto;
-  max-width: 42rem;
-  padding: 1.5rem 1.25rem 3rem;
-  font-family: system-ui, sans-serif;
+  margin: 0;
+  font-family: var(--sans);
   font-size: 1.0625rem;
   line-height: 1.6;
+  overflow-wrap: break-word;
 }
-header {
-  border-bottom: 1px solid var(--rule);
-  padding-bottom: 1.25rem;
+h1, h2, h3, p, ul, ol, pre {
+  margin: 0;
 }
-header picture img {
-  display: block;
-  margin-bottom: 0.5rem;
-}
-h1 {
-  font-size: 2.25rem;
-  line-height: 1.2;
-  margin: 0 0 1rem;
-}
-h2 {
-  font-size: 1.375rem;
-  line-height: 1.3;
-  margin: 2.5rem 0 0.75rem;
-}
-h3 {
-  font-size: 1.0625rem;
-  margin: 0 0 0.25rem;
+ul, ol {
+  padding: 0;
 }
 a {
   color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
 }
-.problem {
+a:hover {
+  color: var(--accent);
+  text-decoration-thickness: 2px;
+}
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+code, pre {
+  font-family: var(--mono);
+  font-size: 0.88em;
+}
+strong {
+  font-weight: 700;
+}
+::selection {
+  background: var(--signal);
+  color: var(--go-fg);
+}
+
+/* The page is a stack of bands. Each band is a grid whose outer columns are the gutters. */
+header, section, footer {
+  display: grid;
+  grid-template-columns: 0 1fr 0;
+  column-gap: 1.25rem;
+  background: var(--bg);
+  color: var(--fg);
+}
+header > *, section > *, footer > * {
+  grid-column: 2;
+  min-width: 0;
+}
+section {
+  padding: 0 0 4.5rem;
+}
+.ink {
+  --bg: var(--ink-bg);
+  --fg: var(--ink-fg);
+  --muted: var(--ink-muted);
+  --link: var(--ink-fg);
+  --accent: var(--ink-accent);
+  --box: var(--ink-box);
+  --code-bg: var(--ink-code);
+  --code-fg: var(--ink-fg);
+  --edge: var(--ink-edge);
+}
+.go {
+  --bg: var(--signal);
+  --fg: var(--go-fg);
+  --muted: var(--go-fg);
+  --link: var(--go-fg);
+  --accent: var(--go-fg);
+  --box: var(--signal);
+  --code-bg: var(--go-code-bg);
+  --code-fg: var(--go-code-fg);
+  --edge: var(--go-fg);
+}
+.tint {
+  --bg: var(--box);
+}
+.ink, .tint, .go {
+  padding-top: 3.5rem;
+}
+
+/* Type */
+.kicker {
+  margin: 0 0 2.5rem;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--fg);
+  font: 600 0.75rem/1.4 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.kicker span {
+  color: var(--accent);
+  margin-right: 0.9em;
+}
+h2 {
+  font-size: 2.125rem;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 1.25rem;
+  text-wrap: balance;
+  scroll-margin-top: 4.5rem;
+}
+h3 {
+  font-size: 1.0625rem;
+  line-height: 1.35;
+}
+.intro {
   font-size: 1.25rem;
   line-height: 1.45;
+  max-width: 36rem;
+  margin: 0 0 2.5rem;
+  text-wrap: pretty;
+}
+.note {
+  max-width: 38rem;
+  margin: 0 0 1.5rem;
+}
+.refs {
+  display: block;
+  margin-top: 0.5rem;
+  font: 500 0.78125rem/1.5 var(--mono);
+  color: var(--muted);
+}
+.refs a {
+  color: var(--muted);
+}
+.refs a:hover {
+  color: var(--accent);
+}
+
+/* The opening */
+header {
+  padding: 1.25rem 0 3.5rem;
+  row-gap: 0;
+}
+header picture {
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+}
+header picture img {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+}
+h1 {
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  margin-left: 2.6rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+nav {
+  grid-row: 2;
+  margin: 1.1rem 0 0;
+  padding: 0.8rem 0 0;
+  border-top: 1px solid var(--fg);
 }
 nav ul {
   list-style: none;
-  padding: 0;
-  margin: 1.25rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  font: 500 0.8125rem/1.5 var(--mono);
 }
-nav li {
-  display: inline-block;
-  margin: 0 1.25rem 0.5rem 0;
+nav a {
+  text-decoration: none;
+}
+nav a:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+}
+.eyebrow {
+  grid-row: 3;
+  margin: 2.75rem 0 1.25rem;
+  font: 600 0.75rem/1.5 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  max-width: 26rem;
+}
+.problem {
+  grid-row: 4;
+  font-size: 11.4vw;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+.problem em {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+}
+.lede {
+  grid-row: 5;
+  margin: 1.75rem 0 0;
+  font-size: 1.1875rem;
+  line-height: 1.5;
+  max-width: 34rem;
+  text-wrap: pretty;
+}
+.actions {
+  grid-row: 6;
+  margin: 2rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  font: 500 0.875rem/1.4 var(--mono);
 }
 .button {
   display: inline-block;
-  background: var(--link);
+  padding: 0.85rem 1.35rem;
+  background: var(--fg);
   color: var(--bg);
-  font-weight: 700;
+  font: 700 1rem/1.2 var(--sans);
   text-decoration: none;
-  padding: 0.45rem 1.1rem;
-  border-radius: 6px;
 }
-li {
-  margin-bottom: 0.6rem;
+.button::after {
+  content: "→";
+  display: inline-block;
+  margin-left: 0.6em;
+  transition: translate 0.15s ease-out;
 }
-code {
-  font-family: ui-monospace, monospace;
-  font-size: 0.92em;
+.button:hover {
+  background: var(--accent);
+  color: var(--bg);
 }
-pre {
-  background: var(--code-bg);
-  color: var(--fg);
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 0.5rem 0 0.75rem;
+.button:hover::after {
+  translate: 0.25em 0;
 }
-.flow {
+header .plate {
+  grid-row: 7;
+  margin: 3rem 0 0;
+}
+.legend {
+  grid-row: 8;
+  margin: 2rem 0 0;
+  list-style: none;
+  display: grid;
+  gap: 0;
+}
+.legend li {
   position: relative;
-  list-style-position: inside;
-  padding: 0;
-  margin: 1rem 0 0.75rem;
+  padding: 1rem 0 1rem 2.75rem;
+  border-top: 1px solid var(--edge);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--muted);
 }
-.loop {
-  margin-right: 2.5rem;
+.legend strong {
+  display: block;
+  color: var(--fg);
+  font-size: 1.0625rem;
+  text-wrap: balance;
+}
+.legend .no {
+  position: absolute;
+  left: 0;
+  top: 1.05rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1.5px solid var(--fg);
+  border-radius: 50%;
+  font: 700 0.8125rem/1.6rem var(--mono);
+  text-align: center;
+  color: var(--fg);
+}
+
+/* Figures */
+.plate {
+  display: block;
+  margin: 0 0 2.5rem;
+}
+.fig {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 34rem;
+  margin: 0 auto;
+  color: var(--fg);
+  overflow: visible;
+}
+.cap {
+  display: block;
+  margin: 1rem 0 0;
+  padding: 0.6rem 0 0;
+  border-top: 1px solid var(--edge);
+  font: 500 0.75rem/1.5 var(--mono);
+  color: var(--muted);
+}
+.cap strong {
+  color: var(--accent);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-right: 0.6em;
+}
+.fig text {
+  font-family: var(--mono);
+  fill: var(--fg);
+}
+.axis {
+  stroke: var(--edge);
+  stroke-width: 1;
+  stroke-dasharray: 16 5 2 5;
+}
+.ticks {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.wheel {
+  fill: var(--box);
+  stroke: var(--fg);
+  stroke-width: 2;
+}
+.rim {
+  stroke: var(--edge);
+  stroke-width: 1;
+}
+.window {
+  fill: var(--bg);
+  stroke: var(--fg);
+}
+.hub {
+  fill: var(--bg);
+  stroke: var(--fg);
+}
+.bore {
+  fill: var(--fg);
+  stroke: var(--fg);
+}
+.way {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.way-head {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.pawl-body {
+  fill: var(--signal);
+  stroke: var(--fg);
+  stroke-width: 2;
+}
+.pawl-pin {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 2;
+}
+.wheel-step, .wheel-tick, .pawl {
+  transform-origin: 0 0;
+}
+.leader {
+  stroke: var(--fg);
+  stroke-width: 1;
+}
+.mark {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.fig .mark-no {
+  font-size: 13px;
+  font-weight: 700;
+}
+.track {
+  stroke: var(--edge);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+}
+.fig-machine {
+  max-width: 23rem;
+}
+.fig-loop .wheel {
+  stroke-width: 1.5;
+}
+.node {
+  fill: var(--fg);
+  stroke: var(--fg);
+}
+.fig .node-no {
+  fill: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+}
+.fig .label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.fig .label-sub {
+  fill: var(--muted);
+  font-weight: 500;
+}
+.wire {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.wire-back {
+  stroke: var(--muted);
+  stroke-dasharray: 3 5;
+}
+.wire-head {
+  fill: var(--fg);
+  stroke: var(--fg);
+  stroke-width: 1;
+}
+.box {
+  fill: var(--box);
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.box-room {
+  fill: var(--fg);
+}
+.box-approve {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.space {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-dasharray: 5 4;
+}
+.fig .space-name {
+  font-size: 11.5px;
+}
+.fig .box-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.fig .box-sub {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  fill: var(--muted);
+}
+.fig .box-name-room {
+  fill: var(--bg);
+}
+.fig .box-sub-room {
+  fill: var(--bg);
+}
+.pin {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.pin-dot {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.fig .pin-name {
+  fill: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.fig .back-name {
+  fill: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+}
+
+/* The two diagrams: numbered steps on a line */
+.flow {
+  list-style: decimal-leading-zero;
+  margin: 0;
+  padding: 0 0 0 2.6rem;
 }
 .flow li {
   position: relative;
-  background: var(--box);
-  border: 1px solid var(--edge);
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  margin: 0 0 1.75rem;
+  padding: 0 0 2rem 1.4rem;
+  border-left: 1.5px solid var(--fg);
+  line-height: 1.55;
 }
 .flow li::marker {
+  font: 700 0.8125rem/1 var(--mono);
   color: var(--accent);
-  font-weight: 700;
 }
 .flow li::before {
   content: "";
   position: absolute;
-  left: 1.6rem;
-  bottom: -1.25rem;
-  width: 2px;
-  height: 1.25rem;
-  background: var(--accent);
+  left: -0.4rem;
+  top: 0.45rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1.5px solid var(--fg);
+  box-sizing: border-box;
 }
-.flow li::after {
-  content: "";
-  position: absolute;
-  left: 1.25rem;
-  bottom: -1.75rem;
-  border-style: solid;
-  border-width: 0.6rem 0.4rem 0;
-  border-color: var(--accent) transparent transparent;
+.flow li:hover::before {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .flow li:last-child {
-  margin-bottom: 0;
+  padding-bottom: 0.25rem;
 }
-.flow li:last-child::before,
-.flow li:last-child::after {
-  content: none;
+.flow strong {
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
 }
-.loop::before {
-  content: "";
-  position: absolute;
-  top: 1.4rem;
-  bottom: 1.4rem;
-  right: -2rem;
-  width: 1.4rem;
-  border: 2px dashed var(--accent);
-  border-left: 0;
-  border-radius: 0 10px 10px 0;
+.flow a, .points .refs a, .ledger .refs a {
+  font: 500 0.78125rem/1.5 var(--mono);
 }
-.loop::after {
-  content: "";
-  position: absolute;
-  top: 1.0rem;
-  right: -0.65rem;
-  border-style: solid;
-  border-width: 0.45rem 0.65rem 0.45rem 0;
-  border-color: transparent var(--accent) transparent transparent;
+.flow code {
+  font-size: 0.85em;
 }
 .back {
-  border-left: 3px solid var(--accent);
-  padding-left: 0.75rem;
+  margin: 1.5rem 0 0 2.6rem;
+  padding: 1rem 0 0 1.4rem;
+  border-top: 1.5px dashed var(--accent);
+  max-width: 34rem;
 }
-.sources {
+.back::before {
+  content: "↺";
+  float: left;
+  margin: -0.25rem 0.6rem 0 -0.1rem;
+  font: 700 1.5rem/1.3 var(--mono);
+  color: var(--accent);
+}
+
+/* One turn, as an illustration */
+.eg-title {
+  margin: 4rem 0 0;
+  padding: 0.9rem 0 1.25rem;
+  border-top: 1px solid var(--edge);
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.eg-title strong {
+  color: var(--fg);
+}
+.eg {
   list-style: none;
-  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.eg li {
+  position: relative;
+  padding: 1.1rem 1.25rem 1.25rem;
+  background: var(--box);
+  border: 1px solid var(--edge);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+}
+.eg .held {
+  border: 2px solid var(--fg);
+  background: var(--bg);
+  font-weight: 600;
+}
+.tag {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  font: 700 0.6875rem/1.4 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* The form of a rule */
+.rules {
+  list-style: none;
+  display: grid;
+  gap: 1rem;
+  margin: 0 0 3rem;
+}
+.rules li {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1.5px solid var(--fg);
+}
+.rules br {
+  display: none;
+}
+.rules code {
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid var(--edge);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.rules .rule {
+  flex: 1;
+  padding: 1.1rem 1.1rem 1.4rem;
+  font-size: 1.1875rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.rules .ratchet {
+  padding: 0.8rem 1.1rem;
+  font: 500 0.8125rem/1.45 var(--mono);
+}
+.rules .is-check {
+  background: var(--fg);
+  color: var(--bg);
+}
+.rules .is-text {
+  border-top: 1.5px dashed var(--fg);
+  color: var(--fg);
+}
+.rules .ratchet strong {
+  display: block;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.points, .ledger, .limits, .sources {
+  list-style: none;
+}
+.legend li, .eg li, .rules li, .sources li, .limits li {
+  min-width: 0;
+}
+.points {
+  display: grid;
+  gap: 0;
+}
+.points li {
+  padding: 1.25rem 0 1.4rem;
+  border-top: 1px solid var(--edge);
+}
+.points strong:first-child {
+  display: block;
+  margin: 0 0 0.35rem;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* The sources */
+.sources {
+  display: grid;
+  gap: 1rem;
 }
 .sources li {
+  padding: 1.25rem 1.25rem 1.1rem;
   background: var(--box);
   border: 1px solid var(--edge);
-  border-radius: 8px;
-  padding: 0.75rem 0.9rem;
-  margin-bottom: 0.9rem;
+}
+.sources h3 {
+  font: 700 0.9375rem/1.4 var(--mono);
+  margin: 0 0 0.6rem;
 }
 .sources p {
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
-.meta {
+.sources .meta {
+  margin: 0.9rem 0 0;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--edge);
+  font-size: 0.8125rem;
+  line-height: 1.7;
   color: var(--muted);
-  font-size: 0.95rem;
 }
+.license {
+  display: inline-block;
+  padding: 0 0.45em;
+  border: 1px solid var(--muted);
+  font: 600 0.75rem/1.5 var(--mono);
+  color: var(--fg);
+}
+.sources code {
+  font-size: 0.75rem;
+  color: var(--fg);
+}
+
+/* How it stays tight */
 .stat {
-  background: var(--box);
-  border: 1px solid var(--edge);
-  border-radius: 8px;
-  padding: 0.75rem 0.9rem;
+  margin: 0 0 2.5rem;
+  padding: 1.5rem 0 0;
+  border-top: 1.5px solid var(--fg);
+  color: var(--muted);
 }
 .stat strong {
   display: block;
-  color: var(--accent);
-  font-size: 1.25rem;
+  margin: 0 0 0.6rem;
+  font-size: 1.875rem;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+  text-wrap: balance;
 }
-footer {
-  border-top: 1px solid var(--rule);
-  margin-top: 2.5rem;
-  padding-top: 1rem;
+
+/* Evidence */
+.ledger li {
+  padding: 1.4rem 0 1.5rem;
+  border-top: 1px solid var(--edge);
+}
+.ledger li:last-child {
+  border-bottom: 1px solid var(--edge);
+}
+.ledger strong {
+  display: block;
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.ledger .d {
+  display: block;
   color: var(--muted);
-  font-size: 0.95rem;
+}
+
+/* The honest limits: drawn the way a rule that is text only is drawn */
+.limits {
+  display: grid;
+  gap: 1rem;
+}
+.limits li {
+  padding: 1.25rem 1.25rem 1.4rem;
+  border: 1.5px dashed var(--fg);
+}
+.limits strong {
+  display: block;
+  margin: 0 0 0.5rem;
+  font-size: 1.1875rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* Start here */
+.go {
+  padding-bottom: 5rem;
+}
+.go h2 {
+  font-size: 3.25rem;
+  letter-spacing: -0.04em;
+}
+.steps {
+  margin: 0;
+  padding: 0 0 0 2.4rem;
+  list-style: decimal-leading-zero;
+  max-width: 50rem;
+}
+.steps li {
+  margin: 0 0 1.75rem;
+  font-size: 1.0625rem;
+}
+.steps li:last-child {
+  margin-bottom: 0;
+}
+.steps li::marker {
+  font: 700 0.8125rem/1 var(--mono);
+}
+.steps .say {
+  display: block;
+  margin: 0 0 0.6rem;
+  font-weight: 700;
+}
+.steps .then {
+  display: block;
+  margin: 0.75rem 0 0;
+}
+pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+}
+pre code {
+  font-size: 1em;
+}
+pre::before {
+  content: "$ ";
+  color: var(--ink-accent);
+  user-select: none;
+}
+.go code {
+  font-weight: 600;
+}
+.more {
+  margin: 2.25rem 0 0 2.4rem;
+  font-weight: 600;
+}
+
+footer {
+  --bg: var(--ink-bg);
+  --fg: var(--ink-fg);
+  --muted: var(--ink-muted);
+  --link: var(--ink-fg);
+  --accent: var(--ink-accent);
+  padding: 3.5rem 0 4rem;
+  font-size: 0.9375rem;
+}
+footer p {
+  max-width: 38rem;
+  color: var(--muted);
+}
+footer .links {
+  margin: 1.5rem 0 0;
+  font: 500 0.8125rem/1.6 var(--mono);
+}
+
+@media (min-width: 30rem) {
+  .problem {
+    font-size: 3.5rem;
+  }
+}
+@media (min-width: 46rem) {
+  header, section, footer {
+    column-gap: 2.5rem;
+  }
+  section {
+    padding-bottom: 6rem;
+  }
+  h2 {
+    font-size: 2.75rem;
+  }
+  .problem {
+    font-size: 4.5rem;
+  }
+  .lede {
+    font-size: 1.3125rem;
+  }
+  .intro {
+    font-size: 1.375rem;
+  }
+  h1 {
+    font-size: 1.375rem;
+  }
+  nav {
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  header picture, h1, nav {
+    padding-bottom: 1.1rem;
+  }
+  .eyebrow {
+    border-top: 1px solid var(--fg);
+    padding-top: 0.9rem;
+    margin-top: 0;
+    max-width: none;
+  }
+  .problem {
+    margin-top: 2rem;
+  }
+  .legend {
+    grid-template-columns: 1fr 1fr 1fr;
+    column-gap: 2rem;
+    border-top: 1px solid var(--fg);
+  }
+  .legend li {
+    border-top: 0;
+    padding-top: 1.25rem;
+  }
+  .legend .no {
+    top: 1.3rem;
+  }
+  .eg {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 2rem;
+  }
+  .eg li::after {
+    content: "→";
+    position: absolute;
+    right: -1.55rem;
+    top: 1rem;
+    font: 700 1.125rem/1 var(--mono);
+    color: var(--accent);
+  }
+  .eg li:last-child::after {
+    content: none;
+  }
+  .rules, .sources, .limits {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stat strong {
+    font-size: 2.5rem;
+  }
+  .go h2 {
+    font-size: 5rem;
+  }
+  pre {
+    font-size: 0.9375rem;
+    padding: 1.15rem 1.35rem;
+  }
+}
+@media (min-width: 64rem) {
+  header, section, footer {
+    grid-template-columns: 0 1fr 1fr 1fr 1fr 1fr 1fr 0;
+    column-gap: 2rem;
+  }
+  header > *, section > *, footer > * {
+    grid-column: 2 / 8;
+  }
+  section {
+    padding-bottom: 8rem;
+  }
+  .kicker {
+    grid-row: 1;
+    margin-bottom: 3.5rem;
+  }
+  header {
+    padding-bottom: 5rem;
+  }
+  header picture, h1 {
+    grid-column: 2 / 5;
+  }
+  nav {
+    grid-column: 4 / 8;
+  }
+  .eyebrow {
+    grid-column: 2 / 8;
+    margin-bottom: 0;
+  }
+  .problem, .lede, .actions {
+    grid-column: 2 / 5;
+  }
+  .problem {
+    font-size: 3.5rem;
+    margin-top: 3rem;
+  }
+  header .plate {
+    grid-column: 5 / 8;
+    grid-row: 4 / 7;
+    align-self: center;
+    margin: 2.5rem 0 0;
+  }
+  .legend {
+    margin-top: 4rem;
+  }
+
+  /* A section with a rail: the heading stands on the left and stays while its text scrolls. */
+  .rail > h2 {
+    grid-column: 2 / 4;
+    grid-row: 2 / span 40;
+    align-self: start;
+    position: sticky;
+    top: 2.5rem;
+    margin: 0;
+  }
+  .rail > * {
+    grid-column: 4 / 8;
+  }
+  .rail > .kicker {
+    grid-column: 2 / 8;
+  }
+
+  /* A section with a figure: the figure stays while its steps scroll. */
+  .staged > h2, .staged > .intro {
+    grid-column: 2 / 6;
+  }
+  .staged > h2 {
+    grid-row: 2;
+  }
+  .staged > .intro {
+    grid-row: 3;
+    margin-bottom: 4rem;
+  }
+  .staged > .plate {
+    grid-row: 4 / 6;
+    align-self: start;
+    margin: 0;
+  }
+  .staged > .flow {
+    grid-row: 4;
+  }
+  .staged > .back {
+    grid-row: 5;
+  }
+  .turn > .plate {
+    grid-column: 2 / 5;
+  }
+  .turn > .flow, .turn > .back {
+    grid-column: 5 / 8;
+  }
+  .run > .plate {
+    grid-column: 5 / 8;
+  }
+  .run > .flow, .run > .back {
+    grid-column: 2 / 5;
+  }
+  .eg-title {
+    grid-row: 6;
+    margin-top: 6rem;
+  }
+  .eg {
+    grid-row: 7;
+  }
+  .go h2 {
+    font-size: 5.5rem;
+    line-height: 0.92;
+    margin-bottom: 2.5rem;
+  }
+  footer p {
+    grid-column: 2 / 6;
+  }
+}
+@media (min-width: 64rem) and (min-height: 46rem) {
+  .staged > .plate {
+    position: sticky;
+    top: 2rem;
+  }
+}
+@media (min-width: 82rem) {
+  header, section, footer {
+    grid-template-columns: 1fr 9.75rem 9.75rem 9.75rem 9.75rem 9.75rem 9.75rem 1fr;
+    column-gap: 2.5rem;
+  }
+  h2 {
+    font-size: 3.25rem;
+  }
+  .problem {
+    font-size: 4.375rem;
+  }
+  .stat strong {
+    font-size: 3rem;
+  }
+  .run > .plate {
+    grid-column: 6 / 8;
+  }
+  .run > .flow, .run > .back {
+    grid-column: 2 / 6;
+  }
+  .ink, .tint, .go {
+    padding-top: 5rem;
+  }
+  .go h2 {
+    grid-column: 2 / 4;
+    grid-row: 2 / span 6;
+    align-self: start;
+    font-size: 6rem;
+  }
+  .go > .steps, .go > .more {
+    grid-column: 4 / 8;
+  }
+  .go pre {
+    font-size: 0.8125rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+  .wheel-step {
+    animation: wheel-step 68.4s step-end infinite;
+  }
+  .wheel-tick {
+    animation: wheel-tick 3.8s linear infinite;
+  }
+  .pawl {
+    animation: pawl-click 3.8s linear infinite;
+  }
+}
+@keyframes wheel-tick {
+  0%, 56% { rotate: 0deg; }
+  66% { rotate: 20.9deg; }
+  68% { rotate: 23deg; animation-timing-function: ease-out; }
+  75%, 100% { rotate: 20deg; }
+}
+@keyframes pawl-click {
+  0%, 56% { rotate: 0deg; }
+  64.1% { rotate: -13.5deg; }
+  66% { rotate: -13.5deg; }
+  67.4% { rotate: 0deg; }
+  68.3% { rotate: -2deg; }
+  69.2%, 100% { rotate: 0deg; }
+}
+@keyframes wheel-step {
+  0.000000% { rotate: 0deg; }
+  5.555556% { rotate: 20deg; }
+  11.111111% { rotate: 40deg; }
+  16.666667% { rotate: 60deg; }
+  22.222222% { rotate: 80deg; }
+  27.777778% { rotate: 100deg; }
+  33.333333% { rotate: 120deg; }
+  38.888889% { rotate: 140deg; }
+  44.444444% { rotate: 160deg; }
+  50.000000% { rotate: 180deg; }
+  55.555556% { rotate: 200deg; }
+  61.111111% { rotate: 220deg; }
+  66.666667% { rotate: 240deg; }
+  72.222222% { rotate: 260deg; }
+  77.777778% { rotate: 280deg; }
+  83.333333% { rotate: 300deg; }
+  88.888889% { rotate: 320deg; }
+  94.444444% { rotate: 340deg; }
 }
 </style>
 </head>
@@ -221,130 +1175,279 @@ footer {
 <img src="ratchet-light.svg" width="64" height="64" alt="Ratchet logo">
 </picture>
 <h1>Ratchet</h1>
-<p class="problem"><strong>Your AI agents read the rules, then say "done" without running the tests.</strong> When something breaks, the fix is one more line in a prompt that is also ignored.</p>
-<p>Ratchet turns each rule into a check that fails when the rule is broken, and each failure into a check with a fixture it must fail on, so a case that is tested cannot quietly come back. Where no check can see a rule, Ratchet says so.</p>
 <nav>
 <ul>
-<li><a class="button" href="#start-here">Start here</a></li>
-<li><a href="#how-it-works">How it works</a></li>
+<li><a href="#how-it-works">How it turns</a></li>
+<li><a href="#evidence">Evidence</a></li>
+<li><a href="#limits">Limits</a></li>
 <li><a href="https://github.com/fabian-von-tiedemann/ratchet">Repository</a></li>
-<li><a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a></li>
 </ul>
 </nav>
+<p class="eyebrow">Working rules, templates and checks for long-lived code projects built by AI agents</p>
+<p class="problem">Your AI agents read the rules, then say <em>“done”</em> without running the tests.</p>
+<p class="lede">When something breaks, the fix is one more line in a prompt that is also ignored. <strong>Ratchet turns each rule into a check that fails when the rule is broken,</strong> and each failure into a check with a fixture it must fail on, so a case that is tested cannot quietly come back. Where no check can see a rule, Ratchet says so.</p>
+<p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a></p>
+<p class="plate">
+<svg class="fig fig-ratchet" viewBox="0 0 412 436" width="412" height="436" role="img" aria-labelledby="fig-ratchet-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="13">
+<title id="fig-ratchet-title">A ratchet wheel held by a pawl. The wheel turns one tooth at a time, in one direction only, and the pawl drops behind each tooth so that it cannot turn back.</title>
+<g transform="translate(204 226)">
+<path class="axis" d="M-192 0 L192 0 M0 -150 L0 196"></path>
+<path class="ticks" d="M170 0 L182 0 M169.4 14.8 L175.3 15.3 M167.4 29.5 L173.3 30.6 M164.2 44 L170 45.6 M159.7 58.1 L171 62.2 M154.1 71.8 L159.5 74.4 M147.2 85 L152.4 88 M139.3 97.5 L144.2 100.9 M130.2 109.3 L139.4 117 M120.2 120.2 L124.5 124.5 M109.3 130.2 L113.1 134.8 M97.5 139.3 L100.9 144.2 M85 147.2 L91 157.6 M71.8 154.1 L74.4 159.5 M58.1 159.7 L60.2 165.4 M44 164.2 L45.6 170 M29.5 167.4 L31.6 179.2 M14.8 169.4 L15.3 175.3 M0 170 L0 176 M-14.8 169.4 L-15.3 175.3 M-29.5 167.4 L-31.6 179.2 M-44 164.2 L-45.6 170 M-58.1 159.7 L-60.2 165.4 M-71.8 154.1 L-74.4 159.5 M-85 147.2 L-91 157.6 M-97.5 139.3 L-100.9 144.2 M-109.3 130.2 L-113.1 134.8 M-120.2 120.2 L-124.5 124.5 M-130.2 109.3 L-139.4 117 M-139.3 97.5 L-144.2 100.9 M-147.2 85 L-152.4 88 M-154.1 71.8 L-159.5 74.4 M-159.7 58.1 L-171 62.2 M-164.2 44 L-170 45.6 M-167.4 29.5 L-173.3 30.6 M-169.4 14.8 L-175.3 15.3 M-170 0 L-182 0 M-169.4 -14.8 L-175.3 -15.3 M-167.4 -29.5 L-173.3 -30.6 M-164.2 -44 L-170 -45.6 M-159.7 -58.1 L-171 -62.2 M-154.1 -71.8 L-159.5 -74.4 M-147.2 -85 L-152.4 -88 M-139.3 -97.5 L-144.2 -100.9 M-130.2 -109.3 L-139.4 -117 M-120.2 -120.2 L-124.5 -124.5 M-109.3 -130.2 L-113.1 -134.8 M-97.5 -139.3 L-100.9 -144.2 M-85 -147.2 L-91 -157.6 M-71.8 -154.1 L-74.4 -159.5 M154.1 -71.8 L159.5 -74.4 M159.7 -58.1 L171 -62.2 M164.2 -44 L170 -45.6 M167.4 -29.5 L173.3 -30.6 M169.4 -14.8 L175.3 -15.3"></path>
+<g class="wheel-step"><g class="wheel-tick">
+<path class="wheel" d="M101.1 -84.8 L122.6 -102.8 L127.8 -96.3 L124 -45.1 L150.4 -54.7 L153 -46.8 L132 0 L160 0 L159.8 8.4 L124 45.1 L150.4 54.7 L147.3 62.5 L101.1 84.8 L122.6 102.8 L117 109.1 L66 114.3 L80 138.6 L72.6 142.6 L22.9 130 L27.8 157.6 L19.5 158.8 L-22.9 130 L-27.8 157.6 L-36 155.9 L-66 114.3 L-80 138.6 L-87.1 134.2 L-101.1 84.8 L-122.6 102.8 L-127.8 96.3 L-124 45.1 L-150.4 54.7 L-153 46.8 L-132 0 L-160 0 L-159.8 -8.4 L-124 -45.1 L-150.4 -54.7 L-147.3 -62.5 L-101.1 -84.8 L-122.6 -102.8 L-117 -109.1 L-66 -114.3 L-80 -138.6 L-72.6 -142.6 L-22.9 -130 L-27.8 -157.6 L-19.5 -158.8 L22.9 -130 L27.8 -157.6 L36 -155.9 L66 -114.3 L80 -138.6 L87.1 -134.2Z"></path>
+<circle class="rim" cx="0" cy="0" r="118"></circle>
+<path class="window" d="M102.7 16.3 A104 104 0 0 1 65.4 80.8 L42.4 42.4 A60 60 0 0 0 58 15.5 Z M37.3 97.1 A104 104 0 0 1 -37.3 97.1 L-15.5 58 A60 60 0 0 0 15.5 58 Z M-65.4 80.8 A104 104 0 0 1 -102.7 16.3 L-58 15.5 A60 60 0 0 0 -42.4 42.4 Z M-102.7 -16.3 A104 104 0 0 1 -65.4 -80.8 L-42.4 -42.4 A60 60 0 0 0 -58 -15.5 Z M-37.3 -97.1 A104 104 0 0 1 37.3 -97.1 L15.5 -58 A60 60 0 0 0 -15.5 -58 Z M65.4 -80.8 A104 104 0 0 1 102.7 -16.3 L58 -15.5 A60 60 0 0 0 42.4 -42.4 Z"></path>
+<circle class="hub" cx="0" cy="0" r="40"></circle>
+<path class="bore" d="M16.5 9.5 L0 19 L-16.5 9.5 L-16.5 -9.5 L0 -19 L16.5 -9.5Z"></path>
+</g></g>
+<path class="way" d="M-62.4 192.1 A202 202 0 0 1 -174.9 101"></path>
+<path class="way-head" d="M-184.5 82.2 L-173.3 91.5 L-183.1 96.7Z"></path>
+<g transform="translate(40.3 -189.8)"><g class="pawl">
+<path class="pawl-body" d="M9.4 -14.2 L98.3 51.2 L105.6 77.7 L85.9 80.4 L61.3 101.7 L63 59.8 L-10.4 13.5 A17 17 0 1 1 9.4 -14.2 Z"></path>
+<circle class="pawl-pin" cx="0" cy="0" r="5.5"></circle>
+</g></g>
+</g>
+<line class="leader" x1="26.6" y1="149.4" x2="51.4" y2="165.9"></line><line class="leader" x1="312.9" y1="37.2" x2="278.3" y2="70.2"></line><line class="leader" x1="65.4" y1="400.8" x2="74.4" y2="386.1"></line>
+<circle class="mark" cx="15.8" cy="142.2" r="13"></circle><circle class="mark" cx="322.3" cy="28.2" r="13"></circle><circle class="mark" cx="58.7" cy="412" r="13"></circle>
+<g fill="currentColor" stroke="none">
+<text class="mark-no" x="15.8" y="146.8" text-anchor="middle">1</text><text class="mark-no" x="322.3" y="32.8" text-anchor="middle">2</text><text class="mark-no" x="58.7" y="416.6" text-anchor="middle">3</text>
+</g>
+</svg>
+<span class="cap"><strong>Fig. 1</strong> A ratchet turns one way. The wheel advances a tooth, the pawl drops behind it, and the wheel cannot turn back.</span>
+</p>
+<ul class="legend">
+<li><span class="no">1</span> <strong>A tooth is a failure that became a check.</strong> A review rejects a change, a run fails, or a bug reaches the main branch. The lesson names its ratchet: a check, wherever a check can see it. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">SELF-IMPROVEMENT.md</a></span></li>
+<li><span class="no">2</span> <strong>The pawl is the fixture.</strong> Each check Ratchet ships has a fixture it must fail on, so the check is known to see the failure. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md">checks/README.md</a></span></li>
+<li><span class="no">3</span> <strong>It turns one way.</strong> Agents may propose tightening a check, never loosening it. Loosening one is the owner's decision, written down like any other. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">RATCHET.md</a></span></li>
+</ul>
 </header>
 <main>
-<section>
+<section class="staged turn">
+<p class="kicker"><span>01</span> The mechanism</p>
 <h2 id="how-it-works">How the ratchet turns</h2>
-<p>A ratchet turns one way. Each failure leaves a ratchet behind, a check wherever a check can see it, and the next failure adds another.</p>
+<p class="intro">A ratchet turns one way. Each failure leaves a ratchet behind, a check wherever a check can see it, and the next failure adds another.</p>
+<p class="plate">
+<svg class="fig fig-loop" viewBox="0 0 412 372" width="412" height="372" role="img" aria-labelledby="fig-loop-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="13">
+<title id="fig-loop-title">One turn of the ratchet, as a loop of five steps: a failure, a lesson, a check with its fixture, the register, a release, and round again to the next failure.</title>
+<circle class="track" cx="206" cy="186" r="104"></circle>
+<path class="way" d="M231.7 85.2 A104 104 0 0 1 288.7 122.9"></path>
+<path class="way-head" d="M294.8 131.9 L283.9 125 L291.9 119.3Z"></path>
+<path class="way" d="M309.8 179.3 A104 104 0 0 1 291.5 245.2"></path>
+<path class="way-head" d="M284.9 253.8 L288.1 241.2 L296 247.1Z"></path>
+<path class="way" d="M244.4 282.6 A104 104 0 0 1 176.2 285.6"></path>
+<path class="way-head" d="M165.9 282 L178.9 281.1 L175.7 290.5Z"></path>
+<path class="way" d="M126 252.4 A104 104 0 0 1 102 188.4"></path>
+<path class="way-head" d="M102.3 177.5 L107.2 189.6 L97.2 189.5Z"></path>
+<path class="way" d="M118.1 130.4 A104 104 0 0 1 171.6 87.9"></path>
+<path class="way-head" d="M182 84.8 L172.1 93.1 L169.1 83.6Z"></path>
+<path class="wheel" d="M229 166.7 L238.2 159 L240.4 161.9 L235.5 180.8 L247.4 178.7 L247.8 182.3 L234.2 196.3 L245.5 200.4 L244.1 203.7 L225.3 209 L233 218.2 L230.1 220.4 L211.2 215.5 L213.3 227.4 L209.7 227.8 L195.7 214.2 L191.6 225.5 L188.3 224.1 L183 205.3 L173.8 213 L171.6 210.1 L176.5 191.2 L164.6 193.3 L164.2 189.7 L177.8 175.7 L166.5 171.6 L167.9 168.3 L186.7 163 L179 153.8 L181.9 151.6 L200.8 156.5 L198.7 144.6 L202.3 144.2 L216.3 157.8 L220.4 146.5 L223.7 147.9Z"></path>
+<circle class="hub" cx="206" cy="186" r="11"></circle>
+<circle class="node" cx="206" cy="82" r="19"></circle>
+<circle class="node" cx="304.9" cy="153.9" r="19"></circle>
+<circle class="node" cx="267.1" cy="270.1" r="19"></circle>
+<circle class="node" cx="144.9" cy="270.1" r="19"></circle>
+<circle class="node" cx="107.1" cy="153.9" r="19"></circle>
+<g fill="currentColor" stroke="none">
+<text class="node-no" x="206" y="87" text-anchor="middle">1</text>
+<text class="label" x="206" y="51" text-anchor="middle">A failure</text>
+<text class="node-no" x="304.9" y="158.9" text-anchor="middle">2</text>
+<text class="label" x="332.5" y="149.4" text-anchor="start">A lesson</text>
+<text class="node-no" x="267.1" y="275.1" text-anchor="middle">3</text>
+<text class="label" x="281.1" y="309.1" text-anchor="middle">A check,</text>
+<text class="label label-sub" x="281.1" y="326.1" text-anchor="middle">and its fixture</text>
+<text class="node-no" x="144.9" y="275.1" text-anchor="middle">4</text>
+<text class="label" x="130.9" y="309.1" text-anchor="middle">The register</text>
+<text class="node-no" x="107.1" y="158.9" text-anchor="middle">5</text>
+<text class="label" x="79.5" y="149.4" text-anchor="end">A release</text>
+</g>
+</svg>
+<span class="cap"><strong>Fig. 2</strong> One turn. The steps are the five on this page, in order.</span>
+</p>
 <ol class="flow loop">
-<li><strong>A failure happens.</strong> A review rejects a change, a run fails, or a bug reaches the main branch. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
-<li><strong>It becomes a lesson.</strong> What happened, the failure class, the ratchet, and whether it would apply in other projects. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a></li>
-<li><strong>The lesson becomes a check,</strong> with a fixture it must fail on, so the check is known to see the failure. Where no check can see it, the rule says "text only" and why. <a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/checks">checks/</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/checks/fixtures">the fixtures</a></li>
-<li><strong>The register says what is built.</strong> Every rule in force, copied verbatim, and whether its check is built. A check in every PR fails when a rule was softened. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">REGISTER.md</a></li>
-<li><strong>The next release carries it.</strong> Changes are collected under the unreleased entry of the changelog and released together, and each project upgrades in a PR of its own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">CHANGELOG.md</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/UPGRADING.md">UPGRADING.md</a></li>
+<li><strong>A failure happens.</strong> A review rejects a change, a run fails, or a bug reaches the main branch. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></span></li>
+<li><strong>It becomes a lesson.</strong> What happened, the failure class, the ratchet, and whether it would apply in other projects. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a></span></li>
+<li><strong>The lesson becomes a check,</strong> with a fixture it must fail on, so the check is known to see the failure. Where no check can see it, the rule says “text only” and why. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/checks">checks/</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/checks/fixtures">the fixtures</a></span></li>
+<li><strong>The register says what is built.</strong> Every rule in force, copied verbatim, and whether its check is built. A check in every PR fails when a rule was softened. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">REGISTER.md</a></span></li>
+<li><strong>The next release carries it.</strong> Changes are collected under the unreleased entry of the changelog and released together, and each project upgrades in a PR of its own. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">CHANGELOG.md</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/UPGRADING.md">UPGRADING.md</a></span></li>
 </ol>
 <p class="back"><strong>And round again:</strong> the next failure becomes the next check. A check may be tightened at any time, and loosening one is the owner's decision, written down. A lesson that would apply in other projects is sent back to Ratchet.</p>
-</section>
-<section>
-<h2 id="what-it-does">What Ratchet does</h2>
-<p>Ratchet is a set of working rules, templates and reference checks for long-lived code projects built by AI agents.</p>
-<ul>
-<li><strong>A rule names the check that enforces it, or says text only and why.</strong> Each rule carries a ratchet: the check that fails when the rule is broken, or the words "text only" and the reason no check can see it. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
-<li><strong>The register says honestly what is built.</strong> Your project keeps a register with the rules it adopts, copied verbatim, and for each check whether it is built. The register that people read is generated from it, and a check in every PR fails when a rule was softened. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
-<li><strong>It runs on itself.</strong> Ratchet follows its own rules, and its repo is where they are tried first. Its working rules, its register, its handover and its decisions are Ratchet's own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md">AGENTS.md</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/decisions">decisions</a></li>
+<p class="eg-title"><strong>One turn, as an illustration.</strong> It is not a report from a real project. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md">README.md</a></p>
+<ul class="eg">
+<li><span class="tag">What happened</span><br>An agent writes “all tests pass” on a PR. The tests were never run, and the bug reaches the main branch.</li>
+<li><span class="tag">The failure class</span><br>A claim of completion without a run.</li>
+<li class="held"><span class="tag">The ratchet</span><br>A required check that runs the tests on the PR head, so the claim no longer matters.</li>
 </ul>
 </section>
-<section>
+<section class="rail tint">
+<p class="kicker"><span>02</span> The form of a rule</p>
+<h2 id="what-it-does">What Ratchet does</h2>
+<p class="intro">Ratchet is a set of working rules, templates and reference checks for long-lived code projects built by AI agents.</p>
+<p class="note">Each rule carries a <strong>ratchet</strong>: the check that fails when the rule is broken, or the words “text only” and the reason no check can see it. Two rows from <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">RATCHET.md</a>, shortened:</p>
+<ul class="rules">
+<li><code>ratchet.no-secrets</code><br><span class="rule">No secrets, tokens or real personal data in the repo or in the chat.</span><br><span class="ratchet is-check"><strong>Check</strong> a secret scan in every PR and every night</span></li>
+<li><code>ratchet.kinds-apart</code><br><span class="rule">Keep four kinds of statement apart and label them: decision, proposal, observation and question.</span><br><span class="ratchet is-text"><strong>Text only</strong> a check cannot tell a proposal from a decision</span></li>
+</ul>
+<ul class="points">
+<li><strong>The register says honestly what is built.</strong> Your project keeps a register with the rules it adopts, copied verbatim, and for each check whether it is built. The register that people read is generated from it, and a check in every PR fails when a rule was softened. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></span></li>
+<li><strong>It runs on itself.</strong> Ratchet follows its own rules, and its repo is where they are tried first. Its working rules, its register, its handover and its decisions are Ratchet's own. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md">AGENTS.md</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/tree/main/decisions">decisions/</a></span></li>
+</ul>
+</section>
+<section class="staged run ink">
+<p class="kicker"><span>03</span> The machine around it</p>
 <h2 id="how-this-repo-is-run">How this repo is run</h2>
-<p>Several agents work on this repo at once, in the way <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTROL-ROOM.md">CONTROL-ROOM.md</a> describes. It is how this repo works, not something a project must adopt: the control room is experimental.</p>
+<p class="intro">Several agents work on this repo at once, in the way <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTROL-ROOM.md">CONTROL-ROOM.md</a> describes. It is how this repo works, not something a project must adopt: the control room is experimental.</p>
+<p class="plate">
+<svg class="fig fig-machine" viewBox="0 0 372 566" width="372" height="566" role="img" aria-labelledby="fig-machine-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="12">
+<title id="fig-machine-title">How this repo is run. A control room hands tasks to short-lived workspaces, drawn here as three. Each change becomes a pull request, a model from another family reviews it, the maintainer approves it and it is merged and released. The review, the approval and the merge are all pinned to the same head. Then the control room takes the next task.</title>
+<path class="wire" d="M180 68 L180 90 L82 90 L82 104"></path>
+<path class="wire-head" d="M82 111 L78 101.2 L86 101.2Z"></path>
+<path class="wire" d="M82 146 L82 172 L180 172"></path>
+<path class="wire" d="M180 68 L180 90 L180 90 L180 104"></path>
+<path class="wire-head" d="M180 111 L176 101.2 L184 101.2Z"></path>
+<path class="wire" d="M180 146 L180 172 L180 172"></path>
+<path class="wire" d="M180 68 L180 90 L278 90 L278 104"></path>
+<path class="wire-head" d="M278 111 L274 101.2 L282 101.2Z"></path>
+<path class="wire" d="M278 146 L278 172 L180 172"></path>
+<line class="wire" x1="180" y1="172" x2="180" y2="188"></line><path class="wire-head" d="M180 195 L176 185.2 L184 185.2Z"></path>
+<line class="wire" x1="180" y1="246" x2="180" y2="262"></line><path class="wire-head" d="M180 269 L176 259.2 L184 259.2Z"></path>
+<line class="wire" x1="180" y1="320" x2="180" y2="336"></line><path class="wire-head" d="M180 343 L176 333.2 L184 333.2Z"></path>
+<line class="wire" x1="180" y1="394" x2="180" y2="410"></line><path class="wire-head" d="M180 417 L176 407.2 L184 407.2Z"></path>
+<line class="wire" x1="180" y1="468" x2="180" y2="484"></line><path class="wire-head" d="M180 491 L176 481.2 L184 481.2Z"></path>
+<path class="wire wire-back" d="M62 517 L26 517 L26 43 L53 43"></path>
+<path class="wire-head" d="M61 43 L51.2 47 L51.2 39Z"></path>
+<path class="pin" d="M330 221 L330 443"></path>
+<path class="pin" d="M298 221 L330 221"></path>
+<circle class="pin-dot" cx="330" cy="221" r="4.5"></circle>
+<path class="pin" d="M298 295 L330 295"></path>
+<circle class="pin-dot" cx="330" cy="295" r="4.5"></circle>
+<path class="pin" d="M298 369 L330 369"></path>
+<circle class="pin-dot" cx="330" cy="369" r="4.5"></circle>
+<path class="pin" d="M298 443 L330 443"></path>
+<circle class="pin-dot" cx="330" cy="443" r="4.5"></circle>
+<rect class="space" x="40" y="112" width="84" height="34"></rect>
+<rect class="space" x="138" y="112" width="84" height="34"></rect>
+<rect class="space" x="236" y="112" width="84" height="34"></rect>
+<rect class="box box-room" x="62" y="18" width="236" height="50" rx="0"></rect>
+<rect class="box box-pr" x="62" y="196" width="236" height="50" rx="0"></rect>
+<rect class="box box-review" x="62" y="270" width="236" height="50" rx="0"></rect>
+<rect class="box box-approve" x="62" y="344" width="236" height="50" rx="25"></rect>
+<rect class="box box-merge" x="62" y="418" width="236" height="50" rx="0"></rect>
+<rect class="box box-release" x="62" y="492" width="236" height="50" rx="0"></rect>
+<g fill="currentColor" stroke="none">
+<text class="space-name" x="82" y="133.5" text-anchor="middle">workspace</text>
+<text class="space-name" x="180" y="133.5" text-anchor="middle">workspace</text>
+<text class="space-name" x="278" y="133.5" text-anchor="middle">workspace</text>
+<text class="box-name box-name-room" x="180" y="40" text-anchor="middle">CONTROL ROOM</text>
+<text class="box-sub box-sub-room" x="180" y="56" text-anchor="middle">one long-running session</text>
+<text class="box-name box-name-pr" x="180" y="218" text-anchor="middle">PULL REQUEST</text>
+<text class="box-sub box-sub-pr" x="180" y="234" text-anchor="middle">from the agents' own account</text>
+<text class="box-name box-name-review" x="180" y="292" text-anchor="middle">REVIEW</text>
+<text class="box-sub box-sub-review" x="180" y="308" text-anchor="middle">a model from another family</text>
+<text class="box-name box-name-approve" x="180" y="366" text-anchor="middle">MAINTAINER APPROVES</text>
+<text class="box-sub box-sub-approve" x="180" y="382" text-anchor="middle">a new push dismisses it</text>
+<text class="box-name box-name-merge" x="180" y="440" text-anchor="middle">MERGE</text>
+<text class="box-sub box-sub-merge" x="180" y="456" text-anchor="middle">checks green, owner approved</text>
+<text class="box-name box-name-release" x="180" y="514" text-anchor="middle">RELEASE</text>
+<text class="box-sub box-sub-release" x="180" y="530" text-anchor="middle">when the version has a date</text>
+<text class="pin-name" x="346" y="332" text-anchor="middle" transform="rotate(90 346 332)">THE SAME HEAD</text>
+<text class="back-name" x="16" y="280" text-anchor="middle" transform="rotate(-90 16 280)">HANDOVER, THEN THE NEXT TASK</text>
+</g>
+</svg>
+<span class="cap"><strong>Fig. 3</strong> From the control room to a release. The review, the approval and the merge hold only for the same head.</span>
+</p>
 <ol class="flow">
-<li><strong>A control room plans.</strong> One long-running agent session keeps the handover, starts the work, and brings the maintainer at most five decisions at a time, each with a recommendation. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTROL-ROOM.md#what-it-is">The control room</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/HANDOVER.md">HANDOVER.md</a></li>
-<li><strong>Short-lived workspaces build.</strong> Each task gets a workspace with its own branch and worktree, which reports back with a PR and its head. Here the workspaces' shell commands run in a sandbox. That is an observation from a trial in this repo, not a rule (<a href="https://github.com/fabian-von-tiedemann/ratchet/issues/49">issue #49</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-harness-sandbox-risk.md">the decision</a>).</li>
-<li><strong>Each change is a pull request,</strong> from the agents' own account. An approval from that account does not count as the code owner's. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md#the-main-branch">The main branch</a></li>
-<li><strong>A model from another family reviews the exact head,</strong> and the verdict is posted on the PR. A PR that changes only decisions and the handover is exempt. This is an instruction the agents follow, not a lock. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-agent-merges-after-approval.md">The decision</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-improvement-loop.md">the exception</a></li>
-<li><strong>The maintainer approves that head,</strong> with a click on GitHub, or the control room submits the approval on the maintainer's word in its chat. A new push dismisses it. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-18-approve-on-word.md">The decision</a></li>
-<li><strong>The merge.</strong> The ruleset on main refuses it until the job <code>checks</code> is green and the code owner has approved the latest push. The agent merges with a squash, pinned to the approved head. On main, the release workflow runs the checks again and, when the version has a date, tags and releases it. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-release-on-merge.md">Release on merge</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/release.yml">the workflow</a></li>
+<li><strong>A control room plans.</strong> One long-running agent session keeps the handover, starts the work, and brings the maintainer at most five decisions at a time, each with a recommendation. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTROL-ROOM.md#what-it-is">The control room</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/HANDOVER.md">HANDOVER.md</a></span></li>
+<li><strong>Short-lived workspaces build.</strong> Each task gets a workspace with its own branch and worktree, which reports back with a PR and its head. Here the workspaces' shell commands run in a sandbox. That is an observation from a trial in this repo, not a rule. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/issues/49">issue #49</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-harness-sandbox-risk.md">the decision</a></span></li>
+<li><strong>Each change is a pull request,</strong> from the agents' own account. An approval from that account does not count as the code owner's. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md#the-main-branch">The main branch</a></span></li>
+<li><strong>A model from another family reviews the exact head,</strong> and the verdict is posted on the PR. A PR that changes only decisions and the handover is exempt. This is an instruction the agents follow, not a lock. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-agent-merges-after-approval.md">The decision</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-improvement-loop.md">the exception</a></span></li>
+<li><strong>The maintainer approves that head,</strong> with a click on GitHub, or the control room submits the approval on the maintainer's word in its chat. A new push dismisses it. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-18-approve-on-word.md">The decision</a></span></li>
+<li><strong>The merge.</strong> The ruleset on main refuses it until the job <code>checks</code> is green and the code owner has approved the latest push. The agent merges with a squash, pinned to the approved head. On main, the release workflow runs the checks again and, when the version has a date, tags and releases it. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-release-on-merge.md">Release on merge</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/release.yml">the workflow</a></span></li>
 </ol>
 <p class="back"><strong>Then back to the control room,</strong> which replaces the handover and takes the next task.</p>
 </section>
-<section>
+<section class="rail">
+<p class="kicker"><span>04</span> Credit, rule by rule</p>
 <h2 id="builds-on">What Ratchet builds on</h2>
-<p>Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. Each is pinned at a commit in <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/sources.json">sources.json</a>, and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">RATCHET.md</a> lists the pins. A project that wants a skill copies it from the source itself, with its license.</p>
+<p class="intro">Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them.</p>
+<p class="note">Each is pinned at a commit in <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/sources.json">sources.json</a>, and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">RATCHET.md</a> lists the pins. A project that wants a skill copies it from the source itself, with its license.</p>
 <ul class="sources">
 <li>
 <h3><a href="https://github.com/google/elephant-goldfish-model">google/elephant-goldfish-model</a></h3>
 <p>Ratchet takes the fresh context: a reviewer starts in a new thread, without the author's account of what was fixed.</p>
-<p class="meta">License <span class="license">Apache-2.0</span>. Cited by <code>ratchet.fresh-context</code>.</p>
+<p class="meta">License <span class="license">Apache-2.0</span><br>Cited by <code>ratchet.fresh-context</code></p>
 </li>
 <li>
 <h3><a href="https://github.com/mattpocock/skills">mattpocock/skills</a></h3>
 <p>Ratchet takes the interview before the work, looking facts up instead of asking, the glossary of terms, a run that reproduces a bug before any guess, red before green, work cut into vertical slices, and a way to mark review findings.</p>
-<p class="meta">License <span class="license">MIT</span>. Cited by <code>ratchet.glossary</code>, <code>ratchet.look-up-facts</code>, <code>ratchet.grill-first</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.test-first</code>, <code>ratchet.slices</code>.</p>
+<p class="meta">License <span class="license">MIT</span><br>Cited by <code>ratchet.glossary</code>, <code>ratchet.look-up-facts</code>, <code>ratchet.grill-first</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.test-first</code>, <code>ratchet.slices</code></p>
 </li>
 <li>
 <h3><a href="https://github.com/cursor/plugins/tree/HEAD/pstack">pstack</a></h3>
 <p>By Lauren Tan. Ratchet takes the idea that a lesson belongs in structure and not in words, which is what each ratchet does. Also: question the premise after failures in a row, fix the root cause, subtract before you add, and ask whether a finding is proven.</p>
-<p class="meta">License <span class="license">MIT</span>. Cited by <code>ratchet.two-rounds</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.simplest</code>, <code>ratchet.lesson-names-check</code>, <code>ratchet.si-repeat-is-signal</code>.</p>
+<p class="meta">License <span class="license">MIT</span><br>Cited by <code>ratchet.two-rounds</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.simplest</code>, <code>ratchet.lesson-names-check</code>, <code>ratchet.si-repeat-is-signal</code></p>
 </li>
 <li>
 <h3><a href="https://github.com/obra/superpowers">obra/superpowers</a></h3>
-<p>Ratchet takes evidence before "done", and checking each review finding against the code before acting on it.</p>
-<p class="meta">License <span class="license">MIT</span>. Cited by <code>ratchet.verify-findings</code>, <code>ratchet.evidence-before-done</code>, <code>ratchet.cr-verify-reports</code>.</p>
+<p>Ratchet takes evidence before “done”, and checking each review finding against the code before acting on it.</p>
+<p class="meta">License <span class="license">MIT</span><br>Cited by <code>ratchet.verify-findings</code>, <code>ratchet.evidence-before-done</code>, <code>ratchet.cr-verify-reports</code></p>
 </li>
 </ul>
 </section>
-<section>
+<section class="rail">
+<p class="kicker"><span>05</span> Tighter, not heavier</p>
 <h2 id="stays-tight">How it stays tight</h2>
-<p>Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
+<p class="intro">Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
 <p id="budget" class="stat"><strong>19 experimental rules, with a cap of 23.</strong> The core holds 35 rules and is frozen: 17 name a check and 18 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
-<ul>
-<li><strong>The core is frozen.</strong> No rule is added to it or removed from it without the maintainer's decision. A new rule starts as experimental, outside the core. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></li>
-<li><strong>The experimental rules have a cap.</strong> A new one replaces, merges or removes one, or a decision raises the cap, and Ratchet uses it itself or says why it cannot. Over the cap, <code>generate.py --check</code> is red and nothing is generated. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md#the-budget">The budget</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-pull-and-budget.md">the decision</a></li>
-<li><strong>Releases are batched.</strong> Changes are collected under the unreleased entry of the changelog, and released at most once a week or when the maintainer asks. A fix for a security fault is released at once. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-batched-releases.md">The decision</a></li>
-<li><strong>The sources are watched every day.</strong> A scheduled run compares each pin with the head of its source and opens an issue when one has moved, so a rule does not go on crediting a source that now says something else. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/watch-sources.yml">The workflow</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/watch_sources.py">watch_sources.py</a></li>
-<li><strong>Every change is reviewed before it is merged,</strong> by a model from another family at its exact head, except a PR that changes only decisions and the handover, and then approved by the maintainer at that same head. A change to a check, a rule or a decision is read by the maintainer. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md#how-to-change-a-check">How to change a check</a></li>
-<li><strong>A core rule leaves when a check covers it,</strong> or when a stronger or simpler rule replaces it. An experimental rule that has stood through three releases and 60 days with no decision stops the checks at the next release, until the maintainer moves it into the core, merges it, removes it, or keeps it once more by a decision. The rest of the clean-out, a pass at every release over what no longer earns its place, is planned and not built yet. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule">The age of a rule</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-one-point-oh.md">the decision</a></li>
+<ul class="points">
+<li><strong>The core is frozen.</strong> No rule is added to it or removed from it without the maintainer's decision. A new rule starts as experimental, outside the core. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></span></li>
+<li><strong>The experimental rules have a cap.</strong> A new one replaces, merges or removes one, or a decision raises the cap, and Ratchet uses it itself or says why it cannot. Over the cap, <code>generate.py --check</code> is red and nothing is generated. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md#the-budget">The budget</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-pull-and-budget.md">the decision</a></span></li>
+<li><strong>Releases are batched.</strong> Changes are collected under the unreleased entry of the changelog, and released at most once a week or when the maintainer asks. A fix for a security fault is released at once. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-batched-releases.md">The decision</a></span></li>
+<li><strong>The sources are watched every day.</strong> A scheduled run compares each pin with the head of its source and opens an issue when one has moved, so a rule does not go on crediting a source that now says something else. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/watch-sources.yml">The workflow</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/watch_sources.py">watch_sources.py</a></span></li>
+<li><strong>Every change is reviewed before it is merged.</strong> A model from another family reviews its exact head, except for a PR that changes only decisions and the handover, and the maintainer then approves that same head. A change to a check, a rule or a decision is read by the maintainer. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/AGENTS.md#how-to-change-a-check">How to change a check</a></span></li>
+<li><strong>Rules leave, too.</strong> A core rule leaves when a check covers it, or when a stronger or simpler rule replaces it. An experimental rule that has stood through three releases and 60 days with no decision stops the checks at the next release, until the maintainer moves it into the core, merges it, removes it, or keeps it once more by a decision. The rest of the clean-out, a pass at every release over what no longer earns its place, is planned and not built yet. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule">The age of a rule</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-one-point-oh.md">the decision</a></span></li>
 </ul>
 </section>
-<section>
+<section class="rail tint">
+<p class="kicker"><span>06</span> What the repo shows</p>
 <h2 id="evidence">Evidence from this repo</h2>
-<ul>
-<li><strong>A hook that could not be a lock was replaced by locks.</strong> A review from another model family rejected a hook meant to stop the steps that cannot be undone, twice, and it was closed unmerged (<a href="https://github.com/fabian-von-tiedemann/ratchet/pull/42">PR #42</a>). It came back as a tripwire that says it does not catch every spelling, and the locks moved to a ruleset at GitHub and the role of the agents' account (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-locks-not-parsing.md">the decision</a>).</li>
-<li><strong>Tags are locked by a ruleset.</strong> No one but a repository admin can move or delete a tag (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/tag-ruleset.json">the ruleset</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-tag-ruleset-scope.md">the decision</a>).</li>
-<li><strong>A release is published by the merge that dates it.</strong> The <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/release.yml">release workflow</a> tags it after the merge, and every PR compares released text with its tag (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/released_text.py">released_text.py</a>), because the generator once rewrote a released entry (<a href="https://github.com/fabian-von-tiedemann/ratchet/pull/12">PR #12</a>).</li>
-<li><strong>A change to a rule or a check is merged only after a model from another family has passed its exact head</strong> (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-agent-merges-after-approval.md">the decision</a>). The reviews are comments on the PRs, such as the two rounds on <a href="https://github.com/fabian-von-tiedemann/ratchet/pull/50">PR #50</a>. This is an instruction the agents follow, not a lock.</li>
-<li><strong>The register says honestly which checks are built.</strong> Most of the rules this repo adopts that name a check stand as "text only for now" (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">REGISTER.md</a>).</li>
+<ul class="ledger">
+<li><strong>A hook that could not be a lock was replaced by locks.</strong> <span class="d">A review from another model family rejected a hook meant to stop the steps that cannot be undone, twice, and it was closed unmerged (<a href="https://github.com/fabian-von-tiedemann/ratchet/pull/42">PR #42</a>). It came back as a tripwire that says it does not catch every spelling, and the locks moved to a ruleset at GitHub and the role of the agents' account (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-locks-not-parsing.md">the decision</a>).</span></li>
+<li><strong>Tags are locked by a ruleset.</strong> <span class="d">No one but a repository admin can move or delete a tag (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/tag-ruleset.json">the ruleset</a>, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-tag-ruleset-scope.md">the decision</a>).</span></li>
+<li><strong>A release is published by the merge that dates it.</strong> <span class="d">The <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/workflows/release.yml">release workflow</a> tags it after the merge, and every PR compares released text with its tag (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/released_text.py">released_text.py</a>), because the generator once rewrote a released entry (<a href="https://github.com/fabian-von-tiedemann/ratchet/pull/12">PR #12</a>).</span></li>
+<li><strong>A change to a rule or a check is merged only after a model from another family has passed its exact head.</strong> <span class="d">The reviews are comments on the PRs, such as the two rounds on <a href="https://github.com/fabian-von-tiedemann/ratchet/pull/50">PR #50</a>. This is an instruction the agents follow, not a lock (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-agent-merges-after-approval.md">the decision</a>).</span></li>
+<li><strong>The register says honestly which checks are built.</strong> <span class="d">Most of the rules this repo adopts that name a check stand as “text only for now” (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">REGISTER.md</a>).</span></li>
 </ul>
 </section>
-<section>
+<section class="rail">
+<p class="kicker"><span>07</span> Read this before you start</p>
 <h2 id="limits">The honest limits</h2>
-<ul>
+<ul class="limits">
 <li><strong>Most of the core is still text.</strong> The share is stated with every version in the <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">changelog</a>, and the work between versions is to bring it down. For a rule without a reference check, the ratchet says what a check must do, and your project builds it. Until it does, the rule is text only in your project, and your register says so.</li>
 <li><strong>It is built for one person who decides, several coding agents, and a repo that has to last.</strong> For a single agent on a short project it is more than you need: take the nine rules to start with and stop.</li>
-<li><strong>Some of what holds here is an instruction, not a lock,</strong> such as the review from another family. The register and AGENTS.md say which.</li>
+<li><strong>Some of what holds here is an instruction, not a lock.</strong> The review from another family is one. The register and AGENTS.md say which.</li>
 <li><strong>The form may still change.</strong> Before 1.0, a minor version may change the form of the data files, and the changelog lists every such change.</li>
 </ul>
 </section>
-<section>
+<section class="go">
+<p class="kicker"><span>08</span> Two commands and a dry run, in the root of your own git repo</p>
 <h2 id="start-here">Start here</h2>
-<p>Run these in the root of your own git repo.</p>
-<ol>
-<li>Fetch Ratchet at the latest release into <code>.ratchet</code>.
+<ol class="steps">
+<li><span class="say">Fetch Ratchet at the latest release into <code>.ratchet</code>.</span>
 <pre><code>git clone --branch v0.9 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
 </li>
-<li>See what it would write. This writes nothing.
+<li><span class="say">See what it would write. This writes nothing.</span>
 <pre><code>python3 .ratchet/checks/init.py --check</code></pre>
 </li>
-<li>Write it.
+<li><span class="say">Write it.</span>
 <pre><code>python3 .ratchet/checks/init.py</code></pre>
-It writes <code>AGENTS.md</code>, <code>register.json</code> with nine rules to start with, the generated <code>REGISTER.md</code>, and a workflow that runs the register check on every PR. It never overwrites a file.</li>
+<span class="then">It writes <code>AGENTS.md</code>, <code>register.json</code> with nine rules to start with, the generated <code>REGISTER.md</code>, and a workflow that runs the register check on every PR. It never overwrites a file.</span></li>
 </ol>
-<p>The next steps are in the <a href="https://github.com/fabian-von-tiedemann/ratchet#start-here">README</a>.</p>
+<p class="more">The next steps are in the <a href="https://github.com/fabian-von-tiedemann/ratchet#start-here">README</a>.</p>
 </section>
 </main>
 <footer>
 <p>Ratchet is how Fabian von Tiedemann works with AI coding agents, kept up to date with what holds and what breaks. It is open source: take the rules that fit your project, leave the rest, and send back what you learn.</p>
-<p><a href="https://github.com/fabian-von-tiedemann/ratchet">Repository</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT license</a></p>
+<p class="links"><a href="https://github.com/fabian-von-tiedemann/ratchet">Repository</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT license</a></p>
 </footer>
 </body>
 </html>
