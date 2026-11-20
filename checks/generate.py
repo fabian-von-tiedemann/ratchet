@@ -551,17 +551,25 @@ def release_dates(text):
     """({version: date} for each heading of a changelog entry with a date, [problems]).
 
     Only the headings of the exact form are read. A heading whose date does not exist is a problem, and its version
-    has no date.
+    has no date. So is a date earlier than that of the version before it: the age of a rule is measured at the
+    newest version, so a year mistyped there would hide every rule (registry.age_problems). Two versions may have
+    the same date.
     """
-    releases, problems = {}, []
+    releases, problems, headings = {}, [], {}
     for line in text.split("\n"):
         match = HEADING.match(line)
         if not match:
             continue
         try:
             releases[match.group(1)] = datetime.date(*map(int, match.group(2).split("-")))
+            headings[match.group(1)] = line
         except ValueError:
             problems.append("CHANGELOG.md: %r has a date that does not exist" % line)
+    ordered = sorted(releases, key=version_key)
+    for before, version in zip(ordered, ordered[1:]):
+        if releases[version] < releases[before]:
+            problems.append("CHANGELOG.md: %r is dated before %r, the entry of the version before it. The dates of the "
+                            "entries must not go back as the versions rise" % (headings[version], headings[before]))
     return releases, problems
 
 

@@ -429,6 +429,19 @@ def age_field_problems(rule, root, older):
     return problems
 
 
+def first_too_old(releases, version):
+    """The first release, in version order, at which a rule counted from version has stood too long, or None.
+
+    That is the first release with AGE_RELEASES releases after version, up to and with it, that is AGE_DAYS days or
+    more after the date of version.
+    """
+    later = sorted((each for each in releases if version_key(each) > version_key(version)), key=version_key)
+    for number, each in enumerate(later, 1):
+        if number >= AGE_RELEASES and (releases[each] - releases[version]).days >= AGE_DAYS:
+            return each
+    return None
+
+
 def age_problems(data, releases):
     """Why an experimental rule has stood too long with no decision, one problem per rule, or nothing.
 
@@ -436,9 +449,10 @@ def age_problems(data, releases):
     the newest of them, so it changes only when a release is dated, and the pull request of a release is where it
     fails: in the clean-out at a release (D-2026-11-17-improvement-loop, item 4). A rule has stood too long when
     AGE_RELEASES releases have come after the version in "since" and the newest is AGE_DAYS days or more after the
-    date of that version. When "kept_by" names a decision, both are counted from the decision's date instead: the
-    releases dated after it, and the days since it. So keeping a rule keeps it once more, not for good. A rule that
-    entered in this version, which has no date yet, has no age.
+    date of that version. A rule kept by the decision in "kept_by" stands one age more, counted the same way from
+    the release at which it first stood too long. The decision's date does not move the count, so a rule is kept
+    once: naming another decision in "kept_by" keeps it no longer, and when its age more has run out, it is not
+    offered another keep. A rule that entered in this version, which has no date yet, has no age.
     """
     if not releases:
         return []
@@ -452,23 +466,27 @@ def age_problems(data, releases):
             problems.append("%s: since is %s, which has no entry with a date in CHANGELOG.md and is not this version, %s"
                             % (rule["key"], since, data["version"]))
             continue
-        if "kept_by" in rule:
-            start = decision_date(rule["kept_by"])
-            after = [version for version, date in releases.items() if date > start]
-            told = "was kept by %s and has stood through %%d releases and %%d days since then" % rule["kept_by"]
-        elif since in releases:
-            start = releases[since]
-            after = [version for version in releases if version_key(version) > version_key(since)]
-            told = "is experimental since %s and has stood through %%d releases and %%d days" % since
-        else:
+        if since not in releases:
             continue
-        days = (releases[newest] - start).days
-        if len(after) >= AGE_RELEASES and days >= AGE_DAYS:
+        first = first_too_old(releases, since)
+        if first is None:
+            continue
+        if "kept_by" not in rule:
             problems.append(
-                ("%s " + told + ", up to %s (%s)%s. In the clean-out of this release, move it into the core, merge it with "
-                 "another rule, remove it, or keep it once more by a decision named in kept_by (D-2026-11-19-one-point-oh)")
-                % (rule["key"], len(after), days, newest, releases[newest].isoformat(),
-                   "" if "kept_by" in rule else ", with no decision to keep it"))
+                "%s is experimental since %s and has stood through %d releases and %d days, up to %s (%s), with no decision "
+                "to keep it. In the clean-out of this release, move it into the core, merge it with another rule, remove it, "
+                "or keep it once more by a decision named in kept_by (D-2026-11-19-one-point-oh)"
+                % (rule["key"], since, sum(1 for each in releases if version_key(each) > version_key(since)),
+                   (releases[newest] - releases[since]).days, newest, releases[newest].isoformat()))
+        elif first_too_old(releases, first) is not None:
+            problems.append(
+                "%s was kept by %s and has stood through %d releases and %d days more since it first stood too long, at %s "
+                "(%s), up to %s (%s). It has had its one keep, and another decision in kept_by keeps it no longer. In the "
+                "clean-out of this release, move it into the core, merge it with another rule, or remove it "
+                "(D-2026-11-19-one-point-oh)"
+                % (rule["key"], rule["kept_by"], sum(1 for each in releases if version_key(each) > version_key(first)),
+                   (releases[newest] - releases[first]).days, first, releases[first].isoformat(), newest,
+                   releases[newest].isoformat()))
     return problems
 
 
