@@ -14,9 +14,9 @@ is the newer Ratchet. The script compares the two, rule by rule, and prints:
 - when every adopted rule was removed, a step to adopt at least one rule
 - the new rules, each with the entry to paste if the project adopts it
 - the changed and removed rules that the register does not adopt, by key
-- when the fields at the top of ratchet.json differ between the two, a field new or
-  gone, a note for a project that keeps a copy of a Ratchet check, or a check of its
-  own, that reads it.
+- when the fields of ratchet.json differ between the two, at the top or in its rules,
+  a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
+  check of its own, that reads it.
 
 It writes nothing. It runs offline, on the files it is given. Before it prints a
 step, it checks that the register passes check_register.py against the older
@@ -111,16 +111,26 @@ def own_entry(rule, before, prefix, taken):
     return dict([("key", key)] + [(field, rule[field]) for field in check_register.RULE_FIELDS if field != "key"])
 
 
+def rule_fields(data):
+    """Every field that at least one rule of a ratchet.json holds."""
+    return set(field for rule in data["rules"] for field in rule)
+
+
 def form_changes(old, new):
-    """The fields at the top of ratchet.json that one version has and the other lacks, as text, sorted by the field.
+    """The fields that one version has and the other lacks, as text: first those at the top of ratchet.json, then those
+    of its rules, each sorted by the field.
 
     The older file is read with registry.validate(older=True), which allows it to lack the cap and to hold the date
-    and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases), and refuses any other field it
-    does not know. So a field can be new, or gone.
+    and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases), allows its experimental rules
+    to lack "since", which came in 0.10 (D-2026-11-19-one-point-oh), and refuses any other field it does not know.
+    So a field can be new, or gone. A field of a rule counts when some rule of one version holds it and no rule of
+    the other does: "kept_by", which a rule may hold, is new only once a rule holds it.
     """
     changes = [(field, '"%s" is new' % field) for field in set(new) - set(old)]
     changes += [(field, '"%s" is gone' % field) for field in set(old) - set(new)]
-    return [text for _, text in sorted(changes)]
+    rules = [(field, '"%s" in a rule is new' % field) for field in rule_fields(new) - rule_fields(old)]
+    rules += [(field, '"%s" in a rule is gone' % field) for field in rule_fields(old) - rule_fields(new)]
+    return [text for _, text in sorted(changes)] + [text for _, text in sorted(rules)]
 
 
 def changed_fields(old, new):
