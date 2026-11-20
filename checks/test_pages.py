@@ -11,9 +11,16 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   have, each once; every element that is opened is closed, in order; a void element is never closed; there is no
   comment, no processing instruction and no other declaration. There is no script, no frame, no form, no base,
   no style attribute and no event handler, because none of them is an element or an attribute the page may hold
+- the figures are inline SVG of seven elements, svg, g, path, circle, rect, line and text, and title, each with only
+  the attributes listed for it. There is no use, image, link, script, style, foreignObject, marker, gradient,
+  filter or animation element in an <svg>, and no href. A value in an <svg> is numbers and words, calls no function
+  but translate() and rotate(), and a fill or a stroke is none or currentColor. Each <svg> has role="img" and one
+  <title> directly in it, which its aria-labelledby names, and the only other <title> is the one in <head>
 - nothing is loaded from another origin: what an element loads (img src, source srcset, link href) is the name of
-  a file in docs/. The CSS in the one <style> element has no at-rule but @media, no function but var(), no
-  backslash and no "url", so it loads nothing either
+  a file in docs/. The CSS in the one <style> element has no at-rule but @media and @keyframes, no function but
+  var(), no backslash and no "url", so it loads nothing either
+- the CSS moves the page only inside @media (prefers-reduced-motion: no-preference): an animation or
+  scroll-behavior stands in that query, or in a @keyframes. A transition is not read
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
   file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release. The
   only links out of the repo are to the sources in sources.json, one each, matched whole: the repo of a source, or
@@ -23,7 +30,8 @@ repo, not a reference check. The test reads the page strictly and fails on what 
 - docs/ holds exactly the page, .nojekyll and the two logos, and each logo is byte for byte its copy in assets/
 - the page has one h1, its headings do not skip a level, html has lang="en" and every image has alt text
 - the colors are a palette of custom properties, one for light and one for dark, and each pair of text and
-  background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
+  background in it, in the light bands, the dark bands ("ink") and the orange one ("go"), has a contrast ratio of at
+  least 4.5 (WCAG 2, level AA). No other hex color is written.
 - every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md
 - the list of sources, <ul class="sources">, holds one item for each source in sources.json, in its order. Each
   item starts with a link to the source, named by its name, gives its license once in an element of the class
@@ -76,7 +84,20 @@ ELEMENTS = {
     "h1": set(), "h2": set(), "h3": set(), "p": set(), "ul": set(), "ol": set(), "li": set(), "a": {"href"},
     "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(), "span": set(),
     "picture": set(), "source": {"media", "srcset"}, "img": {"src", "width", "height", "alt"},
+    "svg": {"viewbox", "width", "height", "role", "aria-labelledby", "fill", "stroke", "stroke-width", "stroke-linejoin",
+            "stroke-linecap", "font-family", "font-size"},
 }
+# Every element an <svg> may hold, with the attributes it may have beside id and class, as html.parser names them. There
+# is no use, image, link, script, style, foreignObject, marker, gradient, filter or animation element, and no href.
+SVG_ELEMENTS = {
+    "title": set(), "g": {"fill", "stroke", "transform"}, "path": {"d"}, "circle": {"cx", "cy", "r"},
+    "rect": {"x", "y", "width", "height", "rx"}, "line": {"x1", "y1", "x2", "y2"}, "text": {"x", "y", "text-anchor", "transform"},
+}
+# The value of an attribute of an <svg> or in one: numbers and words, and no function but translate() and rotate(). So
+# no url(), no colon and no character reference that spells one. A fill or a stroke is none or the color of the text.
+SVG_VALUE = re.compile(r"[A-Za-z0-9 .,()-]*\Z")
+SVG_FUNCTIONS = {"translate", "rotate"}
+PAINT = {"none", "currentColor"}
 # What an element loads: the attribute that names a file.
 LOADS = {("img", "src"), ("source", "srcset"), ("link", "href")}
 META = {"viewport", "description", "color-scheme"}
@@ -96,9 +117,16 @@ HEX = re.compile(r"#[0-9A-Fa-f]{3,8}\b")
 PALETTE = re.compile(r"--([a-z]+(?:-[a-z]+)*):\s*(#[0-9a-f]{6});")
 ROOT_BLOCK = re.compile(r":root\s*\{([^{}]*)\}")
 DARK = "@media (prefers-color-scheme: dark)"
-# Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5.
-PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("fg", "box"), ("muted", "box"), ("link", "box"),
-         ("accent", "bg"), ("accent", "box"))
+# The only query in which the CSS may move the page: a visitor who asked for less motion sees none.
+REDUCED = "@media (prefers-reduced-motion: no-preference)"
+AT_RULES = {"media", "keyframes"}
+MOTION = re.compile(r"animation(?:-[a-z]+)*\Z|scroll-behavior\Z")
+# Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The "ink" colors are the
+# dark bands, and "go" the orange one, which the CSS sets in place of fg, muted, link, accent, box and code.
+PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
+         ("link", "box"), ("accent", "bg"), ("accent", "box"),
+         ("ink-fg", "ink-bg"), ("ink-muted", "ink-bg"), ("ink-accent", "ink-bg"), ("ink-fg", "ink-box"), ("ink-muted", "ink-box"),
+         ("ink-accent", "ink-box"), ("ink-fg", "ink-code"), ("go-fg", "signal"), ("go-code-fg", "go-code-bg"))
 # The lists whose items the test reads one by one: the sources, and the steps of a diagram.
 ITEM_LISTS = {"ul": "sources", "ol": "flow"}
 KEY = re.compile(r"ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -124,6 +152,8 @@ class PageReader(html.parser.HTMLParser):
         self.item, self.item_at = None, None
         # Each list on the page, as (its tag, the classes of its class attribute), in order.
         self.lists = []
+        # Each <svg>, with its role, the id its aria-labelledby names, and the ids of the <title> elements directly in it.
+        self.figures, self.head_titles = [], 0
 
     def where(self):
         return "line %d" % self.getpos()[0]
@@ -141,8 +171,10 @@ class PageReader(html.parser.HTMLParser):
 
     def start(self, tag, attrs, closed):
         self.started = True
-        if tag not in ELEMENTS:
-            self.problems.append("%s: <%s> is not an element this page may hold" % (self.where(), tag))
+        in_svg = "svg" in self.stack
+        table = SVG_ELEMENTS if in_svg else ELEMENTS
+        if tag not in table:
+            self.problems.append("%s: <%s> is not an element this page may hold%s" % (self.where(), tag, " in an <svg>" if in_svg else ""))
         if closed and tag not in VOID:
             self.problems.append("%s: <%s/> is not closed by its slash, only a void element may end so" % (self.where(), tag))
         self.counts[tag] = self.counts.get(tag, 0) + 1
@@ -152,10 +184,15 @@ class PageReader(html.parser.HTMLParser):
             if names.count(name) > 1 and name not in values:
                 self.problems.append("%s: <%s> has the attribute %s twice" % (self.where(), tag, name))
             values.setdefault(name, value)
-            if name not in GLOBAL and name not in ELEMENTS.get(tag, set()):
+            if name not in GLOBAL and name not in table.get(tag, set()):
                 self.problems.append("%s: <%s> may not have the attribute %s" % (self.where(), tag, name))
             elif value is None:
                 self.problems.append("%s: <%s> has the attribute %s without a value" % (self.where(), tag, name))
+            elif (in_svg or tag == "svg") and name in ("fill", "stroke") and value not in PAINT:
+                self.problems.append("%s: <%s> has %s=%r, and a fill or a stroke is none or currentColor" % (self.where(), tag, name, value))
+            elif (in_svg or tag == "svg") and (not SVG_VALUE.match(value) or set(CSS_FUNCTION.findall(value)) - SVG_FUNCTIONS):
+                self.problems.append("%s: <%s> has %s=%r, and a value in an <svg> is numbers and words, and calls only translate() "
+                                     "and rotate()" % (self.where(), tag, name, value))
             elif (tag, name) in LOADS:
                 self.loads.append((self.where(), tag, value))
             elif (tag, name) == ("a", "href"):
@@ -172,6 +209,16 @@ class PageReader(html.parser.HTMLParser):
             self.problems.append("%s: an <a> has an href" % self.where())
         if tag == "img":
             self.images.append((self.where(), values.get("alt")))
+        if tag == "svg" and not in_svg:
+            self.figures.append({"where": self.where(), "role": values.get("role"), "labelledby": values.get("aria-labelledby"),
+                                 "titles": []})
+        if tag == "title":
+            if self.stack[-1:] == ["head"]:
+                self.head_titles += 1
+            elif self.stack[-1:] == ["svg"] and self.figures:
+                self.figures[-1]["titles"].append(values.get("id"))
+            else:
+                self.problems.append("%s: a <title> stands in <head>, or directly in an <svg> as its name" % self.where())
         if tag == "source" and self.stack[-1:] != ["picture"]:
             self.problems.append("%s: a <source> stands in a <picture>" % self.where())
         if re.fullmatch(r"h[1-6]", tag):
@@ -265,8 +312,9 @@ def css_problems(css):
         problems.append('the CSS holds "url", and loads nothing')
     for name in sorted(set(CSS_FUNCTION.findall(css)) - {"var"}):
         problems.append("the CSS calls %s(), and the only function it may call is var()" % name)
-    for name in sorted(set(CSS_AT.findall(css)) - {"media"}):
-        problems.append("the CSS holds @%s, and the only at-rule it may hold is @media" % name)
+    for name in sorted(set(CSS_AT.findall(css)) - AT_RULES):
+        problems.append("the CSS holds @%s, and the only at-rules it may hold are @media and @keyframes" % name)
+    problems += motion_problems(css)
     blocks = ROOT_BLOCK.findall(css)
     dark = css.find(DARK)
     roots = [match.start() for match in ROOT_BLOCK.finditer(css)]
@@ -287,6 +335,35 @@ def css_problems(css):
                                 % (scheme, text, background, ratio, CONTRAST))
     if set(palettes[0]) != set(palettes[1]):
         problems.append("the light and the dark palette name different colors")
+    return problems
+
+
+def motion_problems(css):
+    """Why the CSS moves the page for a visitor who asked for less motion: an animation outside the query REDUCED.
+
+    The CSS is read as blocks, each opened by what stands before its "{". A declaration of animation, of a property
+    animation-*, or of scroll-behavior stands in a block inside REDUCED, written so, or inside a @keyframes, which only
+    says how an animation moves. A transition is not read. A brace in a comment or a string is read as a brace.
+    """
+    problems, blocks, start = [], [], 0
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    for at, char in enumerate(css):
+        if char not in "{};":
+            continue
+        text, start = " ".join(css[start:at].split()), at + 1
+        if char == "{":
+            blocks.append(text)
+            continue
+        name = text.partition(":")[0].strip().lower()
+        if blocks and ":" in text and MOTION.match(name) and not any(block == REDUCED or block.startswith("@keyframes ") for block in blocks):
+            problems.append("the CSS declares %s in %s, and so moves the page outside %s" % (name, " ".join(blocks), REDUCED))
+        if char == "}":
+            if not blocks:
+                problems.append("the CSS has a brace that is not matched: a } with no block open")
+                continue
+            blocks.pop()
+    if blocks:
+        problems.append("the CSS has a brace that is not matched: %s is never closed" % blocks[-1])
     return problems
 
 
@@ -341,9 +418,15 @@ def page_problems(root):
         found.append("%s: elements opened and never closed: %s" % (name, ", ".join("<%s>" % tag for tag in reader.stack)))
     if reader.rawdata:
         found.append("%s: html.parser did not read the end of the page" % name)
-    for tag in ("html", "head", "title", "body", "main", "h1", "style"):
+    for tag in ("html", "head", "body", "main", "h1", "style"):
         if reader.counts.get(tag, 0) != 1:
             found.append("%s: holds <%s> %d times, and must hold it once" % (name, tag, reader.counts.get(tag, 0)))
+    if reader.head_titles != 1:
+        found.append("%s: holds <title> %d times in <head>, and must hold it once" % (name, reader.head_titles))
+    for figure in reader.figures:
+        if figure["role"] != "img" or len(figure["titles"]) != 1 or not figure["titles"][0] or figure["labelledby"] != figure["titles"][0]:
+            found.append('%s: %s: an <svg> has role="img" and one <title> directly in it, whose id its aria-labelledby names'
+                         % (name, figure["where"]))
     level = 0
     for where, heading in reader.headings:
         if heading > level + 1:
@@ -657,7 +740,7 @@ class Page(RepoCopy, unittest.TestCase):
                                   ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><?php ?>", "which the page does not hold"),
                                   ("<h1>Ratchet</h1>", '<h1 id="x" id="y">Ratchet</h1>', "has the attribute id twice"),
                                   ("<h1>Ratchet</h1>", "<h1 hidden>Ratchet</h1>", "may not have the attribute hidden"),
-                                  ("<main>", "<main><title>x</title>", "holds <title> 2 times")):
+                                  ("<main>", "<main><title>x</title>", "a <title> stands in <head>, or directly in an <svg>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -1019,6 +1102,170 @@ class PageDiagrams(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
                 self.assert_fails("in the %s palette" % scheme, "--%s" % key)
+
+    def test_the_dark_and_the_orange_bands_are_held_to_the_same_contrast(self):
+        css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
+        light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
+        dark = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[1]))
+        # Each key differs between the palettes, so the first match on the page is the one in the palette named.
+        for scheme, palette, key, faint in (("light", light, "ink-muted", "#3d392e"), ("dark", dark, "ink-fg", "#303030"),
+                                            ("light", light, "go-fg", "#c05010"), ("dark", dark, "ink-box", "#9a9a9a"),
+                                            ("light", light, "code-fg", "#a09a8a")):
+            with self.subTest(scheme=scheme, key=key):
+                self.setUp()
+                self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
+                self.assert_fails("in the %s palette" % scheme, "--%s" % key)
+
+
+# The first figure, where a case below puts what it adds. Each insert stands at the first of its kind on the page.
+FIGURE = '<svg class="fig fig-ratchet"'
+FIGURE_INSIDE = '<g fill="currentColor" stroke="none">'
+
+
+class PageFigures(RepoCopy, unittest.TestCase):
+    """The figures are inline SVG drawn from a short list of elements and attributes, each named by its own title."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_fails(self, *message):
+        Page.assert_fails(self, *message)
+
+    def test_there_are_three_figures_each_named_by_its_title(self):
+        reader = PageReader()
+        reader.feed(self.page())
+        self.assertEqual(len(reader.figures), 3)
+        for figure in reader.figures:
+            self.assertEqual(figure["role"], "img")
+            self.assertEqual(figure["titles"], [figure["labelledby"]])
+        self.assertEqual(reader.head_titles, 1)
+
+    def test_an_element_that_is_not_on_the_list_of_svg_fails(self):
+        for element in ('<use href="#fig-loop-title"></use>', '<image href="https://example.invalid/x.png"></image>',
+                        '<a href="https://example.invalid/"><text>x</text></a>', "<script>alert(1)</script>",
+                        "<foreignObject><p>x</p></foreignObject>", "<style>path { fill: red; }</style>",
+                        '<marker id="m"></marker>', '<linearGradient id="g"></linearGradient>', '<filter id="f"></filter>',
+                        '<animate attributeName="x"></animate>', '<set attributeName="x"></set>', "<svg></svg>",
+                        "<p>x</p>"):
+            with self.subTest(element=element):
+                self.setUp()
+                self.change(FIGURE_INSIDE, element + FIGURE_INSIDE)
+                self.assert_fails("is not an element this page may hold in an <svg>")
+
+    def test_an_element_of_svg_outside_an_svg_fails(self):
+        self.change("</main>", '<path d="M0 0 L1 1"></path>\n</main>')
+        self.assert_fails("<path> is not an element this page may hold")
+
+    def test_an_attribute_that_is_not_on_the_list_fails(self):
+        for where, attribute, name in ((FIGURE, 'onload="alert(1)"', "onload"), (FIGURE, 'xmlns:xlink="x"', "xmlns:xlink"),
+                                       ('<path class="axis"', 'href="#fig-loop-title"', "href"),
+                                       ('<path class="axis"', 'xlink:href="#fig-loop-title"', "xlink:href"),
+                                       ('<path class="axis"', 'style="fill: url(#g)"', "style"),
+                                       ('<path class="axis"', 'onclick="x()"', "onclick"),
+                                       ('<path class="axis"', 'filter="x"', "filter"),
+                                       ('<path class="axis"', 'marker-end="x"', "marker-end"),
+                                       ('<text class="mark-no"', 'onmouseover="x()"', "onmouseover")):
+            with self.subTest(attribute=attribute):
+                self.setUp()
+                tag = where.split()[0][1:]
+                self.change(where, "<%s %s%s" % (tag, attribute, where[len(tag) + 1:]))
+                self.assert_fails("<%s> may not have the attribute %s" % (tag, name))
+
+    def test_a_paint_that_is_not_none_or_the_current_color_fails(self):
+        for paint in ("url(#g)", "#ff0000", "red", "url(https://example.invalid/x.svg#g)"):
+            with self.subTest(paint=paint):
+                self.setUp()
+                self.change(FIGURE_INSIDE, '<g fill="%s" stroke="none">' % paint)
+                self.assert_fails("<g> has fill=%r, and a fill or a stroke is none or currentColor" % paint)
+
+    def test_a_value_of_another_form_fails(self):
+        for old, new in (('transform="translate(204 226)"', 'transform="url(#x)"'),
+                         ('transform="translate(204 226)"', 'transform="matrix(1 0 0 1 0 0)"'),
+                         ('transform="translate(204 226)"', 'transform="translate(204 226); x: y"'),
+                         ('<path class="axis" d="', '<path class="axis" d="javascript:x '),
+                         ('font-family="monospace"', 'font-family="x&#58;y"')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails("in an <svg> is numbers and words, and calls only translate() and rotate()")
+
+    def test_a_title_that_stands_elsewhere_fails(self):
+        for old, new in (("<main>", "<main><title>x</title>"), ("<h1>Ratchet</h1>", "<h1>Ratchet<title>x</title></h1>"),
+                         ('<path class="axis"', '<g><title>x</title></g><path class="axis"')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails("a <title> stands in <head>, or directly in an <svg>")
+
+    def test_a_second_title_in_the_head_fails(self):
+        self.change("</title>\n", "</title>\n<title>x</title>\n")
+        self.assert_fails("holds <title> 2 times in <head>, and must hold it once")
+
+    def test_a_figure_that_is_not_named_by_its_one_title_fails(self):
+        for old, new in (('role="img" aria-labelledby="fig-ratchet-title"', 'aria-labelledby="fig-ratchet-title"'),
+                         ('role="img" aria-labelledby="fig-ratchet-title"', 'role="presentation" aria-labelledby="fig-ratchet-title"'),
+                         ('aria-labelledby="fig-ratchet-title"', 'aria-labelledby="fig-loop-title"'),
+                         ('aria-labelledby="fig-ratchet-title" ', ""),
+                         ('<title id="fig-ratchet-title">', "<title>"),
+                         ('<title id="fig-ratchet-title">', '<title id="fig-ratchet-title">x</title>\n<title id="fig-ratchet-title-2">')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails('an <svg> has role="img" and one <title> directly in it, whose id its aria-labelledby names')
+
+
+class PageMotion(RepoCopy, unittest.TestCase):
+    """The figure moves only for a visitor who has not asked for less motion, and the CSS still loads nothing."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_fails(self, *message):
+        Page.assert_fails(self, *message)
+
+    def test_the_animations_stand_in_the_query_for_no_preference(self):
+        css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
+        self.assertIn(REDUCED + " {", css)
+        self.assertIn("@keyframes wheel-tick", css)
+        self.assertEqual(motion_problems(css), [])
+
+    def test_an_animation_outside_the_query_fails(self):
+        for rule in (".fig { animation: wheel-tick 3.8s linear infinite; }", ".fig { animation-name: wheel-tick; }",
+                     ".fig{animation:wheel-tick 1s}", "html { scroll-behavior: smooth; }",
+                     "@media (prefers-reduced-motion: reduce) { .fig { animation: wheel-tick 1s; } }",
+                     "@media (min-width: 1px) { .fig { animation: wheel-tick 1s; } }",
+                     "@media (prefers-reduced-motion: no-preference), (min-width: 1px) { .fig { animation: wheel-tick 1s; } }"):
+            with self.subTest(rule=rule):
+                self.setUp()
+                self.change("</style>", rule + "\n</style>")
+                self.assert_fails("moves the page outside %s" % REDUCED)
+
+    def test_the_query_taken_away_fails(self):
+        self.change(REDUCED + " {", "@media (min-width: 0) {")
+        self.assert_fails("moves the page outside %s" % REDUCED)
+
+    def test_a_brace_that_is_not_matched_fails(self):
+        for rule in (".x { color: inherit;", ".x { color: inherit; } }"):
+            with self.subTest(rule=rule):
+                self.setUp()
+                self.change("</style>", rule + "\n</style>")
+                self.assert_fails("the CSS has a brace that is not matched")
+
+    def test_an_at_rule_but_media_and_keyframes_still_fails(self):
+        for rule in ("@supports (display: grid) { .x { display: grid; } }", "@property --x { syntax: '*'; }",
+                     "@namespace svg x;", "@layer x;"):
+            with self.subTest(rule=rule):
+                self.setUp()
+                self.change("</style>", rule + "\n</style>")
+                self.assert_fails("the only at-rules it may hold are @media and @keyframes")
 
 
 if __name__ == "__main__":
