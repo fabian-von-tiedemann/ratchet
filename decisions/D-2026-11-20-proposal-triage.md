@@ -6,14 +6,14 @@
 
 ## Question
 
-Five choices put to the maintainer together, each with a recommendation, after two independent triages by other models of the open proposals. The name of one of the triages is replaced below, in brackets, by what it refers to.
+Five choices put to the maintainer together, each with a recommendation, after two independent triages of the open proposals, made by other models.
 
 Original, in Swedish:
 
 > Båda sorteringarna är klara. De är överens om det mesta, och där de skiljer sig har jag valt det som håller Ratchet minst och ärligast.
 >
 > 1. **Inga produktregler nu.** Det gäller drift (#81), mätning mot verklig användning (#82), livscykel för plattform och leverantörer (#84), en modul för språkmodeller i produkten (#83), roller och mandat (#79) och arkivering av körningar (#64). Ratchet har ingen egen produkt att pröva dem på, och de skulle ta platser vi inte har. Ett projekt kan i stället ha dem som egna regler, när val 2 är byggt. **Råd: ja.**
-> 2. **#89:s huvudinvändning löses med en enda formändring.** En regel ska kunna tas in genom att peka på var projektet redan har den (#76), med översättning bunden till originalet (#77). Projektets egna regler får status (#60), och en kontroll räknas som byggd bara om den krävs (#78). [En av sorteringarna] föreslår ett starkare sätt än det som förslaget beskriver: reglerna genereras in i ett markerat block i projektets egen instruktionsfil och jämförs exakt. Då finns texten bara på ett ställe, och spärren håller. Jag frågar projektet på #89 om det fungerar för dem. **Råd: ja.**
+> 2. **#89:s huvudinvändning löses med en enda formändring.** En regel ska kunna tas in genom att peka på var projektet redan har den (#76), med översättning bunden till originalet (#77). Projektets egna regler får status (#60), och en kontroll räknas som byggd bara om den krävs (#78). Fable föreslår ett starkare sätt än det som förslaget beskriver: reglerna genereras in i ett markerat block i projektets egen instruktionsfil och jämförs exakt. Då finns texten bara på ett ställe, och spärren håller. Jag frågar projektet på #89 om det fungerar för dem. **Råd: ja.**
 > 3. **Snabba vinster utan nya regler:**
 >    - `init.py` lämnar inga platshållare och får ett läge för en ensam agent (#58).
 >    - Arbetsflödet får plats för projektets egna kontroller (#59).
@@ -35,7 +35,7 @@ Translation into English:
 > Both triages are done. They agree on most things, and where they differ I have chosen what keeps Ratchet smallest and most honest.
 >
 > 1. **No product rules now.** That covers operations (#81), measurement against real use (#82), the life cycle of platform and vendors (#84), a module for language models in the product (#83), roles and mandates (#79) and the archiving of runs (#64). Ratchet has no product of its own to try them on, and they would take places we do not have. A project can have them as rules of its own instead, once choice 2 is built. **Advice: yes.**
-> 2. **#89's main objection is solved by one change of form.** A rule can be adopted by pointing to where the project already has it (#76), with a translation bound to the original (#77). The project's own rules get a status (#60), and a check counts as built only if it is required (#78). [One of the triages] proposes a stronger way than the one the proposal describes: the rules are generated into a marked block in the project's own instruction file and compared exactly. Then the text exists in one place only, and the lock holds. I am asking the project on #89 whether that works for them. **Advice: yes.**
+> 2. **#89's main objection is solved by one change of form.** A rule can be adopted by pointing to where the project already has it (#76), with a translation bound to the original (#77). The project's own rules get a status (#60), and a check counts as built only if it is required (#78). Fable proposes a stronger way than the proposal describes: the rules are generated into a marked block in the project's own instruction file and compared exactly. Then the text exists in one place only, and the lock holds. I am asking the project on #89 whether that works for them. **Advice: yes.**
 > 3. **Quick wins without new rules:**
 >    - `init.py` leaves no placeholders and gets a mode for a single agent (#58).
 >    - The workflow gets a place for the project's own checks (#59).

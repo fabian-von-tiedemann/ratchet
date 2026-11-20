@@ -154,7 +154,9 @@ def git_directory(root):
 
 def names_remote(root):
     """Whether the repo's git config names a remote: a line [remote "..."] in the config of its common directory,
-    which a worktree names in commondir. The file is read, git is not run, and an include in it is not followed."""
+    which a worktree names in commondir. The file is read, git is not run, and an include in it is not followed.
+    Nor is a worktree's own config.worktree read: with extensions.worktreeConfig set, a remote named only there is
+    one git reports and this does not see, so the rules are named as waiting all the same."""
     directory = git_directory(root)
     common = os.path.join(directory, "commondir")
     if os.path.isfile(common):

@@ -62,12 +62,15 @@ STANDS = (
 OWN = "Same form as Ratchet's. The keys use the project's own prefix, never `ratchet.`."
 NO_OWN = "None yet."
 
-# The placeholders of templates/AGENTS.md, exactly as they stand there and in that order. test_init.py fails when the
-# template holds a part in angle brackets that is not on this list, other than <name>, which stands for any skill.
+# The placeholders of templates/AGENTS.md, exactly as they stand there and in the order they start. A placeholder
+# inside another one is on the list on its own, after it, since an edit may take the outer one away and leave the
+# inner one. test_init.py fails when the template holds a part in angle brackets, nested or not, that is not on this
+# list, other than <name>, which stands for any skill.
 PLACEHOLDERS = (
     "<project>",
     "<One to three sentences: what the project is for and for whom.>",
     "<`HANDOVER.md`, or the status issue (#<n>)>",
+    "<n>",
     "<If the project has a glossary: The project's terms are defined in `GLOSSARY.md`.>",
     "<The current phase, what is in scope, and what needs the owner's approval first, such as experiments that cost money.>",
     "<the directory your agent tool reads skills from>",
