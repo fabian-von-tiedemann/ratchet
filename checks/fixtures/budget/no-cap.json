@@ -3,6 +3,13 @@
   "start": [
     "ratchet.keep"
   ],
+  "principles": [
+    {
+      "key": "principle.one",
+      "title": "One",
+      "text": "One principle over every rule."
+    }
+  ],
   "parts": [
     {
       "id": "one",
@@ -14,6 +21,7 @@
     {
       "key": "ratchet.keep",
       "part": "one",
+      "principle": "principle.one",
       "status": "core",
       "enforcement": "enforced",
       "rule": "Every change has a test.",
@@ -23,6 +31,7 @@
     {
       "key": "ratchet.reworded",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",
@@ -33,6 +42,7 @@
     {
       "key": "ratchet.now-checked",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",

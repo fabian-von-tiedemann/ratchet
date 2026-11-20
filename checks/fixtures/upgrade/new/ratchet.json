@@ -3,6 +3,13 @@
   "start": [
     "ratchet.keep"
   ],
+  "principles": [
+    {
+      "key": "principle.one",
+      "title": "One",
+      "text": "One principle over every rule."
+    }
+  ],
   "parts": [
     {
       "id": "one",
@@ -14,6 +21,7 @@
     {
       "key": "ratchet.keep",
       "part": "one",
+      "principle": "principle.one",
       "status": "core",
       "enforcement": "enforced",
       "rule": "Every change has a test.",
@@ -23,6 +31,7 @@
     {
       "key": "ratchet.reworded",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",
@@ -33,6 +42,7 @@
     {
       "key": "ratchet.now-checked",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "enforced",
@@ -43,6 +53,7 @@
     {
       "key": "ratchet.now-text",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",
@@ -53,6 +64,7 @@
     {
       "key": "ratchet.new-ratchet",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "enforced",
@@ -63,6 +75,7 @@
     {
       "key": "ratchet.left-out",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",
@@ -73,6 +86,7 @@
     {
       "key": "ratchet.changed-unadopted",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.8",
       "enforcement": "text-only",
@@ -83,6 +97,7 @@
     {
       "key": "ratchet.added",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.9",
       "enforcement": "enforced",
@@ -93,6 +108,7 @@
     {
       "key": "ratchet.added-text",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "since": "9.9",
       "enforcement": "text-only",

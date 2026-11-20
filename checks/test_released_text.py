@@ -34,10 +34,13 @@ ENTRIES = {
 }
 TITLE = "# Changelog\n\n"
 # A ratchet.json that registry.validate accepts: the guard reads it as strictly as every other check does.
-RATCHET = '{\n  "version": "%s",\n  "experimental_cap": 0,\n  "start": [],\n  "parts": [],\n  "rules": []\n}\n'
-# One rule, with the part it is in, in place of the empty lists.
-A_RULE = ('"parts": [{"id": "core", "file": "RATCHET.md", "title": "The core"}],\n  "rules": [{"key": "ratchet.new", '
-          '"part": "core", "status": "core", "enforcement": "text-only", "rule": "A new rule.", "ratchet": "Text only, as a test.", "source": ""}]')
+RATCHET = '{\n  "version": "%s",\n  "experimental_cap": 0,\n  "start": [],\n  "principles": [],\n  "parts": [],\n  "rules": []\n}\n'
+EMPTY = '"principles": [],\n  "parts": [],\n  "rules": []'
+# One rule, with the principle and the part it is in, in place of the empty lists.
+A_RULE = ('"principles": [{"key": "principle.new", "title": "New", "text": "A new principle."}],\n  '
+          '"parts": [{"id": "core", "file": "RATCHET.md", "title": "The core"}],\n  "rules": [{"key": "ratchet.new", '
+          '"part": "core", "principle": "principle.new", "status": "core", "enforcement": "text-only", "rule": "A new rule.", '
+          '"ratchet": "Text only, as a test.", "source": ""}]')
 
 
 def changelog(*versions):
@@ -141,7 +144,7 @@ class Guard(unittest.TestCase):
         code, output = self.guard()
         self.assertEqual(code, 0, output)
         self.assertIn("ratchet.json names 0.4, which has no tag yet. The first entry, 0.4, is unreleased.", output)
-        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "rules": []', A_RULE) % "0.4")
+        write(self.root, "ratchet.json", RATCHET.replace(EMPTY, A_RULE) % "0.4")
         self.edit("Four rules.", "Four rules, and one more.")
         code, output = self.guard()
         self.assertEqual(code, 0, output)
@@ -251,7 +254,7 @@ class Guard(unittest.TestCase):
 
     def test_the_rules_of_a_released_version_changed_fails(self):
         write(self.root, "CHANGELOG.md", changelog("0.3", "0.2", "0.1"))
-        write(self.root, "ratchet.json", RATCHET.replace('"parts": [],\n  "rules": []', A_RULE) % "0.3")
+        write(self.root, "ratchet.json", RATCHET.replace(EMPTY, A_RULE) % "0.3")
         with open(os.path.join(self.root, "ratchet.json"), encoding="utf-8") as handle:
             self.assertIn("ratchet.new", handle.read())
         self.assert_fails("ratchet.json: names 0.3, which is released, and is not as it stood at the tag v0.3. A change to the rules raises the version")

@@ -1,6 +1,13 @@
 {
   "version": "9.8",
   "experimental_cap": 10,
+  "principles": [
+    {
+      "key": "principle.one",
+      "title": "One",
+      "text": "One principle over every rule."
+    }
+  ],
   "parts": [
     {
       "id": "one",
@@ -12,6 +19,7 @@
     {
       "key": "ratchet.keep",
       "part": "one",
+      "principle": "principle.one",
       "status": "core",
       "enforcement": "enforced",
       "rule": "Every change has a test.",
@@ -21,6 +29,7 @@
     {
       "key": "ratchet.reworded",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Prefer the simple solution.",
@@ -30,6 +39,7 @@
     {
       "key": "ratchet.now-checked",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Name every decision.",
@@ -39,6 +49,7 @@
     {
       "key": "ratchet.now-text",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "enforced",
       "rule": "Every release has a changelog entry.",
@@ -48,6 +59,7 @@
     {
       "key": "ratchet.new-ratchet",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "enforced",
       "rule": "No secrets in the repo.",
@@ -57,6 +69,7 @@
     {
       "key": "ratchet.dropped",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Write a status every day.",
@@ -66,6 +79,7 @@
     {
       "key": "ratchet.dropped-unadopted",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Keep a diary.",
@@ -75,6 +89,7 @@
     {
       "key": "ratchet.left-out",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Read the handover first.",
@@ -84,6 +99,7 @@
     {
       "key": "ratchet.changed-unadopted",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "enforcement": "text-only",
       "rule": "Ask before you merge.",

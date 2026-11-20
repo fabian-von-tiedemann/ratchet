@@ -1,0 +1,65 @@
+{
+  "version": "9.9",
+  "experimental_cap": 2,
+  "start": [
+    "ratchet.keep"
+  ],
+  "principles": [
+    {
+      "key": "principle.test-everything",
+      "title": "Test everything",
+      "text": "Every change is tested before it is merged. A test that never failed proves nothing."
+    },
+    {
+      "key": "principle.keep-it-simple",
+      "title": "Keep it simple",
+      "text": "Choose the simple solution, and name what you decide."
+    },
+    {
+      "key": "principle.name-it",
+      "title": "Test everything",
+      "text": "Name what you decide."
+    }
+  ],
+  "parts": [
+    {
+      "id": "one",
+      "file": "RATCHET.md",
+      "title": "One"
+    }
+  ],
+  "rules": [
+    {
+      "key": "ratchet.keep",
+      "part": "one",
+      "principle": "principle.test-everything",
+      "status": "core",
+      "enforcement": "enforced",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": ""
+    },
+    {
+      "key": "ratchet.reworded",
+      "part": "one",
+      "principle": "principle.keep-it-simple",
+      "status": "experimental",
+      "since": "9.8",
+      "enforcement": "text-only",
+      "rule": "Prefer the simple solution.",
+      "ratchet": "Text only: simplicity is a judgment",
+      "source": ""
+    },
+    {
+      "key": "ratchet.now-checked",
+      "part": "one",
+      "principle": "principle.name-it",
+      "status": "experimental",
+      "since": "9.8",
+      "enforcement": "text-only",
+      "rule": "Name every decision.",
+      "ratchet": "Text only: a name is a judgment",
+      "source": ""
+    }
+  ]
+}

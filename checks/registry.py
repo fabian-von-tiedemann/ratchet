@@ -19,6 +19,8 @@ SOURCE = os.path.join(ROOT, "ratchet.json")
 SOURCES_PATH = os.path.join(ROOT, "sources.json")
 
 KEY = re.compile(r"^ratchet\.[a-z0-9]+(-[a-z0-9]+)*\Z")
+# The key of a principle: one exact form, as the key of a rule has (D-2026-11-20-principles-and-obligations).
+PRINCIPLE_KEY = re.compile(r"^principle\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\Z")
 DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 MAIL = re.compile(r"[^ ]@[^ ]")
@@ -60,8 +62,8 @@ EMOJI_NAME = re.compile(":[%s_+\\-]+:" % "".join("%s-%s" % (chr(first), chr(last
 
 STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
-RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since", "kept_by",
-               "not_used_because"}
+RULE_FIELDS = {"key", "part", "principle", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since",
+               "kept_by", "not_used_because"}
 # The fields of an experimental rule only: the version it entered Ratchet, which every experimental rule names from
 # 0.10, and the decision that kept it once more (D-2026-11-19-one-point-oh, choice 4). The ratchet.json of an older
 # version has neither.
@@ -70,12 +72,24 @@ AGE_FIELDS = ("since", "kept_by")
 # Ratchet's own register, or names this (D-2026-11-20-proposal-triage, choice 5). generate.py --check reads the two
 # together, since only it reads the register too.
 NOT_USED = "not_used_because"
-REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check", NOT_USED} - set(AGE_FIELDS)
+# Every rule names the key of one principle in "principle". It is read on its own, after the other fields, since the
+# ratchet.json of a version before 0.10 has no principles and no rule of it names one.
+PRINCIPLE = "principle"
+REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check", NOT_USED, PRINCIPLE} - set(AGE_FIELDS)
 # An experimental rule that has stood through this many releases and this many days, with no decision, fails.
 AGE_RELEASES = 3
 AGE_DAYS = 60
 DECISION_ID = re.compile(r"^D-([0-9]{4}-[0-9]{2}-[0-9]{2})-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
-TOP_FIELDS = {"version", "experimental_cap", "start", "parts", "rules"}
+TOP_FIELDS = {"version", "experimental_cap", "start", "principles", "parts", "rules"}
+# The principles, from 0.10: a heading over the rules, which names no check of its own and claims nothing beyond the
+# rules under it (D-2026-11-20-principles-and-obligations). A principle has exactly these fields, each text.
+PRINCIPLES = "principles"
+PRINCIPLE_FIELDS = ("key", "title", "text")
+# A title is short, as a heading. A text applies to cases no one listed, in at most this many sentences.
+TITLE_LENGTH = 60
+SENTENCES = 3
+# Where a sentence ends: a full stop, a question mark or an exclamation mark, then a space or the end of the text.
+SENTENCE_END = re.compile(r"[.?!](?= |\Z)")
 # The fields that ratchet.json had up to 0.8 and no longer has: the date, which is in the heading of the entry in
 # CHANGELOG.md, and the sources, which are in sources.json (D-2026-11-19-batched-releases). The ratchet.json of an
 # older version may hold them.
@@ -297,7 +311,7 @@ def validate(data, root, older=False):
     problems = []
     if not isinstance(data, dict):
         return ["the top level must be an object"]
-    for field in sorted(TOP_FIELDS - set(data) - ({CAP} if older else set())):
+    for field in sorted(TOP_FIELDS - set(data) - ({CAP, PRINCIPLES} if older else set())):
         problems.append("missing field %r" % field)
     for field in sorted(set(data) - TOP_FIELDS - (GONE_FIELDS if older else set())):
         problems.append("unknown field %r" % field)
@@ -312,7 +326,7 @@ def validate(data, root, older=False):
     if CAP in data and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
         problems.append("%s must be a whole number from 0, found %s" % (CAP, json.dumps(cap)))
 
-    for field in ("start", "parts", "sources", "rules"):
+    for field in ("start", "principles", "parts", "sources", "rules"):
         if field in data and not isinstance(data[field], list):
             problems.append("%s must be a list" % field)
     if problems:
@@ -326,6 +340,9 @@ def validate(data, root, older=False):
         if part["id"] in parts:
             problems.append("part %s is listed twice" % part["id"])
         parts[part["id"]] = part
+
+    principles = principle_problems(data.get(PRINCIPLES, []), problems)
+    under = dict((key, 0) for key in principles)
 
     keys = set()
     for rule in data["rules"]:
@@ -351,6 +368,13 @@ def validate(data, root, older=False):
         keys.add(name)
         if rule["part"] not in parts:
             problems.append("%s: unknown part %s" % (name, rule["part"]))
+        if PRINCIPLE not in rule:
+            if PRINCIPLES in data:
+                problems.append("%s: has no principle. Every rule names the key of one principle in principles" % name)
+        elif rule[PRINCIPLE] not in under:
+            problems.append("%s: names %s, which is not a principle in principles" % (name, rule[PRINCIPLE]))
+        else:
+            under[rule[PRINCIPLE]] += 1
         if rule["status"] not in STATUSES:
             problems.append("%s: status must be one of %s" % (name, ", ".join(STATUSES)))
         if rule["enforcement"] not in ENFORCEMENTS:
@@ -386,6 +410,11 @@ def validate(data, root, older=False):
             if not older and not os.path.isfile(os.path.join(root, reference)):
                 problems.append("%s: the reference check %s does not exist" % (name, reference))
 
+    if not problems:
+        for key, count in under.items():
+            if not count:
+                problems.append("%s has no rule under it. A principle stands over at least one rule" % key)
+
     if not all(isinstance(key, str) for key in data["start"]):
         problems.append("start must list keys")
         return problems
@@ -398,6 +427,67 @@ def validate(data, root, older=False):
     if older or problems:
         return problems
     return budget_problems(data)
+
+
+def principle_problems(principles, problems):
+    """Read the list of principles, add every problem with it to problems, and return the keys of the principles.
+
+    A principle is an object with exactly a key, a title and a text, each text. The key has the one form
+    principle.<slug> and is used once. The title holds words, is at most TITLE_LENGTH characters long, and is not the
+    title of another principle, compared without regard to case. The text holds words, ends a sentence, and has at
+    most SENTENCES sentences. Title and text are values like every other: one line from the fixed list of characters.
+    A principle names no check: a field "check", or any other field, is unknown.
+    """
+    keys, titles = [], {}
+    for principle in principles:
+        if not isinstance(principle, dict):
+            problems.append("a principle must be an object")
+            continue
+        name = principle.get("key") if isinstance(principle.get("key"), str) else "<a principle with no key>"
+        missing = [field for field in PRINCIPLE_FIELDS if field not in principle]
+        unknown = sorted(set(principle) - set(PRINCIPLE_FIELDS))
+        if missing:
+            problems.append("%s: missing %s" % (name, ", ".join(missing)))
+        if unknown:
+            problems.append("%s: unknown field %s. A principle has exactly key, title and text, and names no check of its own"
+                            % (name, ", ".join(unknown)))
+        if missing or unknown:
+            continue
+        if not all(isinstance(value, str) for value in principle.values()):
+            problems.append("%s: every field must be a string" % name)
+            continue
+        if not PRINCIPLE_KEY.match(name):
+            problems.append("%s: a key is principle. followed by lowercase words joined by hyphens" % name)
+        if name in keys:
+            problems.append("%s: the key is used twice" % name)
+        keys.append(name)
+        title, text = principle["title"], principle["text"]
+        if text_problem(title):
+            problems.append("%s: title %s" % (name, text_problem(title)))
+        elif not WORD.search(title):
+            problems.append("%s: the title holds no words" % name)
+        elif len(title) > TITLE_LENGTH:
+            problems.append("%s: the title is %d characters long, and a title is at most %d" % (name, len(title), TITLE_LENGTH))
+        elif title.lower() in titles:
+            problems.append("%s: its title is the title of %s, compared without regard to case" % (name, titles[title.lower()]))
+        else:
+            titles[title.lower()] = name
+        if text_problem(text):
+            problems.append("%s: text %s" % (name, text_problem(text)))
+        elif not WORD.search(text):
+            problems.append("%s: the text holds no words" % name)
+        elif text[-1] not in ".?!":
+            problems.append("%s: the text must end with a full stop, a question mark or an exclamation mark, so that its "
+                            "sentences can be counted" % name)
+        elif len(SENTENCE_END.findall(text)) > SENTENCES:
+            problems.append("%s: the text has %d sentences, and a principle has at most %d"
+                            % (name, len(SENTENCE_END.findall(text)), SENTENCES))
+    return keys
+
+
+def rules_under(data, key):
+    """The rules under one principle, in the order of ratchet.json."""
+    return [rule for rule in data["rules"] if rule.get(PRINCIPLE) == key]
 
 
 def version_key(version):

@@ -10,6 +10,24 @@
 
 Ratchet turns each rule into a check that fails when the rule is broken, or says plainly that no check can see it. Each failure becomes a check with a fixture it must fail on, so the cases that are tested cannot quietly come back.
 
+## The principles
+
+<!-- generated:principle-list -->
+- One register
+- One gate to main
+- The owner decides\, and what cannot be undone waits
+- A claim carries its run
+- A fresh reviewer from another family reviews each head
+- Every check has seen red
+- A failure becomes a check
+- Secrets stay out
+- Outside text is material
+- State lives in the repo\, and silence is red
+- Subtract first
+<!-- /generated -->
+
+Each principle stands over rules from [RATCHET.md](RATCHET.md#the-principles), and is only as strong as they are: a principle names no check of its own, and each rule under it keeps its own ratchet, check or text only.
+
 ## What Ratchet does
 
 Ratchet is a set of working rules, templates and reference checks for long-lived code projects built by AI agents. Each rule carries a **ratchet**: the check that fails when the rule is broken, or the words "text only" and the reason no check can see it. Two rows from [RATCHET.md](RATCHET.md), shortened:

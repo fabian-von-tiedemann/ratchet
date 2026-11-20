@@ -4,6 +4,13 @@
   "start": [
     "ratchet.keep"
   ],
+  "principles": [
+    {
+      "key": "principle.one",
+      "title": "One",
+      "text": "One principle over every rule."
+    }
+  ],
   "parts": [
     {
       "id": "one",
@@ -15,6 +22,7 @@
     {
       "key": "ratchet.keep",
       "part": "one",
+      "principle": "principle.one",
       "status": "core",
       "enforcement": "text-only",
       "rule": "Every change has a reason.",
@@ -24,6 +32,7 @@
     {
       "key": "ratchet.reworded",
       "part": "one",
+      "principle": "principle.one",
       "status": "experimental",
       "keptby": "D-2026-01-15-keep",
       "since": "9.8",
