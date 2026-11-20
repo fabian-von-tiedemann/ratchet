@@ -12,12 +12,15 @@
 4. Your issue.
 
 <If the project has a glossary: The project's terms are defined in `GLOSSARY.md`.>
+<!-- team -->
 
 The control room also reads its handbook, after the register.
+<!-- /team -->
 
 ## What this project is and is not doing now
 
 <The current phase, what is in scope, and what needs the owner's approval first, such as experiments that cost money.>
+<!-- team -->
 
 ## Skills
 
@@ -34,3 +37,4 @@ When each skill is used. Delete the rows for skills the project has not copied.
 | When a review verdict is received | `receiving-code-review` | obra/superpowers |
 | Before anything is claimed to be done | `verification-before-completion` | obra/superpowers |
 | After two failed rounds or two failed experiments with the same kind of failure | `principle-attack-the-premise` | pstack |
+<!-- /team -->

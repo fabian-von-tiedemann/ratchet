@@ -1022,13 +1022,54 @@ class StartPath(unittest.TestCase):
         self.run_the_readme()
 
     def test_every_step_in_the_workflow_template_runs_after_the_readme(self):
+        # Step 4 of "Start here" fills in AGENTS.md. Until it does, the workflow's register check fails.
+        import check_register
         self.run_the_readme()
+        path = os.path.join(self.project, "AGENTS.md")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
         commands = re.findall(r"(?m)^\s+run: (python3 \.ratchet/\S.*)$", read("templates", "ratchet-checks.yml"))
         self.assertGreaterEqual(len(commands), 1)
+        self.assertIn(1, [self.run_in_project(command)[0] for command in commands])
+        for placeholder in check_register.PLACEHOLDERS:
+            text = text.replace(placeholder, "Filled in.")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
         for command in commands:
             with self.subTest(command=command):
                 code, output = self.run_in_project(command)
                 self.assertEqual(code, 0, output)
+
+    def test_check_register_fails_on_the_placeholders_of_the_agents_template(self):
+        import check_register
+        register = os.path.join(ROOT, "templates", "register.json")
+        code, output = run("check_register.py", register, "--agents", os.path.join(ROOT, "templates", "AGENTS.md"))
+        self.assertEqual(code, 1, output)
+        for placeholder in check_register.PLACEHOLDERS:
+            self.assertIn("still holds the template's placeholder %s" % placeholder, output)
+        self.assertIn("FAIL: %d problem(s)" % len(check_register.PLACEHOLDERS), output)
+        code, output = run("check_register.py", register, "--agents", os.path.join(ROOT, "AGENTS.md"))
+        self.assertEqual(code, 0, output)
+        code, output = run("check_register.py", register, "--agents", os.path.join(scratch(self), "AGENTS.md"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("AGENTS.md: the file is missing", output)
+
+    def test_check_register_fails_on_a_placeholder_left_inside_a_filled_in_one(self):
+        # The status issue chosen for the handover, its number not filled in, every other placeholder filled in.
+        import check_register
+        register = os.path.join(ROOT, "templates", "register.json")
+        text = read("templates", "AGENTS.md").replace("<`HANDOVER.md`, or the status issue (#<n>)>", "status issue #N-LEFT")
+        for placeholder in check_register.PLACEHOLDERS:
+            text = text.replace(placeholder, "Filled in.")
+        text = text.replace("N-LEFT", "<n>")
+        self.assertIn("\n3. The latest handover: status issue #<n>.\n", text)
+        path = os.path.join(scratch(self), "AGENTS.md")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        code, output = run("check_register.py", register, "--agents", path)
+        self.assertEqual(code, 1, output)
+        self.assertIn("AGENTS.md: still holds the template's placeholder <n>", output)
+        self.assertIn("FAIL: 1 problem(s)", output)
 
     def test_the_readme_starts_with_init(self):
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)

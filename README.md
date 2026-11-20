@@ -75,12 +75,12 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
    python3 .ratchet/checks/init.py
    ```
 
-   It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. Then it runs the register check. See [checks/README.md](checks/README.md#initpy).
+   It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. With `--solo`, for one agent and no control room, it leaves the control room and the skills out of `AGENTS.md`. Then it names what is left: the placeholders in `AGENTS.md`, the jobs to require in the protection of `main`, and, when the repo has no remote yet, the adopted rules that wait for one. Last it runs the register check. See [checks/README.md](checks/README.md#initpy).
 
    `register.json` holds nine rules to start with, copied verbatim: you choose which rules you take, and you never rewrite one. Your own rules go in the list `own`, under your own prefix. `REGISTER.md` is generated: to change it, change `register.json` and write it again.
 
-4. Fill in the parts of `AGENTS.md` in angle brackets, and commit the files. The workflow runs the register check on every PR.
-5. Build the two checks that cost almost nothing: turn on branch protection with required checks, and add a secret scanner to your CI. When your agents have an account of their own, add code ownership for the register, the checks and the decisions. It is what turns `ratchet.one-approver` and `ratchet.checks-owner-read` into checks.
+4. Fill in the parts of `AGENTS.md` in angle brackets, and commit the files. The workflow runs the register check on every PR, and it fails while `AGENTS.md` still holds a placeholder of the template.
+5. Build the two checks that cost almost nothing: turn on branch protection with the jobs `ratchet` and `project-checks` required, and add a secret scanner to your CI, in the job `project-checks`, which is the place for your own checks. When your agents have an account of their own, add code ownership for the register, the checks and the decisions. It is what turns `ratchet.one-approver` and `ratchet.checks-owner-read` into checks.
 6. When a check exists, set the rule's `status` to `built` in `register.json` and say in `where` where the check lives. Everything else stays `text only for now`.
 7. Add rules when a failure shows you need them. This prints a rule in the form `register.json` takes. Paste it into the list `adopted`, then write `REGISTER.md` again.
 

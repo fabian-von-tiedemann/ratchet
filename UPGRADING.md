@@ -49,6 +49,8 @@ Run these in the root of your own repo, on a branch of their own. The commands b
    git -C .ratchet rev-parse "v0.9^{commit}"
    ```
 
+   From 0.9 to 0.10, `templates/ratchet-checks.yml` also passes `--agents AGENTS.md` to the register check, which then fails while `AGENTS.md` holds a placeholder of the template, and has a job `project-checks` for the project's own checks. Nothing requires them: take them from `.ratchet/templates/ratchet-checks.yml` if you want them.
+
 7. Open the PR. Its description holds the output of `upgrade.py` and of the check, and says which new rules the project adopted and why. Read why each rule changed in the newer Ratchet's [CHANGELOG.md](CHANGELOG.md), in the entries after your old version.
 
 ## What the script does not do

@@ -26,5 +26,17 @@ jobs:
           ref: <40-character commit sha>
           path: .ratchet
           persist-credentials: false
-      - name: The register has not drifted
-        run: python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md
+      - name: The register has not drifted, and AGENTS.md holds no placeholder of the template
+        run: python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
+
+  # The project's own checks: its tests, its secret scan, and each check that register.json marks as built.
+  # Replace the step below with them, one step each. init.py names the jobs to require in the protection of main.
+  project-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The project's own checks go here
+        run: echo "No checks of the project's own yet. Replace this step with them."

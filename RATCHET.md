@@ -70,8 +70,8 @@ Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 
 Three rules in this part lean on one script that the project writes: `ratchet.fresh-context`, `ratchet.once-per-version` and `ratchet.two-rounds`. Ratchet does not ship it. This is what it must do:
 
-- **Build.** Given a PR, its issue, the head, a reviewer role and a model, write the assignment to a file next to where the review will be saved. The assignment contains the role, the PR and the issue, and nothing the author said about the change.
-- **Lock.** Refuse to build a second assignment for the same PR, head and model.
+- **Build.** Given a PR, its issue, the head, a reviewer role and a model, write the assignment to a file next to where the review will be saved. The assignment contains the role, the PR and the issue, and nothing the author said about the change. It states its base and the size of the diff, and the script refuses when the base is not the PR's own: for a PR stacked on another, that is the head of the layer below, not the main branch.
+- **Lock.** Refuse to build a second assignment for the same PR, head and model. A command that locks for good states what stays locked and what the next allowed step is before it does anything.
 - **Record.** Take the outcome of each round, approved or rejected.
 - **Refuse.** Refuse a new assignment for a PR while an earlier round has no outcome, and after two rejected rounds in a row, unless a decision file names the PR.
 

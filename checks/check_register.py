@@ -9,10 +9,15 @@ rewrites one.
     python3 checks/check_register.py register.json
     python3 checks/check_register.py register.json --write REGISTER.md
     python3 checks/check_register.py register.json --markdown REGISTER.md
+    python3 checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
 
 REGISTER.md is generated from the data file. With --markdown the check also fails
 unless REGISTER.md is, byte for byte, what the data file generates. The check
 never reads rules out of Markdown.
+
+With --agents the check also fails while the file given still holds a placeholder
+of templates/AGENTS.md, from the fixed list PLACEHOLDERS, and names each. It looks
+for those exact texts and nothing else: it does not parse the file.
 
 A value in the data file is text, never Markdown: one line of Latin letters,
 digits, plain spaces and the marks on a fixed list in registry.py. Every other
@@ -56,6 +61,26 @@ STANDS = (
 )
 OWN = "Same form as Ratchet's. The keys use the project's own prefix, never `ratchet.`."
 NO_OWN = "None yet."
+
+# The placeholders of templates/AGENTS.md, exactly as they stand there and in the order they start. A placeholder
+# inside another one is on the list on its own, after it, since an edit may take the outer one away and leave the
+# inner one. test_init.py fails when the template holds a part in angle brackets, nested or not, that is not on this
+# list, other than <name>, which stands for any skill.
+PLACEHOLDERS = (
+    "<project>",
+    "<One to three sentences: what the project is for and for whom.>",
+    "<`HANDOVER.md`, or the status issue (#<n>)>",
+    "<n>",
+    "<If the project has a glossary: The project's terms are defined in `GLOSSARY.md`.>",
+    "<The current phase, what is in scope, and what needs the owner's approval first, such as experiments that cost money.>",
+    "<the directory your agent tool reads skills from>",
+    "<skills directory>",
+)
+
+
+def placeholders(text):
+    """The placeholders of templates/AGENTS.md that text still holds, in the order of PLACEHOLDERS."""
+    return [placeholder for placeholder in PLACEHOLDERS if placeholder in text]
 
 
 def check(register, ratchet):
@@ -197,6 +222,7 @@ def main(argv=None):
     parser.add_argument("register", help="path to the project's register.json")
     parser.add_argument("--markdown", metavar="REGISTER.md", help="also fail unless this file is what the register generates")
     parser.add_argument("--write", metavar="REGISTER.md", help="write the generated register to this file")
+    parser.add_argument("--agents", metavar="AGENTS.md", help="also fail while this file holds a placeholder of templates/AGENTS.md")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
     try:
@@ -224,12 +250,25 @@ def main(argv=None):
                 problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))
             except registry.RegistryError as error:
                 problems.append(str(error))
+    if args.agents:
+        try:
+            text = registry.read(args.agents)
+        except registry.RegistryError as error:
+            problems.append(str(error))
+        else:
+            if text is None:
+                problems.append("%s: the file is missing" % args.agents)
+            else:
+                problems += ["%s: still holds the template's placeholder %s. Fill it in or delete it" % (args.agents, placeholder)
+                             for placeholder in placeholders(text)]
     if problems:
         for problem in problems:
             print(problem)
         print("FAIL: %d problem(s)" % len(problems))
         return 1
     print("%s: %s" % (args.register, summary))
+    if args.agents:
+        print("%s: holds no placeholder of templates/AGENTS.md" % args.agents)
     return 0
 
 
