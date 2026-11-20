@@ -60,12 +60,17 @@ EMOJI_NAME = re.compile(":[%s_+\\-]+:" % "".join("%s-%s" % (chr(first), chr(last
 
 STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
-RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since", "kept_by"}
+RULE_FIELDS = {"key", "part", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since", "kept_by",
+               "not_used_because"}
 # The fields of an experimental rule only: the version it entered Ratchet, which every experimental rule names from
 # 0.10, and the decision that kept it once more (D-2026-11-19-one-point-oh, choice 4). The ratchet.json of an older
 # version has neither.
 AGE_FIELDS = ("since", "kept_by")
-REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check"} - set(AGE_FIELDS)
+# A field of an experimental rule only: why Ratchet itself cannot use the rule. A rule that enters Ratchet is adopted in
+# Ratchet's own register, or names this (D-2026-11-20-proposal-triage, choice 5). generate.py --check reads the two
+# together, since only it reads the register too.
+NOT_USED = "not_used_because"
+REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check", NOT_USED} - set(AGE_FIELDS)
 # An experimental rule that has stood through this many releases and this many days, with no decision, fails.
 AGE_RELEASES = 3
 AGE_DAYS = 60
@@ -364,6 +369,13 @@ def validate(data, root, older=False):
         if ratchet_problem(rule["ratchet"]):
             problems.append("%s: %s" % (name, ratchet_problem(rule["ratchet"])))
         problems += ["%s: %s" % (name, problem) for problem in age_field_problems(rule, root, older)]
+        if NOT_USED in rule:
+            if rule["status"] != "experimental":
+                problems.append("%s: only an experimental rule has %s" % (name, NOT_USED))
+            elif text_problem(rule[NOT_USED]):
+                problems.append("%s: %s %s" % (name, NOT_USED, text_problem(rule[NOT_USED])))
+            elif not WORD.search(rule[NOT_USED]):
+                problems.append("%s: %s must say why, in words" % (name, NOT_USED))
         reference = rule.get("reference_check")
         if reference is not None:
             if not PATH.match(reference) or ".." in reference:

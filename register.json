@@ -61,6 +61,14 @@
       "where": "Pending setup, as for `ratchet.one-approver`. The code owner owns every path, the checks included"
     },
     {
+      "key": "ratchet.root-cause",
+      "rule": "Fix the root cause, not the symptom. First build a fast run that goes red on exactly this bug. Hypotheses come after that. The run stays, as a test tagged with the defect's issue, and is merged with the fix. When the bug is one case of a failure class, the fix closes the class and not only the case. A guard is removed only when a test shows that its case is still caught.",
+      "ratchet": "Check: a PR that links an issue labeled as a defect adds or changes a test tagged with that issue, or says in a required field why no test can catch it, and a registry of the tagged tests, generated from the tags, is checked in every PR. A finding that names a failure class is closed by a test that lists every place where the class can occur and fails on each place that lacks the guard. A PR that removes a tagged test or a guard shows a run in which a test still catches its case. It catches a fix merged without its test and a guard removed on a belief. It does not see whether the cause found is the root cause, and a sweep does not catch a spelling built to get past it",
+      "source": "mattpocock/skills `diagnosing-bugs`; pstack `principle-fix-root-causes`",
+      "status": "text only for now",
+      "where": "Not built. The reference checks have a fixture for every fault they claim to catch (`repo.checks-fail-on-fixtures`), but no test is tagged with the issue of a defect, no registry of tagged tests is generated, no label marks an issue as a defect, and no check reads the issues a PR links, sweeps for a failure class or shows that a removed guard's case is still caught"
+    },
+    {
       "key": "ratchet.evidence-before-done",
       "rule": "No claim that something is done without a check run just now, shown with the command and its result. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise.",
       "ratchet": "Text only: a check cannot see a claim made in a message. Required checks on the PR head cover the claims they run",
@@ -86,42 +94,16 @@
       "source": ""
     },
     {
+      "key": "ratchet.review-by-risk",
+      "rule": "The depth of a review follows the risk of what the PR changes, read from the paths it changes. The light class is the directory `docs/`, the landing page, and the file `CHANGELOG.md`; a release also changes `RATCHET.md`, so it gets the full review. Every other path is in the full class, among them every test and fixture, `README.md`, `GLOSSARY.md`, `UPGRADING.md`, `MIGRATING.md` and `HANDOVER.md`, which define terms, give commands that tests run or instruct agents, everything under `templates/`, `AGENTS.md`, `CONTROL-ROOM.md`, `SELF-IMPROVEMENT.md`, `RATCHET.md`, `CONTRIBUTING.md`, `.claude/`, `.github/`, `checks/`, `ratchet.json`, `register.json`, `sources.json` and `decisions/`. A test is in the full class even when it is only added to, because a test runs with the others and can weaken what they cover. A PR whose paths are all light gets a light review, from the same reviewer from another model family at a lower effort. A PR with any path in the full class gets the full review. A finding that the reviewer marks as not blocking the merge starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed.",
+      "ratchet": "Text only: the effort of a review is set where the reviewer runs, and a check in the repo cannot see it. The class could be read from the paths, but that alone guards nothing",
+      "source": ""
+    },
+    {
       "key": "ratchet.cr-verify-reports",
       "rule": "The control room verifies a workspace's report against the repo, the PR and the running processes before acting on it (see `ratchet.evidence-before-done`).",
       "ratchet": "Text only: a check cannot see whether a report was verified",
       "source": "obra/superpowers `verification-before-completion`"
-    },
-    {
-      "key": "ratchet.si-harden",
-      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. The share of rules enforced by a check is the measure of how tight a project is. A check counts only if it has failed at least once on a real or seeded violation.",
-      "ratchet": "Check: the periodic count of rules by kind of ratchet",
-      "source": "",
-      "status": "text only for now",
-      "where": "Followed, not built. AGENTS.md makes it the work of this repo now. `checks/generate.py` writes the count of rules by kind of ratchet into every entry of CHANGELOG.md, so the count is made at each version and not at a fixed interval, and it does not show which checks have failed on a real or seeded violation"
-    },
-    {
-      "key": "ratchet.si-version",
-      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
-      "ratchet": "Check: the changelog has an entry for every tag",
-      "source": "",
-      "status": "built",
-      "where": "`checks/released_text.py`, run by `.github/workflows/checks.yml` on a checkout that holds the tags. It also fails when a released changelog entry, or the `ratchet.json` of a released version, is not as it stood at its tag"
-    },
-    {
-      "key": "ratchet.si-maintainer-approves",
-      "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
-      "ratchet": "Check: branch protection on Ratchet's main branch",
-      "source": "",
-      "status": "text only for now",
-      "where": "Pending setup, as for `ratchet.one-approver`"
-    },
-    {
-      "key": "ratchet.expected-tests-ran",
-      "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
-      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
-      "source": "",
-      "status": "built",
-      "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in a step of its own. It runs the suite in a child process through `checks/suite_runner.py`"
     },
     {
       "key": "ratchet.irreversible-waits",
@@ -132,9 +114,25 @@
       "where": "The tripwire `checks/tripwire.py` runs from `.claude/settings.json` in every Claude Code session in this repo and denies the cases that `checks/README.md` lists, not every spelling. Three locks sit with GitHub. The tag ruleset `tags-stay`, which the maintainer applied from `templates/tag-ruleset.json` and the control room read back on 2026-11-19 with the agents' account, refuses moving or deleting a tag (D-2026-11-19-tag-ruleset-scope). The release workflow created the tag `v0.7` under it. No deletion or move of a tag has been tried. The role Write of the agents' account refuses the settings that only an admin may change, among them rulesets, branch protection, webhooks, deploy keys, collaborators and environments. The ruleset on `main` refuses a force push to `main`. No lock refuses the rest, which is caught by the tripwire alone: creating a tag or a release, a force push to another branch, the Actions secrets and variables that the role Write may change, the other secrets and enabling a workflow (D-2026-11-19-tripwire-and-settings). So is deleting outside the working tree, until the trial of a sandbox for the workspaces locks it"
     },
     {
-      "key": "ratchet.review-by-risk",
-      "rule": "The depth of a review follows the risk of what the PR changes, read from the paths it changes. The light class is the directory `docs/`, the landing page, and the file `CHANGELOG.md`; a release also changes `RATCHET.md`, so it gets the full review. Every other path is in the full class, among them every test and fixture, `README.md`, `GLOSSARY.md`, `UPGRADING.md`, `MIGRATING.md` and `HANDOVER.md`, which define terms, give commands that tests run or instruct agents, everything under `templates/`, `AGENTS.md`, `CONTROL-ROOM.md`, `SELF-IMPROVEMENT.md`, `RATCHET.md`, `CONTRIBUTING.md`, `.claude/`, `.github/`, `checks/`, `ratchet.json`, `register.json`, `sources.json` and `decisions/`. A test is in the full class even when it is only added to, because a test runs with the others and can weaken what they cover. A PR whose paths are all light gets a light review, from the same reviewer from another model family at a lower effort. A PR with any path in the full class gets the full review. A finding that the reviewer marks as not blocking the merge starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed.",
-      "ratchet": "Text only: the effort of a review is set where the reviewer runs, and a check in the repo cannot see it. The class could be read from the paths, but that alone guards nothing",
+      "key": "ratchet.si-harden",
+      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. The share of rules enforced by a check is the measure of how tight a project is. A check counts only if it has failed at least once on a real or seeded violation.",
+      "ratchet": "Check: the periodic count of rules by kind of ratchet",
+      "source": "",
+      "status": "text only for now",
+      "where": "Followed, not built. AGENTS.md makes it the work of this repo now. `checks/generate.py` writes the count of rules by kind of ratchet into every entry of CHANGELOG.md, so the count is made at each version and not at a fixed interval, and it does not show which checks have failed on a real or seeded violation"
+    },
+    {
+      "key": "ratchet.expected-tests-ran",
+      "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
+      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "source": "",
+      "status": "built",
+      "where": "`checks/expected_tests.py`, run by `.github/workflows/checks.yml` in a step of its own. It runs the suite in a child process through `checks/suite_runner.py`"
+    },
+    {
+      "key": "ratchet.one-exact-form",
+      "rule": "A check that must refuse what it does not know accepts one exact form of the whole input and refuses everything else. It does not interpret free text, a command line or an address to decide what it means. Where the input cannot be given one form, the check is a tripwire and says so, and a lock elsewhere carries the rule.",
+      "ratchet": "Text only: a check cannot tell how another check reads its input. Every form that once got past a check is a fixture it must fail, and every form it accepts has a fixture it passes, so the forms it accepts are a finite list",
       "source": ""
     }
   ],
@@ -168,6 +166,24 @@
       "rule": "A published tag is never moved, deleted or edited. A mistake in a version is corrected in the next version.",
       "ratchet": "Text only: a check in this repo cannot see a setting. The lock on moving and deleting a tag is the tag ruleset `tags-stay`, which the maintainer applied from `templates/tag-ruleset.json` and the control room read back on 2026-11-19. Nothing locks editing a release",
       "source": "D-2026-11-16-tags-stay"
+    },
+    {
+      "key": "repo.version",
+      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
+      "ratchet": "Check: `checks/released_text.py`, run by `.github/workflows/checks.yml` on a checkout that holds the tags: the changelog has an entry for every tag, and a released changelog entry, or the `ratchet.json` of a released version, is as it stood at its tag",
+      "source": "D-2026-11-20-proposal-triage"
+    },
+    {
+      "key": "repo.maintainer-approves",
+      "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
+      "ratchet": "Text only for now: the ruleset on `main` requires the code owner's approval and the job `checks`, but until the steps that HANDOVER.md names have been tried and recorded it stands as text only, as `ratchet.one-approver` does",
+      "source": "D-2026-11-20-proposal-triage"
+    },
+    {
+      "key": "repo.new-rule-used",
+      "rule": "An experimental rule that enters Ratchet is already used by Ratchet itself, adopted in this register, or says in `not_used_because` in `ratchet.json` why Ratchet cannot use it.",
+      "ratchet": "Check: `checks/generate.py --check`, run by `.github/workflows/checks.yml`, fails on an experimental rule whose `since` is the version of `ratchet.json` that this register does not adopt and that gives no reason, and on a rule that this register adopts and that gives one. It does not see whether Ratchet follows a rule it adopts",
+      "source": "D-2026-11-20-proposal-triage"
     },
     {
       "key": "repo.agents-own-account",

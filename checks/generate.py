@@ -27,7 +27,10 @@ count of rules and the cap on experimental rules, from ratchet.json.
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
-D-2026-11-19-one-point-oh).
+D-2026-11-19-one-point-oh). And it fails, naming each rule, when an experimental rule enters in this version, its
+"since" the version of ratchet.json, and this repo's register.json neither adopts it nor finds in its
+"not_used_because" why Ratchet cannot use it, or when the register adopts a rule that names "not_used_because"
+(use_problems, D-2026-11-20-proposal-triage, choice 5).
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -630,6 +633,7 @@ def consistency_problems(data, root, context):
     releases, found = release_dates(changelog)
     problems += found
     problems += ["ratchet.json: %s" % problem for problem in registry.age_problems(data, releases)]
+    problems += ["ratchet.json: %s" % problem for problem in use_problems(data, root)]
 
     released = context["released"]
     if released is None:
@@ -641,6 +645,34 @@ def consistency_problems(data, root, context):
     rules = [line for line in (owners or "").split("\n") if line.strip() and not line.startswith("#")]
     if rules != ["* " + MAINTAINER]:
         problems.append('.github/CODEOWNERS: must hold exactly one rule, "* %s", found %r' % (MAINTAINER, rules))
+    return problems
+
+
+def use_problems(data, root):
+    """Why a rule that enters Ratchet is not used by Ratchet itself, one problem per rule, or nothing.
+
+    A rule enters in the version of ratchet.json when it is experimental and its "since" is that version. Ratchet uses
+    it when this repo's register.json adopts it. A rule it cannot use says why in "not_used_because", and a rule that
+    the register adopts does not say so, whatever its "since". A register that is missing or does not pass
+    check_register.py gives nothing here: expected_files names it, and nothing is read from it.
+    """
+    try:
+        register = registry.load_json(os.path.join(root, "register.json"))
+        if check_register.check(register, data)[0]:
+            return []
+    except registry.RegistryError:
+        return []
+    adopted = set(item["key"] for item in register["adopted"])
+    problems = []
+    for rule in data["rules"]:
+        reason = registry.NOT_USED in rule
+        if rule["key"] in adopted and reason:
+            problems.append("%s: register.json adopts it, and %s says Ratchet cannot use it. Remove one of the two"
+                            % (rule["key"], registry.NOT_USED))
+        elif rule["status"] == "experimental" and rule["since"] == data["version"] and rule["key"] not in adopted and not reason:
+            problems.append("%s enters Ratchet in %s, and register.json does not adopt it. A rule that enters is used by "
+                            "Ratchet itself, or says in %s why Ratchet cannot use it (D-2026-11-20-proposal-triage)"
+                            % (rule["key"], data["version"], registry.NOT_USED))
     return problems
 
 

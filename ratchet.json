@@ -1,6 +1,6 @@
 {
   "version": "0.10",
-  "experimental_cap": 25,
+  "experimental_cap": 23,
   "start": [
     "ratchet.register-on-top",
     "ratchet.protected-main",
@@ -237,9 +237,9 @@
       "key": "ratchet.root-cause",
       "part": "building",
       "status": "core",
-      "enforcement": "text-only",
-      "rule": "Fix the root cause, not the symptom. First build a fast run that goes red on exactly this bug. Hypotheses come after that.",
-      "ratchet": "Text only. Measured as fixes rejected because the bug was never reproduced",
+      "enforcement": "enforced",
+      "rule": "Fix the root cause, not the symptom. First build a fast run that goes red on exactly this bug. Hypotheses come after that. The run stays, as a test tagged with the defect's issue, and is merged with the fix. When the bug is one case of a failure class, the fix closes the class and not only the case. A guard is removed only when a test shows that its case is still caught.",
+      "ratchet": "Check: a PR that links an issue labeled as a defect adds or changes a test tagged with that issue, or says in a required field why no test can catch it, and a registry of the tagged tests, generated from the tags, is checked in every PR. A finding that names a failure class is closed by a test that lists every place where the class can occur and fails on each place that lacks the guard. A PR that removes a tagged test or a guard shows a run in which a test still catches its case. It catches a fix merged without its test and a guard removed on a belief. It does not see whether the cause found is the root cause, and a sweep does not catch a spelling built to get past it",
       "source": "mattpocock/skills `diagnosing-bugs`; pstack `principle-fix-root-causes`"
     },
     {
@@ -397,16 +397,6 @@
       "source": ""
     },
     {
-      "key": "ratchet.cr-reads-first",
-      "part": "control-room",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "Every session starts by reading, in order: the working rules (AGENTS.md), the register, the control room's handbook, the latest handover, and the open PRs and issues. Everything else is read only when a task needs it.",
-      "ratchet": "Text only: a check cannot see what a session read",
-      "source": ""
-    },
-    {
       "key": "ratchet.cr-handover",
       "part": "control-room",
       "status": "experimental",
@@ -424,16 +414,6 @@
       "enforcement": "text-only",
       "rule": "A work package gets its own issue (assignment, files it may change, cap in time or cost, stop rule), its own branch and its own worktree from the main branch. The workspace reports back with the PR link and the head.",
       "ratchet": "Text only until the project has an issue template with these fields as required",
-      "source": ""
-    },
-    {
-      "key": "ratchet.cr-review",
-      "part": "control-room",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "enforced",
-      "rule": "The control room starts each review with the review script (see below), records the outcome and posts the verdict on the PR.",
-      "ratchet": "Check: the review script's lock files and outcome files",
       "source": ""
     },
     {
@@ -462,8 +442,8 @@
       "status": "experimental",
       "since": "0.2",
       "enforcement": "enforced",
-      "rule": "A scheduled wake-up reads the feed of new PRs, checks and issues and advances whatever is ready. The project sets the interval. Hourly is a good default, with a full status update every second time.",
-      "ratchet": "Check: the schedule exists and the status issue shows the time of the last wake-up",
+      "rule": "A scheduled wake-up reads the feed of new PRs, checks and issues and advances whatever is ready. The project sets the interval. Hourly is a good default, with a full status update every second time. The control room keeps what it has delegated in a list in a file, not only in its context: the workspace or review, the PR, the head and when it started. At every wake-up it checks that each run on the list is still going or has reported, and a delegation leaves the list only when its report has been read and acted on. A workspace that starts a long run in the background keeps its thread alive until the run is done, using whatever wait mechanism its agent tool has, and does not end its turn while a run it promised to report on is still going.",
+      "ratchet": "Check: the schedule exists, and the status issue shows the time of the last wake-up and the number of open delegations. It does not see whether a workspace waited on its run",
       "source": ""
     },
     {
@@ -487,16 +467,6 @@
       "source": ""
     },
     {
-      "key": "ratchet.cr-background-wait",
-      "part": "control-room",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "A workspace that starts a long run in the background keeps its thread alive until the run is done, using whatever wait mechanism its agent tool has. It does not end its turn while a run it promised to report on is still going. The control room checks at every wake-up that promised runs are actually running.",
-      "ratchet": "Text only: thread waits pass no check in the repo",
-      "source": ""
-    },
-    {
       "key": "ratchet.cr-verify-reports",
       "part": "control-room",
       "status": "experimental",
@@ -505,16 +475,6 @@
       "rule": "The control room verifies a workspace's report against the repo, the PR and the running processes before acting on it (see `ratchet.evidence-before-done`).",
       "ratchet": "Text only: a check cannot see whether a report was verified",
       "source": "obra/superpowers `verification-before-completion`"
-    },
-    {
-      "key": "ratchet.cr-lead-with-ask",
-      "part": "control-room",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "Every message to the owner leads with what the owner must decide or do, in one sentence with a recommendation, before any background. If nothing is needed, it says so.",
-      "ratchet": "Text only: messages pass no check",
-      "source": ""
     },
     {
       "key": "ratchet.phases",
@@ -568,16 +528,6 @@
       "source": ""
     },
     {
-      "key": "ratchet.si-version",
-      "part": "tightening",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "enforced",
-      "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
-      "ratchet": "Check: the changelog has an entry for every tag",
-      "source": ""
-    },
-    {
       "key": "ratchet.si-pull",
       "part": "tightening",
       "status": "experimental",
@@ -608,16 +558,6 @@
       "source": ""
     },
     {
-      "key": "ratchet.si-maintainer-approves",
-      "part": "tightening",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "enforced",
-      "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
-      "ratchet": "Check: branch protection on Ratchet's main branch",
-      "source": ""
-    },
-    {
       "key": "ratchet.expected-tests-ran",
       "part": "promoted",
       "status": "experimental",
@@ -627,6 +567,16 @@
       "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
       "source": "",
       "reference_check": "checks/expected_tests.py"
+    },
+    {
+      "key": "ratchet.one-exact-form",
+      "part": "promoted",
+      "status": "experimental",
+      "since": "0.10",
+      "enforcement": "text-only",
+      "rule": "A check that must refuse what it does not know accepts one exact form of the whole input and refuses everything else. It does not interpret free text, a command line or an address to decide what it means. Where the input cannot be given one form, the check is a tripwire and says so, and a lock elsewhere carries the rule.",
+      "ratchet": "Text only: a check cannot tell how another check reads its input. Every form that once got past a check is a fixture it must fail, and every form it accepts has a fixture it passes, so the forms it accepts are a finite list",
+      "source": ""
     }
   ]
 }
