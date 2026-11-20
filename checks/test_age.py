@@ -195,8 +195,10 @@ class RepoAge(RepoCopy, unittest.TestCase):
         # the rules of CONTROL-ROOM.md and SELF-IMPROVEMENT.md in their Markdown tables (D-2026-11-19-one-point-oh).
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
         since = dict((rule["key"], rule["since"]) for rule in data["rules"] if rule["status"] == "experimental")
-        later = {"ratchet.expected-tests-ran": "0.4", "ratchet.phases": "0.6", "ratchet.irreversible-waits": "0.7"}
-        self.assertEqual(len(since), 23)
+        # ratchet.review-by-risk enters in 0.10, this version, and no tag holds it yet.
+        later = {"ratchet.expected-tests-ran": "0.4", "ratchet.phases": "0.6", "ratchet.irreversible-waits": "0.7",
+                 "ratchet.review-by-risk": "0.10"}
+        self.assertEqual(len(since), 24)
         for key, version in sorted(since.items()):
             with self.subTest(rule=key):
                 self.assertEqual(version, later.get(key, "0.2"))

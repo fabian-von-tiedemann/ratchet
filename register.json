@@ -130,6 +130,12 @@
       "source": "",
       "status": "built",
       "where": "The tripwire `checks/tripwire.py` runs from `.claude/settings.json` in every Claude Code session in this repo and denies the cases that `checks/README.md` lists, not every spelling. Three locks sit with GitHub. The tag ruleset `tags-stay`, which the maintainer applied from `templates/tag-ruleset.json` and the control room read back on 2026-11-19 with the agents' account, refuses moving or deleting a tag (D-2026-11-19-tag-ruleset-scope). The release workflow created the tag `v0.7` under it. No deletion or move of a tag has been tried. The role Write of the agents' account refuses the settings that only an admin may change, among them rulesets, branch protection, webhooks, deploy keys, collaborators and environments. The ruleset on `main` refuses a force push to `main`. No lock refuses the rest, which is caught by the tripwire alone: creating a tag or a release, a force push to another branch, the Actions secrets and variables that the role Write may change, the other secrets and enabling a workflow (D-2026-11-19-tripwire-and-settings). So is deleting outside the working tree, until the trial of a sandbox for the workspaces locks it"
+    },
+    {
+      "key": "ratchet.review-by-risk",
+      "rule": "The depth of a review follows the risk of what the PR changes, read from the paths it changes. The light class is the directory `docs/`, the landing page, and the file `CHANGELOG.md`; a release also changes `RATCHET.md`, so it gets the full review. Every other path is in the full class, among them every test and fixture, `README.md`, `GLOSSARY.md`, `UPGRADING.md`, `MIGRATING.md` and `HANDOVER.md`, which define terms, give commands that tests run or instruct agents, everything under `templates/`, `AGENTS.md`, `CONTROL-ROOM.md`, `SELF-IMPROVEMENT.md`, `RATCHET.md`, `CONTRIBUTING.md`, `.claude/`, `.github/`, `checks/`, `ratchet.json`, `register.json`, `sources.json` and `decisions/`. A test is in the full class even when it is only added to, because a test runs with the others and can weaken what they cover. A PR whose paths are all light gets a light review, from the same reviewer from another model family at a lower effort. A PR with any path in the full class gets the full review. A finding that the reviewer marks as not blocking the merge starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed.",
+      "ratchet": "Text only: the effort of a review is set where the reviewer runs, and a check in the repo cannot see it. The class could be read from the paths, but that alone guards nothing",
+      "source": ""
     }
   ],
   "own": [
@@ -167,7 +173,7 @@
       "key": "repo.agents-own-account",
       "rule": "Agents contribute through a machine account of their own with write access. It opens pull requests and never approves one. The code owner's approval is a click by the maintainer on GitHub, or is submitted by the control room with a token of the maintainer's own account, on the maintainer's word in the control room's chat. The account merges a pull request, with a squash, only after the code owner has approved its exact head and a reviewer from another model family has passed that head. A pull request that changes only files in `decisions/` and `HANDOVER.md`, and changes no rule, check or register, needs no such reviewer.",
       "ratchet": "Text only: the protection on `main` refuses a merge unless the code owner has approved the latest change and the job `checks` is green. It cannot see whether the review from another model family passed, or whether the maintainer gave the word for an approval the control room submitted",
-      "source": "D-2026-11-17-agent-merges-after-approval, D-2026-11-18-approve-on-word"
+      "source": "D-2026-11-17-agent-merges-after-approval, D-2026-11-18-approve-on-word, D-2026-11-19-review-by-risk"
     },
     {
       "key": "repo.standard-library-only",
