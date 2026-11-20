@@ -20,7 +20,8 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   a file in docs/. The CSS in the one <style> element has no at-rule but @media and @keyframes, no function but
   var(), no backslash and no "url", so it loads nothing either
 - the CSS moves the page only inside @media (prefers-reduced-motion: no-preference): an animation or
-  scroll-behavior stands in that query, or in a @keyframes. A transition is not read
+  scroll-behavior, also with a vendor prefix such as -webkit-, stands in that query, or in a @keyframes. A
+  transition is not read. A prefixed at-rule, such as @-webkit-keyframes, is not an at-rule the CSS may hold
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
   file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release. The
   only links out of the repo are to the sources in sources.json, one each, matched whole: the repo of a source, or
@@ -120,13 +121,17 @@ DARK = "@media (prefers-color-scheme: dark)"
 # The only query in which the CSS may move the page: a visitor who asked for less motion sees none.
 REDUCED = "@media (prefers-reduced-motion: no-preference)"
 AT_RULES = {"media", "keyframes"}
-MOTION = re.compile(r"animation(?:-[a-z]+)*\Z|scroll-behavior\Z")
+# A property that moves the page, with or without a vendor prefix such as -webkit-, -moz-, -o- or -ms-: any one word
+# between dashes before the name counts as one. A prefixed at-rule, such as @-webkit-keyframes, is not in AT_RULES.
+MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|scroll-behavior)\Z")
 # Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The "ink" colors are the
-# dark bands, and "go" the orange one, which the CSS sets in place of fg, muted, link, accent, box and code.
+# dark bands, and "go" the orange one, which the CSS sets in place of fg, muted, link, accent, box and code. The "$"
+# before a command is --ink-accent, also on the code of the orange band.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
          ("link", "box"), ("accent", "bg"), ("accent", "box"),
          ("ink-fg", "ink-bg"), ("ink-muted", "ink-bg"), ("ink-accent", "ink-bg"), ("ink-fg", "ink-box"), ("ink-muted", "ink-box"),
-         ("ink-accent", "ink-box"), ("ink-fg", "ink-code"), ("go-fg", "signal"), ("go-code-fg", "go-code-bg"))
+         ("ink-accent", "ink-box"), ("ink-fg", "ink-code"), ("go-fg", "signal"), ("go-code-fg", "go-code-bg"),
+         ("ink-accent", "go-code-bg"))
 # The lists whose items the test reads one by one: the sources, and the steps of a diagram.
 ITEM_LISTS = {"ul": "sources", "ol": "flow"}
 KEY = re.compile(r"ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -342,8 +347,9 @@ def motion_problems(css):
     """Why the CSS moves the page for a visitor who asked for less motion: an animation outside the query REDUCED.
 
     The CSS is read as blocks, each opened by what stands before its "{". A declaration of animation, of a property
-    animation-*, or of scroll-behavior stands in a block inside REDUCED, written so, or inside a @keyframes, which only
-    says how an animation moves. A transition is not read. A brace in a comment or a string is read as a brace.
+    animation-*, or of scroll-behavior, with or without a vendor prefix, stands in a block inside REDUCED, written so,
+    or inside a @keyframes, which only says how an animation moves. A transition is not read. Comments are removed
+    first, so a brace in a comment is not read, but a brace in a string is read as a brace.
     """
     problems, blocks, start = [], [], 0
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
