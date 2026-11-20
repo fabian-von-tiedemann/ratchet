@@ -209,8 +209,8 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 | Name | Repo | Commit | License |
 |---|---|---|---|
 | google\/elephant\-goldfish\-model | https\:\/\/github\.com\/google\/elephant\-goldfish\-model | `70406c4d22cc7ea8299637c2c5b44625c48b3f08` | Apache\-2\.0 |
-| mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `5863806dd4e15c63174bee4e7515a4256792ecfa` | MIT |
-| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `35a90942a7f02e1ebbc2443643179815f2147954` | MIT |
+| mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `abeeaf95660ba9e8b7c753eb38f441ca707a8823` | MIT |
+| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `e58dd043600587dbaf58ba315e7f2b38373eeb43` | MIT |
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
 <!-- /generated -->
 

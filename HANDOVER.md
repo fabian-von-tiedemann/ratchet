@@ -27,7 +27,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 
 ## Next step
 
-1. The second round on the open proposals, as at most five choices for the maintainer, from the two triages behind [D-2026-11-20-proposal-triage](decisions/D-2026-11-20-proposal-triage.md): the review script and its security (#62, #85, #88, #17, #46), the control room (#47, #86, #87), the secret scan (#61, #67), and the open questions #19, #20 and #27.
+1. The open proposals that were to be the second round of [D-2026-11-20-proposal-triage](decisions/D-2026-11-20-proposal-triage.md) are sorted under the principles of [D-2026-11-20-principles-and-obligations](decisions/D-2026-11-20-principles-and-obligations.md): each names its principle and whether it adds an obligation or tightens one. They are the review script and its security (#62, #85, #88, #17, #46), the control room (#47, #87), the secret scan (#61, #67), and the open questions #19, #20 and #27.
 2. The loop, as one loop: scanning the feeds in the sources list of the maintainer's knowledge repo, and the daily reading of the sources that moved past their pin in `sources.json`, such as #52 and #53. These are parts of the loop from [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md), beside measuring and the clean-out.
 3. The release of 0.10, by a release pull request on the maintainer's word. If the change of form above is near, it waits for it, so that the form changes in one version.
 4. The checks for the criteria of 1.0 in [D-2026-11-19-one-point-oh](decisions/D-2026-11-19-one-point-oh.md): #70, #71, #72, #73 and #74.
