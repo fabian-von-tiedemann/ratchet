@@ -67,5 +67,5 @@ Translation into English:
 - Choice 1: no rule is added. The control room closed issues #64, #79, #81, #82, #83 and #84 with a comment on 2026-11-20.
 - Choice 2: the change of form follows in a pull request of its own, after the question on #89.
 - Choice 3: the pull request that adds this decision carries it. `init.py --solo` leaves the control room and the skills out of `AGENTS.md` (#58). The register check in the workflow `init.py` writes fails while `AGENTS.md` holds a placeholder of the template, and names each (#58). `init.py` names the adopted rules that wait for a remote when the repo has none (#58). The workflow has a job for the project's own checks, and `init.py` names the jobs to require (#59). The two lines decided in [D-2026-11-17-proposals-2-6](D-2026-11-17-proposals-2-6.md) stand in [RATCHET.md](../RATCHET.md#the-review-script) (#5, #6). No rule is added or removed. The control room closed #23 as done on 2026-11-20.
-- Choice 4: the check for `ratchet.root-cause`, with #63 and #66 as parts of it, and #65 as an experimental rule, follow in a pull request of their own.
-- Choice 5: the clean-out under the cap follows in a pull request of its own, with the merge of `cr-background-wait` with `cr-wake` at the next release.
+- Choice 4: pull request #92 carries the check for `ratchet.root-cause`, with #63 and #66 as parts of it, and #65 as the experimental rule `ratchet.one-exact-form`.
+- Choice 5: pull request #92 carries the clean-out under the cap of 23, with the merge of `cr-background-wait` into `cr-wake`, released with the next version.
