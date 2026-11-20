@@ -275,17 +275,17 @@ class Upgrade(FixtureTest):
                 else:
                     form = '"date" is gone, "sources" is gone and ' + since
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
-                # The rule that 0.6 adds is new to each register before it, and so is the rule that 0.7 adds. 0.8 adds none:
-                # it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
-                for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits")):
+                # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
+                # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
+                for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk")):
                     line = "- %s: new. The register may adopt it." % rule
                     if tuple(map(int, version.split("."))) < tuple(map(int, added.split("."))):
                         self.assertIn(line, output)
                     else:
                         self.assertNotIn(line, output)
                 if version == "0.9":
-                    # 0.10 changes two rules, ratchet.si-version and ratchet.si-subtract, and adds none.
-                    self.assertIn("In Ratchet %s, 2 rules are new, changed or removed." % new["version"], output)
+                    # 0.10 changes two rules, ratchet.si-version and ratchet.si-subtract, and adds one, ratchet.review-by-risk.
+                    self.assertIn("In Ratchet %s, 3 rules are new, changed or removed." % new["version"], output)
                     self.assertIn("Not adopted, so nothing to do: ratchet.si-subtract (changed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)

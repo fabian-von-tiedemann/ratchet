@@ -82,6 +82,15 @@ class RepoBudget(RepoCopy, unittest.TestCase):
         self.assertEqual(rules, [("ratchet.phases", "experimental", "text-only")])
         self.assertFalse([rule["key"] for rule in data["rules"] if rule["key"].startswith("ratchet.phase-")])
 
+    def test_review_by_risk_is_one_experimental_rule_of_the_control_room_that_is_text_only(self):
+        # D-2026-11-19-review-by-risk, choices 1 and 3: one rule outside the core, counted against the cap.
+        data = registry.load(os.path.join(ROOT, "ratchet.json"))
+        rules = [(rule["key"], rule["part"], rule["status"], rule["enforcement"]) for rule in data["rules"] if "review-by-risk" in rule["key"]]
+        self.assertEqual(rules, [("ratchet.review-by-risk", "control-room", "experimental", "text-only")])
+        keys = [rule["key"] for rule in data["rules"]]
+        self.assertEqual(keys.index("ratchet.review-by-risk"), keys.index("ratchet.cr-review") + 1, "it stands after the rule on reviews")
+        self.assertIn("ratchet.review-by-risk", read("CONTROL-ROOM.md"))
+
     def test_the_count_text_states_the_cap(self):
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
         count = registry.counts(data)["experimental"]["rules"]

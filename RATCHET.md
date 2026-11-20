@@ -24,7 +24,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 23 experimental rules, under a cap of 25: 11 name a check and 12 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 16 name a check and 19 are text only (54%). Ratchet ships a reference check for 1 of the 16. Outside the core there are 24 experimental rules, under a cap of 25: 11 name a check and 13 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
