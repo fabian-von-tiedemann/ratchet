@@ -5,14 +5,19 @@
     python3 .ratchet/checks/init.py --check     # say what it would write and what it skips, write nothing
     python3 .ratchet/checks/init.py             # write it
     python3 .ratchet/checks/init.py --name "My project"
+    python3 .ratchet/checks/init.py --solo           # one agent and no control room
 
 It writes what README's "Start here" sets up:
 
-- AGENTS.md, from templates/AGENTS.md, with the project's name in its title
+- AGENTS.md, from templates/AGENTS.md, with the project's name in its title, and without the lines
+  <!-- team --> and <!-- /team -->. With --solo it also leaves out what stands between them: the control room's
+  line and the skills
 - register.json, from templates/register.json, with the project's name
 - REGISTER.md, generated from the register.json that stands after the run, as check_register.py --write does
 - .github/workflows/ratchet.yml, from templates/ratchet-checks.yml, with the commit of the Ratchet checkout it
-  runs from, read with git rev-parse HEAD, as the pin
+  runs from, read with git rev-parse HEAD, as the pin. It has the job ratchet, whose register check also fails
+  while AGENTS.md holds a placeholder of the template, and the job project-checks, the place for the project's
+  own checks
 - the line /.ratchet/ at the end of .gitignore, unless the last line there that mentions .ratchet is exactly
   .ratchet/ or /.ratchet/, with no negation after it
 
@@ -23,8 +28,10 @@ It never overwrites a file. A file that exists with the content it would write i
 with other content, or that is not a plain file, is skipped, named, and left as it is, and the run exits 1. The one
 file it changes is .gitignore, and only by adding its line at the end, in one step, and only if .gitignore still
 holds what it read: when it changed meanwhile, init.py stops and leaves it as it is. With --check it writes
-nothing and says the same. A second run says that nothing changed. At the end it runs check_register.py on
-register.json and REGISTER.md and shows the result.
+nothing and says the same. A second run says that nothing changed. Then it names what is left to do: each
+placeholder of the template that AGENTS.md holds, from the fixed list in check_register.py, the jobs to require in
+the protection of main, and, when the repo's git config names no remote, the adopted rules that wait for one. At
+the end it runs check_register.py on register.json and REGISTER.md and shows the result.
 
 Each file is written in full to a temporary file beside it, synced, and then linked into place with a hard link,
 which fails when the file appeared meanwhile, so a file is either missing or whole and is never overwritten. On a
@@ -37,10 +44,11 @@ has. It reads these files and does not run git there.
 
 Threat model: a person or an agent runs it in their own repo. It guards against mistakes: overwriting work, a
 pin that is not a full commit or not the commit of the files it copies, a result that is half written, an edit
-to .gitignore lost, a run in the wrong folder, .ratchet/ not ignored. It does not guard against a hostile Ratchet
+to .gitignore lost, a run in the wrong folder, .ratchet/ not ignored, a placeholder left in AGENTS.md, text that
+does not apply to the project, a check not marked as required. It does not guard against a hostile Ratchet
 checkout, whose code it is, or a concurrent attacker. It never runs code from the project's repo: it runs git
 only in the Ratchet checkout, never in the project's repo, whose git config could name a program to run, and the
-check at the end is Ratchet's own.
+check at the end is Ratchet's own. It reads the repo's git config as a file to see whether it names a remote.
 
 Exit code 0: everything is in place and the register passes. 1: a file was skipped, or the register does not
 pass. 2: it could not run, and wrote nothing, or it stopped at a file it could not write or at a .gitignore that
@@ -69,6 +77,15 @@ IGNORED = (b".ratchet/", b"/.ratchet/")
 NAME = re.compile(r"^[A-Za-z0-9]+(?:[-._ ][A-Za-z0-9]+)*\Z")
 NAME_LENGTH = 100
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
+TEAM = ("<!-- team -->\n", "<!-- /team -->\n")
+JOBS = ("ratchet", "project-checks")
+# The rules of the starter register whose check cannot run before the repo has a remote, and why.
+WAIT_FOR_REMOTE = {
+    "ratchet.register-on-top": "the workflow runs its check on the host",
+    "ratchet.protected-main": "the protection of main is a setting of the host",
+    "ratchet.no-secrets": "its scan runs in CI on the host",
+    "ratchet.lesson-names-check": "the lesson template is an issue template of the host",
+}
 
 
 class InitError(Exception):
@@ -125,6 +142,31 @@ def git_root_problem(root):
     return "the file .git names %s, which holds no HEAD and commondir or objects/" % json.dumps(named)
 
 
+def git_directory(root):
+    """The directory that holds the repo, for a root that git_root_problem passed: .git, or the one a .git file names."""
+    dot_git = os.path.join(root, ".git")
+    if os.path.isdir(dot_git):
+        return dot_git
+    with open(dot_git, "rb") as handle:
+        named = re.match(rb"gitdir: ([^\r\n]+)", handle.read(4097)).group(1)
+    return os.path.join(root, os.fsdecode(named))
+
+
+def names_remote(root):
+    """Whether the repo's git config names a remote: a line [remote "..."] in the config of its common directory,
+    which a worktree names in commondir. The file is read, git is not run, and an include in it is not followed."""
+    directory = git_directory(root)
+    common = os.path.join(directory, "commondir")
+    if os.path.isfile(common):
+        with open(common, "rb") as handle:
+            directory = os.path.join(directory, os.fsdecode(handle.read().strip()))
+    path = os.path.join(directory, "config")
+    if not os.path.isfile(path):
+        return False
+    with open(path, "rb") as handle:
+        return re.search(rb'(?im)^[ \t]*\[remote[ \t]+"', handle.read()) is not None
+
+
 def git(*args):
     """Run git in the Ratchet checkout, and only there. Returns (exit code, output)."""
     env = dict(os.environ, LC_ALL="C")
@@ -165,11 +207,31 @@ def template(name):
     return text
 
 
-def agents_text(name):
+def team_parts(text, solo):
+    """text without the lines that mark the parts for a team, the control room and the skills, and with solo without
+    those parts too. Each mark is a line of its own, they stand in pairs, one pair at least, and none is inside another."""
+    kept, inside, pairs = [], False, 0
+    for line in text.splitlines(True):
+        if line == TEAM[0] and not inside:
+            inside = True
+        elif line == TEAM[1] and inside:
+            inside, pairs = False, pairs + 1
+        elif line in TEAM or "team -->" in line:
+            raise InitError("templates/AGENTS.md: the lines %s and %s must stand in pairs, each on a line of its own"
+                            % tuple(json.dumps(mark.rstrip("\n")) for mark in TEAM))
+        elif not (solo and inside):
+            kept.append(line)
+    if inside or not pairs:
+        raise InitError("templates/AGENTS.md: the lines %s and %s must stand in pairs, one pair at least"
+                        % tuple(json.dumps(mark.rstrip("\n")) for mark in TEAM))
+    return "".join(kept)
+
+
+def agents_text(name, solo):
     first, rest = template("AGENTS.md").split("\n", 1)
     if first != AGENTS_TITLE % "<project>":
         raise InitError("templates/AGENTS.md does not start with %r" % (AGENTS_TITLE % "<project>"))
-    return AGENTS_TITLE % name + "\n" + rest
+    return AGENTS_TITLE % name + "\n" + team_parts(rest, solo)
 
 
 def register_text(name, ratchet):
@@ -186,11 +248,18 @@ def register_text(name, ratchet):
     return json.dumps(register, indent=2, ensure_ascii=True) + "\n"
 
 
-def workflow_text(commit):
-    text = template("ratchet-checks.yml")
+def workflow_text_from(text, commit):
     if text.count(PLACEHOLDER) != 1:
         raise InitError("templates/ratchet-checks.yml must hold %r once, found it %d times" % (PLACEHOLDER, text.count(PLACEHOLDER)))
+    for job in JOBS:
+        found = text.count("\n  %s:\n" % job)
+        if found != 1:
+            raise InitError("templates/ratchet-checks.yml must hold the job %s once, found it %d times" % (job, found))
     return text.replace(PLACEHOLDER, commit)
+
+
+def workflow_text(commit):
+    return workflow_text_from(template("ratchet-checks.yml"), commit)
 
 
 def existing(path):
@@ -313,6 +382,8 @@ def main(argv=None, out=None):
                                                  "the workflow and .gitignore, never overwriting a file.")
     parser.add_argument("--check", action="store_true", help="say what would be written and what is skipped, write nothing")
     parser.add_argument("--name", help="the project's name (default: the name of the current folder)")
+    parser.add_argument("--solo", action="store_true", help="one agent and no control room: leave the control room's line "
+                                                            "and the skills out of AGENTS.md")
     args = parser.parse_args(argv)
 
     def say(text=""):
@@ -333,7 +404,7 @@ def main(argv=None, out=None):
             raise InitError("%s cannot be the project name: %s%s" % (json.dumps(name), problem, hint))
         ratchet = registry.load(os.path.join(RATCHET, "ratchet.json"))
         commit = ratchet_commit()
-        texts = [("AGENTS.md", agents_text(name)), ("register.json", register_text(name, ratchet)),
+        texts = [("AGENTS.md", agents_text(name, args.solo)), ("register.json", register_text(name, ratchet)),
                  (WORKFLOW, workflow_text(commit))]
     except (InitError, registry.RegistryError, OSError) as error:
         say("init: cannot run: %s" % error)
@@ -425,6 +496,8 @@ def main(argv=None, out=None):
         say("init: Nothing changed" + (", " + left if skipped else ""))
 
     result = 1 if skipped else 0
+    for line in notes(root, states, standing, args.check):
+        say(line)
     say()
     if args.check:
         if markdown is not None:
@@ -445,9 +518,33 @@ def main(argv=None, out=None):
         say("init: the register check failed, with exit code %d" % check.returncode)
         return 1
     if result == 0:
-        say("init: done. Commit AGENTS.md, register.json, REGISTER.md, %s and .gitignore, and fill in the parts of "
-            "AGENTS.md in angle brackets" % WORKFLOW.replace(os.sep, "/"))
+        say("init: done. Fill in AGENTS.md, and commit AGENTS.md, register.json, REGISTER.md, %s and .gitignore"
+            % WORKFLOW.replace(os.sep, "/"))
     return result
+
+
+def notes(root, states, standing, check):
+    """What is left to do after the run: the placeholders that AGENTS.md holds, the jobs to require, and the adopted
+    rules that wait for a remote when the repo's git config names none."""
+    lines = []
+    state, current, text = states["AGENTS.md"]
+    agents = text if state == "missing" else current
+    left = check_register.placeholders(agents) if agents is not None else []
+    if left:
+        lines += ["", "init: AGENTS.md %s %d placeholder(s) of the template. Fill in or delete each: the workflow's "
+                      "register check fails while one is left" % ("would hold" if check else "holds", len(left))]
+        lines += ["  " + placeholder for placeholder in left]
+    lines += ["", "init: in the protection of main, require the jobs %s of %s" % (" and ".join(JOBS), WORKFLOW.replace(os.sep, "/"))]
+    try:
+        remote = names_remote(root)
+        adopted = [rule.get("key") for rule in registry.parse_json(standing.encode("utf-8"))["adopted"]]
+    except (OSError, AttributeError, TypeError, KeyError, registry.RegistryError):
+        return lines
+    waiting = [key for key in WAIT_FOR_REMOTE if key in adopted]
+    if not remote and waiting:
+        lines += ["", "init: the repo's git config names no remote, so these adopted rules wait for one:"]
+        lines += ["  %s: %s" % (key, WAIT_FOR_REMOTE[key]) for key in waiting]
+    return lines
 
 
 if __name__ == "__main__":

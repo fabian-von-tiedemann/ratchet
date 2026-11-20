@@ -52,6 +52,19 @@ def read_template(name):
         return handle.read()
 
 
+def without_markers(text):
+    """The template's text with the lines that mark what --solo leaves out taken away, as init.py writes it."""
+    return "".join(line for line in text.splitlines(True) if line not in ("<!-- team -->\n", "<!-- /team -->\n"))
+
+
+def filled_in(text):
+    """AGENTS.md with every placeholder of the template filled in, as step 4 of "Start here" asks."""
+    import check_register
+    for placeholder in check_register.PLACEHOLDERS:
+        text = text.replace(placeholder, "Filled in.")
+    return text
+
+
 def no_link(*args, **kwargs):
     raise OSError(errno.EPERM, "no hard links here")
 
@@ -164,7 +177,7 @@ class Init(unittest.TestCase):
                 self.assertTrue(os.path.isfile(self.path(name)), output)
                 self.assertIn(name.replace(os.sep, "/"), output)
         self.assertEqual(self.text("AGENTS.md").split("\n", 1)[0], "# Working rules for demo-project")
-        self.assertEqual(self.text("AGENTS.md").split("\n", 1)[1], read_template("AGENTS.md").split("\n", 1)[1])
+        self.assertEqual(self.text("AGENTS.md").split("\n", 1)[1], without_markers(read_template("AGENTS.md")).split("\n", 1)[1])
         register = json.loads(self.text("register.json"))
         self.assertEqual(register["project"], "demo-project")
         template = json.loads(read_template("register.json"))
@@ -194,16 +207,150 @@ class Init(unittest.TestCase):
         self.assertIn("# Register for demo\\-project\n", self.text("REGISTER.md"))
         self.assertIn("check_register.py register.json --markdown REGISTER.md", output)
 
-    def test_every_step_in_the_workflow_runs_after_init(self):
-        code, output = self.init()
-        self.assertEqual(code, 0, output)
+    def run_the_workflow(self):
+        """(exit code, output) of each step of the written workflow that runs a check of Ratchet, run here."""
         commands = re.findall(r"(?m)^\s+run: python3 (\.ratchet/\S.*)$", self.text(".github", "workflows", "ratchet.yml"))
         self.assertGreaterEqual(len(commands), 1)
+        results = []
         for command in commands:
-            with self.subTest(command=command):
-                result = subprocess.run([sys.executable] + command.split(" "), cwd=self.project, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, universal_newlines=True)
-                self.assertEqual(result.returncode, 0, result.stdout)
+            result = subprocess.run([sys.executable] + command.split(" "), cwd=self.project, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, universal_newlines=True)
+            results.append((result.returncode, result.stdout))
+        return results
+
+    def test_every_step_in_the_workflow_runs_after_init_once_agents_md_is_filled_in(self):
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.write("AGENTS.md", filled_in(self.text("AGENTS.md")))
+        for code, output in self.run_the_workflow():
+            self.assertEqual(code, 0, output)
+
+    def test_the_workflow_fails_while_agents_md_holds_a_placeholder_and_names_each(self):
+        import check_register
+        for solo in (False, True):
+            with self.subTest(solo=solo):
+                for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+                    if os.path.lexists(self.path(name)):
+                        os.remove(self.path(name))
+                code, output = self.init(*(["--solo"] if solo else []))
+                self.assertEqual(code, 0, output)
+                agents = self.text("AGENTS.md")
+                left = [placeholder for placeholder in check_register.PLACEHOLDERS if placeholder in agents]
+                self.assertGreaterEqual(len(left), 4)
+                for placeholder in left:
+                    self.assertIn(placeholder, output)
+                failed = [output for code, output in self.run_the_workflow() if code != 0]
+                self.assertEqual(len(failed), 1, failed)
+                for placeholder in left:
+                    self.assertIn("AGENTS.md: still holds the template's placeholder %s" % placeholder, failed[0])
+                # One left, the rest filled in: that one alone is named.
+                self.write("AGENTS.md", filled_in(agents).replace("Filled in.", left[-1], 1))
+                failed = [output for code, output in self.run_the_workflow() if code != 0]
+                self.assertEqual(len(failed), 1, failed)
+                self.assertIn(left[-1], failed[0])
+                self.assertIn("FAIL: 1 problem(s)", failed[0])
+
+    def test_solo_leaves_out_the_control_room_and_the_skills(self):
+        code, output = self.init("--solo")
+        self.assertEqual(code, 0, output)
+        agents = self.text("AGENTS.md")
+        self.assertEqual(agents.split("\n", 1)[0], "# Working rules for demo-project")
+        for text in ("control room", "Control room", "## Skills", "skills directory", "| Situation |", "<!--"):
+            self.assertNotIn(text, agents)
+        for heading in ("## Purpose", "## Read first", "## What this project is and is not doing now"):
+            self.assertIn("\n%s\n" % heading, agents)
+        self.assertNotIn("\n\n\n", agents)
+        self.assertTrue(agents.endswith(".>\n"), agents[-80:])
+        code, output = self.init("--solo")
+        self.assertEqual(code, 0, output)
+        self.assertRegex(output, r"(?m)^unchanged +AGENTS\.md")
+        code, output = self.init()
+        self.assertEqual(code, 1, output)
+        self.assertRegex(output, r"(?m)^skip +AGENTS\.md: it exists and differs")
+
+    def test_without_solo_the_control_room_and_the_skills_stay(self):
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        agents = self.text("AGENTS.md")
+        self.assertIn("\n\nThe control room also reads its handbook, after the register.\n\n## What", agents)
+        self.assertIn("\n\n## Skills\n", agents)
+        self.assertNotIn("<!--", agents)
+
+    def test_team_markers_that_are_not_in_pairs_are_refused(self):
+        for text in ("a\n<!-- team -->\nb\n", "a\n<!-- /team -->\nb\n", "<!-- team -->\n<!-- team -->\n<!-- /team -->\n",
+                     "<!-- team -->\na\n<!-- /team -->\n<!-- /team -->\n", "a\n"):
+            for solo in (False, True):
+                with self.subTest(text=text, solo=solo):
+                    with self.assertRaises(init.InitError):
+                        init.team_parts(text, solo)
+        self.assertEqual(init.team_parts("a\n<!-- team -->\nb\n<!-- /team -->\nc\n", False), "a\nb\nc\n")
+        self.assertEqual(init.team_parts("a\n<!-- team -->\nb\n<!-- /team -->\nc\n", True), "a\nc\n")
+
+    def test_without_a_remote_it_names_the_rules_that_wait_for_one(self):
+        waiting = ("ratchet.register-on-top", "ratchet.protected-main", "ratchet.no-secrets", "ratchet.lesson-names-check")
+        for args in ((), ("--check",)):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertIn("names no remote", output)
+                for key in waiting:
+                    self.assertIn(key, output)
+                for key in ("ratchet.decision-as-file", "ratchet.root-cause"):
+                    self.assertNotIn(key, output)
+        git(self.project, "remote", "add", "origin", "https://example.invalid/demo.git")
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("names no remote", output)
+        for key in waiting:
+            self.assertNotIn(key, output)
+
+    def test_only_adopted_rules_are_named_as_waiting_for_a_remote(self):
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        register = json.loads(self.text("register.json"))
+        register["adopted"] = [rule for rule in register["adopted"] if rule["key"] != "ratchet.no-secrets"]
+        self.write("register.json", json.dumps(register, indent=2) + "\n")
+        os.remove(self.path("REGISTER.md"))
+        code, output = self.init()
+        self.assertEqual(code, 1, output)
+        waiting = output.split("wait for one:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("ratchet.protected-main", waiting)
+        self.assertNotIn("ratchet.no-secrets", waiting)
+
+    def test_a_worktree_whose_repo_has_a_remote_names_none_waiting(self):
+        main = os.path.join(self.directory, "main")
+        os.mkdir(main)
+        git(main, "init", "-q")
+        git(main, "commit", "-q", "--allow-empty", "-m", "start")
+        git(main, "remote", "add", "origin", "https://example.invalid/demo.git")
+        worktree = os.path.join(self.directory, "worktree-project")
+        git(main, "worktree", "add", "-q", worktree)
+        git(worktree, "clone", "-q", self.source, ".ratchet")
+        code, output = self.init("--name", "demo", project=worktree)
+        self.assertEqual(code, 0, output)
+        self.assertNotIn("names no remote", output)
+
+    def test_the_workflow_has_a_job_for_the_projects_own_checks_and_init_names_the_jobs_to_require(self):
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        workflow = self.text(".github", "workflows", "ratchet.yml")
+        jobs = re.findall(r"(?m)^  ([a-z][a-z-]*):$", workflow.split("\njobs:\n", 1)[1])
+        self.assertEqual(jobs, ["ratchet", "project-checks"])
+        own = workflow.split("\n  project-checks:\n", 1)[1]
+        self.assertIn("runs-on:", own)
+        self.assertIn("The project's own checks", own)
+        self.assertIn("require the jobs ratchet and project-checks", output)
+        code, output = self.init("--check")
+        self.assertIn("require the jobs ratchet and project-checks", output)
+
+    def test_a_workflow_template_without_the_jobs_is_refused(self):
+        text = read_template("ratchet-checks.yml")
+        self.assertEqual(init.workflow_text_from(text, "a" * 40).count("\n  project-checks:\n"), 1)
+        for broken in (text.replace("\n  project-checks:\n", "\n  own:\n"), text.replace("\n  ratchet:\n", "\n  register:\n"),
+                       text + "\n  ratchet:\n"):
+            with self.subTest(broken=broken[-40:]):
+                with self.assertRaises(init.InitError):
+                    init.workflow_text_from(broken, "a" * 40)
 
     def test_an_existing_agents_md_is_skipped_and_reported(self):
         self.write("AGENTS.md", "# Our own rules\n")
@@ -557,6 +704,27 @@ os.link = link
         self.assertEqual(json.loads(read_template("register.json"))["project"], "<project>")
         self.assertEqual(read_template("ratchet-checks.yml").count(PLACEHOLDER), 1)
         self.assertEqual(init.PLACEHOLDER, PLACEHOLDER)
+
+    def test_the_list_of_placeholders_is_the_templates(self):
+        # Every part of templates/AGENTS.md in angle brackets is on the fixed list that check_register.py --agents
+        # fails on, except <name>, which stands for any skill's name, and the lines that mark what --solo leaves out.
+        import check_register
+        text = read_template("AGENTS.md")
+        for placeholder in check_register.PLACEHOLDERS:
+            with self.subTest(placeholder=placeholder):
+                self.assertEqual(text.count(placeholder), 1)
+        rest = without_markers(text)
+        for placeholder in check_register.PLACEHOLDERS:
+            rest = rest.replace(placeholder, "")
+        self.assertEqual(re.findall(r"<[^>\n]*>", rest), ["<name>"])
+        self.assertEqual(check_register.placeholders(filled_in(text)), [])
+        self.assertEqual(check_register.placeholders(text), list(check_register.PLACEHOLDERS))
+
+    def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
+        keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]
+        for key in init.WAIT_FOR_REMOTE:
+            with self.subTest(key=key):
+                self.assertIn(key, keys)
 
 
 if __name__ == "__main__":
