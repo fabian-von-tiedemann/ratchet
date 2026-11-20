@@ -35,6 +35,8 @@ INSTRUCTIONS = "instructions must be the path of a Markdown file in the repo"
 BLOCK_NOT_GENERATED = "AGENTS.md: the block between the markers is not what register.json generates"
 MARKERS = "AGENTS.md: the markers of the generated block are broken"
 MARKER_LINE = "must be exactly <!-- ratchet:"
+PLACE = "AGENTS.md: the block must stand at the start of the file"
+LINKED = "is a symbolic link. The instruction file is read and written only as a plain file in the repo"
 
 
 def outside(field, code):
@@ -200,6 +202,24 @@ FAILING_BLOCK = {
     "block-end-before-begin": "AGENTS.md: the line <!-- ratchet:end --> stands before <!-- ratchet:begin -->",
     "block-not-utf8": "AGENTS.md: " + NOT_UTF8,
     "block-file-missing": "AGENTS.md: the file is missing. register.json names it in instructions",
+    # The block stands at the start of the file, so no text before it can put it in a code block, a comment or an
+    # element that hides it, and the check reads no Markdown outside it (round 2 of #100).
+    "block-after-text": PLACE,
+    "block-after-empty-line": PLACE,
+    "block-in-backtick-fence": PLACE,
+    "block-in-tilde-fence": PLACE,
+    "block-in-div-hidden": PLACE,
+    "block-in-details": PLACE,
+    "block-in-comment": PLACE,
+    "block-after-unclosed-fence": PLACE,
+    "block-indented": MARKER_LINE,
+    "block-after-bom": MARKER_LINE,
+    # A marker word with a character that shows as nothing, a letter of another script or a full-width colon in it
+    # counts as the word, so a copy of the block under such a marker fails, and so does such a marker in place.
+    "block-lookalike-zero-width": MARKERS,
+    "block-lookalike-cyrillic": MARKERS,
+    "block-lookalike-fullwidth": MARKERS,
+    "block-marker-zero-width": MARKER_LINE,
 }
 # Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates.
 PASSING_BLOCK = ("block-clean", "block-crlf-outside")
@@ -557,9 +577,23 @@ class RegisterBlock(FixtureTest):
             self.assertIn(line, block)
         self.assertIn("Varje regel", block, "Swedish letters stand as themselves")
         self.assertIn("\u00e5", block)
-        # The rest of the file is the project's own, and is never read.
-        self.assertTrue(text.startswith("# Working rules for the example project\n"))
-        self.assertIn("<!-- a comment of the project's own -->", text.split("<!-- ratchet:begin -->")[0])
+        # The block stands first. The rest of the file, after it, is the project's own, and is never read.
+        self.assertTrue(text.startswith("<!-- ratchet:begin -->\n## Rules in force\n"))
+        self.assertIn("<!-- ratchet:end -->\n\n# Working rules for the example project\n", text)
+        self.assertIn("<!-- a comment of the project's own -->", text.split("<!-- ratchet:end -->")[1])
+
+    def test_a_marker_word_is_found_in_any_disguise_and_other_text_is_not_taken_for_one(self):
+        sys.path.insert(0, HERE)
+        import check_register
+        for line in ("<!-- ratchet:begin -->", "<!-- RATCHET:END -->", "ratchet\u200b:begin", "r\u0430tchet:begin",
+                     "ratchet\uff1aend", "\uff52\uff41\uff54\uff43\uff48\uff45\uff54:begin", "ratch\u00e9t:end",
+                     "rat\u00adchet:begin", "ratchet:\u2060end", "r\u0430t\u0441h\u0435t:b\u0435g\u0456n", "ratchet:beginning"):
+            with self.subTest(line=line):
+                self.assertTrue(check_register.holds_marker_word(line), line)
+        for line in ("Ratchet: begin with the register.", "\u67d0" * 30 + ":" + "\u67d0" * 30,
+                     "ratchet-begin", "the ratchet ends here", "x" * 200):
+            with self.subTest(line=line):
+                self.assertFalse(check_register.holds_marker_word(line), line)
 
     def test_a_translation_is_bound_to_the_sha256_of_the_english_rule(self):
         import hashlib
@@ -583,7 +617,7 @@ class RegisterBlock(FixtureTest):
         directory, (code, output) = self.block("block-no-markers", "--write-block")
         self.assertEqual(code, 0, output)
         before = self.fixture_bytes("register/block-no-markers/AGENTS.md")
-        self.assertEqual(self.agents(directory), before + b"\n" + clean[begin:end])
+        self.assertEqual(self.agents(directory), clean[begin:end] + b"\n" + before, "the block goes first, then an empty line")
         self.assertEqual(self.block("block-no-markers")[1][0], 1, "the fixture fails before the block is written")
         code, output = run("check_register.py", os.path.join(directory, "register.json"))
         self.assertEqual(code, 0, output)
@@ -602,7 +636,7 @@ class RegisterBlock(FixtureTest):
 
     def test_no_block_is_written_where_the_markers_are_broken(self):
         for name in sorted(FAILING_BLOCK):
-            if FAILING_BLOCK[name] not in (MARKERS, MARKER_LINE) and name not in ("block-not-utf8", "block-end-before-begin"):
+            if FAILING_BLOCK[name] not in (MARKERS, MARKER_LINE, PLACE) and name not in ("block-not-utf8", "block-end-before-begin"):
                 continue
             with self.subTest(fixture=name):
                 directory = self.fixture_directory("register/" + name)
@@ -612,6 +646,68 @@ class RegisterBlock(FixtureTest):
                 self.assertIn("AGENTS.md: the block is not written", output)
                 self.assertEqual(self.agents(directory), before)
                 self.assertNotIn("Traceback", output)
+
+    def linked(self, link_to, instructions="link/AGENTS.md"):
+        """A copy of block-clean whose register names instructions, a valid AGENTS.md outside the copy, and a
+        symbolic link "link" in the copy that points at link_to, "directory" for the directory outside or "file" for the
+        file in it. Returns the copy, the file outside, and its bytes."""
+        directory = self.fixture_directory("register/block-clean")
+        outside = scratch(self)
+        agents = os.path.join(outside, "AGENTS.md")
+        shutil.copyfile(os.path.join(directory, "AGENTS.md"), agents)
+        with open(agents, "ab") as handle:
+            handle.write(b"Outside the repo.\n")
+        os.symlink(outside if link_to == "directory" else agents, os.path.join(directory, "link"))
+        path = os.path.join(directory, "register.json")
+        with open(path, encoding="utf-8") as handle:
+            register = json.load(handle)
+        register["instructions"] = instructions
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(register, handle)
+        with open(agents, "rb") as handle:
+            return directory, agents, handle.read()
+
+    def test_an_instruction_file_behind_a_symbolic_link_is_neither_read_nor_written(self):
+        # Round 2 of #100: a link in any part of the path, the last or one before it, could lead out of the repo.
+        for link_to, instructions in (("directory", "link/AGENTS.md"), ("file", "link.md"), ("directory", "link/new.md")):
+            with self.subTest(link_to=link_to, instructions=instructions):
+                directory, agents, before = self.linked(link_to, instructions)
+                if instructions == "link.md":
+                    os.rename(os.path.join(directory, "link"), os.path.join(directory, "link.md"))
+                for args in ((), ("--write-block",)):
+                    code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
+                    self.assertEqual(code, 1, output)
+                    self.assertIn(LINKED, output)
+                    self.assertIn("FAIL: 1 problem(s)", output)
+                    self.assertNotIn("is what register.json generates", output, "the file outside was not read as the block")
+                    self.assertNotIn("wrote the block", output)
+                    self.assertNotIn("Traceback", output)
+                    with open(agents, "rb") as handle:
+                        self.assertEqual(handle.read(), before, "nothing outside the repo was written")
+                    self.assertFalse(os.path.exists(os.path.join(os.path.dirname(agents), "new.md")))
+
+    def test_an_instruction_file_named_outside_the_repo_is_neither_read_nor_written(self):
+        for instructions in ("../AGENTS.md", "/AGENTS.md", "a/../../AGENTS.md", "./AGENTS.md", os.path.join(scratch(self), "AGENTS.md")):
+            with self.subTest(instructions=instructions):
+                directory, agents, before = self.linked("directory", instructions)
+                for args in ((), ("--write-block",)):
+                    code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
+                    self.assertEqual(code, 1, output)
+                    self.assertIn(INSTRUCTIONS, output)
+                    self.assertNotIn("Traceback", output)
+                    with open(agents, "rb") as handle:
+                        self.assertEqual(handle.read(), before)
+
+    def test_an_instruction_file_in_a_directory_that_is_missing_is_not_written(self):
+        directory, agents, before = self.linked("directory", "docs/AGENTS.md")
+        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
+        self.assertEqual(code, 1, output)
+        self.assertIn("docs is missing", output)
+        self.assertFalse(os.path.exists(os.path.join(directory, "docs")))
+        os.mkdir(os.path.join(directory, "docs"))
+        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote the block in", output)
 
     def test_no_block_is_written_from_a_register_that_fails(self):
         directory = self.fixture_directory("register/block-clean")
@@ -889,6 +985,24 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assertEqual(code, 0, output)
         with open(os.path.join(self.copy, "AGENTS.md"), "rb") as handle:
             self.assertEqual(handle.read(), read("AGENTS.md").encode("utf-8"))
+
+    def test_the_generator_neither_reads_nor_writes_an_instruction_file_behind_a_symbolic_link(self):
+        # Round 2 of #100: register.json names link/AGENTS.md, and link leads out of the repo.
+        outside = scratch(self)
+        with open(os.path.join(self.copy, "AGENTS.md"), "rb") as handle:
+            before = handle.read().replace(b"| ratchet.no-secrets | text only for now |", b"| ratchet.no-secrets | built |")
+        with open(os.path.join(outside, "AGENTS.md"), "wb") as handle:
+            handle.write(before)
+        os.symlink(outside, os.path.join(self.copy, "link"))
+        self.edit("register.json", '"instructions": "AGENTS.md"', '"instructions": "link/AGENTS.md"')
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = run("generate.py", *args, root=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertIn("link is a symbolic link. The instruction file is read and written only as a plain file in the repo", output)
+                self.assertNotIn("Traceback", output)
+                with open(os.path.join(outside, "AGENTS.md"), "rb") as handle:
+                    self.assertEqual(handle.read(), before, "nothing outside the repo was written")
 
     def test_broken_markers_in_this_repos_agents_md_fail_the_generator(self):
         self.edit("AGENTS.md", "<!-- ratchet:end -->", "<!-- ratchet:end -->\n<!-- ratchet:end -->")

@@ -18,14 +18,16 @@ never reads rules out of Markdown.
 
 The register may name, in "instructions", the project's own instruction file, such as
 AGENTS.md or CLAUDE.md, relative to the register. The check then generates a block of
-the rules from the register and fails unless the file holds exactly one line
-"<!-- ratchet:begin -->" and one line "<!-- ratchet:end -->", each alone on its line
-and ending in LF, and between them, byte for byte, the block. A line that holds
-"ratchet:begin" or "ratchet:end" in any other form, in any case, is a broken marker.
-Nothing else in the file is read: it must be UTF-8, and the rest of it is the
-project's own. --write-block writes the block between the markers, or at the end of
-a file that has none, and changes no other byte of the file
-(D-2026-11-20-generated-block).
+the rules from the register and fails unless the file starts with the line
+"<!-- ratchet:begin -->" and holds one line "<!-- ratchet:end -->", each alone on its
+line and ending in LF, and between them, byte for byte, the block. Nothing stands
+before the block, so no text can put it in a code block, a comment or an element that
+hides it. "ratchet:begin" or "ratchet:end" in any other form, in any case or in
+disguise, is a broken marker. Nothing else in the file is read: it must be UTF-8, and
+the rest of it is the project's own. --write-block writes the block between the
+markers, or at the start of a file that has none, and changes no other byte of the
+file (D-2026-11-20-generated-block). No part of the path of the file may be a
+symbolic link, and the file stays inside the directory of the register.
 
 An adopted rule may carry a translation of its rule: a language code, the text, and
 the sha256 of the English rule it translates. The check fails when the sha256 is not
@@ -78,8 +80,16 @@ PATH_PART = re.compile(r"^[A-Za-z0-9._-]+\Z")
 PATH_LENGTH = 200
 BEGIN = "<!-- ratchet:begin -->"
 END = "<!-- ratchet:end -->"
-# The words of the two markers, in any case, wherever they stand in the instruction file. Each must stand once.
+# The words of the two markers, wherever they stand in the instruction file, in any case and in disguise. Each must
+# stand once. A character outside ASCII may stand in place of each character of the word, and any number of them
+# between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
+# not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
+# of the word must be the word's own, so text in another script is not taken for it. No table of Unicode is asked, so
+# the answer is the same on every version of Python (round 2 of #100).
 MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
+SHARE = 7
+# The full-width forms of ASCII, U+FF01 to U+FF5E, each U+FEE0 above its ASCII character.
+FULL_WIDTH = dict((code, code - 0xFEE0) for code in range(0xFF01, 0xFF5F))
 STATUSES = ("built", "text only for now")
 OWN_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 
@@ -258,8 +268,8 @@ def check(register, ratchet):
         problems.append("no rules from Ratchet. A register that adopts nothing has nothing to check")
     if INSTRUCTIONS in register and not problems:
         block = render_block(register)
-        for word, pattern in MARKER_WORDS:
-            if len(pattern.findall(block)) != 1:
+        for (word, _), places in zip(MARKER_WORDS, marker_words(block)):
+            if len(places) != 1:
                 problems.append("a value holds %s in code, and the block of rules for %s would hold it outside its marker. "
                                 "Write it another way" % (word, register[INSTRUCTIONS]))
     summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now." % (
@@ -377,13 +387,65 @@ def render_block(register):
     return "\n".join(lines) + "\n"
 
 
+def disguised(line, word):
+    """The places in a line that holds characters outside ASCII where the word stands in disguise, read in one pass.
+
+    best[j] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
+    them that are the word's own, and where that part starts. A word found starts the search again after it.
+    """
+    none = (-1, 0)
+    best, places = [(0, 0)] + [none] * len(word), []
+    for at, char in enumerate(line):
+        other = char >= "\x80"
+        step = [(0, at + 1)] + [none] * len(word)
+        for j in range(len(word)):
+            count, start = best[j] if j else (0, at)
+            if count < 0:
+                continue
+            if not other and char.lower() == word[j] and count + 1 > step[j + 1][0]:
+                step[j + 1] = (count + 1, start)
+            elif other and count > step[j + 1][0]:
+                step[j + 1] = (count, start)
+            if other and 0 < j and count > step[j][0]:
+                step[j] = (count, start)
+        best = step
+        if best[len(word)][0] >= SHARE:
+            places.append(best[len(word)][1])
+            best = [(0, at + 1)] + [none] * len(word)
+    return places
+
+
+def marker_words(text):
+    """For each of the two marker words, where it stands in the text, in any case and in disguise (see MARKER_WORDS).
+
+    A line of ASCII alone is searched for the word as it is. A line with any other character is read by disguised().
+    """
+    folded = text.translate(FULL_WIDTH)
+    found = [[], []]
+    offset = 0
+    for line in folded.split("\n"):
+        for places, (word, pattern) in zip(found, MARKER_WORDS):
+            if all(char < "\x80" for char in line):
+                places += [offset + match.start() for match in pattern.finditer(line)]
+            else:
+                places += [offset + start for start in disguised(line, word)]
+        offset += len(line) + 1
+    return found
+
+
+def holds_marker_word(text):
+    """Whether the text holds either marker word, in any case and in disguise."""
+    return any(marker_words(text))
+
+
 def find_block(text, name):
     """(start, end) of the block with its two markers in the text of an instruction file, or (None, problems).
 
-    The file holds "ratchet:begin" and "ratchet:end" once each, in any case, and each stands in its exact marker line,
-    alone, at the start of its line, ending in LF. Nothing else of the file is read.
+    The file holds "ratchet:begin" and "ratchet:end" once each, in any case and in disguise, and each stands in its
+    exact marker line, alone, ending in LF. The begin marker is the first line of the file, so nothing before it can
+    put the block in a code block, a comment or an element that hides it. Nothing else of the file is read.
     """
-    found = [[match.start() for match in pattern.finditer(text)] for _, pattern in MARKER_WORDS]
+    found = marker_words(text)
     begins, ends = len(found[0]), len(found[1])
     if begins == ends == 0:
         return None, ["%s: holds no generated block, and register.json names it in instructions. Write it with "
@@ -402,6 +464,10 @@ def find_block(text, name):
         places.append((start, start + len(line)))
     if places[1][0] < places[0][0]:
         return None, ["%s: the line %s stands before %s" % (name, END, BEGIN)]
+    if places[0][0] != 0:
+        return None, ["%s: the block must stand at the start of the file, its line %s the first, and it starts at line %d. "
+                      "Nothing may stand before it, so that no text can put it in a code block, a comment or an element "
+                      "that hides it. Move it there by hand" % (name, BEGIN, text.count("\n", 0, places[0][0]) + 1)]
     return (places[0][0], places[1][1]), []
 
 
@@ -430,11 +496,12 @@ def block_problems(name, data, register):
 def with_block(text, register, name):
     """(the text of the instruction file with the block written, or None, problems).
 
-    The block goes between the markers, or, in a file with no marker, at its end after an empty line. No other
-    character of the file changes. Where the markers are broken, nothing is written.
+    The block goes between the markers, or, in a file with no marker, at its start, followed by an empty line. No
+    other character of the file changes. Where the markers are broken or the block is not at the start, nothing is
+    written.
     """
-    if text and not any(pattern.search(text) for _, pattern in MARKER_WORDS):
-        return text + ("\n" if text.endswith("\n") else "\n\n") + render_block(register), []
+    if text and not holds_marker_word(text):
+        return render_block(register) + "\n" + text, []
     if not text:
         return render_block(register), []
     place, problems = find_block(text, name)
@@ -443,17 +510,47 @@ def with_block(text, register, name):
     return text[:place[0]] + render_block(register) + text[place[1]:], []
 
 
-def instruction_path(register_path, register):
-    return os.path.join(os.path.dirname(register_path), *register[INSTRUCTIONS].split("/"))
+def instruction_place(register_path, register):
+    """(the path of the instruction file, or None, problems), before anything is read or written there.
+
+    The path has the form instructions_problem allows: relative, no "." or "..", no empty part. Each part of it, from
+    the directory of the register down, is not a symbolic link, each part before the last is a directory, and the
+    file, resolved, stays inside that directory. So the file is read and written only inside the repo (round 2 of
+    #100). The last part may be missing: --write-block then creates it.
+    """
+    root = os.path.dirname(register_path)
+    value = register[INSTRUCTIONS]
+    if instructions_problem(value):
+        return None, [instructions_problem(value)]
+    parts = value.split("/")
+    path = root
+    for number, part in enumerate(parts, 1):
+        path = os.path.join(path, part)
+        shown = os.path.join(root, *parts[:number])
+        if os.path.islink(path):
+            return None, ["%s is a symbolic link. The instruction file is read and written only as a plain file in the repo, "
+                          "and no part of its path may be a link" % shown]
+        if number < len(parts) and not os.path.isdir(path):
+            return None, ["%s is missing or is not a directory. register.json names %s in instructions, and the block is "
+                          "neither read nor written there" % (shown, value)]
+    if os.path.exists(path) and not os.path.isfile(path):
+        return None, ["%s: it is not a plain file" % path]
+    inside = os.path.realpath(root or ".")
+    if os.path.commonpath([inside, os.path.realpath(path)]) != inside:
+        return None, ["%s resolves to a place outside the directory of register.json" % path]
+    return path, []
 
 
 def write_block(path, register):
-    """Write the block into the instruction file at path. Returns the problems, and writes nothing if there are any."""
-    if os.path.islink(path) or (os.path.exists(path) and not os.path.isfile(path)):
-        return ["%s: the block is not written: it is not a plain file" % path]
+    """Write the block into the instruction file at path, which instruction_place gave. Returns the problems, and
+    writes nothing if there are any. The file is opened without following a link, in case one took its place."""
     data = b""
     if os.path.exists(path):
-        with open(path, "rb") as handle:
+        try:
+            handle = os.fdopen(os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb")
+        except OSError as error:
+            return ["%s: the block is not written: %s" % (path, error.strerror)]
+        with handle:
             data = handle.read()
     try:
         text = data.decode("utf-8", errors="strict")
@@ -463,8 +560,12 @@ def write_block(path, register):
     if problems:
         return ["%s: the block is not written, since the markers are broken. Mend them by hand first" % path] + problems
     if new != text or not os.path.exists(path):
-        with open(path, "w", encoding="utf-8", newline="") as handle:
-            handle.write(new)
+        try:
+            handle = os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o644), "wb")
+        except OSError as error:
+            return ["%s: the block is not written: %s" % (path, error.strerror)]
+        with handle:
+            handle.write(new.encode("utf-8"))
     return []
 
 
@@ -504,11 +605,11 @@ def main(argv=None):
                 problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))
             except registry.RegistryError as error:
                 problems.append(str(error))
-        block = instruction_path(args.register, register) if INSTRUCTIONS in register else None
-        found = []
-        if args.write_block and block is None:
+        block, found = instruction_place(args.register, register) if INSTRUCTIONS in register else (None, [])
+        problems += found
+        if args.write_block and block is None and not found:
             problems.append("%s: register.json names no instruction file in instructions, so there is no block to write" % args.register)
-        elif args.write_block:
+        elif args.write_block and block is not None:
             found = write_block(block, register)
             problems += found
             if not found:
@@ -518,8 +619,13 @@ def main(argv=None):
                 problems.append("%s: the file is missing. register.json names it in instructions. Write the block into it with "
                                 "check_register.py register.json --write-block" % block)
             else:
-                with open(block, "rb") as handle:
-                    problems += block_problems(block, handle.read(), register)
+                try:
+                    handle = os.fdopen(os.open(block, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb")
+                except OSError as error:
+                    problems.append("%s: cannot be read as a plain file: %s" % (block, error.strerror))
+                else:
+                    with handle:
+                        problems += block_problems(block, handle.read(), register)
     elif args.write_block:
         problems.append("the block is not written from a register that does not pass")
     if args.agents:

@@ -182,7 +182,9 @@ class Triage(RepoCopy, unittest.TestCase):
             handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
         with open(os.path.join(self.copy, "REGISTER.md"), "w", encoding="utf-8", newline="") as handle:
             handle.write(check_register.render(register))
-        self.assertEqual(check_register.write_block(check_register.instruction_path(path, register), register), [])
+        place, problems = check_register.instruction_place(path, register)
+        self.assertEqual(problems, [])
+        self.assertEqual(check_register.write_block(place, register), [])
 
     def unadopt(self, key):
         self.rewrite_register(lambda register: register.update(adopted=[item for item in register["adopted"] if item["key"] != key]))

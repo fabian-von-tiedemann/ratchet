@@ -152,7 +152,8 @@ class Upgrade(FixtureTest):
         code = upgrade.report("register.json", register, old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
         self.assertIn("Then write REGISTER.md and the block in AGENTS.md again and check them:", out.getvalue())
-        self.assertIn("    python3 check_register.py register.json --write-block\n", out.getvalue())
+        self.assertIn("    python3 check_register.py register.json --write REGISTER.md --write-block\n", out.getvalue())
+        self.assertNotIn("--write REGISTER.md\n", out.getvalue(), "REGISTER.md is never written alone, which would fail on the stale block")
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -532,6 +533,39 @@ class UpgradingSteps(FixtureTest):
                 self.assertEqual(result.returncode, 0, result.stdout)
                 if number == 0:
                     self.assertIn('Set "ratchet_version" to "%s".' % new["version"], result.stdout)
+
+    def test_the_printed_commands_run_in_order_for_a_register_that_names_an_instruction_file(self):
+        # Round 2 of #100: the commands that upgrade.py prints are run as printed, one after the other, on a register
+        # that names AGENTS.md, whose block the older register generated. Each must pass.
+        project = self.scratch()
+        shutil.copytree(ROOT, os.path.join(project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.9/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
+        register = registry.parse_json(self.fixture_bytes("upgrade/released/0.9/register.json"))
+        register["instructions"] = "AGENTS.md"
+        path = os.path.join(project, "register.json")
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
+        with open(os.path.join(project, "AGENTS.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render_block(register) + "\n# The project's own text\n")
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render(register))
+        result = subprocess.run([sys.executable, ".ratchet/checks/upgrade.py", "register.json", "--from", ".ratchet/from.json"],
+                                cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        commands = re.findall(r"(?m)^    (python3 \S.*)$", result.stdout)
+        self.assertEqual(len(commands), 2, result.stdout)
+        # The steps, done in register.json.
+        new = registry.load(os.path.join(ROOT, "ratchet.json"))
+        _, after = upgrade.plan(register, upgrade.load_older(os.path.join(project, ".ratchet", "from.json")), new)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
+        for command in commands:
+            with self.subTest(command=command):
+                ran = subprocess.run([sys.executable] + shlex.split(command)[1:], cwd=project,
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertEqual(ran.returncode, 0, ran.stdout)
+        with open(os.path.join(project, "AGENTS.md"), encoding="utf-8", newline="") as handle:
+            self.assertEqual(handle.read(), check_register.render_block(after) + "\n# The project's own text\n")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,3 @@
-# Working rules for the example project
-
-The project's own text. <!-- a comment of the project's own --> The check never reads it.
-
 <!-- ratchet:begin -->
 ## Rules in force
 

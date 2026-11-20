@@ -365,9 +365,9 @@ def report(path, register, old, new, out, script):
     else:
         print("Then write REGISTER.md again and check it:", file=out)
     print("", file=out)
-    print("    python3 %s %s --write REGISTER.md" % (script, path), file=out)
-    if check_register.INSTRUCTIONS in register:
-        print("    python3 %s %s --write-block" % (script, path), file=out)
+    # One command writes both, since each command also checks the block, and REGISTER.md written alone would fail on the
+    # block that is still stale (round 2 of #100).
+    print("    python3 %s %s --write REGISTER.md%s" % (script, path, " --write-block" if check_register.INSTRUCTIONS in register else ""), file=out)
     print("    python3 %s %s --markdown REGISTER.md" % (script, path), file=out)
     print("", file=out)
     if not must_adopt:

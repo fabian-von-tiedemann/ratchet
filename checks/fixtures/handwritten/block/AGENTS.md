@@ -1,7 +1,3 @@
-# Working rules, typed by hand
-
-Text of the project's own.
-
 <!-- ratchet:begin -->
 ## Rules in force
 
@@ -40,3 +36,7 @@ Same form as Ratchet's. The keys use the project's own prefix, never `ratchet.`.
 |---|---|---|---|
 | hand.lint | Every file passes the lint\. | Check\: the lint runs on every PR | — |
 <!-- ratchet:end -->
+
+# Working rules, typed by hand
+
+Text of the project's own.
