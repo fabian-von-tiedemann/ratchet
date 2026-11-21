@@ -13,6 +13,8 @@ import datetime
 import json
 import os
 import re
+import stat
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "ratchet.json")
@@ -270,6 +272,222 @@ def read(path):
         raise RegistryError("%s: %s. Every file a check reads is UTF-8" % (path, not_utf8(error)))
 
 
+# The trees that refuse_links passed in this process. write_file writes only inside one.
+_WALKED = []
+# A symbolic link in the index of git, in the output of git ls-files -s.
+LINK_MODE = "120000"
+
+
+def _git(top, *args):
+    """Run git in top with a fixed list of arguments and no shell, with no GIT_ variable of the environment, no global
+    or system config, no fsmonitor and no optional locks, so that it reads and writes nothing of its own. The result, or
+    None when git cannot be run."""
+    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0", GIT_TERMINAL_PROMPT="0",
+               LC_ALL="C")
+    try:
+        return subprocess.run(["git", "-c", "core.fsmonitor=false"] + list(args), cwd=top, env=env, stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def tracked_links(top):
+    """The paths, relative to top, of the symbolic links that git tracks under top. None when top is not in a git work
+    tree, git cannot be run, git tracks nothing under top, or git ignores top: then git cannot say what is there, and
+    every entry must be walked."""
+    result = _git(top, "ls-files", "-s", "-z")
+    if result is None or result.returncode != 0:
+        return None
+    entries = [entry for entry in result.stdout.split(b"\0") if entry]
+    if not entries:
+        return None
+    ignored = _git(top, "check-ignore", "-q", "--", ".")
+    if ignored is None or ignored.returncode != 1:
+        return None
+    links = []
+    for entry in entries:
+        head, tab, path = entry.partition(b"\t")
+        if not tab:
+            return None
+        if head.split(b" ")[0] == LINK_MODE.encode("ascii"):
+            links.append(os.fsdecode(path))
+    return links
+
+
+def enclosing_root(path):
+    """The outermost directory above path, or path itself, that holds an entry .git, read by the path as given and
+    never resolved, or None."""
+    target = os.path.abspath(path)
+    drive, rest = os.path.splitdrive(target)
+    current = drive + os.sep
+    for part in [part for part in rest.split(os.sep) if part]:
+        current = os.path.join(current, part)
+        if os.path.lexists(os.path.join(current, ".git")):
+            return current
+    return None
+
+
+def root_link(path):
+    """The first part of path, taken as given with os.path.abspath and never resolved, that is a symbolic link, or None.
+
+    The parts read are those below the working directory, when path stands in it, or below the outermost git root above
+    path, found by the path as given, whichever is higher, and path itself. A link above both, such as /tmp or /var on
+    macOS, is the system's and is not read (round 3 of #100)."""
+    target = os.path.abspath(path)
+    anchors = [os.getcwd()] if os.path.commonpath([os.getcwd(), target]) == os.getcwd() else []
+    git = enclosing_root(target)
+    if git is not None:
+        anchors.append(git)
+    anchor = min(anchors, key=len) if anchors else target
+    current = anchor
+    for part in [] if anchor == target else os.path.relpath(target, anchor).split(os.sep):
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            return current
+    return target if os.path.islink(target) else None
+
+
+def link_problem(path):
+    """What to say when path holds a part "..", or passes through a symbolic link (root_link), or None.
+
+    A part ".." is refused, not folded away: os.path.abspath would fold "jump/.." to nothing, while the file is opened by
+    the path as given, through jump, which may be a link (review of 7787374)."""
+    if ".." in path.replace(os.sep, "/").split("/"):
+        return ('%s holds "..", which is refused: the path is checked as given, and a part ".." after a link would lead '
+                "somewhere else than it reads. Name the path without \"..\"" % path)
+    link = root_link(path)
+    if link is None:
+        return None
+    return ("%s passes through a symbolic link, %s. A path through a link may lead out of the repo, so it is neither read "
+            "nor written. Use a path with no link in it" % (path, link))
+
+
+def refuse_links(root):
+    """Return None if root may be written in, or what to say if it may not. Only a tree that passes is recorded, and
+    write_file writes nowhere else.
+
+    root is taken as given, with os.path.abspath, and never resolved. It must be a directory that exists and is not a
+    symbolic link, and the path to it may pass through no link (root_link). Then, in a git work tree, it is refused
+    while git tracks a symbolic link under it (git ls-files -s, mode 120000). A link that git does not track, such as
+    one that the user's own tools make in .venv or node_modules, does not refuse it: write_file refuses a link on the
+    path of each file it writes. Where root is not in a git work tree, git cannot be run, or git tracks nothing under
+    root or ignores it, root is walked without following a link, skipping .git, and refused while any entry is a link.
+
+    generate.py calls this first, before anything else is read or written. A tree whose content is not trusted, a
+    branch, a project's tree or a fixture, can hold a link that leads anywhere, and a write through it would land there
+    with the rights of whoever runs the script (round 3 of #100).
+    """
+    top = os.path.abspath(root)
+    # The root as given, before os.path.abspath folds a part ".." away.
+    problem = link_problem(root or ".")
+    if problem:
+        return problem
+    try:
+        status = os.lstat(top)
+    except OSError:
+        return "%s does not exist. Nothing is written there" % (root or ".")
+    if not stat.S_ISDIR(status.st_mode):
+        return "%s is not a directory. Nothing is written there" % (root or ".")
+    links = tracked_links(top)
+    if links is not None:
+        how = "that git tracks (git ls-files)"
+    else:
+        how = "(it is not a git work tree, git could not be run, or git tracks nothing there or ignores it, so every entry was walked)"
+        links = []
+        for folder, folders, files in os.walk(top, followlinks=False):
+            folders[:] = sorted(name for name in folders if name != ".git")
+            for name in sorted(folders + [name for name in files if name != ".git"]):
+                path = os.path.join(folder, name)
+                if os.path.islink(path):
+                    links.append(os.path.relpath(path, top).replace(os.sep, "/"))
+    if links:
+        return ("%s holds %d symbolic link(s) %s: %s. Nothing is written in a tree that holds a link, since a write could "
+                "follow one out of it. Replace each link with a regular file, such as a copy of what it points at, and run "
+                "this again" % (root or ".", len(links), how, ", ".join(sorted(links))))
+    if top not in _WALKED:
+        _WALKED.append(top)
+    return None
+
+
+def forget_walks():
+    """Forget every tree that refuse_links passed. For the tests."""
+    del _WALKED[:]
+
+
+def link_on_path(top, target):
+    """The first part of the path from top down to target, target included, that is a symbolic link, or None. A part
+    that does not exist yet ends the search: nothing below it exists either."""
+    path = top
+    for part in os.path.relpath(target, top).split(os.sep):
+        path = os.path.join(path, part)
+        try:
+            if stat.S_ISLNK(os.lstat(path).st_mode):
+                return path
+        except FileNotFoundError:
+            return None
+    return None
+
+
+def guard_path(top, target):
+    """Raise RegistryError unless target stands inside top, after "." and ".." are resolved, and no part of the path from
+    top down to target, target included, is a symbolic link. Every function that writes calls it first."""
+    top, target = os.path.abspath(top), os.path.abspath(target)
+    if os.path.commonpath([top, target]) != top or target == top:
+        raise RegistryError("%s: not written: it stands outside %s" % (target, top))
+    link = link_on_path(top, target)
+    if link:
+        raise RegistryError("%s: not written: %s is a symbolic link. Replace it with a regular file or directory"
+                            % (target, os.path.relpath(link, top).replace(os.sep, "/")))
+
+
+def write_file(path, data, parents=False):
+    """Write data, text as UTF-8 with its line endings as they are, or bytes, to path. The one place where generate.py
+    writes.
+
+    Refused, with RegistryError, unless refuse_links passed a tree in this process that path stands in, or if any part of
+    the path from that tree down to the file, the file included, is a symbolic link (guard_path). The parts are checked
+    again after the directories above the file are made, with parents. The file is opened without following a link at
+    its last part, and is written only if it is a regular file with no second hard link.
+    """
+    target = os.path.abspath(path)
+    if not _WALKED:
+        raise RegistryError("%s: not written: no tree was checked for links first" % path)
+    tops = [top for top in _WALKED if os.path.commonpath([top, target]) == top and target != top]
+    if not tops:
+        raise RegistryError("%s: not written: it stands outside the tree that was checked for links" % path)
+    top = max(tops, key=len)
+    if isinstance(data, str):
+        data = data.encode("utf-8", errors="strict")
+    guard_path(top, target)
+    if parents:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        guard_path(top, target)
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(target, flags, 0o666)
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode):
+            raise RegistryError("%s: not written: it is not a regular file" % path)
+        if status.st_nlink != 1:
+            raise RegistryError("%s: not written: it has a second hard link, which could stand outside the tree" % path)
+        os.ftruncate(descriptor, 0)
+        handle = os.fdopen(descriptor, "wb")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with handle:
+        handle.write(data)
+
+
+def read_plain(path):
+    """The bytes of a file, opened without following a link at its last part, or None if there is no such file."""
+    if not os.path.lexists(path):
+        return None
+    with os.fdopen(os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb") as handle:
+        return handle.read()
+
+
 def compare(name, current, expected, source):
     """Problems with a generated file: it must be, byte for byte, what its data file generates."""
     if current is None:
@@ -336,6 +554,9 @@ def validate(data, root, older=False):
     for part in data["parts"]:
         if not isinstance(part, dict) or set(part) != {"id", "file", "title"} or not all(isinstance(value, str) for value in part.values()):
             problems.append("a part needs exactly id, file and title: %r" % (part,))
+            continue
+        if not PATH.match(part["file"]) or any(piece in ("", ".", "..") for piece in part["file"].split("/")):
+            problems.append("the file of a part must be a plain path inside the repo: %r" % part["file"])
             continue
         if part["id"] in parts:
             problems.append("part %s is listed twice" % part["id"])

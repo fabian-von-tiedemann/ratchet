@@ -1,6 +1,7 @@
 {
   "project": "Ratchet",
   "ratchet_version": "0.10",
+  "instructions": "AGENTS.md",
   "adopted": [
     {
       "key": "ratchet.register-on-top",
@@ -141,13 +142,17 @@
       "key": "repo.rules-as-data",
       "rule": "A rule is written in `ratchet.json` and nowhere else. The rule tables, the count of rules, `templates/register.json` and the registers under `checks/fixtures/register/` are generated from it and never edited by hand.",
       "ratchet": "Check: `checks/generate.py --check`, run by `.github/workflows/checks.yml`",
-      "source": "D-2026-11-16-scope"
+      "source": "D-2026-11-16-scope",
+      "status": "built",
+      "where": "`checks/generate.py --check`, run by `.github/workflows/checks.yml`"
     },
     {
       "key": "repo.checks-fail-on-fixtures",
       "rule": "A reference check has a fixture for every fault it claims to catch, and for every way that has been found to hide a fault from it, and a test that it fails on that fixture for that reason.",
       "ratchet": "Check: `checks/test_checks.py`, run by `.github/workflows/checks.yml`",
-      "source": ""
+      "source": "",
+      "status": "built",
+      "where": "`checks/test_checks.py`, run by `.github/workflows/checks.yml`"
     },
     {
       "key": "repo.strict-forms",
@@ -171,7 +176,9 @@
       "key": "repo.version",
       "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
       "ratchet": "Check: `checks/released_text.py`, run by `.github/workflows/checks.yml` on a checkout that holds the tags: the changelog has an entry for every tag, and a released changelog entry, or the `ratchet.json` of a released version, is as it stood at its tag",
-      "source": "D-2026-11-20-proposal-triage"
+      "source": "D-2026-11-20-proposal-triage",
+      "status": "built",
+      "where": "`checks/released_text.py`, run by `.github/workflows/checks.yml`"
     },
     {
       "key": "repo.maintainer-approves",
@@ -183,7 +190,9 @@
       "key": "repo.new-rule-used",
       "rule": "An experimental rule that enters Ratchet is already used by Ratchet itself, adopted in this register, or says in `not_used_because` in `ratchet.json` why Ratchet cannot use it.",
       "ratchet": "Check: `checks/generate.py --check`, run by `.github/workflows/checks.yml`, fails on an experimental rule whose `since` is the version of `ratchet.json` that this register does not adopt and that gives no reason, and on a rule that this register adopts and that gives one. It does not see whether Ratchet follows a rule it adopts",
-      "source": "D-2026-11-20-proposal-triage"
+      "source": "D-2026-11-20-proposal-triage",
+      "status": "built",
+      "where": "`checks/generate.py --check`, run by `.github/workflows/checks.yml`"
     },
     {
       "key": "repo.agents-own-account",

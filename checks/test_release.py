@@ -2127,6 +2127,8 @@ class Workflow(unittest.TestCase):
             "    timeout-minutes: 15",
             "    permissions:",
             "      contents: write",
+            "    env:",
+            '      PYTHONDONTWRITEBYTECODE: "1"',
             "    steps:",
             "      - uses: actions/checkout@<commit> # v<version>",
             "        with:",

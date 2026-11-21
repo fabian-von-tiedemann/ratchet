@@ -185,6 +185,44 @@ class Init(unittest.TestCase):
         with open(self.path(name), "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
 
+    def test_a_file_where_a_directory_of_a_path_should_be_refuses_the_run_cleanly(self):
+        # Review of 3219bf4: .github, or .github/workflows, is a regular file. Both modes refuse with exit 2, write
+        # nothing, and show no traceback.
+        for name in (".github", os.path.join(".github", "workflows")):
+            with self.subTest(file=name):
+                os.makedirs(os.path.dirname(self.path(name)) or self.project, exist_ok=True)
+                with open(self.path(name), "w", encoding="utf-8") as handle:
+                    handle.write("not a directory\n")
+                before = sorted(os.listdir(self.project))
+                for args in (("--check",), ()):
+                    code, output = self.init(*args)
+                    self.assertEqual(code, 2, output)
+                    self.assertNotIn("Traceback", output)
+                    self.assertIn("init: nothing was written", output)
+                    self.assertNotIn("would write", output)
+                    self.assertEqual(sorted(os.listdir(self.project)), before)
+                shutil.rmtree(self.path(".github")) if os.path.isdir(self.path(".github")) else os.remove(self.path(".github"))
+
+    def test_a_link_on_a_path_it_writes_refuses_the_run_before_anything_is_written(self):
+        # Review of ef5cbaa: .github is a link that git tracks, to a directory outside. --check and a real run both find
+        # the link while they plan, refuse, and write nothing: never "would write", and never some files before the run
+        # stops at the workflow.
+        outside = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, outside)
+        os.symlink(outside, self.path(".github"))
+        git(self.project, "add", ".github")
+        git(self.project, "commit", "-q", "-m", "a link")
+        before = sorted(os.listdir(self.project))
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 2, output)
+                self.assertIn(".github is a symbolic link", output)
+                self.assertNotIn("would write", output)
+                self.assertIn("init: nothing was written", output)
+                self.assertEqual(sorted(os.listdir(self.project)), before)
+                self.assertEqual(os.listdir(outside), [])
+
     def test_an_empty_repo_gets_every_file(self):
         code, output = self.init()
         self.assertEqual(code, 0, output)
@@ -503,10 +541,10 @@ init.gitignore_plan = gitignore_plan
     def test_the_line_is_added_only_to_the_gitignore_that_was_read(self):
         path = self.path(".gitignore")
         self.write(".gitignore", "build/\n")
-        init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+        init.add_line(self.project, path, b"build/\n", b"build/\n/.ratchet/\n")
         self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
         with self.assertRaises(init.Changed):
-            init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+            init.add_line(self.project, path, b"build/\n", b"build/\n/.ratchet/\n")
         self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".gitignore", ".ratchet"])
 
@@ -515,7 +553,7 @@ init.gitignore_plan = gitignore_plan
         code = "\n".join(["import errno, os, sys",
                           "sys.path.insert(0, os.path.join('.ratchet', 'checks'))",
                           "import init", patch, "sys.exit(init.main(sys.argv[1:]))"])
-        result = subprocess.run([sys.executable, "-c", code] + list(args), cwd=self.project, stdout=subprocess.PIPE,
+        result = subprocess.run([sys.executable, "-B", "-c", code] + list(args), cwd=self.project, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
         return result.returncode, result.stdout
 
@@ -565,7 +603,7 @@ os.link = link
                 path = self.path("AGENTS.md")
                 with cut_off_writes(), unittest.mock.patch.object(os, "link", os.link if links else no_link):
                     with self.assertRaises(OSError):
-                        init.write_new(path, b"x" * 4096)
+                        init.write_new(self.project, path, b"x" * 4096)
                 self.assertFalse(os.path.lexists(path))
                 self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
 
@@ -573,7 +611,7 @@ os.link = link
         path = self.path("AGENTS.md")
         with unittest.mock.patch.object(os, "link", no_link):
             with self.assertRaises(OSError):
-                init.write_new(path, b"whole\n")
+                init.write_new(self.project, path, b"whole\n")
         self.assertFalse(os.path.lexists(path))
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
 
@@ -591,7 +629,7 @@ os.link = link
             return real(source, destination, **kwargs)
 
         with unittest.mock.patch.object(os, "link", link):
-            self.assertTrue(init.write_new(path, data))
+            self.assertTrue(init.write_new(self.project, path, data))
         self.assertEqual(calls, [path])
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), data)
@@ -607,7 +645,7 @@ os.link = link
             return real(source, destination, **kwargs)
 
         with unittest.mock.patch.object(os, "link", link):
-            self.assertFalse(init.write_new(path, b"ours\n"))
+            self.assertFalse(init.write_new(self.project, path, b"ours\n"))
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), b"theirs\n")
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet", "AGENTS.md"])

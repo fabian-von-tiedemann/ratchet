@@ -31,13 +31,17 @@ rights as the check, and a change to checks/ is read by the maintainer
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import hashlib
 import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 
 import registry
@@ -314,7 +318,9 @@ def main(argv=None):
     try:
         path = os.path.join(directory, "records.jsonl")
         sys.stdout.flush()
-        status = subprocess.call([sys.executable, RUNNER, "--records", path, "--start", os.path.abspath(args.start)])
+        # No bytecode in the runner, or in any Python its tests start (review of 3219bf4).
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        status = subprocess.call([sys.executable, "-B", RUNNER, "--records", path, "--start", os.path.abspath(args.start)], env=env)
         after, _ = fixtures(args.fixtures)
         for name in sorted(set(before) | set(after)):
             if before.get(name) != after.get(name):

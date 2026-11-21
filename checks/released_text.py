@@ -33,11 +33,15 @@ A file is read as strict UTF-8, and CRLF is read as LF, as every check here read
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import os
 import re
 import subprocess
-import sys
 
 import registry
 

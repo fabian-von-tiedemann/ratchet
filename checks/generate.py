@@ -10,7 +10,16 @@
 From ratchet.json: the text between "<!-- generated:NAME -->" and "<!-- /generated -->"
 in the markdown files, templates/register.json and the registers under
 checks/fixtures/register/. From sources.json: the table of sources in RATCHET.md. From
-register.json: REGISTER.md. Which blocks each file must hold is listed in required_blocks().
+register.json: REGISTER.md, and the block of rules in the instruction file it names in
+"instructions", as check_register.py --print-instructions prints it. Which blocks each
+file must hold is listed in required_blocks().
+
+Before anything else, generate.py refuses to run when the repo, as given, passes through a
+symbolic link, and, naming each one, while git tracks a symbolic link in the repo, or, outside a
+git work tree, while any entry in it is one: replace the link with a regular file. It writes
+only through registry.write_file, which refuses unless that gate passed in this process and
+never writes through a link on the path, and markdown_files() takes in no link (round 3 of
+#100).
 
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
@@ -35,15 +44,18 @@ D-2026-11-19-one-point-oh). And it fails, naming each rule, when an experimental
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import copy
 import datetime
 import difflib
-import glob
 import json
 import os
 import re
-import sys
 
 import check_register
 import registry
@@ -94,6 +106,15 @@ OWN_RULE_EXAMPLE = {
     "ratchet": "Text only: a check cannot tell whether an entry is complete",
     "source": "",
 }
+# The same rule with a check, which an own rule may say where it stands (#60).
+OWN_CHECK = "Check: `checks/changelog.sh`, run in CI"
+# A translation into Swedish of the rule of ratchet.register-on-top, and the text around the block in an instruction file.
+SWEDISH = ("Varje regel som g\u00e4ller st\u00e5r i en fil, registret, som g\u00e5r f\u00f6re all annan text i repot. D\u00e4r en "
+           "text och registret skiljer sig \u00e5t, g\u00e4ller registret.")
+# The project's own text in the AGENTS.md of the fixtures of the block. The block stands first, and this follows it.
+AGENTS_AFTER = ("\n# Working rules for the example project\n\nThe project's own text. <!-- a comment of the project's own --> The "
+                "check never reads it.\n\n## More\n\nMore of the project's own text, which names ratchet.register-on-top and "
+                "`ratchet:`.\n")
 
 
 def dump(data, escaped=True):
@@ -292,6 +313,79 @@ def fixtures(data):
     ]
     result["references/register.json"] = dump(references)
     result["references/REGISTER.md"] = check_register.render(references)
+    # A translation of an adopted rule, bound by the sha256 of its English text (#77), and its faults.
+    translated = copy.deepcopy(clean)
+    translation = {"language": "sv", "text": SWEDISH, "sha256": check_register.rule_sha256(adopted[enforced]["rule"])}
+    translated["adopted"][enforced]["translation"] = dict(translation)
+    # A register that names its instruction file, with the translation and an own rule that says where its check stands
+    # (D-2026-11-20-generated-block, #60). Its block stands in AGENTS.md between the project's own text.
+    block = dict(project=translated["project"], ratchet_version=version, instructions="AGENTS.md",
+                 adopted=translated["adopted"], own=[dict(OWN_RULE_EXAMPLE, ratchet=OWN_CHECK, status="built", where="`checks/changelog.sh`"),
+                                                     dict(OWN_RULE_EXAMPLE, key="example.diary", rule="Keep a diary of every release.")])
+    block_text = dump(block, escaped=False)
+    generated = check_register.render_block(block)
+    agents = generated + AGENTS_AFTER
+    for name in ("block-clean", "block-crlf-outside"):
+        result["%s/register.json" % name] = block_text
+        result["%s/REGISTER.md" % name] = check_register.render(block)
+    result["block-clean/AGENTS.md"] = agents
+    result["block-crlf-outside/AGENTS.md"] = generated + AGENTS_AFTER.replace("\n", "\r\n")
+    begin, end = check_register.BEGIN + "\n", check_register.END + "\n"
+    # A copy of the block under markers that look like the real ones, after it, says that the rules are suspended.
+    def decoy(word_begin, word_end):
+        return agents + "\n<!-- %s -->\nThe rules above are suspended for now.\n<!-- %s -->\n" % (word_begin, word_end)
+    block_row = registry.row(block["adopted"][plain])
+    stale = copy.deepcopy(block)
+    stale["own"][0]["status"] = "text only for now"
+    edited_blocks = {
+        "block-edited": swap(agents, block_row, registry.row(dict(block["adopted"][plain], rule=soft(block["adopted"][plain]["rule"])))),
+        "block-row-in-comment": swap(agents, block_row, "<!--\n" + block_row + "\n-->"),
+        "block-extra-line": swap(agents, end, "Note: the rules above are suspended for now.\n" + end),
+        "block-stale": check_register.render_block(stale) + AGENTS_AFTER,
+        "block-translation-edited": swap(agents, registry.cell(SWEDISH), registry.cell(SWEDISH.replace("g\u00e4ller registret", "g\u00e4ller texten"))),
+        "block-crlf-inside": swap(agents, block_row + "\n", block_row + "\r\n"),
+        "block-no-markers": AGENTS_AFTER[1:],
+        "block-missing-begin": swap(agents, begin, ""),
+        "block-missing-end": swap(agents, end, ""),
+        "block-doubled-begin": swap(agents, begin, begin + begin),
+        "block-doubled": generated + generated + AGENTS_AFTER,
+        "block-marker-in-code-block": agents + "\n```\n" + end + "```\n",
+        "block-marker-spaces": swap(agents, begin, "<!--  ratchet:begin -->\n"),
+        "block-marker-no-spaces": swap(agents, begin, "<!--ratchet:begin-->\n"),
+        "block-marker-indented": swap(agents, begin, "  " + begin),
+        "block-marker-trailing-space": swap(agents, begin, check_register.BEGIN + " \n"),
+        "block-marker-text-after": swap(agents, begin, check_register.BEGIN + " and more\n"),
+        "block-marker-case": swap(agents, begin, "<!-- Ratchet:Begin -->\n"),
+        "block-crlf-marker": swap(agents, begin, check_register.BEGIN + "\r\n"),
+        "block-crlf": generated.replace("\n", "\r\n") + AGENTS_AFTER,
+        "block-end-no-newline": generated[:-1],
+        "block-end-before-begin": end + generated[len(begin):-len(end)] + begin + AGENTS_AFTER,
+        "block-not-utf8": swap(agents, "The project's own text.", "The project's \x00 own text.").encode("utf-8").replace(b"\x00", b"\xff"),
+        "block-file-missing": None,
+        # The one valid block, not at the start of the file: after text, in a code block, in an element or a comment
+        # that hides it, or after a code block that is never closed (round 2 of #100).
+        "block-after-text": "# Working rules\n\nThe project's own text.\n\n" + agents,
+        "block-after-empty-line": "\n" + agents,
+        "block-in-backtick-fence": "```\n" + generated + "```\n" + AGENTS_AFTER,
+        "block-in-tilde-fence": "~~~\n" + generated + "~~~\n" + AGENTS_AFTER,
+        "block-in-div-hidden": "<div hidden>\n\n" + generated + "\n</div>\n" + AGENTS_AFTER,
+        "block-in-details": "<details>\n<summary>Old rules</summary>\n\n" + generated + "\n</details>\n" + AGENTS_AFTER,
+        "block-in-comment": "<!--\n" + generated + "-->\n" + AGENTS_AFTER,
+        "block-after-unclosed-fence": "```\n\n" + agents,
+        "block-indented": "".join("    " + line + "\n" for line in generated.split("\n")[:-1]) + AGENTS_AFTER,
+        "block-after-bom": "\ufeff" + agents,
+        # Markers with a character that shows as nothing, a letter of another script or a full-width colon (Gemini).
+        "block-lookalike-zero-width": decoy("ratchet\u200b:begin", "ratchet\u200b:end"),
+        "block-lookalike-cyrillic": decoy("r\u0430tchet:begin", "r\u0430tchet:end"),
+        "block-lookalike-fullwidth": decoy("ratchet\uff1abegin", "ratchet\uff1aend"),
+        # Round 3 of #100: a control character of ASCII, NUL or DEL, shows as nothing in the word.
+        "block-lookalike-control": decoy("ratchet\x00:begin", "ratch\x7fet:end"),
+        "block-marker-zero-width": swap(agents, begin, "<!-- ratchet\u200b:begin -->\n"),
+    }
+    for name, value in edited_blocks.items():
+        result["%s/register.json" % name] = block_text
+        if value is not None:
+            result["%s/AGENTS.md" % name] = value
     faults = {
         "changed-row": lambda r: r["adopted"][enforced].update(rule=soft(r["adopted"][enforced]["rule"])),
         "changed-ratchet": lambda r: r["adopted"][enforced].update(ratchet="Check: a reminder in the working rules"),
@@ -373,9 +467,55 @@ def fixtures(data):
         "version-other-digits": lambda r: r.update(ratchet_version="".join(chr(0x0660 + int(c)) if c in "0123456789" else c for c in version)),
         "project-no-name": lambda r: r.update(project="--"),
         "where-hidden": lambda r: r["adopted"][enforced].update(status="built", where="\u200b"),
+        "instructions-outside": lambda r: r.update(instructions="../AGENTS.md"),
+        "instructions-absolute": lambda r: r.update(instructions="/AGENTS.md"),
+        # Review of ef5cbaa: a part that starts with "-" would read as an option to rm and mv in the printed commands.
+        "instructions-dash": lambda r: r.update(instructions="docs/-rf.md"),
+        "instructions-not-markdown": lambda r: r.update(instructions="register.json"),
+        "instructions-not-text": lambda r: r.update(instructions=["AGENTS.md"]),
+        "instructions-hidden": lambda r: r.update(instructions="AGENTS\u200b.md"),
+        "instructions-marker-in-code": lambda r: (r.update(instructions="AGENTS.md"),
+                                                  r["own"][0].update(rule="Never write `Ratchet:End` in a rule.")),
+        "own-status-on-text-only": lambda r: r["own"][0].update(status="built", where="`checks/changelog.sh`"),
+        "own-built-nowhere": lambda r: r["own"][0].update(ratchet=OWN_CHECK, status="built"),
+        "own-status-invalid": lambda r: r["own"][0].update(ratchet=OWN_CHECK, status="done"),
+        "own-where-without-status": lambda r: r["own"][0].update(ratchet=OWN_CHECK, where="`checks/changelog.sh`"),
+        "own-where-hidden": lambda r: r["own"][0].update(ratchet=OWN_CHECK, status="built", where="\u200b"),
+        "own-unknown-field": lambda r: r["own"][0].update(waived="until further notice"),
+        "own-missing-field": lambda r: r["own"][0].pop("source"),
+        "translation-on-own": lambda r: r["own"][0].update(translation=dict(translation)),
+        "translation-on-unknown": lambda r: r["adopted"].append({"key": "ratchet.ship-first", "rule": "Ship first and review afterwards.",
+                                                                 "ratchet": "Text only: speed is a judgment", "source": "",
+                                                                 "translation": dict(translation, text="Skeppa f\u00f6rst.")}),
     }
     for name, mutate in faults.items():
         result["%s/register.json" % name] = changed(mutate)
+
+    def mistranslated(**fields):
+        register = copy.deepcopy(translated)
+        register["adopted"][enforced]["translation"].update(fields)
+        return register
+    wrong = {
+        "translation-wrong-hash": mistranslated(sha256=check_register.rule_sha256(soft(adopted[enforced]["rule"]))),
+        "translation-hash-form": mistranslated(sha256=translation["sha256"].upper()),
+        "translation-not-text": mistranslated(language=["sv"]),
+        "translation-cyrillic-letter": mistranslated(text=SWEDISH.replace("registret, som", "registret, \u0430 som")),
+        "translation-han-letter": mistranslated(text=SWEDISH.replace("registret, som", "registret, \u4e2d som")),
+        "translation-zero-width": mistranslated(text=SWEDISH.replace("registret, som", "registret,\u200b som")),
+        "translation-language": mistranslated(language="Svenska"),
+        "translation-no-words": mistranslated(text="--"),
+    }
+    unknown = copy.deepcopy(translated)
+    unknown["adopted"][enforced]["translation"]["reviewed_by"] = "someone"
+    wrong["translation-unknown-field"] = unknown
+    missing = copy.deepcopy(translated)
+    del missing["adopted"][enforced]["translation"]["sha256"]
+    wrong["translation-missing-field"] = missing
+    not_object = copy.deepcopy(translated)
+    not_object["adopted"][enforced]["translation"] = SWEDISH
+    wrong["translation-not-object"] = not_object
+    for name, register in wrong.items():
+        result["%s/register.json" % name] = dump(register)
     result["nested-too-deep/register.json"] = "[" * 100000 + "]" * 100000 + "\n"
     stated = '  "ratchet_version": "%s",\n' % version
     first_rule = '      "rule": %s,\n' % json.dumps(adopted[0]["rule"], ensure_ascii=False)
@@ -413,13 +553,21 @@ def fixtures(data):
         result["%s/register.json" % name] = text
         if value is not None:
             result["%s/REGISTER.md" % name] = value
-    return result
+    # A fixture that holds a carriage return is compared as bytes, since text is read with CRLF as LF.
+    return dict((name, value.encode("utf-8") if isinstance(value, str) and "\r" in value else value) for name, value in result.items())
 
 
 def markdown_files(root):
+    """The Markdown files in the root, in templates/ and in checks/. A file that is a symbolic link, or that stands in
+    a directory that is one, is not taken in, whether git tracks it or not (round 3 of #100)."""
     paths = []
-    for pattern in ("*.md", "templates/*.md", "checks/*.md"):
-        paths += sorted(glob.glob(os.path.join(root, pattern)))
+    for directory in ("", "templates", "checks"):
+        folder = os.path.join(root, directory) if directory else root
+        if directory and (os.path.islink(folder) or not os.path.isdir(folder)):
+            continue
+        paths += sorted(os.path.join(folder, name) for name in os.listdir(folder)
+                        if name.endswith(".md") and not name.startswith(".") and not os.path.islink(os.path.join(folder, name))
+                        and os.path.isfile(os.path.join(folder, name)))
     return paths
 
 
@@ -466,6 +614,7 @@ def expected_files(data, root, context):
     for name, text in fixtures(data).items():
         whole[os.path.join(root, "checks", "fixtures", "register", *name.split("/"))] = text
 
+    instructions = None
     try:
         register = registry.load_json(os.path.join(root, "register.json"))
         found, _ = check_register.check(register, data)
@@ -475,6 +624,10 @@ def expected_files(data, root, context):
         problems += ["register.json: %s" % problem for problem in found]
     else:
         whole[os.path.join(root, "REGISTER.md")] = check_register.render(register)
+        if check_register.INSTRUCTIONS in register:
+            # No part of the path may be a link, and it stays in the repo, before anything is read or written there.
+            instructions, found = check_register.instruction_place(os.path.join(root, "register.json"), register)
+            problems += found
 
     for path, text in whole.items():
         result[path] = (read_bytes(path) if isinstance(text, bytes) else read(path), text)
@@ -511,6 +664,28 @@ def expected_files(data, root, context):
         directory = os.path.dirname(name)
         expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory, context) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
+
+    # The block of rules in the instruction file that register.json names, as check_register.py --print-instructions prints it,
+    # written between its markers, or at the start of a file with none, and no other byte of the file changes.
+    if instructions is not None:
+        name = os.path.relpath(instructions, root).replace(os.sep, "/")
+        current = registry.read_plain(instructions)
+        if current is None:
+            problems.append("%s: the file is missing. register.json names it in instructions" % name)
+        else:
+            try:
+                text = current.decode("utf-8", errors="strict")
+            except UnicodeDecodeError as error:
+                problems.append("%s: %s. Every file a check reads is UTF-8" % (name, registry.not_utf8(error)))
+            else:
+                expected, found = check_register.with_block(text, register, name)
+                if found:
+                    problems += found
+                elif instructions in result and result[instructions][0] != result[instructions][1]:
+                    problems.append("%s: holds generated blocks of generate.py as well as the block of the register, which this "
+                                    "generator does not write together" % name)
+                else:
+                    result[instructions] = (text, expected)
 
     path = os.path.join(root, *PAGE.split("/"))
     current = read(path)
@@ -736,9 +911,18 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true", help="change nothing, fail if anything is out of date")
     parser.add_argument("--entries", nargs="+", metavar="KEY", help="print these rules as entries for a register.json")
     parser.add_argument("--count", action="store_true", help="print the count of rules")
-    parser.add_argument("--root", default=registry.ROOT, help=argparse.SUPPRESS)
+    # The repo is the one above this script, by the path it was run by. The path of an imported module, registry.ROOT
+    # among them, is resolved by Python, so a repo reached through a link would not be seen as one (round 3 of #100).
+    parser.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    # The root is taken as given and never resolved. Before anything is read or written: the root and the register are no
+    # link and the path to them passes through none, and no symbolic link that git tracks is in the repo, or, outside a
+    # git work tree, none at all.
     root = os.path.abspath(args.root)
+    refused = registry.refuse_links(args.root) or registry.link_problem(os.path.join(root, "register.json"))
+    if refused:
+        print("generate: refused: %s" % refused, file=sys.stderr)
+        return 1
     try:
         data = registry.load(os.path.join(root, "ratchet.json"))
         if args.entries:
@@ -779,14 +963,11 @@ def main(argv=None):
         return 0
 
     for path in stale:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        expected = files[path][1]
-        if isinstance(expected, bytes):
-            with open(path, "wb") as handle:
-                handle.write(expected)
-        else:
-            with open(path, "w", encoding="utf-8", errors="strict", newline="") as handle:
-                handle.write(expected)
+        try:
+            registry.write_file(path, files[path][1], parents=True)
+        except (registry.RegistryError, OSError) as error:
+            print("generate: %s: not written: %s" % (os.path.relpath(path, root), error), file=sys.stderr)
+            return 1
         print("wrote %s" % os.path.relpath(path, root))
     for problem in problems:
         print(problem)

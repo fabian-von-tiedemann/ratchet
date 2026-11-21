@@ -27,6 +27,11 @@ It is read strictly. One defect anywhere and it approves nothing. It never exits
 Standard library only, in one file, so that a project can copy it. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import datetime
 import functools
 import json
@@ -34,7 +39,6 @@ import os
 import re
 import stat
 import subprocess
-import sys
 import tempfile
 
 STEPS = ("force-push", "tag", "release", "delete-outside", "settings")

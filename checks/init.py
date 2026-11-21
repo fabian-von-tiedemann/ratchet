@@ -13,7 +13,8 @@ It writes what README's "Start here" sets up:
   <!-- team --> and <!-- /team -->. With --solo it also leaves out what stands between them: the control room's
   line and the skills
 - register.json, from templates/register.json, with the project's name
-- REGISTER.md, generated from the register.json that stands after the run, as check_register.py --write does
+- REGISTER.md, generated from the register.json that stands after the run, as check_register.py --print-markdown
+  prints it
 - .github/workflows/ratchet.yml, from templates/ratchet-checks.yml, with the commit of the Ratchet checkout it
   runs from, read with git rev-parse HEAD, as the pin. It has the job ratchet, whose register check also fails
   while AGENTS.md holds a placeholder of the template, and the job project-checks, the place for the project's
@@ -32,6 +33,11 @@ nothing and says the same. A second run says that nothing changed. Then it names
 placeholder of the template that AGENTS.md holds, from the fixed list in check_register.py, the jobs to require in
 the protection of main, and, when the repo's git config names no remote, the adopted rules that wait for one. At
 the end it runs check_register.py on register.json and REGISTER.md and shows the result.
+
+The root is the directory it runs in, as the shell gives it in PWD when that is the same directory, taken as given
+and never resolved. It refuses to run when the path to the root passes through a symbolic link, below the enclosing
+git root (registry.root_link), and each function that writes refuses a link on any part of the path from the root
+to the file it writes (registry.guard_path), so nothing is written through a link (round 3 of #100).
 
 Each file is written in full to a temporary file beside it, synced, and then linked into place with a hard link,
 which fails when the file appeared meanwhile, so a file is either missing or whole and is never overwritten. On a
@@ -56,6 +62,11 @@ changed, and says how many files it wrote before.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import errno
 import json
@@ -63,7 +74,6 @@ import os
 import re
 import secrets
 import subprocess
-import sys
 
 import check_register
 import registry
@@ -331,9 +341,12 @@ def temporary(path):
     raise OSError(errno.EEXIST, "no free name for a temporary file", path)
 
 
-def write_new(path, data):
-    """Write data to path, which must not exist, in full or not at all. False if path appeared meanwhile."""
+def write_new(root, path, data):
+    """Write data to path, which must not exist, in full or not at all. False if path appeared meanwhile. Refused, with
+    RegistryError, when a part of the path from root down to path is a symbolic link."""
+    registry.guard_path(root, path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    registry.guard_path(root, path)
     descriptor, part = temporary(path)
     try:
         with os.fdopen(descriptor, "wb") as handle:
@@ -355,9 +368,11 @@ def write_new(path, data):
             os.unlink(part)
 
 
-def add_line(path, before, after):
+def add_line(root, path, before, after):
     """Put after in place of path in one step, keeping its mode, if path still holds before. For .gitignore, which
-    only gains a line. Changed, and path left as it is, when it no longer holds what was read."""
+    only gains a line. Changed, and path left as it is, when it no longer holds what was read. Refused, with
+    RegistryError, when a part of the path from root down to path is a symbolic link."""
+    registry.guard_path(root, path)
     mode = os.stat(path).st_mode & 0o7777
     descriptor, part = temporary(path)
     try:
@@ -378,6 +393,20 @@ def add_line(path, before, after):
             os.unlink(part)
 
 
+def here():
+    """The directory init.py runs in, as the shell gives it in PWD when that names the same directory, else as the system
+    gives it. Never resolved, so that a path through a link is seen and refused."""
+    physical = os.getcwd()
+    given = os.environ.get("PWD")
+    if given and os.path.isabs(given):
+        try:
+            if os.path.samefile(given, physical):
+                return os.path.abspath(given)
+        except OSError:
+            pass
+    return physical
+
+
 def main(argv=None, out=None):
     out = out or sys.stdout
     parser = argparse.ArgumentParser(description="Start a project on Ratchet: write AGENTS.md, register.json, REGISTER.md, "
@@ -391,8 +420,11 @@ def main(argv=None, out=None):
     def say(text=""):
         out.write(text + "\n")
 
-    root = os.getcwd()
+    root = here()
     try:
+        problem = registry.link_problem(root)
+        if problem:
+            raise InitError(problem)
         if os.path.realpath(root) == os.path.realpath(RATCHET):
             raise InitError("this is Ratchet's own checkout. Run init.py from the root of your own repo, with Ratchet in .ratchet")
         problem = git_root_problem(root)
@@ -454,9 +486,21 @@ def main(argv=None, out=None):
         plan.insert(2, ("unchanged", "REGISTER.md", None, ""))
     else:
         plan.insert(2, ("skip", "REGISTER.md", None, "it exists and is not what register.json generates. It was left as "
-                                                     "it is: generate it with check_register.py --write"))
+                                                     "it is: print it with check_register.py --print-markdown"))
     action, data, note = gitignore_plan(os.path.join(root, ".gitignore"))
     plan.append((action, ".gitignore", data, note))
+
+    # Every file it would write or change, checked for a link on its path while it plans, as a real run checks it when it
+    # writes: so --check never says "would write" for a file a real run refuses, and a real run never writes some files
+    # before it stops at another (review of ef5cbaa).
+    for action, file, data, note in plan:
+        if action in ("write", "add"):
+            try:
+                registry.guard_path(root, os.path.join(root, file))
+            except (registry.RegistryError, OSError) as error:
+                say("init: cannot run: %s" % error)
+                say("init: nothing was written")
+                return 2
 
     shown = {"write": "would write", "add": "would add"} if args.check else {}
     written = skipped = 0
@@ -468,16 +512,16 @@ def main(argv=None, out=None):
             path = os.path.join(root, file)
             try:
                 if action == "write":
-                    done = write_new(path, data)
+                    done = write_new(root, path, data)
                 else:
-                    add_line(path, *data)
+                    add_line(root, path, *data)
                     done = True
             except Changed as error:
                 say("init: .gitignore changed while init.py ran (%s), so %s was not added. It was left as it is: "
                     "run init.py again" % (error, IGNORE))
                 say("init: %d file(s) were written before it" % written)
                 return 2
-            except OSError as error:
+            except (OSError, registry.RegistryError) as error:
                 say("init: cannot write %s: %s" % (label, error))
                 say("init: %d file(s) were written before it. A second run writes the rest" % written)
                 return 2
