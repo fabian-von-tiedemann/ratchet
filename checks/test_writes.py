@@ -462,9 +462,23 @@ class NoBytecodeFromTheSuite(unittest.TestCase):
         self.assertIn("every expected test ran and passed", result.stdout)
         caches = [folder for folder, folders, _ in os.walk(scratch) if "__pycache__" in folders]
         self.assertEqual(caches, [], "no __pycache__ was written")
-        compiled = [os.path.relpath(os.path.join(folder, name), scratch)
-                    for folder, _, names in os.walk(scratch) for name in names if name.endswith(".pyc")]
-        self.assertEqual(compiled, [], "no bytecode was written, in the scratch tree or under the cache prefix")
+        # Under the prefix, a .pyc stands at the path of its source's directory. The interpreter compiles the modules it
+        # imports at its start, such as site and encodings, before the first line of expected_tests.py runs, and only
+        # -B from the caller would stop that. Those are the standard library's, outside the scratch tree. Bytecode of a
+        # source in the scratch tree, the probe module or a copied script, fails, and so does any .pyc outside the prefix.
+        prefix = os.path.join(scratch, "prefix")
+        trees = (os.path.abspath(scratch), os.path.realpath(scratch))
+        compiled = []
+        for folder, _, names in os.walk(scratch):
+            for name in (name for name in names if name.endswith(".pyc")):
+                path = os.path.join(folder, name)
+                if os.path.commonpath([path, prefix]) != prefix:
+                    compiled.append(os.path.relpath(path, scratch))
+                    continue
+                source = os.path.join(os.sep, os.path.relpath(folder, prefix))
+                if any(os.path.commonpath([source, tree]) == tree for tree in trees) or name.startswith("probe_helper."):
+                    compiled.append(os.path.relpath(path, scratch))
+        self.assertEqual(compiled, [], "no bytecode of a source in the scratch tree was written, there or under the prefix")
 
     def test_the_suite_passes_the_variable_to_the_python_it_spawns(self):
         # The tests that spawn python -m unittest or python -c pass -B as well.
