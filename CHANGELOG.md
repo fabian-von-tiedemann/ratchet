@@ -67,6 +67,7 @@ Changed:
 - `templates/ratchet-checks.yml`: the register check passes `--agents AGENTS.md`, so a project's CI stays red until `AGENTS.md` is filled in. A project that already has the workflow keeps it as it is: see [UPGRADING.md](UPGRADING.md).
 - `README.md`, "Start here": `--solo`, what `init.py` names after the run, and the two jobs to require.
 - `sources`: `mattpocock/skills` is pinned at `abeeaf95660ba9e8b7c753eb38f441ca707a8823`, in place of `5863806dd4e15c63174bee4e7515a4256792ecfa`, and `pstack` at `e58dd043600587dbaf58ba315e7f2b38373eeb43`, in place of `35a90942a7f02e1ebbc2443643179815f2147954`. These are the heads that the source watch named in #52 and #53. Each new commit is ahead of the old pin, with none behind. Neither change gives a reason to change a rule. The table of sources in `RATCHET.md` shows the new pins.
+- `sources`: `pstack` is pinned at `792440e8a560a4a3f63748cdee70491ecd412982`, in place of `e58dd043600587dbaf58ba315e7f2b38373eeb43`. The source watch named `aaeb0ea3a0584995aa8f55ce44c6c5259414b896` in #98, and the repository's default branch had moved on to the new pin with no further change under `pstack/`. The new commit is ahead of the old pin, with none behind. The change under `pstack/` moves the Gemini panel seat to a higher reasoning level and lets the `statechart` skill run on native Windows. No skill that a rule cites changed, and the change gives no reason to change a rule. The table of sources in `RATCHET.md` shows the new pin.
 
 Fixed:
 
