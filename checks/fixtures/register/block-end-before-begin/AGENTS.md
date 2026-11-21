@@ -1,7 +1,7 @@
 <!-- ratchet:end -->
 ## Rules in force
 
-Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` and write the block again with `check_register.py register.json --write-block`. The check fails on any other text between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo.
+Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` and print the file again with `check_register.py register.json --print-instructions`. The check fails on any other text between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo.
 
 ### Rules from Ratchet
 

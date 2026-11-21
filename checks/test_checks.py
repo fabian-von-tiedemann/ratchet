@@ -220,6 +220,7 @@ FAILING_BLOCK = {
     "block-lookalike-zero-width": MARKERS,
     "block-lookalike-cyrillic": MARKERS,
     "block-lookalike-fullwidth": MARKERS,
+    "block-lookalike-control": MARKERS,
     "block-marker-zero-width": MARKER_LINE,
 }
 # Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates.
@@ -239,6 +240,13 @@ def run(script, *args, root=ROOT, cwd=None):
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd,
     )
     return result.returncode, result.stdout
+
+
+def printed(*args):
+    """Run check_register.py in a print mode: (exit code, the bytes on standard output, standard error as text)."""
+    result = subprocess.run([sys.executable, os.path.join(ROOT, "checks", "check_register.py")] + list(args),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return result.returncode, result.stdout, result.stderr.decode("utf-8", errors="replace")
 
 
 def read(*parts):
@@ -456,12 +464,10 @@ class RegisterCheck(FixtureTest):
         self.assertEqual(code, 1, output)
         self.assertIn("REGISTER.md: " + NOT_UTF8, output)
 
-    def test_nothing_is_written_from_a_register_that_cannot_be_written(self):
-        target = os.path.join(scratch(self), "REGISTER.md")
-        code, output = run("check_register.py", self.fixture_file("register/project-surrogate/register.json"), "--write", target)
-        self.assertEqual(code, 1, output)
-        self.assertNotIn("Traceback", output)
-        self.assertFalse(os.path.exists(target))
+    def test_nothing_is_printed_from_a_register_that_cannot_be_written(self):
+        code, out, err = printed(self.fixture_file("register/project-surrogate/register.json"), "--print-markdown")
+        self.assertEqual((code, out), (1, b""), err)
+        self.assertNotIn("Traceback", err)
 
     def test_every_change_to_the_generated_file_fails(self):
         for name in FAILING_MARKDOWN:
@@ -493,19 +499,31 @@ class RegisterCheck(FixtureTest):
         code, output = run("check_register.py", os.path.join(scratch(self), "register.json"))
         self.assertEqual(code, 2, output)
 
-    def test_writing_gives_the_file_that_the_check_accepts(self):
-        data = self.fixture_file("register/clean/register.json")
-        target = os.path.join(os.path.dirname(data), "REGISTER.md")
-        code, output = run("check_register.py", data, "--write", target)
-        self.assertEqual(code, 0, output)
-        with open(target, encoding="utf-8", newline="") as handle:
-            self.assertEqual(handle.read(), self.fixture_text("register/clean/REGISTER.md"))
+    def test_printing_gives_the_file_that_the_check_accepts(self):
+        code, out, err = printed(self.fixture_file("register/clean/register.json"), "--print-markdown")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, self.fixture_bytes("register/clean/REGISTER.md"))
 
-    def test_nothing_is_written_from_a_register_that_fails(self):
-        target = os.path.join(scratch(self), "REGISTER.md")
-        code, output = run("check_register.py", self.fixture_file("register/changed-row/register.json"), "--write", target)
-        self.assertEqual(code, 1, output)
-        self.assertFalse(os.path.exists(target))
+    def test_nothing_is_printed_from_a_register_that_fails(self):
+        code, out, err = printed(self.fixture_file("register/changed-row/register.json"), "--print-markdown")
+        self.assertEqual((code, out), (1, b""), err)
+        self.assertIn("FAIL", err)
+
+    def test_a_print_mode_takes_no_other_option(self):
+        data = self.fixture_file("register/clean/register.json")
+        for args in (("--print-markdown", "--print-instructions"), ("--print-markdown", "--markdown", "REGISTER.md"),
+                     ("--print-instructions", "--agents", "AGENTS.md")):
+            with self.subTest(args=args):
+                code, out, err = printed(data, *args)
+                self.assertEqual((code, out), (2, b""), err)
+
+    def test_the_write_options_are_gone(self):
+        data = self.fixture_file("register/clean/register.json")
+        for args in (("--write", os.path.join(os.path.dirname(data), "REGISTER.md")), ("--write-block",)):
+            with self.subTest(args=args):
+                code, out, err = printed(data, *args)
+                self.assertEqual(code, 2, err)
+                self.assertFalse(os.path.exists(os.path.join(os.path.dirname(data), "REGISTER.md")))
 
     def test_line_endings_of_the_generated_file_do_not_matter(self):
         target = os.path.join(scratch(self), "REGISTER.md")
@@ -605,47 +623,57 @@ class RegisterBlock(FixtureTest):
         for entry in translated:
             self.assertEqual(entry["translation"]["sha256"], hashlib.sha256(by_key[entry["key"]]["rule"].encode("utf-8")).hexdigest())
 
-    def test_writing_the_block_changes_only_the_block_and_gives_what_the_check_accepts(self):
+    def print_block(self, directory):
+        return printed(os.path.join(directory, "register.json"), "--print-instructions")
+
+    def test_printing_the_file_changes_only_the_block_and_gives_what_the_check_accepts(self):
         clean = self.fixture_bytes("register/block-clean/AGENTS.md")
         begin, end = clean.index(b"<!-- ratchet:begin -->"), clean.index(b"<!-- ratchet:end -->\n") + len(b"<!-- ratchet:end -->\n")
         for name in ("block-edited", "block-stale", "block-row-in-comment", "block-extra-line", "block-translation-edited", "block-crlf-inside"):
             with self.subTest(fixture=name):
-                directory, (code, output) = self.block(name, "--write-block")
-                self.assertEqual(code, 0, output)
-                self.assertIn("wrote the block in", output)
-                self.assertEqual(self.agents(directory), clean)
-        directory, (code, output) = self.block("block-no-markers", "--write-block")
-        self.assertEqual(code, 0, output)
+                directory = self.fixture_directory("register/" + name)
+                before = self.agents(directory)
+                code, out, err = self.print_block(directory)
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(out, clean)
+                self.assertEqual(self.agents(directory), before, "nothing is written")
+        directory = self.fixture_directory("register/block-no-markers")
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, err), (0, ""))
         before = self.fixture_bytes("register/block-no-markers/AGENTS.md")
-        self.assertEqual(self.agents(directory), clean[begin:end] + b"\n" + before, "the block goes first, then an empty line")
-        self.assertEqual(self.block("block-no-markers")[1][0], 1, "the fixture fails before the block is written")
+        self.assertEqual(out, clean[begin:end] + b"\n" + before, "the block goes first, then an empty line")
+        self.assertEqual(self.agents(directory), before, "nothing is written")
+        self.assertEqual(self.block("block-no-markers")[1][0], 1, "the fixture fails before the block is put in")
+        with open(os.path.join(directory, "AGENTS.md"), "wb") as handle:
+            handle.write(out)
         code, output = run("check_register.py", os.path.join(directory, "register.json"))
         self.assertEqual(code, 0, output)
 
-    def test_writing_the_block_keeps_the_rest_of_the_file_byte_for_byte(self):
-        directory, (code, output) = self.block("block-crlf-outside", "--write-block")
-        self.assertEqual(code, 0, output)
-        self.assertEqual(self.agents(directory), self.fixture_bytes("register/block-crlf-outside/AGENTS.md"))
+    def test_printing_the_file_keeps_the_rest_of_it_byte_for_byte(self):
+        directory = self.fixture_directory("register/block-crlf-outside")
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, self.fixture_bytes("register/block-crlf-outside/AGENTS.md"))
 
-    def test_a_new_file_holds_only_the_block(self):
+    def test_a_missing_file_is_printed_as_the_block_alone(self):
         clean = self.fixture_bytes("register/block-clean/AGENTS.md")
         begin, end = clean.index(b"<!-- ratchet:begin -->"), clean.index(b"<!-- ratchet:end -->\n") + len(b"<!-- ratchet:end -->\n")
-        directory, (code, output) = self.block("block-file-missing", "--write-block")
-        self.assertEqual(code, 0, output)
-        self.assertEqual(self.agents(directory), clean[begin:end])
+        directory = self.fixture_directory("register/block-file-missing")
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, clean[begin:end])
+        self.assertFalse(os.path.exists(os.path.join(directory, "AGENTS.md")))
 
-    def test_no_block_is_written_where_the_markers_are_broken(self):
+    def test_nothing_is_printed_where_the_markers_are_broken(self):
         for name in sorted(FAILING_BLOCK):
             if FAILING_BLOCK[name] not in (MARKERS, MARKER_LINE, PLACE) and name not in ("block-not-utf8", "block-end-before-begin"):
                 continue
             with self.subTest(fixture=name):
                 directory = self.fixture_directory("register/" + name)
-                before = self.agents(directory)
-                code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
-                self.assertEqual(code, 1, output)
-                self.assertIn("AGENTS.md: the block is not written", output)
-                self.assertEqual(self.agents(directory), before)
-                self.assertNotIn("Traceback", output)
+                code, out, err = self.print_block(directory)
+                self.assertEqual((code, out), (1, b""), err)
+                self.assertIn("AGENTS.md: the file is not printed", err)
+                self.assertNotIn("Traceback", err)
 
     def linked(self, link_to, instructions="link/AGENTS.md"):
         """A copy of block-clean whose register names instructions, a valid AGENTS.md outside the copy, and a
@@ -667,58 +695,52 @@ class RegisterBlock(FixtureTest):
         with open(agents, "rb") as handle:
             return directory, agents, handle.read()
 
-    def test_an_instruction_file_behind_a_symbolic_link_is_neither_read_nor_written(self):
+    def test_an_instruction_file_behind_a_symbolic_link_is_not_read(self):
         # Round 2 of #100: a link in any part of the path, the last or one before it, could lead out of the repo. The
-        # check, which writes nothing, refuses the path. --write-block refuses the tree before it reads anything, since
-        # it holds a link (round 3 of #100, and test_writes.py).
+        # check refuses the path, and so does --print-instructions, which prints nothing.
         for link_to, instructions in (("directory", "link/AGENTS.md"), ("file", "link.md"), ("directory", "link/new.md")):
             with self.subTest(link_to=link_to, instructions=instructions):
                 directory, agents, before = self.linked(link_to, instructions)
                 if instructions == "link.md":
                     os.rename(os.path.join(directory, "link"), os.path.join(directory, "link.md"))
-                for args in ((), ("--write-block",)):
-                    code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
-                    if args:
-                        self.assertEqual(code, 2, output)
-                        self.assertIn(REFUSED, output)
-                        self.assertIn(instructions.split("/")[0], output)
-                    else:
-                        self.assertEqual(code, 1, output)
-                        self.assertIn(LINKED, output)
-                        self.assertIn("FAIL: 1 problem(s)", output)
-                    self.assertNotIn("is what register.json generates", output, "the file outside was not read as the block")
-                    self.assertNotIn("wrote the block", output)
-                    self.assertNotIn("Traceback", output)
-                    with open(agents, "rb") as handle:
-                        self.assertEqual(handle.read(), before, "nothing outside the repo was written")
-                    self.assertFalse(os.path.exists(os.path.join(os.path.dirname(agents), "new.md")))
+                code, output = run("check_register.py", os.path.join(directory, "register.json"))
+                self.assertEqual(code, 1, output)
+                self.assertIn(LINKED, output)
+                self.assertIn("FAIL: 1 problem(s)", output)
+                self.assertNotIn("is what register.json generates", output, "the file outside was not read as the block")
+                self.assertNotIn("Traceback", output)
+                code, out, err = self.print_block(directory)
+                self.assertEqual((code, out), (1, b""), err)
+                self.assertIn(LINKED, err)
+                with open(agents, "rb") as handle:
+                    self.assertEqual(handle.read(), before, "nothing outside the repo was written")
+                self.assertFalse(os.path.exists(os.path.join(os.path.dirname(agents), "new.md")))
 
-    def test_an_instruction_file_named_outside_the_repo_is_neither_read_nor_written(self):
+    def test_an_instruction_file_named_outside_the_repo_is_not_read(self):
         for instructions in ("../AGENTS.md", "/AGENTS.md", "a/../../AGENTS.md", "./AGENTS.md", os.path.join(scratch(self), "AGENTS.md")):
             with self.subTest(instructions=instructions):
                 directory, agents, before = self.linked("directory", instructions)
                 os.remove(os.path.join(directory, "link"))
-                for args in ((), ("--write-block",)):
-                    code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
-                    self.assertEqual(code, 1, output)
-                    self.assertIn(INSTRUCTIONS, output)
-                    self.assertNotIn("Traceback", output)
-                    with open(agents, "rb") as handle:
-                        self.assertEqual(handle.read(), before)
+                code, output = run("check_register.py", os.path.join(directory, "register.json"))
+                self.assertEqual(code, 1, output)
+                self.assertIn(INSTRUCTIONS, output)
+                self.assertNotIn("Traceback", output)
+                code, out, err = self.print_block(directory)
+                self.assertEqual((code, out), (1, b""), err)
+                self.assertIn(INSTRUCTIONS, err)
 
-    def test_an_instruction_file_in_a_directory_that_is_missing_is_not_written(self):
+    def test_an_instruction_file_in_a_directory_that_is_missing_is_not_printed(self):
         directory, agents, before = self.linked("directory", "docs/AGENTS.md")
         os.remove(os.path.join(directory, "link"))
-        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
-        self.assertEqual(code, 1, output)
-        self.assertIn("docs is missing", output)
-        self.assertFalse(os.path.exists(os.path.join(directory, "docs")))
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, out), (1, b""), err)
+        self.assertIn("docs is missing", err)
         os.mkdir(os.path.join(directory, "docs"))
-        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
-        self.assertEqual(code, 0, output)
-        self.assertIn("wrote the block in", output)
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(out.startswith(b"<!-- ratchet:begin -->\n"))
 
-    def test_no_block_is_written_from_a_register_that_fails(self):
+    def test_nothing_is_printed_from_a_register_that_fails(self):
         directory = self.fixture_directory("register/block-clean")
         path = os.path.join(directory, "register.json")
         with open(path, encoding="utf-8") as handle:
@@ -726,15 +748,13 @@ class RegisterBlock(FixtureTest):
         register["own"][0]["status"] = "done"
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(register, handle)
-        before = self.agents(directory)
-        code, output = run("check_register.py", path, "--write-block")
-        self.assertEqual(code, 1, output)
-        self.assertEqual(self.agents(directory), before)
+        code, out, err = self.print_block(directory)
+        self.assertEqual((code, out), (1, b""), err)
 
-    def test_writing_the_block_needs_an_instruction_file_in_the_register(self):
-        code, output = run("check_register.py", self.fixture_file("register/clean/register.json"), "--write-block")
-        self.assertEqual(code, 1, output)
-        self.assertIn("register.json names no instruction file in instructions, so there is no block to write", output)
+    def test_printing_the_file_needs_an_instruction_file_in_the_register(self):
+        code, out, err = printed(self.fixture_file("register/clean/register.json"), "--print-instructions")
+        self.assertEqual((code, out), (1, b""), err)
+        self.assertIn("register.json names no instruction file in instructions, so there is no file to print", err)
 
     def test_a_block_typed_by_hand_passes_and_its_translation_is_bound_by_a_hash_typed_by_hand(self):
         handwritten = self.fixture_directory("handwritten")
@@ -1340,13 +1360,18 @@ class StartPath(unittest.TestCase):
         self.readme = read("README.md")
 
     def run_in_project(self, command):
+        if command.startswith("rm -f "):
+            # A command that puts a printed file in place is shell, run as written with this interpreter for python3.
+            result = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " ")],
+                                    cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            return result.returncode, result.stdout
         words = shlex.split(command)
         self.assertEqual(words[0], "python3")
         result = subprocess.run([sys.executable] + words[1:], cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         return result.returncode, result.stdout
 
     def run_the_readme(self):
-        commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)
+        commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", self.readme)
         self.assertGreaterEqual(len(commands), 3)
         for command in commands:
             with self.subTest(command=command):
@@ -1429,7 +1454,7 @@ class StartPath(unittest.TestCase):
     def test_every_command_in_the_migration_runs_from_the_root_of_a_project(self):
         self.assertIn("cp .ratchet/templates/register.json register.json", read("MIGRATING.md"))
         shutil.copyfile(os.path.join(ROOT, "templates", "register.json"), os.path.join(self.project, "register.json"))
-        commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
+        commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
         self.assertEqual(len(commands), 3)
         for command in commands:
             with self.subTest(command=command):

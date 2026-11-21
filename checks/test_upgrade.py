@@ -113,7 +113,7 @@ class Upgrade(FixtureTest):
         self.assertNotIn("ratchet.left-out", output, "a rule that did not change is not listed, adopted or not")
         self.assertNotIn("The form of ratchet.json changed", output, "9.8 and 9.9 have the same fields")
         self.assertNotIn("The form of register.json", output, "the change of form of 0.10 is not between 9.8 and 9.9")
-        self.assertNotIn("--write-block", output, "the register names no instruction file")
+        self.assertNotIn("--print-instructions", output, "the register names no instruction file")
         self.assertNotIn("Traceback", output)
 
     def test_a_translation_of_a_rule_whose_text_changed_must_be_made_again(self):
@@ -145,15 +145,20 @@ class Upgrade(FixtureTest):
         self.assertEqual(after["adopted"][0]["translation"], register["adopted"][0]["translation"], "ratchet.keep keeps it")
         self.assertEqual(check_register.check(after, new)[0], [])
 
-    def test_a_register_that_names_an_instruction_file_is_told_to_write_its_block_again(self):
+    def test_a_register_that_names_an_instruction_file_is_told_to_put_its_block_in_again(self):
         register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
-        register["instructions"] = "AGENTS.md"
+        register["instructions"] = "docs/AGENTS.md"
         out = io.StringIO()
         code = upgrade.report("register.json", register, old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
-        self.assertIn("Then write REGISTER.md and the block in AGENTS.md again and check them:", out.getvalue())
-        self.assertIn("    python3 check_register.py register.json --write REGISTER.md --write-block\n", out.getvalue())
-        self.assertNotIn("--write REGISTER.md\n", out.getvalue(), "REGISTER.md is never written alone, which would fail on the stale block")
+        self.assertIn("Then print REGISTER.md and docs/AGENTS.md again, put each in place, and check them:", out.getvalue())
+        self.assertIn("    rm -f REGISTER.md.new && python3 check_register.py register.json --print-markdown > REGISTER.md.new && "
+                      "rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md\n", out.getvalue())
+        # The .new file stands in the directory the commands run in, so nothing is removed or written through a directory
+        # of the path before the check has refused a link there.
+        self.assertIn("    rm -f AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
+                      "rm -f docs/AGENTS.md && mv AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
+        self.assertNotIn("--write", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -264,7 +269,7 @@ class Upgrade(FixtureTest):
         # It is told after the steps for the register and before the command that writes REGISTER.md again.
         output = out.getvalue()
         self.assertLess(output.index("Steps for register.json:"), output.index("The form of ratchet.json changed"))
-        self.assertLess(output.index("The form of ratchet.json changed"), output.index("Then write REGISTER.md again"))
+        self.assertLess(output.index("The form of ratchet.json changed"), output.index("Then print REGISTER.md again"))
 
     def test_a_field_of_a_rule_that_is_new_or_gone_is_a_change_of_form(self):
         # A field that some rule holds in one version and no rule holds in the other. 0.10 gives every experimental
@@ -515,8 +520,8 @@ class UpgradingSteps(FixtureTest):
         self.assertIn(fetched[0], dated)
         self.assertEqual(dated[dated.index(fetched[0]) + 1], "0.8")
         self.assertIn("git -C .ratchet show v0.8:ratchet.json > .ratchet/from.json", text)
-        commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", text)
-        self.assertEqual([command.split()[1] for command in commands],
+        commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", text)
+        self.assertEqual([re.search(r"python3 (\S+)", command).group(1) for command in commands],
                          [".ratchet/checks/upgrade.py", ".ratchet/checks/check_register.py", ".ratchet/checks/check_register.py"])
         for number, command in enumerate(commands):
             with self.subTest(command=command):
@@ -528,8 +533,8 @@ class UpgradingSteps(FixtureTest):
                     _, after = upgrade.plan(register, upgrade.load_older(os.path.join(project, ".ratchet", "from.json")), new)
                     with open(path, "w", encoding="utf-8", newline="") as handle:
                         handle.write(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
-                result = subprocess.run([sys.executable] + shlex.split(command)[1:], cwd=project,
-                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                result = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " ")],
+                                        cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
                 self.assertEqual(result.returncode, 0, result.stdout)
                 if number == 0:
                     self.assertIn('Set "ratchet_version" to "%s".' % new["version"], result.stdout)
@@ -552,8 +557,8 @@ class UpgradingSteps(FixtureTest):
         result = subprocess.run([sys.executable, ".ratchet/checks/upgrade.py", "register.json", "--from", ".ratchet/from.json"],
                                 cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(result.returncode, 0, result.stdout)
-        commands = re.findall(r"(?m)^    (python3 \S.*)$", result.stdout)
-        self.assertEqual(len(commands), 2, result.stdout)
+        commands = re.findall(r"(?m)^    ((?:rm -f |python3 )\S.*)$", result.stdout)
+        self.assertEqual(len(commands), 3, result.stdout)
         # The steps, done in register.json.
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
         _, after = upgrade.plan(register, upgrade.load_older(os.path.join(project, ".ratchet", "from.json")), new)
@@ -561,8 +566,8 @@ class UpgradingSteps(FixtureTest):
             handle.write(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
         for command in commands:
             with self.subTest(command=command):
-                ran = subprocess.run([sys.executable] + shlex.split(command)[1:], cwd=project,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                ran = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " ")],
+                                     cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
                 self.assertEqual(ran.returncode, 0, ran.stdout)
         with open(os.path.join(project, "AGENTS.md"), encoding="utf-8", newline="") as handle:
             self.assertEqual(handle.read(), check_register.render_block(after) + "\n# The project's own text\n")

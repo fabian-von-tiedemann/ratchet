@@ -503,10 +503,10 @@ init.gitignore_plan = gitignore_plan
     def test_the_line_is_added_only_to_the_gitignore_that_was_read(self):
         path = self.path(".gitignore")
         self.write(".gitignore", "build/\n")
-        init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+        init.add_line(self.project, path, b"build/\n", b"build/\n/.ratchet/\n")
         self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
         with self.assertRaises(init.Changed):
-            init.add_line(path, b"build/\n", b"build/\n/.ratchet/\n")
+            init.add_line(self.project, path, b"build/\n", b"build/\n/.ratchet/\n")
         self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".gitignore", ".ratchet"])
 
@@ -565,7 +565,7 @@ os.link = link
                 path = self.path("AGENTS.md")
                 with cut_off_writes(), unittest.mock.patch.object(os, "link", os.link if links else no_link):
                     with self.assertRaises(OSError):
-                        init.write_new(path, b"x" * 4096)
+                        init.write_new(self.project, path, b"x" * 4096)
                 self.assertFalse(os.path.lexists(path))
                 self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
 
@@ -573,7 +573,7 @@ os.link = link
         path = self.path("AGENTS.md")
         with unittest.mock.patch.object(os, "link", no_link):
             with self.assertRaises(OSError):
-                init.write_new(path, b"whole\n")
+                init.write_new(self.project, path, b"whole\n")
         self.assertFalse(os.path.lexists(path))
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet"])
 
@@ -591,7 +591,7 @@ os.link = link
             return real(source, destination, **kwargs)
 
         with unittest.mock.patch.object(os, "link", link):
-            self.assertTrue(init.write_new(path, data))
+            self.assertTrue(init.write_new(self.project, path, data))
         self.assertEqual(calls, [path])
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), data)
@@ -607,7 +607,7 @@ os.link = link
             return real(source, destination, **kwargs)
 
         with unittest.mock.patch.object(os, "link", link):
-            self.assertFalse(init.write_new(path, b"ours\n"))
+            self.assertFalse(init.write_new(self.project, path, b"ours\n"))
         with open(path, "rb") as handle:
             self.assertEqual(handle.read(), b"theirs\n")
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".ratchet", "AGENTS.md"])

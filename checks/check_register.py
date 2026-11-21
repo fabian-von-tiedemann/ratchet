@@ -7,10 +7,10 @@ character for character. A project chooses which rules it adopts. It never
 rewrites one.
 
     python3 checks/check_register.py register.json
-    python3 checks/check_register.py register.json --write REGISTER.md
     python3 checks/check_register.py register.json --markdown REGISTER.md
     python3 checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
-    python3 checks/check_register.py register.json --write-block
+    python3 checks/check_register.py register.json --print-markdown
+    python3 checks/check_register.py register.json --print-instructions
 
 REGISTER.md is generated from the data file. With --markdown the check also fails
 unless REGISTER.md is, byte for byte, what the data file generates. The check
@@ -24,18 +24,18 @@ line and ending in LF, and between them, byte for byte, the block. Nothing stand
 before the block, so no text can put it in a code block, a comment or an element that
 hides it. "ratchet:begin" or "ratchet:end" in any other form, in any case or in
 disguise, is a broken marker. Nothing else in the file is read: it must be UTF-8, and
-the rest of it is the project's own. --write-block writes the block between the
-markers, or at the start of a file that has none, and changes no other byte of the
-file (D-2026-11-20-generated-block). No part of the path of the file may be a
-symbolic link, and the file stays inside the directory of the register.
+the rest of it is the project's own (D-2026-11-20-generated-block). No part of the path
+of the file may be a symbolic link, and the file stays inside the directory of the
+register.
 
-With --write or --write-block, before anything else, the check refuses to run, naming
-each one, while git tracks a symbolic link under the directory of the register, or,
-outside a git work tree, while any entry there is one: a project whose instruction file
-is a link, such as CLAUDE.md -> AGENTS.md, replaces the link with a regular file first.
-It writes only through registry.write_file, only inside that directory, and never
-through a link on the path. Without them it only compares and
-writes nothing, so it runs in a tree with links (round 3 of #100).
+The check writes nothing (round 3 of #100). --print-markdown prints REGISTER.md as the
+register generates it, and --print-instructions prints the instruction file with the
+block brought up to date: between the markers, or at the start of a file that has none,
+with no other byte of the file changed. Each prints to standard output and nothing else,
+and prints nothing when there is a problem. The user puts the file in place with the
+commands in checks/README.md. The register and every file named on the command line are
+taken as given and refused when the path to them passes through a symbolic link, below
+the working directory or the enclosing git root (registry.root_link).
 
 An adopted rule may carry a translation of its rule: a language code, the text, and
 the sha256 of the English rule it translates. The check fails when the sha256 is not
@@ -59,17 +59,21 @@ besides text is code, a part between a pair of backticks in the data. Keys,
 statuses and the version are not free text: each has its own exact form.
 
 Every file is read as strict UTF-8. Bytes that are not UTF-8 fail the check.
-Line endings: CRLF is read as LF. Generated files are written with LF.
+Line endings: CRLF is read as LF. Generated files are printed with LF.
 
 Exit code 0: the register is valid. 1: at least one problem. 2: the check could not run.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import hashlib
 import os
 import re
-import sys
 
 import registry
 
@@ -89,7 +93,8 @@ PATH_LENGTH = 200
 BEGIN = "<!-- ratchet:begin -->"
 END = "<!-- ratchet:end -->"
 # The words of the two markers, wherever they stand in the instruction file, in any case and in disguise. Each must
-# stand once. A character outside ASCII may stand in place of each character of the word, and any number of them
+# stand once. A character outside printable ASCII, a control character such as NUL or DEL among them (round 3 of
+# #100), may stand in place of each character of the word, and any number of them
 # between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
 # not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
 # of the word must be the word's own, so text in another script is not taken for it. No table of Unicode is asked, so
@@ -123,7 +128,7 @@ TRANSLATIONS = (
 )
 BLOCK_INTRO = (
     "Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` "
-    "and write the block again with `check_register.py register.json --write-block`. The check fails on any other text "
+    "and print the file again with `check_register.py register.json --print-instructions`. The check fails on any other text "
     "between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo."
 )
 
@@ -396,7 +401,8 @@ def render_block(register):
 
 
 def disguised(line, word):
-    """The places in a line that holds characters outside ASCII where the word stands in disguise, read in one pass.
+    """The places in a line that holds characters outside printable ASCII where the word stands in disguise, read in one
+    pass. A control character of ASCII counts as one outside it.
 
     best[j] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
     them that are the word's own, and where that part starts. A word found starts the search again after it.
@@ -404,7 +410,8 @@ def disguised(line, word):
     none = (-1, 0)
     best, places = [(0, 0)] + [none] * len(word), []
     for at, char in enumerate(line):
-        other = char >= "\x80"
+        # A control character of ASCII, such as NUL or DEL, shows as nothing, and counts as a character outside ASCII.
+        other = char >= "\x80" or char < "\x20" or char == "\x7f"
         step = [(0, at + 1)] + [none] * len(word)
         for j in range(len(word)):
             count, start = best[j] if j else (0, at)
@@ -426,14 +433,15 @@ def disguised(line, word):
 def marker_words(text):
     """For each of the two marker words, where it stands in the text, in any case and in disguise (see MARKER_WORDS).
 
-    A line of ASCII alone is searched for the word as it is. A line with any other character is read by disguised().
+    A line of printable ASCII alone is searched for the word as it is. A line with any other character, a control
+    character of ASCII among them, is read by disguised().
     """
     folded = text.translate(FULL_WIDTH)
     found = [[], []]
     offset = 0
     for line in folded.split("\n"):
         for places, (word, pattern) in zip(found, MARKER_WORDS):
-            if all(char < "\x80" for char in line):
+            if all("\x20" <= char < "\x7f" for char in line):
                 places += [offset + match.start() for match in pattern.finditer(line)]
             else:
                 places += [offset + start for start in disguised(line, word)]
@@ -456,8 +464,8 @@ def find_block(text, name):
     found = marker_words(text)
     begins, ends = len(found[0]), len(found[1])
     if begins == ends == 0:
-        return None, ["%s: holds no generated block, and register.json names it in instructions. Write it with "
-                      "check_register.py register.json --write-block" % name]
+        return None, ["%s: holds no generated block, and register.json names it in instructions. Print the file with the "
+                      "block with check_register.py register.json --print-instructions and put it in place" % name]
     if begins != 1 or ends != 1:
         return None, ["%s: the markers of the generated block are broken: ratchet:begin stands %d times and ratchet:end %d "
                       "times. Each stands once, in its own line %s or %s" % (name, begins, ends, BEGIN, END)]
@@ -497,16 +505,16 @@ def block_problems(name, data, register):
         each = lines[line - 1] if line <= len(lines) else "(the block ends)"
         return repr(each if len(each) <= 100 else each[:97] + "...")
     return ["%s: the block between the markers is not what register.json generates. It is generated: change register.json "
-            "and write it again with --write-block, never by hand. First difference at line %d of the file\n  expected: %s\n  found:    %s"
+            "and print the file again with --print-instructions, never by hand. First difference at line %d of the file\n  expected: %s\n  found:    %s"
             % (name, text.count("\n", 0, place[0]) + line, show(want), show(have))]
 
 
 def with_block(text, register, name):
-    """(the text of the instruction file with the block written, or None, problems).
+    """(the text of the instruction file with the block brought up to date, or None, problems).
 
     The block goes between the markers, or, in a file with no marker, at its start, followed by an empty line. No
-    other character of the file changes. Where the markers are broken or the block is not at the start, nothing is
-    written.
+    other character of the file changes. Where the markers are broken or the block is not at the start, there is no
+    such text.
     """
     if text and not holds_marker_word(text):
         return render_block(register) + "\n" + text, []
@@ -523,8 +531,8 @@ def instruction_place(register_path, register):
 
     The path has the form instructions_problem allows: relative, no "." or "..", no empty part. Each part of it, from
     the directory of the register down, is not a symbolic link, each part before the last is a directory, and the
-    file, resolved, stays inside that directory. So the file is read and written only inside the repo (round 2 of
-    #100). The last part may be missing: --write-block then creates it.
+    file, resolved, stays inside that directory. So the file is read only inside the repo (round 2 of #100). The last
+    part may be missing: --print-instructions then prints the block alone.
     """
     root = os.path.dirname(register_path)
     value = register[INSTRUCTIONS]
@@ -549,49 +557,65 @@ def instruction_place(register_path, register):
     return path, []
 
 
-def write_block(path, register):
-    """Write the block into the instruction file at path, which instruction_place gave. Returns the problems, and
-    writes nothing if there are any. The file is read without following a link, and written by registry.write_file."""
-    data = b""
-    if os.path.exists(path):
-        try:
-            handle = os.fdopen(os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb")
-        except OSError as error:
-            return ["%s: the block is not written: %s" % (path, error.strerror)]
-        with handle:
-            data = handle.read()
+def instruction_text(path, register):
+    """(the instruction file at path, which instruction_place gave, with the block brought up to date, or None, problems).
+    The file is read without following a link, and a file that is missing is read as empty."""
+    try:
+        data = registry.read_plain(path) or b""
+    except OSError as error:
+        return None, ["%s: the file is not printed: %s" % (path, error.strerror or error)]
     try:
         text = data.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
-        return ["%s: the block is not written: it %s. Every file a check reads is UTF-8" % (path, registry.not_utf8(error))]
+        return None, ["%s: the file is not printed: it %s. Every file a check reads is UTF-8" % (path, registry.not_utf8(error))]
     new, problems = with_block(text, register, path)
     if problems:
-        return ["%s: the block is not written, since the markers are broken. Mend them by hand first" % path] + problems
-    if new != text or not os.path.exists(path):
-        try:
-            registry.write_file(path, new)
-        except registry.RegistryError as error:
-            return [str(error)]
-        except OSError as error:
-            return ["%s: the block is not written: %s" % (path, error.strerror or error)]
-    return []
+        return None, ["%s: the file is not printed, since the markers are broken. Mend them by hand first" % path] + problems
+    return new, []
+
+
+def printed(args, register, problems):
+    """Print the one file a print mode asks for to standard output, and nothing else, or, if there is a problem, nothing
+    there and the problems to standard error. The exit code."""
+    text = None
+    if not problems and args.print_markdown:
+        text = render(register)
+    elif not problems and INSTRUCTIONS not in register:
+        problems.append("%s: register.json names no instruction file in instructions, so there is no file to print" % args.register)
+    elif not problems:
+        place, problems = instruction_place(args.register, register)
+        if place is not None:
+            text, problems = instruction_text(place, register)
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print("FAIL: %d problem(s). Nothing was printed" % len(problems), file=sys.stderr)
+        return 1
+    sys.stdout.flush()
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.buffer.flush()
+    return 0
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Check a project's register.json against Ratchet.")
+    parser = argparse.ArgumentParser(description="Check a project's register.json against Ratchet. It writes nothing.")
     parser.add_argument("register", help="path to the project's register.json")
     parser.add_argument("--markdown", metavar="REGISTER.md", help="also fail unless this file is what the register generates")
-    parser.add_argument("--write", metavar="REGISTER.md", help="write the generated register to this file")
     parser.add_argument("--agents", metavar="AGENTS.md", help="also fail while this file holds a placeholder of templates/AGENTS.md")
-    parser.add_argument("--write-block", action="store_true",
-                        help="write the block of rules into the instruction file that the register names in instructions")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--print-markdown", action="store_true",
+                       help="print REGISTER.md as the register generates it, and nothing else")
+    group.add_argument("--print-instructions", action="store_true",
+                       help="print the instruction file that the register names, with the block brought up to date, and nothing else")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
-    if args.write or args.write_block:
-        # Before anything is read or written: no symbolic link that git tracks there, or, outside a git work tree, none.
-        refused = registry.refuse_links(os.path.dirname(args.register) or ".")
-        if refused:
-            print("check_register: refused: %s" % refused, file=sys.stderr)
+    printing = args.print_markdown or args.print_instructions
+    if printing and (args.markdown or args.agents):
+        parser.error("--print-markdown and --print-instructions print one file, and take neither --markdown nor --agents")
+    for path in [args.register] + [path for path in (args.markdown, args.agents) if path]:
+        problem = registry.link_problem(path)
+        if problem:
+            print("check_register: cannot run: %s" % problem, file=sys.stderr)
             return 2
     try:
         ratchet = registry.load(args.source)
@@ -607,18 +631,11 @@ def main(argv=None):
     else:
         problems, summary = check(register, ratchet)
     problems = ["%s: %s" % (args.register, problem) for problem in problems]
+    if printing:
+        return printed(args, register, problems)
     block = None
     if not problems:
         expected = render(register)
-        if args.write:
-            try:
-                registry.write_file(args.write, expected)
-            except registry.RegistryError as error:
-                problems.append(str(error))
-            except OSError as error:
-                problems.append("%s: not written: %s" % (args.write, error.strerror or error))
-            else:
-                print("wrote %s" % args.write)
         if args.markdown:
             try:
                 problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))
@@ -626,27 +643,17 @@ def main(argv=None):
                 problems.append(str(error))
         block, found = instruction_place(args.register, register) if INSTRUCTIONS in register else (None, [])
         problems += found
-        if args.write_block and block is None and not found:
-            problems.append("%s: register.json names no instruction file in instructions, so there is no block to write" % args.register)
-        elif args.write_block and block is not None:
-            found = write_block(block, register)
-            problems += found
-            if not found:
-                print("wrote the block in %s" % block)
-        if block is not None and not found:
+        if block is not None:
             if not os.path.isfile(block):
-                problems.append("%s: the file is missing. register.json names it in instructions. Write the block into it with "
-                                "check_register.py register.json --write-block" % block)
+                problems.append("%s: the file is missing. register.json names it in instructions. Print it with the block with "
+                                "check_register.py register.json --print-instructions and put it in place" % block)
             else:
                 try:
-                    handle = os.fdopen(os.open(block, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb")
+                    data = registry.read_plain(block)
                 except OSError as error:
                     problems.append("%s: cannot be read as a plain file: %s" % (block, error.strerror))
                 else:
-                    with handle:
-                        problems += block_problems(block, handle.read(), register)
-    elif args.write_block:
-        problems.append("the block is not written from a register that does not pass")
+                    problems += block_problems(block, data, register)
     if args.agents:
         try:
             text = registry.read(args.agents)

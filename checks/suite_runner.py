@@ -35,11 +35,15 @@ runner, such as `python3 -m unittest discover -s checks`, and records nothing th
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import json
 import os
 import shutil
-import sys
 import tempfile
 import unittest
 

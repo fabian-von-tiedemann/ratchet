@@ -1,20 +1,25 @@
-"""No check writes through a symbolic link, and every write goes through one place (round 3 of #100).
+"""The check that projects run writes nothing, the scripts that write do so through one guarded place, and no
+script writes bytecode (round 3 of #100).
 
     python3 -m unittest discover -s checks -v
 
-generate.py, and check_register.py when it writes, refuse to run while git tracks a
-symbolic link in the tree, or, outside a git work tree, while any entry is one. Each
-writes only through registry.write_file, which refuses unless that gate passed in the
-same process and refuses a link on any part of the path it writes. The sweep below
-reads every script under checks/ with ast and fails on a call that writes anywhere
-but in the places named in WRITERS. The trees with links, and the git work trees,
-are made here, in a directory of their own, and never committed: a link in this repo
-would make generate.py refuse to run on it. Standard library only.
+check_register.py, the check that projects run, writes nothing: it prints REGISTER.md
+or the instruction file to standard output. generate.py writes only through
+registry.write_file, behind a gate that refuses while git tracks a symbolic link in the
+tree, or, outside a git work tree, while any entry is one, and refuses a root that
+passes through a link. init.py writes with its own functions, each of which refuses a
+link on the path it writes. Every script that runs as a program sets
+sys.dont_write_bytecode before it imports a module from checks/. The sweep below reads
+every script under checks/ with ast and fails on a call that writes anywhere but in
+the places named in WRITERS. The trees with links, and the git work trees, are made
+here, in a directory of their own, and never committed: a link in this repo would make
+generate.py refuse to run on it. Standard library only.
 """
 
 import ast
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,7 +37,7 @@ REFUSED = "Replace each link with a regular file"
 
 # The places each script under checks/ may write, by the name of the function that holds the call: a class's method
 # as Class.method, a function inside another as outer.inner. A script that is not named here may not write at all.
-# generate.py and check_register.py write only through registry.write_file, so they are not named. The test files,
+# check_register.py writes nothing, and generate.py writes only through registry.write_file, so neither is named. The test files,
 # test_*.py, are not swept: they are the suite, not the checks, they write only into directories they make with
 # tempfile, and neither CI nor an agent runs them on a project's tree.
 WRITERS = {
@@ -54,12 +59,17 @@ WRITING_FUNCTIONS = {
                "make_archive", "unpack_archive"},
     "tempfile": {"mkdtemp", "mkstemp", "NamedTemporaryFile", "TemporaryFile", "SpooledTemporaryFile", "TemporaryDirectory"},
 }
-# Calls whose mode decides: open(path, mode) and its kin.
-OPENERS = {("open",), ("io", "open"), ("builtins", "open"), ("codecs", "open"), ("os", "fdopen")}
+# Calls whose mode decides: open(path, mode) and its kin. Each only reads when its mode is left out or is a literal string
+# with none of w, a, x and +, and its arguments are spelled out, with no * or **. Anything else counts as a write: the
+# sweep fails closed (round 3 of #100, review of c71187f).
+OPENERS = {("open",), ("io", "open"), ("io", "FileIO"), ("builtins", "open"), ("codecs", "open"), ("os", "fdopen")}
 # The flags of os.open that only read.
 READ_FLAGS = {"O_RDONLY", "O_NOFOLLOW", "O_CLOEXEC", "O_NONBLOCK", "O_DIRECTORY", "O_BINARY", "O_NOCTTY", "O_NOINHERIT"}
 # Modules whose functions write. Importing one under another name, or importing a function from it, would hide a call.
-MODULES = set(WRITING_FUNCTIONS) | {"io", "builtins", "codecs", "pathlib"}
+MODULES = set(WRITING_FUNCTIONS) | {"io", "builtins", "codecs", "pathlib", "importlib"}
+# Modules that are not imported at all in checks/: a Path writes through methods such as open, rename, replace and chmod
+# whose names the sweep cannot tell from those of a string or a URL opener, and importlib imports a module by name.
+BANNED = {"pathlib", "importlib"}
 
 
 def dotted(node):
@@ -82,31 +92,49 @@ def argument(call, position, name):
     return None, False
 
 
+def read_flags(node):
+    """Whether the flags of os.open only read: os.O_ names from READ_FLAGS, or getattr(os, "O_NAME", 0) of one, joined
+    by |. A number, a name, any other call or any other operator is not known to only read."""
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        return read_flags(node.left) and read_flags(node.right)
+    if isinstance(node, ast.Attribute) and dotted(node) is not None and len(dotted(node)) == 2 and dotted(node)[0] == "os":
+        return node.attr in READ_FLAGS
+    if (isinstance(node, ast.Call) and dotted(node.func) == ("getattr",) and len(node.args) == 3 and not node.keywords
+            and dotted(node.args[0]) == ("os",) and isinstance(node.args[1], ast.Constant) and node.args[1].value in READ_FLAGS
+            and isinstance(node.args[2], ast.Constant) and node.args[2].value == 0 and not isinstance(node.args[2].value, bool)):
+        return True
+    return False
+
+
+def spelled_out(call):
+    """Whether every argument of the call is written out, with no * and no **."""
+    return not any(isinstance(arg, ast.Starred) for arg in call.args) and all(keyword.arg is not None for keyword in call.keywords)
+
+
 def writes(call):
     """What the call writes with, as text, or None if it only reads."""
     name = dotted(call.func)
+    shown = ast.unparse(call) if hasattr(ast, "unparse") else ".".join(name or ("?",))
     if isinstance(call.func, ast.Attribute) and call.func.attr in WRITING_METHODS:
         return call.func.attr
     if name and len(name) == 2 and name[1] in WRITING_FUNCTIONS.get(name[0], ()):
         return ".".join(name)
+    if name == ("__import__",):
+        return "__import__, which imports a module by name"
     if name in OPENERS:
+        if not spelled_out(call):
+            return "%s with arguments that are not spelled out" % shown
         mode, given = argument(call, 1, "mode")
         if not given:
             return None
         if isinstance(mode, ast.Constant) and isinstance(mode.value, str) and not set("wax+") & set(mode.value):
             return None
-        return "%s with the mode %s" % (".".join(name), ast.unparse(mode) if hasattr(ast, "unparse") else "?")
+        return "%s, whose mode is not a literal that only reads" % shown
     if name == ("os", "open"):
         flags, given = argument(call, 1, "flags")
-        named = set()
-        for node in ast.walk(flags) if given else ():
-            if isinstance(node, ast.Attribute) and node.attr.startswith("O_"):
-                named.add(node.attr)
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("O_"):
-                named.add(node.value)
-        if named and named <= READ_FLAGS:
+        if spelled_out(call) and given and read_flags(flags):
             return None
-        return "os.open with the flags %s" % ", ".join(sorted(named) or ["unknown"])
+        return "%s, whose flags are not known to only read" % shown
     return None
 
 
@@ -129,7 +157,9 @@ def sweep(path):
                     found.append((here, child.lineno, what))
             elif isinstance(child, ast.Import):
                 for alias in child.names:
-                    if alias.name in MODULES and alias.asname not in (None, alias.name):
+                    if alias.name.split(".")[0] in BANNED:
+                        found.append((here, child.lineno, "import %s, which checks/ does not use" % alias.name))
+                    elif alias.name in MODULES and alias.asname not in (None, alias.name):
                         found.append((here, child.lineno, "import %s as %s" % (alias.name, alias.asname)))
             elif isinstance(child, ast.ImportFrom) and child.module in MODULES:
                 found.append((here, child.lineno, "from %s import ..." % child.module))
@@ -148,6 +178,59 @@ def sweep(path):
 
 def scripts():
     return sorted(name for name in os.listdir(HERE) if name.endswith(".py") and not name.startswith("test_"))
+
+
+def scratch_dir(case):
+    """A new directory for one test, by its path with no link in it, since generate.py refuses a root that passes
+    through a link, and the temporary directory may (/tmp on macOS)."""
+    directory = os.path.realpath(tempfile.mkdtemp(prefix="ratchet-test-"))
+    case.addCleanup(shutil.rmtree, directory)
+    return directory
+
+
+def checks_modules():
+    return set(name[:-3] for name in os.listdir(HERE) if name.endswith(".py"))
+
+
+def no_bytecode_problem(path):
+    """None if the script sets sys.dont_write_bytecode = True at its top level, after import sys and before it imports a
+    module from checks/, or what is wrong."""
+    with open(path, "rb") as handle:
+        body = ast.parse(handle.read(), filename=path).body
+    local = checks_modules()
+
+    def imports_local(node):
+        if isinstance(node, ast.Import):
+            return any(alias.name.split(".")[0] in local for alias in node.names)
+        return isinstance(node, ast.ImportFrom) and (node.level or (node.module or "").split(".")[0] in local)
+
+    def imports_sys(node):
+        return isinstance(node, ast.Import) and any(alias.name == "sys" for alias in node.names)
+
+    def sets_flag(node):
+        return (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Attribute)
+                and node.targets[0].attr == "dont_write_bytecode" and isinstance(node.targets[0].value, ast.Name)
+                and node.targets[0].value.id == "sys" and isinstance(node.value, ast.Constant) and node.value.value is True)
+
+    flag = next((number for number, node in enumerate(body) if sets_flag(node)), None)
+    if flag is None:
+        return "it does not set sys.dont_write_bytecode = True at its top level"
+    if not any(imports_sys(node) for node in body[:flag]):
+        return "it sets sys.dont_write_bytecode before it imports sys"
+    first = next((number for number, node in enumerate(body) if imports_local(node)), None)
+    if first is not None and first < flag:
+        return "it imports a module from checks/ on line %d, before it sets sys.dont_write_bytecode" % body[first].lineno
+    return None
+
+
+def runnable():
+    """The scripts under checks/ that run as programs: each holds if __name__ == "__main__". The tests are not among them."""
+    found = []
+    for name in scripts():
+        with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+            if 'if __name__ == "__main__":' in handle.read():
+                found.append(name)
+    return found
 
 
 def run(script, *args, root=ROOT, cwd=None, env=None):
@@ -203,14 +286,36 @@ class WriteSweep(unittest.TestCase):
                 outside = [(where, line, what) for where, line, what in sweep(os.path.join(HERE, name)) if where not in allowed]
                 self.assertEqual(outside, [], "%s writes outside %s" % (name, ", ".join(sorted(allowed)) or "any place"))
 
-    def test_generate_and_check_register_write_only_through_the_one_function(self):
-        for name in ("generate.py", "check_register.py"):
-            with self.subTest(script=name):
-                self.assertEqual(sweep(os.path.join(HERE, name)), [])
+    def test_check_register_writes_nothing(self):
+        # The check that projects run prints what it generates and never writes, so no link can lead a write of it.
+        self.assertEqual(sweep(os.path.join(HERE, "check_register.py")), [])
+        with open(os.path.join(HERE, "check_register.py"), encoding="utf-8") as handle:
+            text = handle.read()
+        for name in ("write_file", "refuse_links", "guard_path"):
+            self.assertNotIn(name, text)
+
+    def test_generate_writes_only_through_the_one_function(self):
+        self.assertEqual(sweep(os.path.join(HERE, "generate.py")), [])
         self.assertEqual(sorted(set(where for where, _, _ in sweep(os.path.join(HERE, "registry.py")))), ["write_file"])
-        for name in ("generate.py", "check_register.py"):
-            with open(os.path.join(HERE, name), encoding="utf-8") as handle:
-                self.assertIn("registry.write_file(", handle.read())
+        with open(os.path.join(HERE, "generate.py"), encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn("registry.write_file(", text)
+        self.assertIn("registry.refuse_links(", text)
+
+    def test_each_write_of_init_is_guarded(self):
+        # init.py keeps its own writes, which never overwrite a file and put each in place whole. Each function that
+        # writes a file there refuses a link on its path first, with registry.guard_path.
+        with open(os.path.join(HERE, "init.py"), "rb") as handle:
+            tree = ast.parse(handle.read())
+        functions = dict((node.name, node) for node in tree.body if isinstance(node, ast.FunctionDef))
+        for name in ("write_new", "add_line"):
+            with self.subTest(function=name):
+                calls = [dotted(node.func) for node in ast.walk(functions[name]) if isinstance(node, ast.Call)]
+                self.assertIn(("registry", "guard_path"), calls)
+                self.assertLess(calls.index(("registry", "guard_path")), calls.index(("temporary",)))
+        callers = [node.name for node in functions.values()
+                   if any(isinstance(call, ast.Call) and dotted(call.func) == ("temporary",) for call in ast.walk(node))]
+        self.assertEqual(sorted(callers), ["add_line", "write_new"])
 
     def test_every_place_named_still_writes(self):
         # A name left in WRITERS after its write is gone would let a new write in there unseen.
@@ -220,7 +325,7 @@ class WriteSweep(unittest.TestCase):
 
     def test_the_sweep_finds_each_kind_of_write(self):
         source = "\n".join([
-            "import os, shutil, tempfile, pathlib",
+            "import io, os, shutil, tempfile, pathlib",
             "def a(p):",
             "    open(p, 'w')", "    open(p, mode='ab')", "    open(p, 'r+')", "    open(p, 'x')", "    open(p, m)",
             "    os.fdopen(d, 'wb')", "    os.open(p, os.O_WRONLY | os.O_CREAT)", "    os.open(p, flags)",
@@ -228,10 +333,15 @@ class WriteSweep(unittest.TestCase):
             "    pathlib.Path(p).write_text('x')", "    q.write_bytes(b'')", "    os.replace(p, q)", "    os.rename(p, q)",
             "    shutil.copy(p, q)", "    shutil.copyfile(p, q)", "    shutil.move(p, q)", "    os.makedirs(p)", "    os.symlink(p, q)",
             "    tempfile.mkdtemp()",
-            "import shutil as s", "from os import replace", "opener = open",
+            # Round 3 of #100, review of c71187f: each of these passed the sweep before it failed closed.
+            "    os.open(p, os.O_RDONLY | 1)", "    open(p, **{'mode': 'w'})", "    open(*(p, 'w'))", "    io.FileIO(p, 'w')",
+            "    io.FileIO(p, m)", "    os.open(p, *flags)", "    os.fdopen(d, **kw)", "    open(p, 'r', **kw)",
+            "    os.open(p, getattr(os, 'O_WRONLY', 0))", "    os.open(p, getattr(os, 'O_NOFOLLOW', 1))",
+            "import shutil as s", "from os import replace", "opener = open", "import importlib", "x = __import__('os')",
             "def b(p):",
             "    open(p)", "    open(p, 'rb')", "    os.open(p, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))", "    text.replace('a', 'b')",
-            "    opener.open(request)", "    handle.write('x')",
+            "    opener.open(request)", "    handle.write('x')", "    io.FileIO(p)", "    io.FileIO(p, 'rb')", "    open(p, mode='r')",
+            "    os.fdopen(d)",
         ])
         scratch = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(shutil.rmtree, scratch)
@@ -239,17 +349,84 @@ class WriteSweep(unittest.TestCase):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(source + "\n")
         found = sweep(path)
-        self.assertEqual(len([where for where, _, _ in found if where == "a"]), 19, found)
+        self.assertEqual(len([where for where, _, _ in found if where == "a"]), 29, found)
         self.assertEqual([where for where, _, _ in found if where == "b"], [], found)
-        self.assertEqual(len([where for where, _, _ in found if where in ("<module>", "?")]), 3, found)
+        # import pathlib, import shutil as s, from os import replace, opener = open, import importlib, __import__.
+        self.assertEqual(len([where for where, _, _ in found if where in ("<module>", "?")]), 6, found)
+
+
+class PartFiles(unittest.TestCase):
+    def test_the_file_of_a_part_is_a_plain_path_inside_the_repo(self):
+        # generate.py reads and writes the file of each part. Like a reference check, it is a plain relative path.
+        with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
+            data = json.load(handle)
+        scratch = scratch_dir(self)
+        for bad in ("../RATCHET.md", "/RATCHET.md", "docs/../../x.md", ".hidden.md", "a//b.md", "RATCHET.md\n"):
+            with self.subTest(file=bad):
+                changed = json.loads(json.dumps(data))
+                changed["parts"][0]["file"] = bad
+                path = os.path.join(scratch, "ratchet.json")
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(changed, handle)
+                with self.assertRaises(registry.RegistryError) as raised:
+                    registry.load(path)
+                self.assertIn("the file of a part must be a plain path inside the repo", str(raised.exception))
+
+
+class NoBytecode(unittest.TestCase):
+    def test_every_script_that_runs_as_a_program_sets_no_bytecode_first(self):
+        names = runnable()
+        self.assertIn("generate.py", names)
+        self.assertIn("check_register.py", names)
+        self.assertIn("init.py", names)
+        for name in names:
+            with self.subTest(script=name):
+                self.assertIsNone(no_bytecode_problem(os.path.join(HERE, name)))
+
+    def test_the_sweep_for_bytecode_fails_on_each_wrong_order(self):
+        scratch = scratch_dir(self)
+        cases = {
+            "import sys\nsys.dont_write_bytecode = True\nimport registry\n": None,
+            '"""Doc."""\nimport os\nimport sys\n\nsys.dont_write_bytecode = True\nimport registry\n': None,
+            "import sys\nimport registry\nsys.dont_write_bytecode = True\n": "before it sets",
+            "import registry\n": "does not set",
+            "import sys\nif True:\n    sys.dont_write_bytecode = True\n": "does not set",
+            "sys.dont_write_bytecode = True\nimport sys\n": "before it imports sys",
+            "import sys\nsys.dont_write_bytecode = 1\n": "does not set",
+            "import sys\nfrom check_register import check\nsys.dont_write_bytecode = True\n": "before it sets",
+        }
+        for number, (source, expected) in enumerate(sorted(cases.items())):
+            with self.subTest(source=source):
+                path = os.path.join(scratch, "case%d.py" % number)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(source)
+                problem = no_bytecode_problem(path)
+                if expected is None:
+                    self.assertIsNone(problem)
+                else:
+                    self.assertIn(expected, problem or "")
+
+    def test_scripts_run_as_programs_write_no_bytecode(self):
+        # Run without -B and without PYTHONDONTWRITEBYTECODE: only the flag each script sets keeps the bytecode out.
+        copy = os.path.join(scratch_dir(self), "ratchet")
+        shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        env = dict((k, v) for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE")
+        for args in ((os.path.join(copy, "checks", "generate.py"), "--check"),
+                     (os.path.join(copy, "checks", "check_register.py"), "register.json", "--markdown", "REGISTER.md"),
+                     (os.path.join(copy, "checks", "check_register.py"), "register.json", "--print-markdown")):
+            with self.subTest(args=args[1:]):
+                result = subprocess.run([sys.executable] + list(args), cwd=copy, env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                caches = [folder for folder, folders, _ in os.walk(copy) if "__pycache__" in folders]
+                self.assertEqual(caches, [], "no __pycache__ was written")
 
 
 class WriteFile(unittest.TestCase):
     """registry.write_file, in this process."""
 
     def setUp(self):
-        self.base = tempfile.mkdtemp(prefix="ratchet-test-")
-        self.addCleanup(shutil.rmtree, self.base)
+        self.base = scratch_dir(self)
         self.repo = os.path.join(self.base, "repo")
         os.mkdir(self.repo)
         self.addCleanup(registry.forget_walks)
@@ -306,6 +483,72 @@ class WriteFile(unittest.TestCase):
         with open(os.path.join(outside, "a.md"), "rb") as handle:
             self.assertEqual(handle.read(), b"before\n")
 
+    def test_a_root_that_passes_through_a_link_is_refused(self):
+        # The root is taken as given, with os.path.abspath, and never resolved: a root through a link below the enclosing
+        # git root is refused.
+        os.mkdir(os.path.join(self.base, ".git"))
+        os.symlink(self.repo, os.path.join(self.base, "linked"))
+        for root in (os.path.join(self.base, "linked"), os.path.join(self.base, "linked", "sub")):
+            with self.subTest(root=root):
+                os.makedirs(os.path.join(self.repo, "sub"), exist_ok=True)
+                problem = registry.refuse_links(root)
+                self.assertIn("passes through a symbolic link", problem or "")
+                self.assertIn(os.path.join(self.base, "linked"), problem)
+                with self.assertRaises(registry.RegistryError):
+                    registry.write_file(os.path.join(root, "a.md"), "text")
+        self.assertEqual(sorted(os.listdir(self.repo)), ["sub"])
+        self.assertIsNone(registry.root_link(self.repo))
+
+    def test_a_root_that_is_missing_a_link_or_not_a_directory_is_refused(self):
+        os.mkdir(os.path.join(self.repo, ".git"))
+        os.symlink(self.base, os.path.join(self.repo, "up"))
+        with open(os.path.join(self.repo, "file"), "wb") as handle:
+            handle.write(b"x")
+        for name, message in (("missing", "does not exist"), ("up", "passes through a symbolic link"),
+                              ("up/missing", "passes through a symbolic link"), ("file", "is not a directory")):
+            with self.subTest(root=name):
+                root = os.path.join(self.repo, *name.split("/"))
+                self.assertIn(message, registry.refuse_links(root) or "")
+                with self.assertRaises(registry.RegistryError):
+                    registry.write_file(os.path.join(root, "a.md"), "text", parents=True)
+        self.assertEqual(sorted(os.listdir(self.base)), ["repo"])
+
+    def test_a_link_between_the_enclosing_git_root_and_the_root_is_refused(self):
+        # The enclosing git root is found by the path as given, without resolving it: a/ is a link in the repo, and the
+        # root is a/b below it.
+        os.mkdir(os.path.join(self.repo, ".git"))
+        outside = os.path.join(self.base, "outside")
+        os.makedirs(os.path.join(outside, "b"))
+        os.symlink(outside, os.path.join(self.repo, "a"))
+        problem = registry.refuse_links(os.path.join(self.repo, "a", "b"))
+        self.assertIn("passes through a symbolic link", problem or "")
+        self.assertIn(os.path.join(self.repo, "a"), problem)
+
+    def test_a_link_above_the_workspace_is_not_refused(self):
+        # A link of the system above the repo, such as /tmp or /var on macOS, is neither between the working directory
+        # and the root nor below an enclosing git root, and is not refused.
+        os.symlink(self.base, os.path.join(self.base, "system"))
+        try:
+            os.mkdir(os.path.join(self.repo, ".git"))
+            self.assertIsNone(registry.root_link(os.path.join(self.base, "system", "repo")))
+        finally:
+            os.rmdir(os.path.join(self.repo, ".git"))
+        unresolved = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, unresolved)
+        self.assertIsNone(registry.refuse_links(unresolved))
+
+    def test_guard_path_refuses_a_link_on_the_path_and_a_path_outside(self):
+        os.mkdir(os.path.join(self.repo, "real"))
+        os.symlink(self.base, os.path.join(self.repo, "real", "up"))
+        os.symlink(os.path.join(self.base, "x"), os.path.join(self.repo, "file.md"))
+        for target, message in (("real/up/a.md", "real/up is a symbolic link"), ("file.md", "file.md is a symbolic link"),
+                                ("../a.md", "outside")):
+            with self.subTest(target=target):
+                with self.assertRaises(registry.RegistryError) as raised:
+                    registry.guard_path(self.repo, os.path.join(self.repo, *target.split("/")))
+                self.assertIn(message, str(raised.exception))
+        registry.guard_path(self.repo, os.path.join(self.repo, "real", "new", "a.md"))
+
     def test_a_file_with_a_second_hard_link_is_not_written(self):
         outside = os.path.join(self.base, "outside.md")
         with open(outside, "wb") as handle:
@@ -326,7 +569,7 @@ class Trees(FixtureTest):
     """Trees with links, made in a directory of their own: the repo under repo/, what the links lead to under outside/."""
 
     def tree(self):
-        self.base = self.scratch()
+        self.base = scratch_dir(self)
         self.repo = os.path.join(self.base, "repo")
         self.outside = os.path.join(self.base, "outside")
         os.mkdir(self.outside)
@@ -371,60 +614,125 @@ class Trees(FixtureTest):
         return output
 
 
-class LinksRefused(Trees):
-    """Outside a git work tree the gate walks every entry and refuses every link."""
+class CheckRegisterWritesNothing(Trees):
+    """check_register.py prints and never writes, whatever links the tree holds, tracked or not."""
 
-    def test_check_register_refuses_to_write_in_a_tree_with_a_link_to_a_file_outside(self):
+    def printed(self, *args, cwd=None):
+        result = subprocess.run([sys.executable, "-B", os.path.join(ROOT, "checks", "check_register.py")] + list(args),
+                                cwd=cwd or self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.returncode, result.stdout, result.stderr.decode("utf-8", errors="replace")
+
+    def linked_tree(self, git_tracks):
+        """block-clean with a stale block, and links of every kind: a file outside, a directory outside, and CLAUDE.md
+        to AGENTS.md. With git_tracks, a git work tree that tracks them all."""
         self.register_tree()
         with open(os.path.join(self.outside, "notes.md"), "wb") as handle:
             handle.write(b"Outside the repo.\n")
         os.mkdir(os.path.join(self.repo, "docs"))
         os.symlink(os.path.join(self.outside, "notes.md"), os.path.join(self.repo, "docs", "notes.md"))
-        for args in (("--write-block",), ("--write", "REGISTER.md"), ("--write", "REGISTER.md", "--write-block")):
-            with self.subTest(args=args):
-                self.assert_refused("check_register.py", ("register.json",) + args, ["docs/notes.md"])
+        os.symlink(self.outside, os.path.join(self.repo, "link"))
+        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
+        for name in ("REGISTER.md.new", "AGENTS.md.new"):
+            os.symlink(os.path.join(self.outside, name), os.path.join(self.repo, name))
+        if git_tracks:
+            commit_all(self.repo)
 
-    def test_check_register_refuses_to_write_when_the_instruction_file_is_a_link_outside(self):
-        self.register_tree()
-        shutil.move(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
-        os.symlink(os.path.join(self.outside, "AGENTS.md"), os.path.join(self.repo, "AGENTS.md"))
-        self.assert_refused("check_register.py", ("register.json", "--write-block"), ["AGENTS.md"])
+    def test_the_print_modes_write_nothing_in_a_tree_with_links(self):
+        for git_tracks in (False, True):
+            with self.subTest(git_tracks=git_tracks):
+                self.linked_tree(git_tracks)
+                before = snapshot(self.base)
+                code, out, err = self.printed("register.json", "--print-markdown")
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(out, self.fixture_bytes("register/block-clean/REGISTER.md"))
+                code, out, err = self.printed("register.json", "--print-instructions")
+                self.assertEqual((code, err), (0, ""))
+                self.assertEqual(out, self.fixture_bytes("register/block-clean/AGENTS.md"))
+                self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
 
-    def test_check_register_refuses_to_write_under_a_linked_parent_directory(self):
+    def test_the_documented_commands_replace_links_and_write_nothing_through_them(self):
+        # The command for each file removes the .new file and the target first, so that neither the redirection nor mv
+        # follows a link that stood at either name, and mv then puts a regular file in place.
+        self.linked_tree(True)
+        os.remove(os.path.join(self.repo, "REGISTER.md"))
+        os.symlink(self.outside, os.path.join(self.repo, "REGISTER.md"))
+        outside = dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside"))
+        with open(os.path.join(ROOT, "checks", "README.md"), encoding="utf-8") as handle:
+            readme = handle.read()
+        commands = [line.strip() for line in readme.split("\n") if line.strip().startswith("rm -f ") and "check_register.py" in line]
+        self.assertEqual(len(commands), 2, commands)
+        for command in commands:
+            command = command.replace("python3 checks/check_register.py", "%s -B %s" % (
+                shlex.quote(sys.executable), shlex.quote(os.path.join(ROOT, "checks", "check_register.py"))))
+            result = subprocess.run(["/bin/sh", "-c", command], cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside")), outside)
+        for name, fixture in (("REGISTER.md", "REGISTER.md"), ("AGENTS.md", "AGENTS.md")):
+            path = os.path.join(self.repo, name)
+            self.assertFalse(os.path.islink(path))
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(), self.fixture_bytes("register/block-clean/" + fixture))
+        self.assertFalse(os.path.lexists(os.path.join(self.repo, "REGISTER.md.new")))
+
+    def test_the_instruction_file_is_not_printed_through_a_link(self):
         self.register_tree()
         shutil.copyfile(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
         os.symlink(self.outside, os.path.join(self.repo, "link"))
-        self.assert_refused("check_register.py", ("register.json", "--write", "link/REGISTER.md"), ["link"])
-        self.set_instructions("link/AGENTS.md")
-        self.assert_refused("check_register.py", ("register.json", "--write-block"), ["link"])
+        for instructions in ("link/AGENTS.md", "CLAUDE.md"):
+            with self.subTest(instructions=instructions):
+                if instructions == "CLAUDE.md":
+                    os.symlink(os.path.join(self.outside, "AGENTS.md"), os.path.join(self.repo, "CLAUDE.md"))
+                self.set_instructions(instructions)
+                before = snapshot(self.base)
+                code, out, err = self.printed("register.json", "--print-instructions")
+                self.assertEqual(code, 1, err)
+                self.assertEqual(out, b"")
+                self.assertIn("is a symbolic link", err)
+                self.assertEqual(snapshot(self.base), before)
 
-    def test_check_register_refuses_to_write_in_a_tree_with_a_link_inside_it(self):
-        self.register_tree()
-        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
-        for args in (("--write-block",), ("--write", "REGISTER.md")):
-            with self.subTest(args=args):
-                self.assert_refused("check_register.py", ("register.json",) + args, ["CLAUDE.md"])
+    def test_a_register_reached_through_a_tracked_link_is_refused(self):
+        # The register's directory, or a directory above it, is a link that git tracks, to a project outside. The check
+        # refuses to read there in every mode, rather than check the file outside, and writes nothing.
+        for linked, register in (("project", "project/register.json"), ("a", "a/b/register.json")):
+            with self.subTest(register=register):
+                self.tree()
+                os.mkdir(self.repo)
+                project = os.path.join(self.outside, *register.split("/")[1:-1]) if "/b/" in register else self.outside
+                os.makedirs(project, exist_ok=True)
+                for name in ("register.json", "REGISTER.md", "AGENTS.md"):
+                    with open(os.path.join(project, name), "wb") as handle:
+                        handle.write(self.fixture_bytes("register/block-clean/" + name))
+                os.symlink(self.outside, os.path.join(self.repo, linked))
+                commit_all(self.repo)
+                before = snapshot(self.base)
+                markdown = register.replace("register.json", "REGISTER.md")
+                for args in (("--print-instructions",), ("--print-markdown",), ("--markdown", markdown), ()):
+                    with self.subTest(args=args):
+                        code, out, err = self.printed(register, *args)
+                        self.assertNotEqual(code, 0, err)
+                        self.assertEqual(out if args[:1] != ("--markdown",) and args else b"", b"")
+                        self.assertIn("passes through a symbolic link", (out.decode("utf-8") + err))
+                        self.assertEqual(snapshot(self.base), before)
 
-    def test_the_refusal_comes_before_anything_else(self):
-        # The register fails too, and the link is all that is said: nothing else was read or checked.
-        self.register_tree()
-        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
-        with open(os.path.join(self.repo, "register.json"), "wb") as handle:
-            handle.write(b"not json")
-        output = self.assert_refused("check_register.py", ("register.json", "--write-block"), ["CLAUDE.md"])
-        self.assertNotIn("not a valid data file", output)
+    def test_compare_mode_passes_with_a_link_inside_the_tree(self):
+        for git_tracks in (False, True):
+            with self.subTest(git_tracks=git_tracks):
+                self.register_tree()
+                with open(os.path.join(self.repo, "AGENTS.md"), "wb") as handle:
+                    handle.write(self.fixture_bytes("register/block-clean/AGENTS.md"))
+                os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
+                if git_tracks:
+                    commit_all(self.repo)
+                before = snapshot(self.base)
+                code, output = run("check_register.py", "register.json", "--markdown", "REGISTER.md", cwd=self.repo)
+                self.assertEqual(code, 0, output)
+                self.assertIn("AGENTS.md: the block between the markers is what register.json generates", output)
+                self.assertEqual(snapshot(self.base), before)
 
-    def test_check_register_compares_in_a_tree_with_a_link_inside_it(self):
-        # The compare mode writes nothing, so it does not walk: a project with CLAUDE.md -> AGENTS.md can run it.
-        self.register_tree()
-        with open(os.path.join(self.repo, "AGENTS.md"), "wb") as handle:
-            handle.write(self.fixture_bytes("register/block-clean/AGENTS.md"))
-        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
-        before = snapshot(self.base)
-        code, output = run("check_register.py", "register.json", "--markdown", "REGISTER.md", cwd=self.repo)
-        self.assertEqual(code, 0, output)
-        self.assertIn("AGENTS.md: the block between the markers is what register.json generates", output)
-        self.assertEqual(snapshot(self.base), before)
+
+class LinksRefused(Trees):
+    """Outside a git work tree the gate of generate.py walks every entry and refuses every link."""
 
     def test_generate_refuses_a_tree_with_a_link_to_a_file_outside_in_a_directory_it_scans(self):
         self.repo_copy()
@@ -454,23 +762,18 @@ class LinksRefused(Trees):
             with self.subTest(args=args):
                 output = self.assert_refused("generate.py", args, ["CLAUDE.md"], root=self.repo)
                 self.assertNotIn("out of date", output, "nothing was read before the refusal")
+                self.assertIn("not a git work tree", output)
 
     def test_generate_runs_on_a_copy_without_links(self):
         self.repo_copy()
         code, output = run("generate.py", "--check", root=self.repo, cwd=self.repo)
         self.assertEqual(code, 0, output)
 
-    def test_the_message_says_every_entry_was_walked_outside_a_git_work_tree(self):
-        self.register_tree()
-        os.makedirs(os.path.join(self.repo, ".venv", "bin"))
-        os.symlink(sys.executable, os.path.join(self.repo, ".venv", "bin", "python"))
-        output = self.assert_refused("check_register.py", ("register.json", "--write-block"), [".venv/bin/python"])
-        self.assertIn("not a git work tree", output)
-
 
 class GitLinks(Trees):
-    """In a git work tree, the gate refuses only links that git tracks. Each tree is made with git init when the test
-    runs. Links that the user's own tools make, untracked, pass the gate, and write_file refuses each on its own path."""
+    """In a git work tree, the gate of generate.py refuses only links that git tracks. Each tree is made with git init
+    when the test runs. Links that the user's own tools make, untracked, pass the gate, and write_file refuses each on
+    its own path."""
 
     def tool_links(self):
         """An untracked .venv/bin/python and node_modules/.bin/x, each a link to a file outside the repo."""
@@ -486,18 +789,6 @@ class GitLinks(Trees):
         self.assertEqual(dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside")),
                          dict((k, v) for k, v in before.items() if k.startswith("outside")))
 
-    def test_check_register_writes_past_untracked_links_of_tools(self):
-        self.register_tree()
-        commit_all(self.repo)
-        self.tool_links()
-        before = snapshot(self.base)
-        code, output = run("check_register.py", "register.json", "--write", "REGISTER.md", "--write-block", cwd=self.repo)
-        self.assertEqual(code, 0, output)
-        self.assertIn("wrote the block in", output)
-        self.assert_outside_unchanged(before)
-        with open(os.path.join(self.repo, "AGENTS.md"), "rb") as handle:
-            self.assertEqual(handle.read(), self.fixture_bytes("register/block-clean/AGENTS.md"))
-
     def test_generate_writes_past_untracked_links_of_tools(self):
         self.repo_copy()
         self.stale(os.path.join(self.repo, "AGENTS.md"))
@@ -511,56 +802,50 @@ class GitLinks(Trees):
         code, output = run("generate.py", "--check", root=self.repo, cwd=self.repo)
         self.assertEqual(code, 0, output)
 
-    def test_a_tracked_link_anywhere_refuses(self):
-        self.register_tree()
-        os.makedirs(os.path.join(self.repo, "docs", "deep"))
-        os.symlink("../../AGENTS.md", os.path.join(self.repo, "docs", "deep", "rules.md"))
-        commit_all(self.repo)
-        for args in (("--write-block",), ("--write", "REGISTER.md")):
-            with self.subTest(args=args):
-                output = self.assert_refused("check_register.py", ("register.json",) + args, ["docs/deep/rules.md"])
-                self.assertIn("that git tracks", output)
-
     def test_a_tracked_link_refuses_generate(self):
         self.repo_copy()
+        os.makedirs(os.path.join(self.repo, "docs", "deep"))
+        os.symlink("../../AGENTS.md", os.path.join(self.repo, "docs", "deep", "rules.md"))
         os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
         self.stale(os.path.join(self.repo, "AGENTS.md"))
         commit_all(self.repo)
         for args in ((), ("--check",)):
             with self.subTest(args=args):
-                output = self.assert_refused("generate.py", args, ["CLAUDE.md"], root=self.repo)
+                output = self.assert_refused("generate.py", args, ["CLAUDE.md", "docs/deep/rules.md"], root=self.repo)
                 self.assertIn("that git tracks", output)
+
+    def test_generate_refuses_a_root_that_is_a_tracked_link(self):
+        # The register's directory, the root of generate.py, is a link that git tracks in another repo, to a copy of
+        # Ratchet outside it with a stale block. Run by that path, with or without --root, generate.py refuses, and
+        # writes nothing outside.
+        self.tree()
+        os.mkdir(self.repo)
+        copy = os.path.join(self.outside, "ratchet")
+        shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        self.stale(os.path.join(copy, "AGENTS.md"))
+        os.symlink(copy, os.path.join(self.repo, "ratchet"))
+        commit_all(self.repo)
+        linked = os.path.join(self.repo, "ratchet")
+        for root, args in ((linked, ()), (linked, ("--check",)), (ROOT, ("--root", linked))):
+            with self.subTest(root=root, args=args):
+                before = snapshot(self.base)
+                code, output = run("generate.py", *args, root=root, cwd=self.repo)
+                self.assertNotEqual(code, 0, output)
+                self.assertIn("passes through a symbolic link", output)
+                self.assertNotIn("Traceback", output)
+                self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
 
     def assert_not_written(self, script, args, root=None):
         before = snapshot(self.base)
         code, output = run(script, *args, root=root or ROOT, cwd=self.repo)
         self.assertNotEqual(code, 0, output)
-        self.assertIn("is a symbolic link", output)
+        self.assertIn("symbolic link", output)
         self.assertNotIn("Traceback", output)
         self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
         return output
 
-    def test_an_untracked_link_as_a_parent_directory_of_a_write_target_is_not_written_through(self):
-        self.register_tree()
-        commit_all(self.repo)
-        os.symlink(self.outside, os.path.join(self.repo, "link"))
-        self.assert_not_written("check_register.py", ("register.json", "--write", "link/REGISTER.md"))
-        self.set_instructions("link/AGENTS.md")
-        shutil.copyfile(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
-        self.assert_not_written("check_register.py", ("register.json", "--write-block"))
-
-    def test_an_untracked_link_as_the_write_target_is_not_written_through(self):
-        self.register_tree()
-        commit_all(self.repo)
-        shutil.move(os.path.join(self.repo, "REGISTER.md"), os.path.join(self.outside, "REGISTER.md"))
-        os.symlink(os.path.join(self.outside, "REGISTER.md"), os.path.join(self.repo, "REGISTER.md"))
-        self.assert_not_written("check_register.py", ("register.json", "--write", "REGISTER.md"))
-        shutil.move(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
-        os.symlink(os.path.join(self.outside, "AGENTS.md"), os.path.join(self.repo, "AGENTS.md"))
-        self.assert_not_written("check_register.py", ("register.json", "--write-block"))
-
     def test_generate_does_not_write_through_an_untracked_link(self):
-        # The parent directory of a file it writes, and the file itself: neither is written through.
+        # The parent directory of a file it writes, the file itself, and the register: none is written through.
         self.repo_copy()
         commit_all(self.repo)
         fixtures = os.path.join(self.repo, "checks", "fixtures", "register")
@@ -575,6 +860,12 @@ class GitLinks(Trees):
         self.stale(os.path.join(self.outside, "REGISTER.md"))
         os.symlink(os.path.join(self.outside, "REGISTER.md"), os.path.join(self.repo, "REGISTER.md"))
         self.assert_not_written("generate.py", (), root=self.repo)
+        os.remove(os.path.join(self.repo, "REGISTER.md"))
+        git(self.repo, "checkout", "--", "REGISTER.md")
+        shutil.move(os.path.join(self.repo, "register.json"), os.path.join(self.outside, "register.json"))
+        os.symlink(os.path.join(self.outside, "register.json"), os.path.join(self.repo, "register.json"))
+        output = self.assert_not_written("generate.py", (), root=self.repo)
+        self.assertIn("register.json passes through a symbolic link", output)
 
     def test_generate_does_not_scan_an_untracked_link(self):
         # templates/LINKED.md leads to a file outside with a stale generated block. The scan of Markdown files does not
@@ -593,31 +884,80 @@ class GitLinks(Trees):
                 self.assertNotIn("LINKED", output)
                 self.assertEqual(snapshot(self.base), before)
 
+    def test_a_folder_that_git_does_not_track_in_a_parent_repo_is_walked(self):
+        # The root is a folder inside another git work tree that git does not track, or that it ignores: git lists
+        # nothing there, so every entry is walked, and a link in it refuses.
+        for ignored in (False, True):
+            with self.subTest(ignored=ignored):
+                self.tree()
+                os.mkdir(self.repo)
+                with open(os.path.join(self.repo, ".gitignore"), "w", encoding="utf-8") as handle:
+                    handle.write("ratchet/\n" if ignored else "\n")
+                commit_all(self.repo)
+                copy = os.path.join(self.repo, "ratchet")
+                shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+                self.stale(os.path.join(copy, "AGENTS.md"))
+                os.symlink("AGENTS.md", os.path.join(copy, "CLAUDE.md"))
+                before = snapshot(self.base)
+                code, output = run("generate.py", root=copy, cwd=self.repo)
+                self.assertNotEqual(code, 0, output)
+                self.assertIn(REFUSED, output)
+                self.assertIn("CLAUDE.md", output)
+                self.assertIn("every entry was walked", output)
+                self.assertEqual(snapshot(self.base), before)
+
+    def test_generate_does_not_scan_a_directory_that_is_an_untracked_link(self):
+        # templates/ itself is a link that git does not track, to a copy outside that also holds a stale LINKED.md.
+        self.repo_copy()
+        commit_all(self.repo)
+        templates = os.path.join(self.repo, "templates")
+        shutil.move(templates, os.path.join(self.outside, "templates"))
+        with open(os.path.join(self.outside, "templates", "LINKED.md"), "wb") as handle:
+            handle.write(b"<!-- generated:version -->\nstale\n<!-- /generated -->\n")
+        os.symlink(os.path.join(self.outside, "templates"), templates)
+        before = snapshot(self.base)
+        code, output = run("generate.py", "--check", root=self.repo, cwd=self.repo)
+        self.assertNotIn("LINKED", output)
+        self.assertNotIn("Traceback", output)
+        self.assertEqual(snapshot(self.base), before)
+        sys.path.insert(0, HERE)
+        import generate
+        self.assertNotIn(os.path.join(templates, "LINKED.md"), generate.markdown_files(self.repo))
+        self.assertEqual([path for path in generate.markdown_files(self.repo) if path.startswith(templates + os.sep)], [])
+
     def test_without_git_every_entry_is_walked(self):
         # git cannot be run: the gate walks every entry, as outside a work tree, and refuses the untracked link too.
-        self.register_tree()
+        self.repo_copy()
         commit_all(self.repo)
         self.tool_links()
-        empty = self.scratch()
-        env = dict(os.environ, PATH=empty)
+        env = dict(os.environ, PATH=scratch_dir(self))
         before = snapshot(self.base)
-        code, output = run("check_register.py", "register.json", "--write-block", cwd=self.repo, env=env)
+        code, output = run("generate.py", root=self.repo, cwd=self.repo, env=env)
         self.assertNotEqual(code, 0, output)
         self.assertIn(REFUSED, output)
         self.assertIn("not a git work tree", output)
         self.assertIn(".venv/bin/python", output)
         self.assertEqual(snapshot(self.base), before)
 
-    def test_compare_mode_passes_with_a_tracked_link(self):
-        self.register_tree()
-        with open(os.path.join(self.repo, "AGENTS.md"), "wb") as handle:
-            handle.write(self.fixture_bytes("register/block-clean/AGENTS.md"))
-        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
+
+class InitRoot(Trees):
+    """init.py takes the root from the directory it runs in as the shell gives it, and refuses one through a link."""
+
+    def test_init_refuses_a_project_whose_directory_is_a_tracked_link(self):
+        self.tree()
+        os.mkdir(self.repo)
+        project = os.path.join(self.outside, "project")
+        os.mkdir(project)
+        git(project, "init", "-q")
+        os.symlink(project, os.path.join(self.repo, "project"))
         commit_all(self.repo)
+        linked = os.path.join(self.repo, "project")
         before = snapshot(self.base)
-        code, output = run("check_register.py", "register.json", "--markdown", "REGISTER.md", cwd=self.repo)
-        self.assertEqual(code, 0, output)
-        self.assertEqual(snapshot(self.base), before)
+        code, output = run("init.py", cwd=linked, env=dict(os.environ, PWD=linked))
+        self.assertEqual(code, 2, output)
+        self.assertIn("passes through a symbolic link", output)
+        self.assertIn("nothing was written", output)
+        self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
 
 
 if __name__ == "__main__":

@@ -43,12 +43,17 @@ run: a file is missing or is not a valid data file.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import copy
 import json
 import os
 import re
-import sys
+import shlex
 
 import check_register
 import registry
@@ -269,6 +274,14 @@ def paste(item):
     return json.dumps(item, indent=2, ensure_ascii=False)
 
 
+def put_in_place(script, path, option, target):
+    """The shell command that prints one file with check_register.py and puts it in place at target: a new file in the
+    directory the command runs in, named after the target, then moved there. The target is a relative path."""
+    new = shlex.quote(target.split("/")[-1] + ".new")
+    return "rm -f %s && python3 %s %s %s > %s && rm -f %s && mv %s %s" % (
+        new, script, path, option, new, shlex.quote(target), new, shlex.quote(target))
+
+
 def report(path, register, old, new, out, script):
     """Print the steps for one register. Returns the exit code."""
     name = os.path.basename(path)
@@ -360,14 +373,19 @@ def report(path, register, old, new, out, script):
             print("", file=out)
             print(text, file=out)
     print("", file=out)
+    instructions = None
     if check_register.INSTRUCTIONS in register:
-        print("Then write REGISTER.md and the block in %s again and check them:" % register[check_register.INSTRUCTIONS], file=out)
+        instructions = "/".join(part for part in (os.path.dirname(path).replace(os.sep, "/"), register[check_register.INSTRUCTIONS]) if part)
+        print("Then print REGISTER.md and %s again, put each in place, and check them:" % instructions, file=out)
     else:
-        print("Then write REGISTER.md again and check it:", file=out)
+        print("Then print REGISTER.md again, put it in place, and check it:", file=out)
     print("", file=out)
-    # One command writes both, since each command also checks the block, and REGISTER.md written alone would fail on the
-    # block that is still stale (round 2 of #100).
-    print("    python3 %s %s --write REGISTER.md%s" % (script, path, " --write-block" if check_register.INSTRUCTIONS in register else ""), file=out)
+    # The check writes nothing (round 3 of #100). Each file is printed to a new file in the directory the commands run in,
+    # and moved into place. rm -f removes a link that stands at either name, never what it points at, so neither the
+    # redirection nor mv follows one, and mv does not move the file into a directory that a link leads to.
+    print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
+    if instructions is not None:
+        print("    %s" % put_in_place(script, path, "--print-instructions", instructions), file=out)
     print("    python3 %s %s --markdown REGISTER.md" % (script, path), file=out)
     print("", file=out)
     if not must_adopt:

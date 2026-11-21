@@ -11,14 +11,15 @@ From ratchet.json: the text between "<!-- generated:NAME -->" and "<!-- /generat
 in the markdown files, templates/register.json and the registers under
 checks/fixtures/register/. From sources.json: the table of sources in RATCHET.md. From
 register.json: REGISTER.md, and the block of rules in the instruction file it names in
-"instructions", written as check_register.py --write-block writes it. Which blocks each
+"instructions", as check_register.py --print-instructions prints it. Which blocks each
 file must hold is listed in required_blocks().
 
-Before anything else, generate.py refuses to run, naming each one, while git tracks a symbolic
-link in the repo, or, outside a git work tree, while any entry in it is one: replace the link
-with a regular file. It writes only through registry.write_file, which refuses unless that gate
-passed in this process and never writes through a link on the path, and markdown_files() takes
-in no link (round 3 of #100).
+Before anything else, generate.py refuses to run when the repo, as given, passes through a
+symbolic link, and, naming each one, while git tracks a symbolic link in the repo, or, outside a
+git work tree, while any entry in it is one: replace the link with a regular file. It writes
+only through registry.write_file, which refuses unless that gate passed in this process and
+never writes through a link on the path, and markdown_files() takes in no link (round 3 of
+#100).
 
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
@@ -43,6 +44,11 @@ D-2026-11-19-one-point-oh). And it fails, naming each rule, when an experimental
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import copy
 import datetime
@@ -50,7 +56,6 @@ import difflib
 import json
 import os
 import re
-import sys
 
 import check_register
 import registry
@@ -373,6 +378,8 @@ def fixtures(data):
         "block-lookalike-zero-width": decoy("ratchet\u200b:begin", "ratchet\u200b:end"),
         "block-lookalike-cyrillic": decoy("r\u0430tchet:begin", "r\u0430tchet:end"),
         "block-lookalike-fullwidth": decoy("ratchet\uff1abegin", "ratchet\uff1aend"),
+        # Round 3 of #100: a control character of ASCII, NUL or DEL, shows as nothing in the word.
+        "block-lookalike-control": decoy("ratchet\x00:begin", "ratch\x7fet:end"),
         "block-marker-zero-width": swap(agents, begin, "<!-- ratchet\u200b:begin -->\n"),
     }
     for name, value in edited_blocks.items():
@@ -656,11 +663,11 @@ def expected_files(data, root, context):
         expected = BLOCK.sub(lambda m: m.group(1) + render(data, m.group(2), m.group(3), directory, context) + "\n" + m.group(5), live) + released
         result[path] = (current, expected)
 
-    # The block of rules in the instruction file that register.json names, written as check_register.py --write-block
-    # writes it: between its markers, or at the start of a file with none, and no other byte of the file changes.
+    # The block of rules in the instruction file that register.json names, as check_register.py --print-instructions prints it,
+    # written between its markers, or at the start of a file with none, and no other byte of the file changes.
     if instructions is not None:
         name = os.path.relpath(instructions, root).replace(os.sep, "/")
-        current = read_bytes(instructions)
+        current = registry.read_plain(instructions)
         if current is None:
             problems.append("%s: the file is missing. register.json names it in instructions" % name)
         else:
@@ -902,11 +909,15 @@ def main(argv=None):
     parser.add_argument("--check", action="store_true", help="change nothing, fail if anything is out of date")
     parser.add_argument("--entries", nargs="+", metavar="KEY", help="print these rules as entries for a register.json")
     parser.add_argument("--count", action="store_true", help="print the count of rules")
-    parser.add_argument("--root", default=registry.ROOT, help=argparse.SUPPRESS)
+    # The repo is the one above this script, by the path it was run by. The path of an imported module, registry.ROOT
+    # among them, is resolved by Python, so a repo reached through a link would not be seen as one (round 3 of #100).
+    parser.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    # The root is taken as given and never resolved. Before anything is read or written: the root and the register are no
+    # link and the path to them passes through none, and no symbolic link that git tracks is in the repo, or, outside a
+    # git work tree, none at all.
     root = os.path.abspath(args.root)
-    # Before anything is read or written: no symbolic link that git tracks, or, outside a git work tree, none at all.
-    refused = registry.refuse_links(root)
+    refused = registry.refuse_links(root) or registry.link_problem(os.path.join(root, "register.json"))
     if refused:
         print("generate: refused: %s" % refused, file=sys.stderr)
         return 1

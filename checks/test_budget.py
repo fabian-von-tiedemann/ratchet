@@ -184,9 +184,11 @@ class Triage(RepoCopy, unittest.TestCase):
             handle.write(check_register.render(register))
         place, problems = check_register.instruction_place(path, register)
         self.assertEqual(problems, [])
-        # check_register.py --write-block walks the tree for links first, and write_block writes nowhere else.
-        self.assertIsNone(registry.refuse_links(self.copy))
-        self.assertEqual(check_register.write_block(place, register), [])
+        with open(place, encoding="utf-8", newline="") as handle:
+            text, problems = check_register.with_block(handle.read(), register, place)
+        self.assertEqual(problems, [])
+        with open(place, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
 
     def unadopt(self, key):
         self.rewrite_register(lambda register: register.update(adopted=[item for item in register["adopted"] if item["key"] != key]))

@@ -31,13 +31,17 @@ rights as the check, and a change to checks/ is read by the maintainer
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
+import sys
+
+# No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
+sys.dont_write_bytecode = True
+
 import argparse
 import hashlib
 import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 
 import registry

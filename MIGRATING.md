@@ -40,10 +40,10 @@ Run these in the root of your own repo.
 
 5. For each rule that has a `status`, set it to `built` and add `where` if your check exists. Otherwise leave `text only for now`.
 6. Move your own rules into the list `own`: `key`, `rule`, `ratchet` and `source` for each.
-7. Write the new `REGISTER.md` and check it. Then delete the old file.
+7. Print the new `REGISTER.md`, put it in place, and check it. The check writes nothing, so the first command prints the file to a new one and moves that into place; `rm -f` first removes a link at either name, so nothing is written through one. Then delete the old file.
 
    ```sh
-   python3 .ratchet/checks/check_register.py register.json --write REGISTER.md
+   rm -f REGISTER.md.new && python3 .ratchet/checks/check_register.py register.json --print-markdown > REGISTER.md.new && rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md
    python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md
    ```
 

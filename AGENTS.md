@@ -1,7 +1,7 @@
 <!-- ratchet:begin -->
 ## Rules in force
 
-Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` and write the block again with `check_register.py register.json --write-block`. The check fails on any other text between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo.
+Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` and print the file again with `check_register.py register.json --print-instructions`. The check fails on any other text between the two markers. `REGISTER.md` holds the same rules and takes precedence over all other text in the repo.
 
 ### Rules from Ratchet
 
@@ -79,7 +79,7 @@ Ratchet is a set of working rules and templates for long-lived code projects bui
 ## Read first
 
 1. This file.
-2. The register, [REGISTER.md](REGISTER.md). It lists every rule in force in this repo and takes precedence over all other text here, including this file. It is generated from [register.json](register.json). The same rules stand in the block at the end of this file, generated from the same data and checked by `checks/check_register.py` (`D-2026-11-20-generated-block`).
+2. The register, [REGISTER.md](REGISTER.md). It lists every rule in force in this repo and takes precedence over all other text here, including this file. It is generated from [register.json](register.json). The same rules stand in the block at the start of this file, generated from the same data and checked by `checks/check_register.py` (`D-2026-11-20-generated-block`).
 3. The handover, [HANDOVER.md](HANDOVER.md).
 4. Your issue.
 
@@ -94,7 +94,7 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 ## How to change a rule
 
 1. Edit [ratchet.json](ratchet.json). The rule tables are generated from it.
-2. Run `python3 checks/generate.py`. It rewrites the tables, the count, `templates/register.json`, `REGISTER.md`, the block at the end of this file and the registers under `checks/fixtures/register/`.
+2. Run `python3 checks/generate.py`. It rewrites the tables, the count, `templates/register.json`, `REGISTER.md`, the block at the start of this file and the registers under `checks/fixtures/register/`.
 3. If a rule that [register.json](register.json) adopts changed, paste the new entry. `python3 checks/generate.py --entries` followed by the key prints it.
 4. Add the change to the first entry of [CHANGELOG.md](CHANGELOG.md), headed `## <version> (unreleased)`. If the first entry has a date, it is released: raise the version in `ratchet.json` and start a new first entry headed `(unreleased)`, before you run `generate.py`. Changes are collected there and released together ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)).
 5. Run the commands under "Before you say it is done".
@@ -109,7 +109,7 @@ Edit [sources.json](sources.json) and run `python3 checks/generate.py`, which wr
 
 ## How to change this repo's register
 
-Edit [register.json](register.json) and run `python3 checks/generate.py`. `REGISTER.md` and the block at the end of this file are generated and never edited.
+Edit [register.json](register.json) and run `python3 checks/generate.py`. `REGISTER.md` and the block at the start of this file are generated and never edited.
 
 ## How to change a check
 
