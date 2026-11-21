@@ -19,9 +19,9 @@ repo, not a reference check. The test reads the page strictly and fails on what 
 - nothing is loaded from another origin: what an element loads (img src, source srcset, link href) is the name of
   a file in docs/. The CSS in the one <style> element has no at-rule but @media and @keyframes, no function but
   var(), no backslash and no "url", so it loads nothing either
-- the CSS moves the page only inside @media (prefers-reduced-motion: no-preference): an animation or
-  scroll-behavior, also with a vendor prefix such as -webkit-, stands in that query, or in a @keyframes. A
-  transition is not read. A prefixed at-rule, such as @-webkit-keyframes, is not an at-rule the CSS may hold
+- the CSS moves the page only inside @media (prefers-reduced-motion: no-preference): an animation, a
+  transition or scroll-behavior, also with a vendor prefix such as -webkit-, stands in that query, or in a
+  @keyframes. A prefixed at-rule, such as @-webkit-keyframes, is not an at-rule the CSS may hold
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
   file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release. The
   only links out of the repo are to the sources in sources.json, one each, matched whole: the repo of a source, or
@@ -38,9 +38,11 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   item starts with a link to the source, named by its name, gives its license once in an element of the class
   "license", and names in <code>, in the order of ratchet.json, exactly the rules whose source cites it
 - each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it
-- the dial of the principles, <svg class="mark-hero">, labels its notches with the titles of the principles in
-  ratchet.json, "01 " and the first, and so on, in order. A principle added, removed, moved or renamed fails until
-  the dial is drawn again. generate.py does not write the labels, since their place and wrapping are part of the drawing.
+- the dial of the principles, <svg class="fig-dial">, labels its notches with the titles of the principles in
+  ratchet.json, "01 " and the first, and so on, in order, and holds no other <text>. The list <ol
+  class="principle-list">, for a narrow screen, holds the same titles in the same order. A principle added, removed,
+  moved or renamed fails until the dial is drawn again and the list follows. generate.py writes neither, since the
+  place and wrapping of each label are part of the drawing.
 
 The line that fetches Ratchet is checked by generate.py, which writes it: it names the newest version with a date
 in CHANGELOG.md, as the command in README.md does, so a release that moves the README moves the page when
@@ -124,9 +126,9 @@ DARK = "@media (prefers-color-scheme: dark)"
 # The only query in which the CSS may move the page: a visitor who asked for less motion sees none.
 REDUCED = "@media (prefers-reduced-motion: no-preference)"
 AT_RULES = {"media", "keyframes"}
-# A property that moves the page, with or without a vendor prefix such as -webkit-, -moz-, -o- or -ms-: any one word
+# A property that moves the page, an animation, a transition or smooth scrolling, with or without a vendor prefix such as -webkit-, -moz-, -o- or -ms-: any one word
 # between dashes before the name counts as one. A prefixed at-rule, such as @-webkit-keyframes, is not in AT_RULES.
-MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|scroll-behavior)\Z")
+MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+)*|scroll-behavior)\Z")
 # Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The "ink" colors are the
 # dark bands, and "go" the orange one, which the CSS sets in place of fg, muted, link, accent, box and code. The "$"
 # before a command is --ink-accent, also on the code of the orange band.
@@ -219,7 +221,7 @@ class PageReader(html.parser.HTMLParser):
             self.images.append((self.where(), values.get("alt")))
         if tag == "svg" and not in_svg:
             self.figures.append({"where": self.where(), "role": values.get("role"), "labelledby": values.get("aria-labelledby"),
-                                 "titles": []})
+                                 "titles": [], "classes": (values.get("class") or "").split()})
         if tag == "title":
             if self.stack[-1:] == ["head"]:
                 self.head_titles += 1
@@ -350,8 +352,8 @@ def motion_problems(css):
     """Why the CSS moves the page for a visitor who asked for less motion: an animation outside the query REDUCED.
 
     The CSS is read as blocks, each opened by what stands before its "{". A declaration of animation, of a property
-    animation-*, or of scroll-behavior, with or without a vendor prefix, stands in a block inside REDUCED, written so,
-    or inside a @keyframes, which only says how an animation moves. A transition is not read. Comments are removed
+    animation-*, of transition, of a property transition-*, or of scroll-behavior, with or without a vendor prefix,
+    stands in a block inside REDUCED, written so, or inside a @keyframes, which only says how an animation moves. Comments are removed
     first, so a brace in a comment is not read, but a brace in a string is read as a brace.
     """
     problems, blocks, start = [], [], 0
@@ -1159,6 +1161,11 @@ class PageFigures(RepoCopy, unittest.TestCase):
         reader = PageReader()
         reader.feed(self.page())
         self.assertEqual(len(reader.figures), 5)
+        # Each figure is named by the class fig and one class fig-<name>, so that no class of a part of a figure, such
+        # as the ski in the loop, is also the class of a whole figure and styles every stroke in it.
+        names = [[each for each in figure["classes"] if each.startswith("fig-")] for figure in reader.figures]
+        self.assertEqual(names, [["fig-dial"], ["fig-ratchet"], ["fig-loop"], ["fig-ski"], ["fig-machine"]])
+        self.assertTrue(all(figure["classes"][:1] == ["fig"] and len(figure["classes"]) == 2 for figure in reader.figures))
         for figure in reader.figures:
             self.assertEqual(figure["role"], "img")
             self.assertEqual(figure["titles"], [figure["labelledby"]])
@@ -1239,17 +1246,20 @@ class PageFigures(RepoCopy, unittest.TestCase):
 
 
 # The dial of the principles: the <svg> of this class, and in it one label per notch, a <text> of the class "lab" and of
-# the class n0 to n10 for its notch. A long label is wrapped over several <text> elements of the same notch.
-DIAL = "mark-hero"
+# the class n0 to n10 for its notch. A long label is wrapped over several <text> elements of the same notch. The dial
+# holds no other <text>. Beside it, the same titles stand as a list for a narrow screen, <ol class="principle-list">.
+DIAL = "fig-dial"
+DIAL_LIST = "principle-list"
 DIAL_NOTCH = re.compile(r"n(0|[1-9][0-9]*)\Z")
 
 
 class DialReader(html.parser.HTMLParser):
-    """Reads the labels of the dial of the principles: for each <text> of the class "lab", its notch and its text."""
+    """Reads the dial of the principles and its list: each label with its notch, each item of the list, and what is wrong."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.dials, self.depth, self.labels, self.text = 0, 0, [], None
+        self.lists, self.items, self.in_list, self.problems = 0, [], 0, []
 
     def handle_starttag(self, tag, attrs):
         classes = (dict(attrs).get("class") or "").split()
@@ -1257,13 +1267,29 @@ class DialReader(html.parser.HTMLParser):
             self.depth += 1
         elif tag == "svg" and DIAL in classes:
             self.dials, self.depth = self.dials + 1, 1
-        if self.depth and tag == "text" and "lab" in classes:
+        if self.depth and tag == "text":
+            if "lab" not in classes:
+                self.problems.append("line %d: a <text> in the dial that is not a label of the class lab" % self.getpos()[0])
             notches = [int(match.group(1)) for match in map(DIAL_NOTCH.match, classes) if match]
             self.text = [notches[0] if len(notches) == 1 else None, []]
+        if self.in_list:
+            self.in_list += 1
+            if tag == "li" and self.in_list == 2:
+                self.text = [None, []]
+            elif self.in_list == 2:
+                self.problems.append("line %d: the list of the principles holds a <%s>, and holds only <li>" % (self.getpos()[0], tag))
+        elif tag == "ol" and DIAL_LIST in classes:
+            self.lists, self.in_list = self.lists + 1, 1
 
     def handle_endtag(self, tag):
         if self.depth:
             self.depth -= 1
+        if self.in_list:
+            self.in_list -= 1
+            if tag == "li" and self.in_list == 1 and self.text is not None:
+                self.items.append(" ".join("".join(self.text[1]).split()))
+                self.text = None
+            return
         if tag == "text" and self.text is not None:
             self.labels.append((self.text[0], " ".join("".join(self.text[1]).split())))
             self.text = None
@@ -1274,18 +1300,22 @@ class DialReader(html.parser.HTMLParser):
 
 
 def dial_problems(root):
-    """Why the labels of the dial on the page are not the titles of the principles in ratchet.json, in order.
+    """Why the dial on the page, or its list, does not name the principles in ratchet.json, in order.
 
     The page holds one dial. Its labels stand by notch, n0 first, and notch k is labelled by one or more <text>
     elements in a row. Joined with a space, they read "01 " and the title of the first principle, "02 " and the title
-    of the second, and so on, one notch for each principle. So a principle that is added, removed, moved or renamed
-    in ratchet.json fails until the dial is drawn again, and a label edited by hand fails as well.
+    of the second, and so on, one notch for each principle. The dial holds no other <text>. The page also holds one
+    <ol class="principle-list">, whose items are the titles, in the same order. So a principle that is added, removed,
+    moved or renamed in ratchet.json fails until the dial is drawn again and the list follows, and a label or an item
+    edited by hand fails as well.
     """
     with open(os.path.join(root, DOCS, PAGE), encoding="utf-8") as handle:
         reader = DialReader()
         reader.feed(handle.read())
     if reader.dials != 1:
         return ['the page holds %d dials of the principles, an <svg class="%s">, and must hold one' % (reader.dials, DIAL)]
+    if reader.problems:
+        return reader.problems
     groups = []
     for notch, text in reader.labels:
         if notch is None:
@@ -1295,15 +1325,20 @@ def dial_problems(root):
         else:
             groups.append((notch, [text]))
     titles = [principle["title"] for principle in registry.load(os.path.join(root, "ratchet.json"))["principles"]]
+    problems = []
     expected = [(at, "%02d %s" % (at + 1, title)) for at, title in enumerate(titles)]
     found = [(notch, " ".join(parts)) for notch, parts in groups]
     if found != expected:
-        return ["the labels of the dial are %r, and the principles in ratchet.json, in order, are %r" % (found, expected)]
-    return []
+        problems.append("the labels of the dial are %r, and the principles in ratchet.json, in order, are %r" % (found, expected))
+    if reader.lists != 1:
+        problems.append('the page holds %d lists of the principles, an <ol class="%s">, and must hold one' % (reader.lists, DIAL_LIST))
+    elif reader.items != titles:
+        problems.append("the list of the principles is %r, and the principles in ratchet.json, in order, are %r" % (reader.items, titles))
+    return problems
 
 
 class PageDial(RepoCopy, unittest.TestCase):
-    """The labels of the dial are the titles of the principles in ratchet.json, one per notch, in order."""
+    """The dial and its list name the principles in ratchet.json, one per notch and one per item, in order."""
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -1316,16 +1351,18 @@ class PageDial(RepoCopy, unittest.TestCase):
         problems = dial_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_dial_names_the_eleven_principles_in_order(self):
+    def test_the_dial_and_its_list_name_the_eleven_principles_in_order(self):
         self.assertEqual(dial_problems(ROOT), [])
         self.assertEqual(dial_problems(self.copy), [])
         reader = DialReader()
         reader.feed(self.page())
         self.assertEqual(len(set(notch for notch, _ in reader.labels)), 11)
+        self.assertEqual(len(reader.items), 11)
 
-    def test_a_principle_renamed_in_ratchet_json_fails_until_the_dial_follows(self):
+    def test_a_principle_renamed_in_ratchet_json_fails_until_the_dial_and_the_list_follow(self):
         self.edit("ratchet.json", '"title": "Subtract first"', '"title": "Subtract before you add"')
         self.assert_dial_fails("the labels of the dial")
+        self.assert_dial_fails("the list of the principles is")
 
     def rewrite_principles(self, change):
         path = os.path.join(self.copy, "ratchet.json")
@@ -1346,12 +1383,25 @@ class PageDial(RepoCopy, unittest.TestCase):
             data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
         self.rewrite_principles(add)
         self.assert_dial_fails("the labels of the dial")
+        self.assert_dial_fails("the list of the principles is")
+
+    def test_a_principle_removed_from_ratchet_json_fails(self):
+        def remove(data):
+            # Every rule names a principle, so the rules under the last one move under the first.
+            gone = data["principles"].pop()
+            for rule in data["rules"]:
+                if rule["principle"] == gone["key"]:
+                    rule["principle"] = data["principles"][0]["key"]
+        self.rewrite_principles(remove)
+        self.assert_dial_fails("the labels of the dial")
+        self.assert_dial_fails("the list of the principles is")
 
     def test_two_principles_swapped_in_ratchet_json_fail(self):
         def swap(data):
             data["principles"][0], data["principles"][1] = data["principles"][1], data["principles"][0]
         self.rewrite_principles(swap)
         self.assert_dial_fails("the labels of the dial")
+        self.assert_dial_fails("the list of the principles is")
 
     def test_a_label_edited_moved_or_left_out_fails(self):
         for old, new in (('text-anchor="end">11 Subtract first</text>', 'text-anchor="end">11 Add more</text>'),
@@ -1364,11 +1414,37 @@ class PageDial(RepoCopy, unittest.TestCase):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
-                self.assertTrue(dial_problems(self.copy), new)
+                self.assert_dial_fails("label")
+
+    def test_a_text_in_the_dial_that_is_not_a_label_fails(self):
+        # A <text> of another class would show words on the dial that the test does not compare.
+        for old, new in (('<text class="lab n0"', '<text x="0" y="0">12 Ship it</text>\n<text class="lab n0"'),
+                         ('<text class="lab n0"', '<text class="n0" x="0" y="0">12 Ship it</text>\n<text class="lab n0"')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails("a <text> in the dial that is not a label of the class lab")
+
+    def test_an_item_of_the_list_edited_moved_or_left_out_fails(self):
+        for old, new in (("<li>Subtract first</li>", "<li>Add more</li>"), ("<li>Subtract first</li>", ""),
+                         ("<li>One register</li>", "<li>One register</li>\n<li>One register</li>"),
+                         ("<li>Keep secrets out</li>", "<li>Keep <em>secrets</em> out, mostly</li>")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails("the list of the principles is")
+
+    def test_a_list_of_another_form_fails(self):
+        for old, new, message in (('<ol class="principle-list">', '<ol class="other">', "lists of the principles"),
+                                  ("<li>One register</li>", "<li>One register</li>\n<p>x</p>", "holds only <li>")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails(message)
 
     def test_a_second_dial_or_none_fails(self):
-        for old, new in (('<svg class="fig mark-hero"', '<svg class="fig"'),
-                         ('<svg class="fig fig-ratchet"', '<svg class="fig fig-ratchet mark-hero"')):
+        for old, new in (('<svg class="fig fig-dial"', '<svg class="fig"'),
+                         ('<svg class="fig fig-ratchet"', '<svg class="fig fig-ratchet fig-dial"')):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -1403,7 +1479,9 @@ class PageMotion(RepoCopy, unittest.TestCase):
                      ".wheel-tick { -webkit-animation: wheel-tick 3.8s linear infinite; }",
                      ".fig { -webkit-animation-name: wheel-tick; }", ".fig { -moz-animation: wheel-tick 1s; }",
                      ".fig { -o-animation-duration: 1s; }", ".fig { -MS-Animation: wheel-tick 1s; }",
-                     "html { -webkit-scroll-behavior: smooth; }"):
+                     "html { -webkit-scroll-behavior: smooth; }",
+                     ".button::after { transition: translate 0.15s ease-out; }", ".x { transition-duration: 1s; }",
+                     ".x { -webkit-transition: opacity 1s; }", ".x{transition:opacity 1s}"):
             with self.subTest(rule=rule):
                 self.setUp()
                 self.change("</style>", rule + "\n</style>")
@@ -1411,7 +1489,8 @@ class PageMotion(RepoCopy, unittest.TestCase):
 
     def test_a_prefixed_animation_inside_the_query_passes_as_the_unprefixed_one_does(self):
         # A vendor prefix changes nothing: the property is held to the query as the unprefixed one is.
-        for rule in ("-webkit-animation: wheel-tick 1s", "-webkit-animation-name: wheel-tick", "-moz-animation: wheel-tick 1s"):
+        for rule in ("-webkit-animation: wheel-tick 1s", "-webkit-animation-name: wheel-tick", "-moz-animation: wheel-tick 1s",
+                     "-webkit-transition: opacity 1s"):
             with self.subTest(rule=rule):
                 self.assertEqual(motion_problems("%s { .fig { %s; } }" % (REDUCED, rule)), [])
                 self.assertEqual(len(motion_problems(".fig { %s; }" % rule)), 1)

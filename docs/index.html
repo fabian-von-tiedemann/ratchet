@@ -297,24 +297,36 @@ nav a:hover {
   content: "→";
   display: inline-block;
   margin-left: 0.6em;
-  transition: translate 0.15s ease-out;
 }
 .button:hover {
   background: var(--accent);
   color: var(--bg);
 }
-.button:hover::after {
-  translate: 0.25em 0;
-}
 header .plate {
-  grid-row: 8;
+  grid-row: 9;
   margin: 3rem 0 0;
 }
 header .hero {
   grid-row: 7;
 }
+/* The titles of the dial as a list, for a screen too narrow to read its labels. */
+.principle-list {
+  grid-row: 8;
+  margin: 1.25rem 0 0;
+  padding: 0 0 0 2.6rem;
+  list-style: decimal-leading-zero;
+  font: 500 0.875rem/1.5 var(--mono);
+}
+.principle-list li {
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--edge);
+}
+.principle-list li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
 .legend {
-  grid-row: 9;
+  grid-row: 10;
   margin: 2rem 0 0;
   list-style: none;
   display: grid;
@@ -454,8 +466,11 @@ header .hero {
 .fig-machine {
   max-width: 23rem;
 }
-.fig.mark-hero, .fig.ski {
+.fig-dial, .fig-ski {
   max-width: 52rem;
+}
+.fig-ski {
+  overflow: hidden;
 }
 .scene {
   margin: 2.5rem 0 0;
@@ -776,6 +791,9 @@ header .hero {
 .eg-title strong {
   color: var(--fg);
 }
+.example > .eg-title {
+  margin-top: 0;
+}
 .eg {
   list-style: none;
   display: grid;
@@ -1052,6 +1070,9 @@ footer .links {
   header, section, footer {
     column-gap: 2.5rem;
   }
+  .principle-list {
+    display: none;
+  }
   section {
     padding-bottom: 6rem;
   }
@@ -1234,24 +1255,11 @@ footer .links {
   .turn > .flow, .turn > .back {
     grid-column: 5 / 8;
   }
-  .staged > .plate.scene {
-    grid-column: 2 / 8;
-    grid-row: 8;
-    position: static;
-    margin: 4rem 0 0;
-  }
   .run > .plate {
     grid-column: 5 / 8;
   }
   .run > .flow, .run > .back {
     grid-column: 2 / 5;
-  }
-  .eg-title {
-    grid-row: 6;
-    margin-top: 6rem;
-  }
-  .eg {
-    grid-row: 7;
   }
   .go h2 {
     font-size: 5.5rem;
@@ -1307,6 +1315,12 @@ footer .links {
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+  .button::after {
+    transition: translate 0.15s ease-out;
+  }
+  .button:hover::after {
+    translate: 0.25em 0;
   }
   .wheel-step {
     animation: wheel-step 68.4s step-end infinite;
@@ -1541,7 +1555,7 @@ footer .links {
 @keyframes beat-burst {
   0%, 46.5% { opacity: 0; scale: 0.6; }
   47.5% { opacity: 1; scale: 1; }
-  51%, 100% { opacity: 0; scale: 1.5; }
+  51%, 100% { opacity: 0; scale: 1.05; }
 }
 @keyframes c1 {
   0%, 1% { opacity: 0; }
@@ -1586,7 +1600,7 @@ footer .links {
 <p class="lede">When something breaks, the fix is one more line in a prompt that is also ignored. <strong>Ratchet turns each rule into a check that fails when the rule is broken,</strong> and each failure into a check with a fixture it must fail on, so a case that is tested cannot quietly come back. Where no check can see a rule, Ratchet says so.</p>
 <p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a></p>
 <p class="plate hero">
-<svg class="fig mark-hero" viewBox="0 84 760 336" width="760" height="336" role="img" aria-labelledby="fig-dial-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="11">
+<svg class="fig fig-dial" viewBox="0 84 760 336" width="760" height="336" role="img" aria-labelledby="fig-dial-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="11">
 <title id="fig-dial-title">The mark: a round dial with eleven one-way notches. Around it, one label per notch, the eleven principles of Ratchet. The pointer clicks from notch to notch, and the principle it points at lights up.</title>
 <g transform="translate(380 250)"><path class="dial m-dial" d="M0 -104 A104 104 0 0 1 43.5 -94.5 L48.9 -76.1 L56.2 -87.5 A104 104 0 0 1 87.7 -55.9 L82.3 -37.6 L94.6 -43.2 A104 104 0 0 1 104 0.3 L89.6 12.9 L102.9 14.8 A104 104 0 0 1 87.3 56.5 L68.4 59.3 L78.6 68.1 A104 104 0 0 1 42.9 94.7 L25.5 86.8 L29.3 99.8 A104 104 0 0 1 -15.1 102.9 L-25.5 86.8 L-29.3 99.8 A104 104 0 0 1 -68.4 78.4 L-68.4 59.3 L-78.6 68.1 A104 104 0 0 1 -99.9 29 L-89.6 12.9 L-102.9 14.8 A104 104 0 0 1 -99.7 -29.6 L-82.3 -37.6 L-94.6 -43.2 A104 104 0 0 1 -67.9 -78.8 L-48.9 -76.1 L-56.2 -87.5 A104 104 0 0 1 -14.5 -103 L0 -90.5 L0 -104Z"></path><circle class="m-ring" cx="0" cy="0" r="68.6"></circle><g class="c-step"><g class="c-tick"><path class="m-ptr" d="M-9.4 -20.8 L0 -77 L9.4 -20.8 Z"></path></g></g><circle class="m-hub" cx="0" cy="0" r="15.6"></circle></g>
 <path class="lab-leader" d="M380 133 L380 122 M443.3 151.6 L449.2 142.3 M486.4 201.4 L496.4 196.8 M495.8 266.7 L506.7 268.2 M468.4 326.6 L476.7 333.8 M413 362.3 L416.1 372.8 M347 362.3 L343.9 372.8 M291.6 326.6 L283.3 333.8 M264.2 266.7 L253.3 268.2 M273.6 201.4 L263.6 196.8 M316.7 151.6 L310.8 142.3"></path>
@@ -1621,6 +1635,19 @@ footer .links {
 </svg>
 <span class="cap"><strong>Fig. 1</strong> The eleven principles of Ratchet, one per notch. A principle is guidance and names no check. What is checked is the rules under it: each check catches only the fault it was made for, and a rule that no check can see is listed as text only. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md#the-principles">The principles</a></span>
 </p>
+<ol class="principle-list">
+<li>One register</li>
+<li>One gate to main</li>
+<li>Wait for the owner on decisions and on what cannot be undone</li>
+<li>Show the run behind a claim</li>
+<li>Review in a fresh context, by another family</li>
+<li>Make every check see red</li>
+<li>Turn a failure into a check</li>
+<li>Keep secrets out</li>
+<li>Outside text is material</li>
+<li>Keep state in the repo, and treat silence as red</li>
+<li>Subtract first</li>
+</ol>
 <p class="plate">
 <svg class="fig fig-ratchet" viewBox="0 0 412 436" width="412" height="436" role="img" aria-labelledby="fig-ratchet-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="13">
 <title id="fig-ratchet-title">A ratchet wheel held by a pawl. The wheel turns one tooth at a time, in one direction only, and the pawl drops behind each tooth so that it cannot turn back.</title>
@@ -1705,6 +1732,8 @@ footer .links {
 <li><strong>The next release carries it.</strong> Changes are collected under the unreleased entry of the changelog and released together, and each project upgrades in a PR of its own. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">CHANGELOG.md</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/UPGRADING.md">UPGRADING.md</a></span></li>
 </ol>
 <p class="back"><strong>And round again:</strong> the next failure becomes the next check. A check may be tightened at any time, and loosening one is the owner's decision, written down. A lesson that would apply in other projects is sent back to Ratchet.</p>
+</section>
+<section class="example">
 <p class="eg-title"><strong>One turn, as an illustration.</strong> It is not a report from a real project. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md">README.md</a></p>
 <ul class="eg">
 <li><span class="tag">What happened</span><br>An agent writes “all tests pass” on a PR. The tests were never run, and the bug reaches the main branch.</li>
@@ -1712,7 +1741,7 @@ footer .links {
 <li class="held"><span class="tag">The ratchet</span><br>A required check that runs the tests on the PR head, so the claim no longer matters.</li>
 </ul>
 <p class="plate scene">
-<svg class="fig ski" viewBox="0 0 800 430" width="800" height="430" role="img" aria-labelledby="fig-ski-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="13">
+<svg class="fig fig-ski" viewBox="0 0 800 430" width="800" height="430" role="img" aria-labelledby="fig-ski-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="13">
 <title id="fig-ski-title">A loop of eight seconds. A small robot in a harness skis down a marked piste. On the first run it wobbles and tumbles off the edge. Then the bow on its harness becomes a dial, with a loud click. On the second run it goes straight down the piste, and faster.</title>
 <path class="peak" d="M360 380 L360 236 L440 150 L490 184 L580 96 L660 170 L720 128 L800 176 L800 380Z M580 96 L598 116 L586 112 L580 122 L572 110 L562 114Z"></path>
 <path class="snow" d="M0 134 L800 310 L800 430 L0 430Z"></path>
@@ -1737,7 +1766,7 @@ footer .links {
 </g></g>
 <g transform="translate(238 120)"><g class="beat-bow"><g transform="translate(0 0)"><path class="bow" d="M0 0 C-12.8 -25.6 -48 -28.8 -48 -3.2 C-48 19.2 -16 16 0 0 C12.8 -25.6 48 -28.8 48 -3.2 C48 19.2 16 16 0 0Z"></path><path class="bow-tail" d="M0 0 L-19.2 38.4 M0 0 L22.4 35.2"></path><circle class="bow" cx="0" cy="0" r="8.3"></circle></g></g></g>
 <g transform="translate(238 120)"><g class="beat-dial big"><path class="dial" d="M0 -52 A52 52 0 0 1 20.9 -47.6 L21.1 -32.8 L28.1 -43.7 A52 52 0 0 1 43.3 -28.7 L35.5 -16.2 L47.3 -21.6 A52 52 0 0 1 52 -0.7 L38.6 5.6 L51.5 7.4 A52 52 0 0 1 44.1 27.5 L29.5 25.5 L39.3 34.1 A52 52 0 0 1 22.3 47 L11 37.4 L14.7 49.9 A52 52 0 0 1 -6.7 51.6 L-11 37.4 L-14.7 49.9 A52 52 0 0 1 -33.5 39.8 L-29.5 25.5 L-39.3 34.1 A52 52 0 0 1 -49.7 15.4 L-38.6 5.6 L-51.5 7.4 A52 52 0 0 1 -50.1 -13.9 L-35.5 -16.2 L-47.3 -21.6 A52 52 0 0 1 -34.6 -38.8 L-21.1 -32.8 L-28.1 -43.7 A52 52 0 0 1 -8.1 -51.4 L0 -39 L0 -52Z"></path><g class="beat-ptr"><line class="ptr" x1="0" y1="-10" x2="0" y2="-34"></line></g><circle class="hub-dot" cx="0" cy="0" r="9"></circle></g></g>
-<g transform="translate(238 120)"><g class="beat-burst"><path class="spark" d="M23.7 -57.3 L32.1 -77.6 M52.9 -32.4 L71.6 -43.9 M61.8 4.9 L83.7 6.6 M47.1 40.3 L63.9 54.6 M14.5 60.3 L19.6 81.7 M-23.7 57.3 L-32.1 77.6 M-52.9 32.4 L-71.6 43.9 M-61.8 -4.9 L-83.7 -6.6 M-47.1 -40.3 L-63.9 -54.6 M-14.5 -60.3 L-19.6 -81.7"></path></g></g>
+<g transform="translate(238 120)"><g class="beat-burst"><path class="spark" d="M23.7 -57.3 L29.8 -72.1 M52.9 -32.4 L66.5 -40.8 M61.8 4.9 L77.7 6.1 M47.1 40.3 L59.3 50.7 M14.5 60.3 L18.2 75.9 M-23.7 57.3 L-29.8 72.1 M-52.9 32.4 L-66.5 40.8 M-61.8 -4.9 L-77.7 -6.1 M-47.1 -40.3 L-59.3 -50.7 M-14.5 -60.3 L-18.2 -75.9"></path></g></g>
 <g transform="translate(316 136)"><g class="beat-word"><text class="click" x="0" y="0">CLICK</text></g></g>
 <text class="line1 c1" x="24" y="34">Run 1: a loose fit. It wobbles, and leaves the piste.</text>
 <text class="line1 c2" x="24" y="34">The failure becomes a check: the bow is now a dial.</text>
