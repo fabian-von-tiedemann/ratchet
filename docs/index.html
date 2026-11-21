@@ -1178,6 +1178,7 @@ footer .links {
 <nav>
 <ul>
 <li><a href="#how-it-works">How it turns</a></li>
+<li><a href="#why">Why</a></li>
 <li><a href="#evidence">Evidence</a></li>
 <li><a href="#limits">Limits</a></li>
 <li><a href="https://github.com/fabian-von-tiedemann/ratchet">Repository</a></li>
@@ -1278,8 +1279,21 @@ footer .links {
 <li class="held"><span class="tag">The ratchet</span><br>A required check that runs the tests on the PR head, so the claim no longer matters.</li>
 </ul>
 </section>
+<section class="rail">
+<p class="kicker"><span>02</span> Why it exists</p>
+<h2 id="why">Why Ratchet exists</h2>
+<p class="intro">The maintainer had more than 100 repos and no longer knew what governed the agents in them. Each new practice from the field went into one repo at a time. So for a new project that had to be tight from the start, the rules were built outside any one repo for the first time: one set, kept up with lessons from every project and from the field.</p>
+<ul class="points">
+<li><strong>The field is followed once, upstream, instead of once per repo.</strong> Ratchet credits four public sources on agentic coding, each pinned at a commit. A scheduled workflow opens an issue when a source moves, and the maintainer judges each move before the pin follows. The maintainer also reads more widely, and what holds up comes in as a proposal. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/sources.json">sources.json</a> · <a href="#builds-on">What Ratchet builds on</a></span></li>
+<li><strong>A new rule has one way in.</strong> It starts as a proposal, enters by the maintainer's decision as an experimental rule, outside the core and under a cap, and moves into the frozen core only by another decision of the maintainer. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></span></li>
+<li><strong>Each project owns its set.</strong> It adopts the rules that matter to it, copied verbatim, and adds its own. Nothing arrives by itself: a new or changed rule reaches a project only when it upgrades, and which new rules to adopt is the project's choice. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/UPGRADING.md">UPGRADING.md</a></span></li>
+<li><strong>Skills stay out of your repos until you choose one.</strong> Ratchet cites the sources and does not ship or install any skill from them. A project that wants one copies it at a pinned commit, tied to a named situation. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">RATCHET.md</a></span></li>
+</ul>
+<p class="note">Ratchet does not yet help you clean up an agent layer you already have. That clean-up is what it grew out of, and it comes next.</p>
+<p class="note"><strong>Tell us where it does not fit.</strong> A project that tries Ratchet and meets a rule that does not fit is the input Ratchet improves from. Open an issue, with the <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/.github/ISSUE_TEMPLATE/proposal.yml">proposal form</a> for a change to a rule. Feedback from one project, <a href="https://github.com/fabian-von-tiedemann/ratchet/issues/89">issue #89</a>, has already led to <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-20-generated-block.md">a decided change of form</a>: a project may keep the rules it adopts in a block generated into its own instruction file. It is not built yet. A proposal takes the same way in as any rule, and nothing is promised in advance. To try it, go to <a href="#start-here">Start here</a>.</p>
+</section>
 <section class="rail tint">
-<p class="kicker"><span>02</span> The form of a rule</p>
+<p class="kicker"><span>03</span> The form of a rule</p>
 <h2 id="what-it-does">What Ratchet does</h2>
 <p class="intro">Ratchet is a set of working rules, templates and reference checks for long-lived code projects built by AI agents.</p>
 <p class="note">Each rule carries a <strong>ratchet</strong>: the check that fails when the rule is broken, or the words “text only” and the reason no check can see it. Two rows from <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">RATCHET.md</a>, shortened:</p>
@@ -1293,7 +1307,7 @@ footer .links {
 </ul>
 </section>
 <section class="staged run ink">
-<p class="kicker"><span>03</span> The machine around it</p>
+<p class="kicker"><span>04</span> The machine around it</p>
 <h2 id="how-this-repo-is-run">How this repo is run</h2>
 <p class="intro">Several agents work on this repo at once, in the way <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTROL-ROOM.md">CONTROL-ROOM.md</a> describes. It is how this repo works, not something a project must adopt: the control room is experimental.</p>
 <p class="plate">
@@ -1366,7 +1380,7 @@ footer .links {
 <p class="back"><strong>Then back to the control room,</strong> which replaces the handover and takes the next task.</p>
 </section>
 <section class="rail">
-<p class="kicker"><span>04</span> Credit, rule by rule</p>
+<p class="kicker"><span>05</span> Credit, rule by rule</p>
 <h2 id="builds-on">What Ratchet builds on</h2>
 <p class="intro">Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them.</p>
 <p class="note">Each is pinned at a commit in <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/sources.json">sources.json</a>, and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">RATCHET.md</a> lists the pins. A project that wants a skill copies it from the source itself, with its license.</p>
@@ -1394,7 +1408,7 @@ footer .links {
 </ul>
 </section>
 <section class="rail">
-<p class="kicker"><span>05</span> Tighter, not heavier</p>
+<p class="kicker"><span>06</span> Tighter, not heavier</p>
 <h2 id="stays-tight">How it stays tight</h2>
 <p class="intro">Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
 <p id="budget" class="stat"><strong>19 experimental rules, with a cap of 23.</strong> The core holds 35 rules and is frozen: 17 name a check and 18 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
@@ -1408,7 +1422,7 @@ footer .links {
 </ul>
 </section>
 <section class="rail tint">
-<p class="kicker"><span>06</span> What the repo shows</p>
+<p class="kicker"><span>07</span> What the repo shows</p>
 <h2 id="evidence">Evidence from this repo</h2>
 <ul class="ledger">
 <li><strong>A hook that could not be a lock was replaced by locks.</strong> <span class="d">A review from another model family rejected a hook meant to stop the steps that cannot be undone, twice, and it was closed unmerged (<a href="https://github.com/fabian-von-tiedemann/ratchet/pull/42">PR #42</a>). It came back as a tripwire that says it does not catch every spelling, and the locks moved to a ruleset at GitHub and the role of the agents' account (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-19-locks-not-parsing.md">the decision</a>).</span></li>
@@ -1419,7 +1433,7 @@ footer .links {
 </ul>
 </section>
 <section class="rail">
-<p class="kicker"><span>07</span> Read this before you start</p>
+<p class="kicker"><span>08</span> Read this before you start</p>
 <h2 id="limits">The honest limits</h2>
 <ul class="limits">
 <li><strong>Most of the core is still text.</strong> The share is stated with every version in the <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">changelog</a>, and the work between versions is to bring it down. For a rule without a reference check, the ratchet says what a check must do, and your project builds it. Until it does, the rule is text only in your project, and your register says so.</li>
@@ -1429,7 +1443,7 @@ footer .links {
 </ul>
 </section>
 <section class="go">
-<p class="kicker"><span>08</span> Two commands and a dry run, in the root of your own git repo</p>
+<p class="kicker"><span>09</span> Two commands and a dry run, in the root of your own git repo</p>
 <h2 id="start-here">Start here</h2>
 <ol class="steps">
 <li><span class="say">Fetch Ratchet at the latest release into <code>.ratchet</code>.</span>
