@@ -490,6 +490,18 @@ def main(argv=None, out=None):
     action, data, note = gitignore_plan(os.path.join(root, ".gitignore"))
     plan.append((action, ".gitignore", data, note))
 
+    # Every file it would write or change, checked for a link on its path while it plans, as a real run checks it when it
+    # writes: so --check never says "would write" for a file a real run refuses, and a real run never writes some files
+    # before it stops at another (review of ef5cbaa).
+    for action, file, data, note in plan:
+        if action in ("write", "add"):
+            try:
+                registry.guard_path(root, os.path.join(root, file))
+            except registry.RegistryError as error:
+                say("init: cannot run: %s" % error)
+                say("init: nothing was written")
+                return 2
+
     shown = {"write": "would write", "add": "would add"} if args.check else {}
     written = skipped = 0
     for action, file, data, note in plan:

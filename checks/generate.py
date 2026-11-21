@@ -469,6 +469,8 @@ def fixtures(data):
         "where-hidden": lambda r: r["adopted"][enforced].update(status="built", where="\u200b"),
         "instructions-outside": lambda r: r.update(instructions="../AGENTS.md"),
         "instructions-absolute": lambda r: r.update(instructions="/AGENTS.md"),
+        # Review of ef5cbaa: a part that starts with "-" would read as an option to rm and mv in the printed commands.
+        "instructions-dash": lambda r: r.update(instructions="docs/-rf.md"),
         "instructions-not-markdown": lambda r: r.update(instructions="register.json"),
         "instructions-not-text": lambda r: r.update(instructions=["AGENTS.md"]),
         "instructions-hidden": lambda r: r.update(instructions="AGENTS\u200b.md"),

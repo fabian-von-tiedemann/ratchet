@@ -278,8 +278,8 @@ def put_in_place(script, path, option, target):
     """The shell command that prints one file with check_register.py and puts it in place at target: a new file in the
     directory the command runs in, named after the target, then moved there. The target is a relative path."""
     new = shlex.quote(target.split("/")[-1] + ".new")
-    return "rm -f %s && python3 %s %s %s > %s && rm -f %s && mv %s %s" % (
-        new, script, path, option, new, shlex.quote(target), new, shlex.quote(target))
+    return "rm -f -- %s && python3 %s %s %s > %s && rm -f -- %s && mv -- %s %s" % (
+        new, shlex.quote(script), shlex.quote(path), option, new, shlex.quote(target), new, shlex.quote(target))
 
 
 def report(path, register, old, new, out, script):

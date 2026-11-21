@@ -148,6 +148,7 @@ FAILING_DATA = {
     # The register may name an instruction file, which holds the block that the check generates (D-2026-11-20-generated-block).
     "instructions-outside": INSTRUCTIONS,
     "instructions-absolute": INSTRUCTIONS,
+    "instructions-dash": INSTRUCTIONS,
     "instructions-not-markdown": INSTRUCTIONS,
     "instructions-not-text": INSTRUCTIONS,
     "instructions-hidden": INSTRUCTIONS,

@@ -152,12 +152,16 @@ class Upgrade(FixtureTest):
         code = upgrade.report("register.json", register, old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
         self.assertIn("Then print REGISTER.md and docs/AGENTS.md again, put each in place, and check them:", out.getvalue())
-        self.assertIn("    rm -f REGISTER.md.new && python3 check_register.py register.json --print-markdown > REGISTER.md.new && "
-                      "rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md\n", out.getvalue())
+        self.assertIn("    rm -f -- REGISTER.md.new && python3 check_register.py register.json --print-markdown > REGISTER.md.new && "
+                      "rm -f -- REGISTER.md && mv -- REGISTER.md.new REGISTER.md\n", out.getvalue())
         # The .new file stands in the directory the commands run in, so nothing is removed or written through a directory
         # of the path before the check has refused a link there.
-        self.assertIn("    rm -f AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
-                      "rm -f docs/AGENTS.md && mv AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
+        self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
+                      "rm -f -- docs/AGENTS.md && mv -- AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
+        # The script and the register's path are quoted for the shell.
+        out = io.StringIO()
+        upgrade.report("my project/register.json", register, old, new, out, "my checks/check_register.py")
+        self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' --print-markdown", out.getvalue())
         self.assertNotIn("--write", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):

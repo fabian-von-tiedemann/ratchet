@@ -185,6 +185,26 @@ class Init(unittest.TestCase):
         with open(self.path(name), "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
 
+    def test_a_link_on_a_path_it_writes_refuses_the_run_before_anything_is_written(self):
+        # Review of ef5cbaa: .github is a link that git tracks, to a directory outside. --check and a real run both find
+        # the link while they plan, refuse, and write nothing: never "would write", and never some files before the run
+        # stops at the workflow.
+        outside = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, outside)
+        os.symlink(outside, self.path(".github"))
+        git(self.project, "add", ".github")
+        git(self.project, "commit", "-q", "-m", "a link")
+        before = sorted(os.listdir(self.project))
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 2, output)
+                self.assertIn(".github is a symbolic link", output)
+                self.assertNotIn("would write", output)
+                self.assertIn("init: nothing was written", output)
+                self.assertEqual(sorted(os.listdir(self.project)), before)
+                self.assertEqual(os.listdir(outside), [])
+
     def test_an_empty_repo_gets_every_file(self):
         code, output = self.init()
         self.assertEqual(code, 0, output)

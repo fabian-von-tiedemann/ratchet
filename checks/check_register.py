@@ -313,14 +313,16 @@ def instructions_problem(value):
     """Why the path of the instruction file breaks its form, or None.
 
     A path inside the repo, relative to the register: parts of letters, digits, ".", "_" and "-", joined by single "/",
-    none of them "." or "..", ending in ".md", at most PATH_LENGTH characters. So the block is written into a Markdown
-    file of the project's own and nowhere else.
+    none of them "." or "..", none starting with "-", ending in ".md", at most PATH_LENGTH characters. So the block is
+    put into a Markdown file of the project's own and nowhere else, and no part of the path reads as an option to the
+    rm and mv of the printed commands (review of ef5cbaa).
     """
     form = ("instructions must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
-            "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..', ending in .md")
+            "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
+            "ending in .md")
     if not isinstance(value, str) or len(value) > PATH_LENGTH or not value.endswith(".md"):
         return form
-    if any(not PATH_PART.match(part) or part in (".", "..") for part in value.split("/")):
+    if any(not PATH_PART.match(part) or part in (".", "..") or part.startswith("-") for part in value.split("/")):
         return form
     return None
 
