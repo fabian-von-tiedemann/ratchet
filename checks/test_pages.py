@@ -1251,6 +1251,8 @@ class PageFigures(RepoCopy, unittest.TestCase):
 DIAL = "fig-dial"
 DIAL_LIST = "principle-list"
 DIAL_NOTCH = re.compile(r"n(0|[1-9][0-9]*)\Z")
+# Every void element of HTML. One has no end tag, so the reader counts none of them as opening or closing the list.
+HTML_VOID = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"))
 
 
 class DialReader(html.parser.HTMLParser):
@@ -1273,6 +1275,10 @@ class DialReader(html.parser.HTMLParser):
             notches = [int(match.group(1)) for match in map(DIAL_NOTCH.match, classes) if match]
             self.text = [notches[0] if len(notches) == 1 else None, []]
         if self.in_list:
+            if tag in HTML_VOID:
+                self.problems.append("line %d: the list of the principles holds a <%s>, a void element, and its items hold only"
+                                     " text" % (self.getpos()[0], tag))
+                return
             self.in_list += 1
             if tag == "li" and self.in_list == 2:
                 self.text = [None, []]
@@ -1285,6 +1291,10 @@ class DialReader(html.parser.HTMLParser):
         if self.depth:
             self.depth -= 1
         if self.in_list:
+            if tag in HTML_VOID:
+                self.problems.append("line %d: the list of the principles holds a </%s>, which a browser reads as a void element,"
+                                     " and its items hold only text" % (self.getpos()[0], tag))
+                return
             self.in_list -= 1
             if tag == "li" and self.in_list == 1 and self.text is not None:
                 self.items.append(" ".join("".join(self.text[1]).split()))
@@ -1294,7 +1304,16 @@ class DialReader(html.parser.HTMLParser):
             self.labels.append((self.text[0], " ".join("".join(self.text[1]).split())))
             self.text = None
 
+    def handle_startendtag(self, tag, attrs):
+        # <br/> is one problem, not two: in the list, a void element is neither opened nor closed.
+        self.handle_starttag(tag, attrs)
+        if not (self.in_list and tag in HTML_VOID):
+            self.handle_endtag(tag)
+
     def handle_data(self, data):
+        if self.in_list == 1 and data.strip():
+            self.problems.append("line %d: the list of the principles holds text outside an <li>, and holds only <li>"
+                                 % self.getpos()[0])
         if self.text is not None:
             self.text[1].append(data)
 
@@ -1441,6 +1460,36 @@ class PageDial(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change(old, new)
                 self.assert_dial_fails(message)
+
+    def test_text_in_the_list_outside_an_item_fails(self):
+        # Words straight in the <ol> show on the page as part of the list, and are not an item the test compares.
+        for old, new in (("<li>One register</li>", "<li>One register</li>\nand one more"),
+                         ('<ol class="principle-list">', '<ol class="principle-list">Ship it'),
+                         ("<li>Subtract first</li>\n</ol>", "<li>Subtract first</li>\n&#83;hip it</ol>")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails("holds text outside an <li>")
+
+    def test_a_void_element_in_the_list_fails_and_leaves_the_count_right(self):
+        # A <br> has no end tag. Counted as opened, it would leave the reader one level deep, so that the next <li> was
+        # read as nested and a later <p> as inside an item. The reader names the void element and does not count it.
+        for old, new in (("<li>Keep secrets out</li>", "<li>Keep secrets<br>out</li>"),
+                         ("<li>Keep secrets out</li>", "<li>Keep secrets<br/>out</li>"),
+                         ("<li>Keep secrets out</li>", "<li>Keep secrets out</li><hr>"),
+                         ("<li>Keep secrets out</li>", "<li>Keep secrets out</br></li>")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails("void element", "and its items hold only text")
+        self.setUp()
+        self.change("<li>Keep secrets out</li>", "<li>Keep secrets<br>out</li>")
+        self.change("<li>Subtract first</li>", "<li>Subtract first</li>\n<p>x</p>")
+        self.assert_dial_fails("holds a <p>, and holds only <li>")
+        reader = DialReader()
+        reader.feed(self.page())
+        self.assertEqual(reader.in_list, 0)
+        self.assertEqual(len(reader.items), 11)
 
     def test_a_second_dial_or_none_fails(self):
         for old, new in (('<svg class="fig fig-dial"', '<svg class="fig"'),
