@@ -185,6 +185,24 @@ class Init(unittest.TestCase):
         with open(self.path(name), "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
 
+    def test_a_file_where_a_directory_of_a_path_should_be_refuses_the_run_cleanly(self):
+        # Review of 3219bf4: .github, or .github/workflows, is a regular file. Both modes refuse with exit 2, write
+        # nothing, and show no traceback.
+        for name in (".github", os.path.join(".github", "workflows")):
+            with self.subTest(file=name):
+                os.makedirs(os.path.dirname(self.path(name)) or self.project, exist_ok=True)
+                with open(self.path(name), "w", encoding="utf-8") as handle:
+                    handle.write("not a directory\n")
+                before = sorted(os.listdir(self.project))
+                for args in (("--check",), ()):
+                    code, output = self.init(*args)
+                    self.assertEqual(code, 2, output)
+                    self.assertNotIn("Traceback", output)
+                    self.assertIn("init: nothing was written", output)
+                    self.assertNotIn("would write", output)
+                    self.assertEqual(sorted(os.listdir(self.project)), before)
+                shutil.rmtree(self.path(".github")) if os.path.isdir(self.path(".github")) else os.remove(self.path(".github"))
+
     def test_a_link_on_a_path_it_writes_refuses_the_run_before_anything_is_written(self):
         # Review of ef5cbaa: .github is a link that git tracks, to a directory outside. --check and a real run both find
         # the link while they plan, refuse, and write nothing: never "would write", and never some files before the run
@@ -535,7 +553,7 @@ init.gitignore_plan = gitignore_plan
         code = "\n".join(["import errno, os, sys",
                           "sys.path.insert(0, os.path.join('.ratchet', 'checks'))",
                           "import init", patch, "sys.exit(init.main(sys.argv[1:]))"])
-        result = subprocess.run([sys.executable, "-c", code] + list(args), cwd=self.project, stdout=subprocess.PIPE,
+        result = subprocess.run([sys.executable, "-B", "-c", code] + list(args), cwd=self.project, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
         return result.returncode, result.stdout
 

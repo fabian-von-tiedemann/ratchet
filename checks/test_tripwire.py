@@ -494,7 +494,7 @@ class Parallel(unittest.TestCase):
              "test_tripwire.Tripwire.test_a_link_to_or_inside_a_directory_from_mktemp_is_never_followed")
 
     def test_runs_at_the_same_time_do_not_touch_each_other(self):
-        children = [subprocess.Popen([sys.executable, "-m", "unittest"] + list(self.TESTS), cwd=HERE, stdin=subprocess.DEVNULL,
+        children = [subprocess.Popen([sys.executable, "-B", "-m", "unittest"] + list(self.TESTS), cwd=HERE, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT) for _ in range(4)]
         outputs = [child.communicate(timeout=600)[0].decode("utf-8", errors="replace") for child in children]
         for number, (child, output) in enumerate(zip(children, outputs), 1):

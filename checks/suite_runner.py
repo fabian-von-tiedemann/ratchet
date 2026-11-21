@@ -39,10 +39,13 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# And none in the processes the tests start, such as python -m unittest in test_tripwire.py (review of 3219bf4).
+import os  # noqa: E402
+
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 import argparse
 import json
-import os
 import shutil
 import tempfile
 import unittest

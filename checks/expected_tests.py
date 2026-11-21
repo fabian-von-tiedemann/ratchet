@@ -318,7 +318,9 @@ def main(argv=None):
     try:
         path = os.path.join(directory, "records.jsonl")
         sys.stdout.flush()
-        status = subprocess.call([sys.executable, RUNNER, "--records", path, "--start", os.path.abspath(args.start)])
+        # No bytecode in the runner, or in any Python its tests start (review of 3219bf4).
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        status = subprocess.call([sys.executable, "-B", RUNNER, "--records", path, "--start", os.path.abspath(args.start)], env=env)
         after, _ = fixtures(args.fixtures)
         for name in sorted(set(before) | set(after)):
             if before.get(name) != after.get(name):

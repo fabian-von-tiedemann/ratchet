@@ -386,7 +386,7 @@ def report(path, register, old, new, out, script):
     print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
     if instructions is not None:
         print("    %s" % put_in_place(script, path, "--print-instructions", instructions), file=out)
-    print("    python3 %s %s --markdown REGISTER.md" % (script, path), file=out)
+    print("    python3 %s %s --markdown REGISTER.md" % (shlex.quote(script), shlex.quote(path)), file=out)
     print("", file=out)
     if not must_adopt:
         adopting = "no new rule adopted"

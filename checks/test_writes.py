@@ -423,6 +423,56 @@ class NoBytecode(unittest.TestCase):
                 self.assertEqual(caches, [], "no __pycache__ was written")
 
 
+class NoBytecodeFromTheSuite(unittest.TestCase):
+    def test_expected_tests_and_the_processes_under_it_write_no_bytecode(self):
+        # Review of 3219bf4: expected_tests.py runs suite_runner.py, whose tests spawn more Python, such as
+        # python -m unittest in test_tripwire. A copy of the three scripts runs a reduced suite of one test, whose child
+        # imports a module of its own, without -B and without PYTHONDONTWRITEBYTECODE. No __pycache__ appears anywhere.
+        scratch = scratch_dir(self)
+        copy, start = os.path.join(scratch, "checks"), os.path.join(scratch, "start")
+        fixtures = os.path.join(copy, "fixtures")
+        for folder in (copy, start, fixtures):
+            os.mkdir(folder)
+        for name in ("expected_tests.py", "suite_runner.py", "registry.py"):
+            shutil.copyfile(os.path.join(HERE, name), os.path.join(copy, name))
+        with open(os.path.join(fixtures, "one.txt"), "w", encoding="utf-8") as handle:
+            handle.write("one\n")
+        with open(os.path.join(start, "probe_helper.py"), "w", encoding="utf-8") as handle:
+            handle.write("VALUE = 1\n")
+        with open(os.path.join(start, "test_probe.py"), "w", encoding="utf-8") as handle:
+            handle.write("\n".join([
+                "import os, subprocess, sys, unittest",
+                "import probe_helper",
+                "from suite_runner import FixtureTest",
+                "HERE = os.path.dirname(os.path.abspath(__file__))",
+                "class Probe(FixtureTest):",
+                "    def test_a_child_imports_a_module(self):",
+                "        self.fixture_bytes('one.txt')",
+                "        subprocess.run([sys.executable, '-c', 'import probe_helper'], cwd=HERE, check=True)",
+                "        subprocess.run([sys.executable, '-m', 'unittest', 'probe_helper'], cwd=HERE,",
+                "                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
+                ""]))
+        env = dict((k, v) for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE")
+        result = subprocess.run([sys.executable, os.path.join(copy, "expected_tests.py"), "--start", start, "--fixtures", fixtures],
+                                cwd=scratch, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("every expected test ran and passed", result.stdout)
+        caches = [folder for folder, folders, _ in os.walk(scratch) if "__pycache__" in folders]
+        self.assertEqual(caches, [], "no __pycache__ was written")
+
+    def test_the_suite_passes_the_variable_to_the_python_it_spawns(self):
+        # The tests that spawn python -m unittest or python -c pass -B as well.
+        for name, needle in (("test_tripwire.py", '[sys.executable, "-B", "-m", "unittest"]'),
+                             ("test_init.py", '[sys.executable, "-B", "-c", code]')):
+            with self.subTest(test=name):
+                with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+                    self.assertIn(needle, handle.read())
+        with open(os.path.join(HERE, "suite_runner.py"), "rb") as handle:
+            body = ast.parse(handle.read()).body
+        sets = [node for node in body if isinstance(node, ast.Assign) and ast.dump(node.targets[0]).find("PYTHONDONTWRITEBYTECODE") >= 0]
+        self.assertEqual(len(sets), 1, "suite_runner.py sets os.environ[\"PYTHONDONTWRITEBYTECODE\"] at its top level")
+
+
 class WriteFile(unittest.TestCase):
     """registry.write_file, in this process."""
 

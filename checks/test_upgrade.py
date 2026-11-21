@@ -158,10 +158,14 @@ class Upgrade(FixtureTest):
         # of the path before the check has refused a link there.
         self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
                       "rm -f -- docs/AGENTS.md && mv -- AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
-        # The script and the register's path are quoted for the shell.
+        # The script and the register's path are quoted for the shell, on each of the three lines (review of 3219bf4).
         out = io.StringIO()
         upgrade.report("my project/register.json", register, old, new, out, "my checks/check_register.py")
-        self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' --print-markdown", out.getvalue())
+        lines = [line for line in out.getvalue().split("\n") if line.startswith("    ") and "python3 " in line]
+        self.assertEqual(len(lines), 3, out.getvalue())
+        for line in lines:
+            with self.subTest(line=line):
+                self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' ", line)
         self.assertNotIn("--write", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):

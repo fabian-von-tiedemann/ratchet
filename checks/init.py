@@ -497,7 +497,7 @@ def main(argv=None, out=None):
         if action in ("write", "add"):
             try:
                 registry.guard_path(root, os.path.join(root, file))
-            except registry.RegistryError as error:
+            except (registry.RegistryError, OSError) as error:
                 say("init: cannot run: %s" % error)
                 say("init: nothing was written")
                 return 2
