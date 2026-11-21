@@ -1058,7 +1058,7 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, a note that the form of `register.json` grew in 0.10, and the steps in `UPGRADING.md` run on the register at 0.8. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
+| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, a note that the form of `register.json` grew in 0.10, and the steps in `UPGRADING.md` run on the register at 0.9. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
