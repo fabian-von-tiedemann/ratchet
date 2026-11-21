@@ -28,6 +28,21 @@ Ratchet turns each rule into a check that fails when the rule is broken, or says
 
 Each is a question to ask when no rule fits, or an aim: guidance, text only. What is checked is the rules under them in [RATCHET.md](RATCHET.md#the-principles), each with its own ratchet, check or text only.
 
+## Why Ratchet exists
+
+The maintainer had more than 100 repos and no longer knew what governed the agents in them. The rules had grown over time, and the global settings held skills that collided with each other, many of them not needed, as a diagnostic run showed at once. Each project still kept its agent layer tight with rules of its own, and each new practice from the field went into one repo at a time. So for a new project that had to be tight from the start, the rules were built outside any one repo for the first time: one set, kept up with lessons from every project and from the field. That set is Ratchet.
+
+- **The field is followed once, upstream, instead of once per repo.** Ratchet credits four public sources on agentic coding, rule by rule, each pinned at a commit in [sources.json](sources.json). A scheduled workflow opens an issue when a source moves, and the maintainer judges each move before the pin follows. The maintainer also reads more widely, and what holds up comes in as a proposal.
+- **A new rule has one way in.** It starts as a proposal, enters by the maintainer's decision as an experimental rule, outside the core and under a cap, now 23, and moves into the frozen core only by another decision of the maintainer ([RATCHET.md](RATCHET.md#the-core-is-frozen)).
+- **Each project owns its set.** It adopts the rules that matter to it, copied verbatim, and adds its own. Nothing arrives by itself: a new or changed rule reaches a project only when it upgrades, in a PR of its own. `checks/upgrade.py` prints what changed, and which new rules to adopt is the project's choice ([UPGRADING.md](UPGRADING.md)).
+- **Skills stay out of your repos until you choose one.** Ratchet cites the sources and does not ship or install any skill from them. A project that wants one copies it at a pinned commit, tied to a named situation (`ratchet.skills-pinned`).
+
+Ratchet does not yet help you clean up an agent layer you already have. That clean-up is what it grew out of, and it comes next.
+
+**Tell us where it does not fit.** A project that tries Ratchet and meets a rule that does not fit is the input Ratchet improves from. Open an issue, with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml) for a change to a rule. Feedback from one project, [issue #89](https://github.com/fabian-von-tiedemann/ratchet/issues/89), has already led to a change of form, decided in choice 2 of [D-2026-11-20-proposal-triage](decisions/D-2026-11-20-proposal-triage.md) and in [D-2026-11-20-generated-block](decisions/D-2026-11-20-generated-block.md): a project may keep the rules it adopts in a block generated into its own instruction file. It is decided and not built yet. A proposal takes the same way in as any rule, and nothing is promised in advance.
+
+To try it, go to [Start here](#start-here).
+
 ## What Ratchet does
 
 Ratchet is a set of working rules, templates and reference checks for long-lived code projects built by AI agents. Each rule carries a **ratchet**: the check that fails when the rule is broken, or the words "text only" and the reason no check can see it. Two rows from [RATCHET.md](RATCHET.md), shortened:
