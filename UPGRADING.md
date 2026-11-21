@@ -8,14 +8,14 @@ A new project does not upgrade. From 0.9 it starts with `checks/init.py`, as the
 
 ## Steps
 
-Run these in the root of your own repo, on a branch of their own. The commands below move a register from 0.8 to 0.9. Put in the version your register states and the version you move to.
+Run these in the root of your own repo, on a branch of their own. The commands below move a register from 0.9 to 0.10. Put in the version your register states and the version you move to.
 
 1. Fetch the newer Ratchet into `.ratchet`, in place of the old one. Then take the `ratchet.json` of the version your register states from its tag, and keep it beside the new Ratchet.
 
    ```sh
    rm -rf .ratchet
-   git clone --branch v0.9 https://github.com/fabian-von-tiedemann/ratchet .ratchet
-   git -C .ratchet show v0.8:ratchet.json > .ratchet/from.json
+   git clone --branch v0.10 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git -C .ratchet show v0.9:ratchet.json > .ratchet/from.json
    ```
 
 2. Print what the register must do.
@@ -40,6 +40,8 @@ Run these in the root of your own repo, on a branch of their own. The commands b
    A rule whose check runs in the agent's harness, not in CI, needs that check copied into the project. From 0.7, that is `ratchet.irreversible-waits`, whose check is the hook `checks/tripwire.py`: a project that adopts the rule keeps a copy at `.claude/hooks/tripwire.py`, as [CONTROL-ROOM.md](CONTROL-ROOM.md#what-cannot-be-undone) says, and replaces it with the one from the newer Ratchet at each upgrade.
 5. Print `REGISTER.md` again, put it in place, and check it. The check writes nothing: the first command prints the file to a new one and moves that into place, and `rm -f` first removes a link at either name, so that neither the redirection nor `mv` follows one. If the register names an instruction file, put that in place too, before the check: the script prints that command, with the name. The new file always stands in the directory you run the command in, under the file's plain name with `.new` after it, and only `rm -f` and `mv` at the end name the file's own path, so a directory on that path is used only after the check has refused a link in it. For `docs/AGENTS.md` that is `rm -f AGENTS.md.new && python3 .ratchet/checks/check_register.py register.json --print-instructions > AGENTS.md.new && rm -f docs/AGENTS.md && mv AGENTS.md.new docs/AGENTS.md`.
 
+   Up to 0.9, `check_register.py register.json --write REGISTER.md` wrote the file. From 0.10 that option is gone, and the command fails: if a script or a workflow of the project runs it, change it to the first command below. `--write-block`, which the work on 0.10 tried for a while, was never in a release, so nothing needs to move from it.
+
    ```sh
    rm -f REGISTER.md.new && python3 .ratchet/checks/check_register.py register.json --print-markdown > REGISTER.md.new && rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md
    python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md
@@ -48,7 +50,7 @@ Run these in the root of your own repo, on a branch of their own. The commands b
 6. In `.github/workflows/ratchet.yml`, put in the commit of the new tag. This prints it.
 
    ```sh
-   git -C .ratchet rev-parse "v0.9^{commit}"
+   git -C .ratchet rev-parse "v0.10^{commit}"
    ```
 
    From 0.9 to 0.10, `templates/ratchet-checks.yml` also passes `--agents AGENTS.md` to the register check, which then fails while `AGENTS.md` holds a placeholder of the template, and has a job `project-checks` for the project's own checks. Nothing requires them: take them from `.ratchet/templates/ratchet-checks.yml` if you want them.

@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.10, not yet released. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.10, 2026-11-21. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 Each rule has a **key**, a **ratchet** and a **source**.
