@@ -1010,7 +1010,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 code, output = run("generate.py", *args, root=self.copy)
                 self.assertEqual(code, 1, output)
                 self.assertIn(REFUSED, output)
-                self.assertIn("symbolic link(s): link.", output)
+                self.assertIn("every entry was walked): link.", output)
                 self.assertNotIn("Traceback", output)
                 with open(os.path.join(outside, "AGENTS.md"), "rb") as handle:
                     self.assertEqual(handle.read(), before, "nothing outside the repo was written")

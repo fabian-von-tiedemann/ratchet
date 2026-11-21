@@ -2,13 +2,14 @@
 
     python3 -m unittest discover -s checks -v
 
-generate.py, and check_register.py when it writes, walk the repo first and refuse to
-run while any entry in it is a symbolic link. Each writes only through
-registry.write_file, which refuses unless that walk passed in the same process. The
-sweep below reads every script under checks/ with ast and fails on a call that
-writes anywhere but in the places named in WRITERS. The trees with links are made
-here, in a directory of their own, and never committed: a link in this repo would
-make generate.py refuse to run on it. Standard library only.
+generate.py, and check_register.py when it writes, refuse to run while git tracks a
+symbolic link in the tree, or, outside a git work tree, while any entry is one. Each
+writes only through registry.write_file, which refuses unless that gate passed in the
+same process and refuses a link on any part of the path it writes. The sweep below
+reads every script under checks/ with ast and fails on a call that writes anywhere
+but in the places named in WRITERS. The trees with links, and the git work trees,
+are made here, in a directory of their own, and never committed: a link in this repo
+would make generate.py refuse to run on it. Standard library only.
 """
 
 import ast
@@ -149,12 +150,32 @@ def scripts():
     return sorted(name for name in os.listdir(HERE) if name.endswith(".py") and not name.startswith("test_"))
 
 
-def run(script, *args, root=ROOT, cwd=None):
+def run(script, *args, root=ROOT, cwd=None, env=None):
     result = subprocess.run(
         [sys.executable, "-B", os.path.join(root, "checks", script)] + list(args),
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, env=env,
     )
     return result.returncode, result.stdout
+
+
+def git(repo, *args):
+    """Run git in repo, with no global or system config, so that nothing of the user's own is used."""
+    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+    subprocess.run(["git", "-c", "commit.gpgsign=false"] + list(args), cwd=repo, env=env, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def commit_all(repo):
+    """Make repo a git work tree and commit every file in it, with a name and mail set in that repo only."""
+    git(repo, "init", "-q")
+    git(repo, "config", "user.name", "Test")
+    git(repo, "config", "user.email", "test@example.invalid")
+    # No gc in the background after the commit: it would change .git while a test compares the tree before and after.
+    git(repo, "config", "gc.auto", "0")
+    git(repo, "config", "maintenance.auto", "false")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "fixture")
 
 
 def snapshot(top):
@@ -264,6 +285,27 @@ class WriteFile(unittest.TestCase):
         with self.assertRaises(registry.RegistryError):
             registry.write_file(os.path.join(self.repo, "a.md"), "text")
 
+    def test_a_link_made_after_the_walk_on_the_path_is_not_followed(self):
+        # The gate may pass a link that git does not track. write_file checks every part of its own path.
+        outside = os.path.join(self.base, "outside")
+        os.mkdir(outside)
+        with open(os.path.join(outside, "a.md"), "wb") as handle:
+            handle.write(b"before\n")
+        self.assertIsNone(registry.refuse_links(self.repo))
+        os.symlink(outside, os.path.join(self.repo, "dir"))
+        os.symlink(os.path.join(outside, "a.md"), os.path.join(self.repo, "a.md"))
+        os.mkdir(os.path.join(self.repo, "real"))
+        os.symlink(outside, os.path.join(self.repo, "real", "deeper"))
+        for target, parents in (("dir/a.md", False), ("dir/new.md", False), ("dir/sub/new.md", True), ("a.md", False),
+                                ("real/deeper/new.md", True)):
+            with self.subTest(target=target):
+                with self.assertRaises(registry.RegistryError) as raised:
+                    registry.write_file(os.path.join(self.repo, *target.split("/")), "after\n", parents=parents)
+                self.assertIn("is a symbolic link", str(raised.exception))
+        self.assertEqual(sorted(os.listdir(outside)), ["a.md"])
+        with open(os.path.join(outside, "a.md"), "rb") as handle:
+            self.assertEqual(handle.read(), b"before\n")
+
     def test_a_file_with_a_second_hard_link_is_not_written(self):
         outside = os.path.join(self.base, "outside.md")
         with open(outside, "wb") as handle:
@@ -280,7 +322,7 @@ class WriteFile(unittest.TestCase):
             self.assertEqual(handle.read(), b"before\n")
 
 
-class LinksRefused(FixtureTest):
+class Trees(FixtureTest):
     """Trees with links, made in a directory of their own: the repo under repo/, what the links lead to under outside/."""
 
     def tree(self):
@@ -327,6 +369,10 @@ class LinksRefused(FixtureTest):
         self.assertNotIn("Traceback", output)
         self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
         return output
+
+
+class LinksRefused(Trees):
+    """Outside a git work tree the gate walks every entry and refuses every link."""
 
     def test_check_register_refuses_to_write_in_a_tree_with_a_link_to_a_file_outside(self):
         self.register_tree()
@@ -413,6 +459,165 @@ class LinksRefused(FixtureTest):
         self.repo_copy()
         code, output = run("generate.py", "--check", root=self.repo, cwd=self.repo)
         self.assertEqual(code, 0, output)
+
+    def test_the_message_says_every_entry_was_walked_outside_a_git_work_tree(self):
+        self.register_tree()
+        os.makedirs(os.path.join(self.repo, ".venv", "bin"))
+        os.symlink(sys.executable, os.path.join(self.repo, ".venv", "bin", "python"))
+        output = self.assert_refused("check_register.py", ("register.json", "--write-block"), [".venv/bin/python"])
+        self.assertIn("not a git work tree", output)
+
+
+class GitLinks(Trees):
+    """In a git work tree, the gate refuses only links that git tracks. Each tree is made with git init when the test
+    runs. Links that the user's own tools make, untracked, pass the gate, and write_file refuses each on its own path."""
+
+    def tool_links(self):
+        """An untracked .venv/bin/python and node_modules/.bin/x, each a link to a file outside the repo."""
+        for name in ("python", "x"):
+            with open(os.path.join(self.outside, name), "wb") as handle:
+                handle.write(b"outside\n")
+        os.makedirs(os.path.join(self.repo, ".venv", "bin"))
+        os.makedirs(os.path.join(self.repo, "node_modules", ".bin"))
+        os.symlink(os.path.join(self.outside, "python"), os.path.join(self.repo, ".venv", "bin", "python"))
+        os.symlink(os.path.join(self.outside, "x"), os.path.join(self.repo, "node_modules", ".bin", "x"))
+
+    def assert_outside_unchanged(self, before):
+        self.assertEqual(dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside")),
+                         dict((k, v) for k, v in before.items() if k.startswith("outside")))
+
+    def test_check_register_writes_past_untracked_links_of_tools(self):
+        self.register_tree()
+        commit_all(self.repo)
+        self.tool_links()
+        before = snapshot(self.base)
+        code, output = run("check_register.py", "register.json", "--write", "REGISTER.md", "--write-block", cwd=self.repo)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote the block in", output)
+        self.assert_outside_unchanged(before)
+        with open(os.path.join(self.repo, "AGENTS.md"), "rb") as handle:
+            self.assertEqual(handle.read(), self.fixture_bytes("register/block-clean/AGENTS.md"))
+
+    def test_generate_writes_past_untracked_links_of_tools(self):
+        self.repo_copy()
+        self.stale(os.path.join(self.repo, "AGENTS.md"))
+        commit_all(self.repo)
+        self.tool_links()
+        before = snapshot(self.base)
+        code, output = run("generate.py", root=self.repo, cwd=self.repo)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote AGENTS.md", output)
+        self.assert_outside_unchanged(before)
+        code, output = run("generate.py", "--check", root=self.repo, cwd=self.repo)
+        self.assertEqual(code, 0, output)
+
+    def test_a_tracked_link_anywhere_refuses(self):
+        self.register_tree()
+        os.makedirs(os.path.join(self.repo, "docs", "deep"))
+        os.symlink("../../AGENTS.md", os.path.join(self.repo, "docs", "deep", "rules.md"))
+        commit_all(self.repo)
+        for args in (("--write-block",), ("--write", "REGISTER.md")):
+            with self.subTest(args=args):
+                output = self.assert_refused("check_register.py", ("register.json",) + args, ["docs/deep/rules.md"])
+                self.assertIn("that git tracks", output)
+
+    def test_a_tracked_link_refuses_generate(self):
+        self.repo_copy()
+        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
+        self.stale(os.path.join(self.repo, "AGENTS.md"))
+        commit_all(self.repo)
+        for args in ((), ("--check",)):
+            with self.subTest(args=args):
+                output = self.assert_refused("generate.py", args, ["CLAUDE.md"], root=self.repo)
+                self.assertIn("that git tracks", output)
+
+    def assert_not_written(self, script, args, root=None):
+        before = snapshot(self.base)
+        code, output = run(script, *args, root=root or ROOT, cwd=self.repo)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("is a symbolic link", output)
+        self.assertNotIn("Traceback", output)
+        self.assertEqual(snapshot(self.base), before, "nothing in the repo or outside it was written")
+        return output
+
+    def test_an_untracked_link_as_a_parent_directory_of_a_write_target_is_not_written_through(self):
+        self.register_tree()
+        commit_all(self.repo)
+        os.symlink(self.outside, os.path.join(self.repo, "link"))
+        self.assert_not_written("check_register.py", ("register.json", "--write", "link/REGISTER.md"))
+        self.set_instructions("link/AGENTS.md")
+        shutil.copyfile(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
+        self.assert_not_written("check_register.py", ("register.json", "--write-block"))
+
+    def test_an_untracked_link_as_the_write_target_is_not_written_through(self):
+        self.register_tree()
+        commit_all(self.repo)
+        shutil.move(os.path.join(self.repo, "REGISTER.md"), os.path.join(self.outside, "REGISTER.md"))
+        os.symlink(os.path.join(self.outside, "REGISTER.md"), os.path.join(self.repo, "REGISTER.md"))
+        self.assert_not_written("check_register.py", ("register.json", "--write", "REGISTER.md"))
+        shutil.move(os.path.join(self.repo, "AGENTS.md"), os.path.join(self.outside, "AGENTS.md"))
+        os.symlink(os.path.join(self.outside, "AGENTS.md"), os.path.join(self.repo, "AGENTS.md"))
+        self.assert_not_written("check_register.py", ("register.json", "--write-block"))
+
+    def test_generate_does_not_write_through_an_untracked_link(self):
+        # The parent directory of a file it writes, and the file itself: neither is written through.
+        self.repo_copy()
+        commit_all(self.repo)
+        fixtures = os.path.join(self.repo, "checks", "fixtures", "register")
+        shutil.move(fixtures, os.path.join(self.outside, "register"))
+        os.remove(os.path.join(self.outside, "register", "clean", "REGISTER.md"))
+        os.symlink(os.path.join(self.outside, "register"), fixtures)
+        self.assert_not_written("generate.py", (), root=self.repo)
+        os.remove(fixtures)
+        shutil.move(os.path.join(self.outside, "register"), fixtures)
+        git(self.repo, "checkout", "--", "checks/fixtures/register")
+        shutil.move(os.path.join(self.repo, "REGISTER.md"), os.path.join(self.outside, "REGISTER.md"))
+        self.stale(os.path.join(self.outside, "REGISTER.md"))
+        os.symlink(os.path.join(self.outside, "REGISTER.md"), os.path.join(self.repo, "REGISTER.md"))
+        self.assert_not_written("generate.py", (), root=self.repo)
+
+    def test_generate_does_not_scan_an_untracked_link(self):
+        # templates/LINKED.md leads to a file outside with a stale generated block. The scan of Markdown files does not
+        # take it in, so it is neither read nor written.
+        self.repo_copy()
+        commit_all(self.repo)
+        with open(os.path.join(self.outside, "LINKED.md"), "wb") as handle:
+            handle.write(b"<!-- generated:version -->\nstale\n<!-- /generated -->\n")
+        os.symlink(os.path.join(self.outside, "LINKED.md"), os.path.join(self.repo, "templates", "LINKED.md"))
+        os.symlink(self.outside, os.path.join(self.repo, "checks", "linked"))
+        before = snapshot(self.base)
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = run("generate.py", *args, root=self.repo, cwd=self.repo)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("LINKED", output)
+                self.assertEqual(snapshot(self.base), before)
+
+    def test_without_git_every_entry_is_walked(self):
+        # git cannot be run: the gate walks every entry, as outside a work tree, and refuses the untracked link too.
+        self.register_tree()
+        commit_all(self.repo)
+        self.tool_links()
+        empty = self.scratch()
+        env = dict(os.environ, PATH=empty)
+        before = snapshot(self.base)
+        code, output = run("check_register.py", "register.json", "--write-block", cwd=self.repo, env=env)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn(REFUSED, output)
+        self.assertIn("not a git work tree", output)
+        self.assertIn(".venv/bin/python", output)
+        self.assertEqual(snapshot(self.base), before)
+
+    def test_compare_mode_passes_with_a_tracked_link(self):
+        self.register_tree()
+        with open(os.path.join(self.repo, "AGENTS.md"), "wb") as handle:
+            handle.write(self.fixture_bytes("register/block-clean/AGENTS.md"))
+        os.symlink("AGENTS.md", os.path.join(self.repo, "CLAUDE.md"))
+        commit_all(self.repo)
+        before = snapshot(self.base)
+        code, output = run("check_register.py", "register.json", "--markdown", "REGISTER.md", cwd=self.repo)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(snapshot(self.base), before)
 
 
 if __name__ == "__main__":

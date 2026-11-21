@@ -14,10 +14,11 @@ register.json: REGISTER.md, and the block of rules in the instruction file it na
 "instructions", written as check_register.py --write-block writes it. Which blocks each
 file must hold is listed in required_blocks().
 
-Before anything else, generate.py walks the repo, skipping .git, and refuses to run, naming
-each one, while any entry in it is a symbolic link: replace the link with a regular file. It
-writes only through registry.write_file, which refuses unless that walk passed in this process
-(round 3 of #100).
+Before anything else, generate.py refuses to run, naming each one, while git tracks a symbolic
+link in the repo, or, outside a git work tree, while any entry in it is one: replace the link
+with a regular file. It writes only through registry.write_file, which refuses unless that gate
+passed in this process and never writes through a link on the path, and markdown_files() takes
+in no link (round 3 of #100).
 
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
@@ -46,7 +47,6 @@ import argparse
 import copy
 import datetime
 import difflib
-import glob
 import json
 import os
 import re
@@ -549,9 +549,16 @@ def fixtures(data):
 
 
 def markdown_files(root):
+    """The Markdown files in the root, in templates/ and in checks/. A file that is a symbolic link, or that stands in
+    a directory that is one, is not taken in, whether git tracks it or not (round 3 of #100)."""
     paths = []
-    for pattern in ("*.md", "templates/*.md", "checks/*.md"):
-        paths += sorted(glob.glob(os.path.join(root, pattern)))
+    for directory in ("", "templates", "checks"):
+        folder = os.path.join(root, directory) if directory else root
+        if directory and (os.path.islink(folder) or not os.path.isdir(folder)):
+            continue
+        paths += sorted(os.path.join(folder, name) for name in os.listdir(folder)
+                        if name.endswith(".md") and not name.startswith(".") and not os.path.islink(os.path.join(folder, name))
+                        and os.path.isfile(os.path.join(folder, name)))
     return paths
 
 
@@ -898,7 +905,7 @@ def main(argv=None):
     parser.add_argument("--root", default=registry.ROOT, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     root = os.path.abspath(args.root)
-    # Before anything is read or written: no entry in the repo may be a symbolic link (round 3 of #100).
+    # Before anything is read or written: no symbolic link that git tracks, or, outside a git work tree, none at all.
     refused = registry.refuse_links(root)
     if refused:
         print("generate: refused: %s" % refused, file=sys.stderr)

@@ -29,11 +29,12 @@ markers, or at the start of a file that has none, and changes no other byte of t
 file (D-2026-11-20-generated-block). No part of the path of the file may be a
 symbolic link, and the file stays inside the directory of the register.
 
-With --write or --write-block, before anything else, the check walks the directory of
-the register, skipping .git, and refuses to run, naming each one, while any entry in it
-is a symbolic link: a project whose instruction file is a link, such as CLAUDE.md ->
-AGENTS.md, replaces the link with a regular file first. It writes only through
-registry.write_file, and only inside that directory. Without them it only compares and
+With --write or --write-block, before anything else, the check refuses to run, naming
+each one, while git tracks a symbolic link under the directory of the register, or,
+outside a git work tree, while any entry there is one: a project whose instruction file
+is a link, such as CLAUDE.md -> AGENTS.md, replaces the link with a regular file first.
+It writes only through registry.write_file, only inside that directory, and never
+through a link on the path. Without them it only compares and
 writes nothing, so it runs in a tree with links (round 3 of #100).
 
 An adopted rule may carry a translation of its rule: a language code, the text, and
@@ -587,7 +588,7 @@ def main(argv=None):
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
     if args.write or args.write_block:
-        # Before anything is read or written: no entry in the directory of the register may be a symbolic link.
+        # Before anything is read or written: no symbolic link that git tracks there, or, outside a git work tree, none.
         refused = registry.refuse_links(os.path.dirname(args.register) or ".")
         if refused:
             print("check_register: refused: %s" % refused, file=sys.stderr)
