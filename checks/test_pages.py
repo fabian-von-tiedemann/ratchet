@@ -37,7 +37,10 @@ repo, not a reference check. The test reads the page strictly and fails on what 
 - the list of sources, <ul class="sources">, holds one item for each source in sources.json, in its order. Each
   item starts with a link to the source, named by its name, gives its license once in an element of the class
   "license", and names in <code>, in the order of ratchet.json, exactly the rules whose source cites it
-- each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it.
+- each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it
+- the dial of the principles, <svg class="mark-hero">, labels its notches with the titles of the principles in
+  ratchet.json, "01 " and the first, and so on, in order. A principle added, removed, moved or renamed fails until
+  the dial is drawn again. generate.py does not write the labels, since their place and wrapping are part of the drawing.
 
 The line that fetches Ratchet is checked by generate.py, which writes it: it names the newest version with a date
 in CHANGELOG.md, as the command in README.md does, so a release that moves the README moves the page when
@@ -1152,10 +1155,10 @@ class PageFigures(RepoCopy, unittest.TestCase):
     def assert_fails(self, *message):
         Page.assert_fails(self, *message)
 
-    def test_there_are_three_figures_each_named_by_its_title(self):
+    def test_there_are_five_figures_each_named_by_its_title(self):
         reader = PageReader()
         reader.feed(self.page())
-        self.assertEqual(len(reader.figures), 3)
+        self.assertEqual(len(reader.figures), 5)
         for figure in reader.figures:
             self.assertEqual(figure["role"], "img")
             self.assertEqual(figure["titles"], [figure["labelledby"]])
@@ -1233,6 +1236,143 @@ class PageFigures(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change(old, new)
                 self.assert_fails('an <svg> has role="img" and one <title> directly in it, whose id its aria-labelledby names')
+
+
+# The dial of the principles: the <svg> of this class, and in it one label per notch, a <text> of the class "lab" and of
+# the class n0 to n10 for its notch. A long label is wrapped over several <text> elements of the same notch.
+DIAL = "mark-hero"
+DIAL_NOTCH = re.compile(r"n(0|[1-9][0-9]*)\Z")
+
+
+class DialReader(html.parser.HTMLParser):
+    """Reads the labels of the dial of the principles: for each <text> of the class "lab", its notch and its text."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.dials, self.depth, self.labels, self.text = 0, 0, [], None
+
+    def handle_starttag(self, tag, attrs):
+        classes = (dict(attrs).get("class") or "").split()
+        if self.depth:
+            self.depth += 1
+        elif tag == "svg" and DIAL in classes:
+            self.dials, self.depth = self.dials + 1, 1
+        if self.depth and tag == "text" and "lab" in classes:
+            notches = [int(match.group(1)) for match in map(DIAL_NOTCH.match, classes) if match]
+            self.text = [notches[0] if len(notches) == 1 else None, []]
+
+    def handle_endtag(self, tag):
+        if self.depth:
+            self.depth -= 1
+        if tag == "text" and self.text is not None:
+            self.labels.append((self.text[0], " ".join("".join(self.text[1]).split())))
+            self.text = None
+
+    def handle_data(self, data):
+        if self.text is not None:
+            self.text[1].append(data)
+
+
+def dial_problems(root):
+    """Why the labels of the dial on the page are not the titles of the principles in ratchet.json, in order.
+
+    The page holds one dial. Its labels stand by notch, n0 first, and notch k is labelled by one or more <text>
+    elements in a row. Joined with a space, they read "01 " and the title of the first principle, "02 " and the title
+    of the second, and so on, one notch for each principle. So a principle that is added, removed, moved or renamed
+    in ratchet.json fails until the dial is drawn again, and a label edited by hand fails as well.
+    """
+    with open(os.path.join(root, DOCS, PAGE), encoding="utf-8") as handle:
+        reader = DialReader()
+        reader.feed(handle.read())
+    if reader.dials != 1:
+        return ['the page holds %d dials of the principles, an <svg class="%s">, and must hold one' % (reader.dials, DIAL)]
+    groups = []
+    for notch, text in reader.labels:
+        if notch is None:
+            return ["a label of the dial, %r, has no one class n0 to n10 for its notch" % text]
+        if groups and groups[-1][0] == notch:
+            groups[-1][1].append(text)
+        else:
+            groups.append((notch, [text]))
+    titles = [principle["title"] for principle in registry.load(os.path.join(root, "ratchet.json"))["principles"]]
+    expected = [(at, "%02d %s" % (at + 1, title)) for at, title in enumerate(titles)]
+    found = [(notch, " ".join(parts)) for notch, parts in groups]
+    if found != expected:
+        return ["the labels of the dial are %r, and the principles in ratchet.json, in order, are %r" % (found, expected)]
+    return []
+
+
+class PageDial(RepoCopy, unittest.TestCase):
+    """The labels of the dial are the titles of the principles in ratchet.json, one per notch, in order."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_dial_fails(self, *message):
+        problems = dial_problems(self.copy)
+        self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
+
+    def test_the_dial_names_the_eleven_principles_in_order(self):
+        self.assertEqual(dial_problems(ROOT), [])
+        self.assertEqual(dial_problems(self.copy), [])
+        reader = DialReader()
+        reader.feed(self.page())
+        self.assertEqual(len(set(notch for notch, _ in reader.labels)), 11)
+
+    def test_a_principle_renamed_in_ratchet_json_fails_until_the_dial_follows(self):
+        self.edit("ratchet.json", '"title": "Subtract first"', '"title": "Subtract before you add"')
+        self.assert_dial_fails("the labels of the dial")
+
+    def rewrite_principles(self, change):
+        path = os.path.join(self.copy, "ratchet.json")
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        change(data)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        registry.load(path)
+
+    def test_a_principle_added_to_ratchet_json_fails(self):
+        def add(data):
+            # A principle stands over at least one rule, so a rule moves under it from a principle that keeps another.
+            keys = [rule["principle"] for rule in data["rules"]]
+            rule = next(rule for rule in data["rules"] if keys.count(rule["principle"]) > 1)
+            rule["principle"] = "principle.example"
+            data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
+        self.rewrite_principles(add)
+        self.assert_dial_fails("the labels of the dial")
+
+    def test_two_principles_swapped_in_ratchet_json_fail(self):
+        def swap(data):
+            data["principles"][0], data["principles"][1] = data["principles"][1], data["principles"][0]
+        self.rewrite_principles(swap)
+        self.assert_dial_fails("the labels of the dial")
+
+    def test_a_label_edited_moved_or_left_out_fails(self):
+        for old, new in (('text-anchor="end">11 Subtract first</text>', 'text-anchor="end">11 Add more</text>'),
+                         ('text-anchor="middle">01 One register</text>', 'text-anchor="middle">01 One register, mostly</text>'),
+                         ('text-anchor="end">08 Keep secrets out</text>', 'text-anchor="end">08 Keep secrets out</text>\n'
+                          '<text class="lab n7" x="0" y="0" text-anchor="end">if you can</text>'),
+                         ('<text class="lab n10" x="306.5" y="139.6" text-anchor="end">11 Subtract first</text>', ""),
+                         ('<text class="lab n0"', '<text class="lab n1"'),
+                         ('<text class="lab n0"', '<text class="lab"')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assertTrue(dial_problems(self.copy), new)
+
+    def test_a_second_dial_or_none_fails(self):
+        for old, new in (('<svg class="fig mark-hero"', '<svg class="fig"'),
+                         ('<svg class="fig fig-ratchet"', '<svg class="fig fig-ratchet mark-hero"')):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_dial_fails("dials of the principles")
 
 
 class PageMotion(RepoCopy, unittest.TestCase):

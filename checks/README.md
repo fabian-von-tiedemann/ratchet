@@ -943,6 +943,7 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 - Every command on the page, a line of a `<pre><code>` block, is a line of a code block marked `sh` in `README.md`.
 - The list of sources, `<ul class="sources">`, holds one item for each source in `sources.json`, in its order. Each item starts with a link to the source, named by its name, gives its license once in an element of the class `license`, and names in `<code>`, in the order of `ratchet.json`, exactly the rules whose source cites it. So a rule that starts citing a source, a source added or dropped, or a license that changes fails the test until the page says so.
 - The two diagrams are ordered lists of the class `flow`, in any order among their classes, styled as boxes with arrows by the CSS and read as numbered lists without it. Each step links to where the repo shows it: at least one of its links goes into this repo on GitHub, so a step whose only link goes to a source does not pass. They are drawn with HTML and CSS: the figures beside them are pictures of the same steps, and the lists are what the test reads.
+- The dial of the principles, the one `<svg>` of the class `mark-hero`, labels each notch with a `<text>` of the class `lab` and of the class `n0` to `n10`, wrapped over several in a row for a long label. Joined with a space, the labels of the notches read `01 ` and the title of the first principle in `ratchet.json`, `02 ` and the second, and so on, in order, one notch for each principle. So a principle that is added, removed, moved or renamed fails until the dial is drawn again, and a label edited by hand fails too. The labels are not written by `generate.py`, because the place and the wrapping of each label are part of the drawing.
 - The line that fetches Ratchet and the line that gives the count of rules and the cap are written by `generate.py`, and `--check` fails when either is not current (see [generate.py](#generatepy)). So the pull request of a release, which moves the command in `README.md` and runs `generate.py`, moves the page with it, and so does a change to the rules or the cap. The test reads each line as `generate.py` does, after the spaces that indent it.
 
 **Against which threat.** The page is the first thing many people read, so it must not promise more than the repo shows, and it must not track them: no script, font, stylesheet or image from another origin. A figure in SVG is a second way in for all of these, through a link, a `use`, an `image`, a `foreignObject` or an event attribute, so the figures get a list of their own. A figure that moves must not move for a visitor who has asked for less motion. The threat is a mistake, not intent. A release that moves the README and forgets the page would send people to an older version, a count written by hand would go stale at the next rule, a credit to a source would drift from the rules that cite it, and a link that leads nowhere would go unseen, because nothing else reads the page.
@@ -956,7 +957,7 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | A byte that is not UTF-8, or a carriage return, a tab, a NUL, a right-to-left override, a zero-width space or a byte order mark | Fails |
 | No doctype | Fails |
 | A script, inline or loaded, also in capitals, a frame, an object, an embed, a base, a form, an `image` in an inline SVG, or audio | Fails |
-| Three figures in inline SVG, each with `role="img"` and its own title, which its `aria-labelledby` names | Passes |
+| Five figures in inline SVG, each with `role="img"` and its own title, which its `aria-labelledby` names | Passes |
 | In an `<svg>`: a `use`, an `image`, an `a`, a `script`, a `style`, a `foreignObject`, a `marker`, a `linearGradient`, a `filter`, an `animate`, a `set`, a second `svg` or a `p` | Fails |
 | A `path` outside an `<svg>` | Fails |
 | On an `<svg>` or in one: `onload`, `onclick`, `onmouseover`, `href`, `xlink:href`, `xmlns:xlink`, `style` with `url(`, `filter`, `marker-end` | Fails |
@@ -964,7 +965,7 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | A transform of `url(#x)` or `matrix()`, a transform with `;` and `:` after it, a path that starts with `javascript:`, a colon written as a character reference | Fails |
 | A figure without `role="img"`, with another role, whose `aria-labelledby` names another title or is missing, whose title has no id, or with two titles | Fails |
 | A `title` in `main`, in an `h1`, or in a `g` of a figure, or a second `title` in `head` | Fails |
-| The animations of the first figure, inside `@media (prefers-reduced-motion: no-preference)`, and their `@keyframes` | Passes |
+| The animations of the figures, inside `@media (prefers-reduced-motion: no-preference)`, and their `@keyframes` | Passes |
 | An `animation`, an `animation-name` or `scroll-behavior` outside that query, inside `prefers-reduced-motion: reduce`, inside another `@media`, or inside a list of queries that holds it, or the query renamed | Fails |
 | `-webkit-animation`, `-webkit-animation-name`, `-moz-animation`, `-o-animation-duration`, `-MS-Animation` or `-webkit-scroll-behavior` outside that query | Fails |
 | A prefixed animation inside that query | Passes |
@@ -987,6 +988,10 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | No `lang`, an empty or a missing alt text, an `h3` after the `h1`, no `h1` | Fails |
 | Muted text, links or the background changed to a color under 4.5, a hex color outside the palettes, or no palette for dark | Fails |
 | A command on the page that is not in `README.md`, or a second line added to a command | Fails |
+| The dial as it stands: eleven notches, labelled with the titles of the principles in ratchet.json, in order | Passes |
+| A principle renamed, added or swapped with another in ratchet.json, with the dial as it was | Fails |
+| A label of the dial edited, lengthened, given another line, left out, moved to another notch or left without its notch | Fails |
+| No dial, or a second `<svg>` of the class `mark-hero` | Fails |
 | The sources as they stand, each with its link, its license and the rules that cite it, written out in the test | Passes |
 | A source left out, two sources swapped, or a source added to `sources.json` | Fails |
 | A license that is not the one in `sources.json` | Fails |
