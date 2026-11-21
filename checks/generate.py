@@ -14,6 +14,11 @@ register.json: REGISTER.md, and the block of rules in the instruction file it na
 "instructions", written as check_register.py --write-block writes it. Which blocks each
 file must hold is listed in required_blocks().
 
+Before anything else, generate.py walks the repo, skipping .git, and refuses to run, naming
+each one, while any entry in it is a symbolic link: replace the link with a regular file. It
+writes only through registry.write_file, which refuses unless that walk passed in this process
+(round 3 of #100).
+
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
 checks/released_text.py compares it with its tag. The first entry is headed
@@ -893,6 +898,11 @@ def main(argv=None):
     parser.add_argument("--root", default=registry.ROOT, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     root = os.path.abspath(args.root)
+    # Before anything is read or written: no entry in the repo may be a symbolic link (round 3 of #100).
+    refused = registry.refuse_links(root)
+    if refused:
+        print("generate: refused: %s" % refused, file=sys.stderr)
+        return 1
     try:
         data = registry.load(os.path.join(root, "ratchet.json"))
         if args.entries:
@@ -933,14 +943,11 @@ def main(argv=None):
         return 0
 
     for path in stale:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        expected = files[path][1]
-        if isinstance(expected, bytes):
-            with open(path, "wb") as handle:
-                handle.write(expected)
-        else:
-            with open(path, "w", encoding="utf-8", errors="strict", newline="") as handle:
-                handle.write(expected)
+        try:
+            registry.write_file(path, files[path][1], parents=True)
+        except (registry.RegistryError, OSError) as error:
+            print("generate: %s: not written: %s" % (os.path.relpath(path, root), error), file=sys.stderr)
+            return 1
         print("wrote %s" % os.path.relpath(path, root))
     for problem in problems:
         print(problem)

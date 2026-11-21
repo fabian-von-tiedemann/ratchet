@@ -29,6 +29,13 @@ markers, or at the start of a file that has none, and changes no other byte of t
 file (D-2026-11-20-generated-block). No part of the path of the file may be a
 symbolic link, and the file stays inside the directory of the register.
 
+With --write or --write-block, before anything else, the check walks the directory of
+the register, skipping .git, and refuses to run, naming each one, while any entry in it
+is a symbolic link: a project whose instruction file is a link, such as CLAUDE.md ->
+AGENTS.md, replaces the link with a regular file first. It writes only through
+registry.write_file, and only inside that directory. Without them it only compares and
+writes nothing, so it runs in a tree with links (round 3 of #100).
+
 An adopted rule may carry a translation of its rule: a language code, the text, and
 the sha256 of the English rule it translates. The check fails when the sha256 is not
 that of the rule's text in Ratchet at the version the register states, so a rule
@@ -543,7 +550,7 @@ def instruction_place(register_path, register):
 
 def write_block(path, register):
     """Write the block into the instruction file at path, which instruction_place gave. Returns the problems, and
-    writes nothing if there are any. The file is opened without following a link, in case one took its place."""
+    writes nothing if there are any. The file is read without following a link, and written by registry.write_file."""
     data = b""
     if os.path.exists(path):
         try:
@@ -561,11 +568,11 @@ def write_block(path, register):
         return ["%s: the block is not written, since the markers are broken. Mend them by hand first" % path] + problems
     if new != text or not os.path.exists(path):
         try:
-            handle = os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o644), "wb")
+            registry.write_file(path, new)
+        except registry.RegistryError as error:
+            return [str(error)]
         except OSError as error:
-            return ["%s: the block is not written: %s" % (path, error.strerror)]
-        with handle:
-            handle.write(new.encode("utf-8"))
+            return ["%s: the block is not written: %s" % (path, error.strerror or error)]
     return []
 
 
@@ -579,6 +586,12 @@ def main(argv=None):
                         help="write the block of rules into the instruction file that the register names in instructions")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
+    if args.write or args.write_block:
+        # Before anything is read or written: no entry in the directory of the register may be a symbolic link.
+        refused = registry.refuse_links(os.path.dirname(args.register) or ".")
+        if refused:
+            print("check_register: refused: %s" % refused, file=sys.stderr)
+            return 2
     try:
         ratchet = registry.load(args.source)
         if not os.path.isfile(args.register):
@@ -597,9 +610,14 @@ def main(argv=None):
     if not problems:
         expected = render(register)
         if args.write:
-            with open(args.write, "w", encoding="utf-8", newline="") as handle:
-                handle.write(expected)
-            print("wrote %s" % args.write)
+            try:
+                registry.write_file(args.write, expected)
+            except registry.RegistryError as error:
+                problems.append(str(error))
+            except OSError as error:
+                problems.append("%s: not written: %s" % (args.write, error.strerror or error))
+            else:
+                print("wrote %s" % args.write)
         if args.markdown:
             try:
                 problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))

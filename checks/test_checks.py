@@ -37,6 +37,7 @@ MARKERS = "AGENTS.md: the markers of the generated block are broken"
 MARKER_LINE = "must be exactly <!-- ratchet:"
 PLACE = "AGENTS.md: the block must stand at the start of the file"
 LINKED = "is a symbolic link. The instruction file is read and written only as a plain file in the repo"
+REFUSED = "Replace each link with a regular file"
 
 
 def outside(field, code):
@@ -493,9 +494,8 @@ class RegisterCheck(FixtureTest):
         self.assertEqual(code, 2, output)
 
     def test_writing_gives_the_file_that_the_check_accepts(self):
-        directory = scratch(self)
-        target = os.path.join(directory, "REGISTER.md")
         data = self.fixture_file("register/clean/register.json")
+        target = os.path.join(os.path.dirname(data), "REGISTER.md")
         code, output = run("check_register.py", data, "--write", target)
         self.assertEqual(code, 0, output)
         with open(target, encoding="utf-8", newline="") as handle:
@@ -668,7 +668,9 @@ class RegisterBlock(FixtureTest):
             return directory, agents, handle.read()
 
     def test_an_instruction_file_behind_a_symbolic_link_is_neither_read_nor_written(self):
-        # Round 2 of #100: a link in any part of the path, the last or one before it, could lead out of the repo.
+        # Round 2 of #100: a link in any part of the path, the last or one before it, could lead out of the repo. The
+        # check, which writes nothing, refuses the path. --write-block refuses the tree before it reads anything, since
+        # it holds a link (round 3 of #100, and test_writes.py).
         for link_to, instructions in (("directory", "link/AGENTS.md"), ("file", "link.md"), ("directory", "link/new.md")):
             with self.subTest(link_to=link_to, instructions=instructions):
                 directory, agents, before = self.linked(link_to, instructions)
@@ -676,9 +678,14 @@ class RegisterBlock(FixtureTest):
                     os.rename(os.path.join(directory, "link"), os.path.join(directory, "link.md"))
                 for args in ((), ("--write-block",)):
                     code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
-                    self.assertEqual(code, 1, output)
-                    self.assertIn(LINKED, output)
-                    self.assertIn("FAIL: 1 problem(s)", output)
+                    if args:
+                        self.assertEqual(code, 2, output)
+                        self.assertIn(REFUSED, output)
+                        self.assertIn(instructions.split("/")[0], output)
+                    else:
+                        self.assertEqual(code, 1, output)
+                        self.assertIn(LINKED, output)
+                        self.assertIn("FAIL: 1 problem(s)", output)
                     self.assertNotIn("is what register.json generates", output, "the file outside was not read as the block")
                     self.assertNotIn("wrote the block", output)
                     self.assertNotIn("Traceback", output)
@@ -690,6 +697,7 @@ class RegisterBlock(FixtureTest):
         for instructions in ("../AGENTS.md", "/AGENTS.md", "a/../../AGENTS.md", "./AGENTS.md", os.path.join(scratch(self), "AGENTS.md")):
             with self.subTest(instructions=instructions):
                 directory, agents, before = self.linked("directory", instructions)
+                os.remove(os.path.join(directory, "link"))
                 for args in ((), ("--write-block",)):
                     code, output = run("check_register.py", os.path.join(directory, "register.json"), *args)
                     self.assertEqual(code, 1, output)
@@ -700,6 +708,7 @@ class RegisterBlock(FixtureTest):
 
     def test_an_instruction_file_in_a_directory_that_is_missing_is_not_written(self):
         directory, agents, before = self.linked("directory", "docs/AGENTS.md")
+        os.remove(os.path.join(directory, "link"))
         code, output = run("check_register.py", os.path.join(directory, "register.json"), "--write-block")
         self.assertEqual(code, 1, output)
         self.assertIn("docs is missing", output)
@@ -987,7 +996,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
             self.assertEqual(handle.read(), read("AGENTS.md").encode("utf-8"))
 
     def test_the_generator_neither_reads_nor_writes_an_instruction_file_behind_a_symbolic_link(self):
-        # Round 2 of #100: register.json names link/AGENTS.md, and link leads out of the repo.
+        # Round 2 of #100: register.json names link/AGENTS.md, and link leads out of the repo. Since round 3 the
+        # generator refuses the tree, which holds a link, before it reads anything.
         outside = scratch(self)
         with open(os.path.join(self.copy, "AGENTS.md"), "rb") as handle:
             before = handle.read().replace(b"| ratchet.no-secrets | text only for now |", b"| ratchet.no-secrets | built |")
@@ -999,7 +1009,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
             with self.subTest(args=args):
                 code, output = run("generate.py", *args, root=self.copy)
                 self.assertEqual(code, 1, output)
-                self.assertIn("link is a symbolic link. The instruction file is read and written only as a plain file in the repo", output)
+                self.assertIn(REFUSED, output)
+                self.assertIn("symbolic link(s): link.", output)
                 self.assertNotIn("Traceback", output)
                 with open(os.path.join(outside, "AGENTS.md"), "rb") as handle:
                     self.assertEqual(handle.read(), before, "nothing outside the repo was written")
