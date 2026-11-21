@@ -206,7 +206,7 @@ class RepoAge(RepoCopy, unittest.TestCase):
                 self.assertEqual(version, later.get(key, "0.2"))
 
     def test_no_rule_is_too_old_today(self):
-        # Every tag is from 2026-11-16 to 2026-11-19, so no rule has stood 60 days.
+        # The releases up to 0.10 are dated from 2026-11-16 to 2026-11-21, so no rule has stood 60 days.
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
 
@@ -222,7 +222,7 @@ class RepoAge(RepoCopy, unittest.TestCase):
     def test_a_release_60_days_on_fails_the_check_and_names_the_rules(self):
         # The newest release dated 60 days after 0.2: the fourteen rules since 0.2 have stood through every release since.
         # There were twenty until 0.10 merged, removed and moved six of them (D-2026-11-20-proposal-triage).
-        # It is 0.9 in this repo, and the version being released in the copy that test_released_text.py dates.
+        # It is the newest release in this repo, and the version being released in the copy that test_released_text.py dates.
         heading, newest, after = self.newest_release()
         self.edit("CHANGELOG.md", heading, "## %s (2027-01-15)" % newest)
         # The date of the first entry stands in RATCHET.md too, so the generated text is written again first.
@@ -238,7 +238,7 @@ class RepoAge(RepoCopy, unittest.TestCase):
         self.assertNotIn("ratchet.expected-tests-ran is", output)
 
     def test_a_release_dated_before_the_one_before_fails_the_check(self):
-        # The newest release with its year mistyped, 2026-01-16 for 2027-01-16: before 0.8, and the age check silent.
+        # The newest release with its year mistyped, 2026-01-16 for 2027-01-16: before the release before it, and the age check silent.
         heading, newest, _ = self.newest_release()
         with open(os.path.join(self.copy, "CHANGELOG.md"), encoding="utf-8") as handle:
             releases, _ = generate.release_dates(handle.read())

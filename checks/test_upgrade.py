@@ -511,23 +511,23 @@ class RemovedRules(FixtureTest):
 
 
 class UpgradingSteps(FixtureTest):
-    """The steps in UPGRADING.md, run from the root of a project whose register is this repo's own at 0.8."""
+    """The steps in UPGRADING.md, run from the root of a project whose register is this repo's own at 0.9."""
 
     def test_every_command_in_the_steps_runs_from_the_root_of_a_project(self):
         project = self.scratch()
         shutil.copytree(ROOT, os.path.join(project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        shutil.copyfile(self.fixture_file("upgrade/released/0.8/register.json"), os.path.join(project, "register.json"))
-        shutil.copyfile(self.fixture_file("upgrade/released/0.8/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.9/register.json"), os.path.join(project, "register.json"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.9/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
         text = read("UPGRADING.md")
         new = registry.load(os.path.join(ROOT, "ratchet.json"))
         # The steps fetch a tag that exists: a version with a date in the changelog, never one that is unreleased
         # (D-2026-11-19-batched-releases). Their example moves from the version before it.
         dated = re.findall(r"(?m)^## ([0-9]+\.[0-9]+) \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$", read("CHANGELOG.md"))
         fetched = re.findall(r"git clone --branch v([0-9.]+) https://github.com/fabian-von-tiedemann/ratchet \.ratchet", text)
-        self.assertEqual(fetched, ["0.9"])
+        self.assertEqual(fetched, ["0.10"])
         self.assertIn(fetched[0], dated)
-        self.assertEqual(dated[dated.index(fetched[0]) + 1], "0.8")
-        self.assertIn("git -C .ratchet show v0.8:ratchet.json > .ratchet/from.json", text)
+        self.assertEqual(dated[dated.index(fetched[0]) + 1], "0.9")
+        self.assertIn("git -C .ratchet show v0.9:ratchet.json > .ratchet/from.json", text)
         commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", text)
         self.assertEqual([re.search(r"python3 (\S+)", command).group(1) for command in commands],
                          [".ratchet/checks/upgrade.py", ".ratchet/checks/check_register.py", ".ratchet/checks/check_register.py"])
