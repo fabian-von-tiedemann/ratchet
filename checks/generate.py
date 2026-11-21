@@ -917,7 +917,7 @@ def main(argv=None):
     # link and the path to them passes through none, and no symbolic link that git tracks is in the repo, or, outside a
     # git work tree, none at all.
     root = os.path.abspath(args.root)
-    refused = registry.refuse_links(root) or registry.link_problem(os.path.join(root, "register.json"))
+    refused = registry.refuse_links(args.root) or registry.link_problem(os.path.join(root, "register.json"))
     if refused:
         print("generate: refused: %s" % refused, file=sys.stderr)
         return 1

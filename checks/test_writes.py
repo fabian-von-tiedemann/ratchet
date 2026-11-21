@@ -19,6 +19,7 @@ generate.py refuse to run on it. Standard library only.
 import ast
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -537,6 +538,12 @@ class WriteFile(unittest.TestCase):
         self.addCleanup(shutil.rmtree, unresolved)
         self.assertIsNone(registry.refuse_links(unresolved))
 
+    def test_a_path_with_dot_dot_is_refused_by_link_problem(self):
+        for path in ("a/../b", "../b", os.path.join(self.repo, "x", "..", "y"), "a/b/.."):
+            with self.subTest(path=path):
+                self.assertIn('".."', registry.link_problem(path) or "")
+        self.assertIsNone(registry.link_problem(os.path.join(self.repo, "a..b")))
+
     def test_guard_path_refuses_a_link_on_the_path_and_a_path_outside(self):
         os.mkdir(os.path.join(self.repo, "real"))
         os.symlink(self.base, os.path.join(self.repo, "real", "up"))
@@ -674,6 +681,70 @@ class CheckRegisterWritesNothing(Trees):
             with open(path, "rb") as handle:
                 self.assertEqual(handle.read(), self.fixture_bytes("register/block-clean/" + fixture))
         self.assertFalse(os.path.lexists(os.path.join(self.repo, "REGISTER.md.new")))
+
+    def test_the_documented_command_for_a_nested_instruction_file_writes_nothing_through_a_tracked_link(self):
+        # Review of 7787374, P1: the .new file stands in the directory the command runs in, under a plain name, and only
+        # rm -f and mv name the nested path, after the check has refused a link there. docs is a link that git tracks,
+        # to a directory outside that holds AGENTS.md and AGENTS.md.new.
+        self.register_tree()
+        for name in ("AGENTS.md", "AGENTS.md.new"):
+            with open(os.path.join(self.outside, name), "wb") as handle:
+                handle.write(b"Outside the repo.\n")
+        os.symlink(self.outside, os.path.join(self.repo, "docs"))
+        self.set_instructions("docs/AGENTS.md")
+        commit_all(self.repo)
+        documented = []
+        for name in ("UPGRADING.md", os.path.join("checks", "README.md")):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as handle:
+                documented += [(name, command) for command in re.findall(r"`(rm -f [^`]*--print-instructions[^`]*docs/AGENTS\.md)`", handle.read())]
+        self.assertEqual(sorted(name for name, _ in documented), sorted([os.path.join("checks", "README.md"), "UPGRADING.md"]), documented)
+        for name, command in documented:
+            with self.subTest(document=name):
+                self.assertIn("> AGENTS.md.new &&", command, "the new file has a plain name in the current directory")
+                self.assertNotIn("docs/AGENTS.md.new", command)
+                command = re.sub(r"python3 \S*checks/check_register\.py", "%s -B %s" % (
+                    shlex.quote(sys.executable), shlex.quote(os.path.join(ROOT, "checks", "check_register.py"))), command)
+                outside = dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside"))
+                result = subprocess.run(["/bin/sh", "-c", command], cwd=self.repo, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn("is a symbolic link", result.stdout)
+                self.assertEqual(dict((k, v) for k, v in snapshot(self.base).items() if k.startswith("outside")), outside,
+                                 "nothing outside was emptied, removed or written")
+
+    def test_a_path_with_dot_dot_is_refused(self):
+        # Review of 7787374, P2: os.path.abspath folds jump/.. away, but the file is opened by the path as given, through
+        # jump, a link that git tracks, to a directory under the one outside.
+        self.tree()
+        os.mkdir(self.repo)
+        sub = os.path.join(self.outside, "subdir")
+        os.mkdir(sub)
+        for name in ("register.json", "REGISTER.md", "AGENTS.md"):
+            for where in (self.repo, self.outside):
+                with open(os.path.join(where, name), "wb") as handle:
+                    handle.write(self.fixture_bytes("register/block-clean/" + name))
+        os.symlink(sub, os.path.join(self.repo, "jump"))
+        commit_all(self.repo)
+        for args in (("jump/../register.json",), ("register.json", "--markdown", "jump/../REGISTER.md"),
+                     ("register.json", "--agents", "jump/../AGENTS.md"), ("jump/../register.json", "--print-markdown")):
+            with self.subTest(args=args):
+                code, out, err = self.printed(*args)
+                self.assertEqual((code, out), (2, b""), err)
+                self.assertIn("..", err)
+                self.assertIn("refused", err)
+
+    def test_the_print_modes_report_a_register_that_cannot_be_read(self):
+        # Review of 7787374, P3: a register that is not JSON, or not UTF-8, is reported, not a traceback.
+        self.register_tree()
+        for data, message in ((b"{not json", "not a valid data file"), (b'{"project": "\xff"}', "not valid UTF-8")):
+            with open(os.path.join(self.repo, "register.json"), "wb") as handle:
+                handle.write(data)
+            for flag in ("--print-markdown", "--print-instructions"):
+                with self.subTest(data=data, flag=flag):
+                    code, out, err = self.printed("register.json", flag)
+                    self.assertEqual((code, out), (1, b""), err)
+                    self.assertIn(message, err)
+                    self.assertNotIn("Traceback", err)
 
     def test_the_instruction_file_is_not_printed_through_a_link(self):
         self.register_tree()
@@ -813,6 +884,21 @@ class GitLinks(Trees):
             with self.subTest(args=args):
                 output = self.assert_refused("generate.py", args, ["CLAUDE.md", "docs/deep/rules.md"], root=self.repo)
                 self.assertIn("that git tracks", output)
+
+    def test_generate_refuses_a_root_given_with_dot_dot(self):
+        # Review of 7787374, P2: --root jump/.. through a link that git tracks is refused, not folded away.
+        self.repo_copy()
+        commit_all(self.repo)
+        os.mkdir(os.path.join(self.outside, "subdir"))
+        os.symlink(os.path.join(self.outside, "subdir"), os.path.join(self.repo, "jump"))
+        before = snapshot(self.base)
+        for root in (os.path.join(self.repo, "jump", ".."), os.path.join(self.repo, "checks", "..")):
+            with self.subTest(root=root):
+                code, output = run("generate.py", "--check", "--root", root, cwd=self.repo)
+                self.assertNotEqual(code, 0, output)
+                self.assertIn("..", output)
+                self.assertIn("refused", output)
+                self.assertEqual(snapshot(self.base), before)
 
     def test_generate_refuses_a_root_that_is_a_tracked_link(self):
         # The register's directory, the root of generate.py, is a link that git tracks in another repo, to a copy of

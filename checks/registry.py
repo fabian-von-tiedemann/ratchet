@@ -349,7 +349,13 @@ def root_link(path):
 
 
 def link_problem(path):
-    """What to say when path passes through a symbolic link (root_link), or None."""
+    """What to say when path holds a part "..", or passes through a symbolic link (root_link), or None.
+
+    A part ".." is refused, not folded away: os.path.abspath would fold "jump/.." to nothing, while the file is opened by
+    the path as given, through jump, which may be a link (review of 7787374)."""
+    if ".." in path.replace(os.sep, "/").split("/"):
+        return ('%s holds "..", which is refused: the path is checked as given, and a part ".." after a link would lead '
+                "somewhere else than it reads. Name the path without \"..\"" % path)
     link = root_link(path)
     if link is None:
         return None
@@ -373,7 +379,8 @@ def refuse_links(root):
     with the rights of whoever runs the script (round 3 of #100).
     """
     top = os.path.abspath(root)
-    problem = link_problem(top)
+    # The root as given, before os.path.abspath folds a part ".." away.
+    problem = link_problem(root or ".")
     if problem:
         return problem
     try:

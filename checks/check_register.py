@@ -627,7 +627,7 @@ def main(argv=None):
     try:
         register = registry.load_json(args.register)
     except registry.RegistryError as error:
-        problems, summary = [str(error)], None
+        register, problems, summary = None, [str(error)], None
     else:
         problems, summary = check(register, ratchet)
     problems = ["%s: %s" % (args.register, problem) for problem in problems]
