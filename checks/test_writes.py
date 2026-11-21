@@ -452,13 +452,19 @@ class NoBytecodeFromTheSuite(unittest.TestCase):
                 "        subprocess.run([sys.executable, '-m', 'unittest', 'probe_helper'], cwd=HERE,",
                 "                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
                 ""]))
+        # Review of #100: bytecode may go to a separate cache prefix instead of __pycache__. The prefix is set to a
+        # directory in the scratch tree, so a .pyc written there is seen too.
         env = dict((k, v) for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE")
+        env["PYTHONPYCACHEPREFIX"] = os.path.join(scratch, "prefix")
         result = subprocess.run([sys.executable, os.path.join(copy, "expected_tests.py"), "--start", start, "--fixtures", fixtures],
                                 cwd=scratch, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("every expected test ran and passed", result.stdout)
         caches = [folder for folder, folders, _ in os.walk(scratch) if "__pycache__" in folders]
         self.assertEqual(caches, [], "no __pycache__ was written")
+        compiled = [os.path.relpath(os.path.join(folder, name), scratch)
+                    for folder, _, names in os.walk(scratch) for name in names if name.endswith(".pyc")]
+        self.assertEqual(compiled, [], "no bytecode was written, in the scratch tree or under the cache prefix")
 
     def test_the_suite_passes_the_variable_to_the_python_it_spawns(self):
         # The tests that spawn python -m unittest or python -c pass -B as well.
@@ -937,17 +943,19 @@ class GitLinks(Trees):
 
     def test_generate_refuses_a_root_given_with_dot_dot(self):
         # Review of 7787374, P2: --root jump/.. through a link that git tracks is refused, not folded away.
+        # Review of #100: the link is made before the commit, so git tracks it. The gate would then refuse the tree for
+        # the link as well, so the test asks for the message of the refusal of "..", which comes first.
         self.repo_copy()
-        commit_all(self.repo)
         os.mkdir(os.path.join(self.outside, "subdir"))
         os.symlink(os.path.join(self.outside, "subdir"), os.path.join(self.repo, "jump"))
+        commit_all(self.repo)
         before = snapshot(self.base)
         for root in (os.path.join(self.repo, "jump", ".."), os.path.join(self.repo, "checks", "..")):
             with self.subTest(root=root):
                 code, output = run("generate.py", "--check", "--root", root, cwd=self.repo)
                 self.assertNotEqual(code, 0, output)
-                self.assertIn("..", output)
-                self.assertIn("refused", output)
+                self.assertIn('%s holds "..", which is refused' % root, output)
+                self.assertNotIn("that git tracks", output)
                 self.assertEqual(snapshot(self.base), before)
 
     def test_generate_refuses_a_root_that_is_a_tracked_link(self):

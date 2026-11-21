@@ -76,6 +76,9 @@ Changed:
 
 Fixed:
 
+- The strict reader, `registry.strict_loads`, which every check uses to read JSON, refuses nesting deeper than 100 levels itself, before it parses. From Python 3.14 `json.loads` measures the C stack, not the recursion limit, and read 100000 levels, so `check_register.py`, `expected_tests.py` and `released_text.py` refused such data under Python 3.15 for another reason than "nested too deeply", and three tests failed. They now give that message on every Python from 3.9 up. No data file here is nested deeper than 7 levels. Issue #26.
+- `checks/test_writes.py`: the test that `expected_tests.py` and the processes under it write no bytecode looked only for `__pycache__`. It now also sets `PYTHONPYCACHEPREFIX` to a directory in its scratch tree and fails on any `.pyc` there. From the reviews of #100.
+- `checks/test_writes.py`: the test of a root given with `..` committed before it made the link `jump`, so git did not track the link it was named for. It now commits after, and asks for the message of the refusal of `..`, since the link that git tracks would refuse the tree as well. Without that refusal the test now fails. From the reviews of #100.
 - `checks/test_pages.py` passed a step of a diagram whose only link went to a source in `sources.json`. A step now needs a link into this repo, as the page promises.
 - `checks/test_pages.py` counted the diagrams by the text `<ol class="flow`, so a list whose class attribute named `flow` after another class was not counted. It now counts the lists that `html.parser` reads with the class `flow` among their classes.
 - `checks/test_pages.py` read the line of the page that fetches Ratchet without stripping the spaces that indent it, so an indented line passed `generate.py --check` and failed the test. It now reads the line as `generate.py` does.
