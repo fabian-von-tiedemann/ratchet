@@ -13,6 +13,7 @@ import datetime
 import json
 import os
 import re
+import stat
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "ratchet.json")
@@ -268,6 +269,76 @@ def read(path):
         return data.decode("utf-8", errors="strict").replace("\r\n", "\n")
     except UnicodeDecodeError as error:
         raise RegistryError("%s: %s. Every file a check reads is UTF-8" % (path, not_utf8(error)))
+
+
+# The trees that refuse_links walked in this process and found without a link. write_file writes only inside one.
+_WALKED = []
+
+
+def refuse_links(root):
+    """Walk root without following a link, skipping .git, and return None if no entry in it is a symbolic link.
+    Otherwise return what to say, naming each link, relative to root. Only a tree that passes is recorded, and
+    write_file writes nowhere else.
+
+    generate.py, and check_register.py before it writes, call this first, before anything else is read or written. A
+    tree whose content is not trusted, a branch, a project's tree or a fixture, can hold a link that leads anywhere, and
+    a write through it would land there with the rights of whoever runs the check. Refusing every link once, before
+    any path is used, takes the place of a test of each path that is read or written (round 3 of #100).
+    """
+    top = os.path.abspath(root)
+    links = []
+    for folder, folders, files in os.walk(top, followlinks=False):
+        folders[:] = sorted(name for name in folders if name != ".git")
+        for name in sorted(folders + [name for name in files if name != ".git"]):
+            path = os.path.join(folder, name)
+            if os.path.islink(path):
+                links.append(os.path.relpath(path, top).replace(os.sep, "/"))
+    if links:
+        return ("%s holds %d symbolic link(s): %s. Nothing is written in a tree that holds a link, since a write could "
+                "follow one out of it. Replace each link with a regular file, such as a copy of what it points at, and run "
+                "this again" % (root or ".", len(links), ", ".join(sorted(links))))
+    if top not in _WALKED:
+        _WALKED.append(top)
+    return None
+
+
+def forget_walks():
+    """Forget every tree that refuse_links passed. For the tests."""
+    del _WALKED[:]
+
+
+def write_file(path, data, parents=False):
+    """Write data, text as UTF-8 with its line endings as they are, or bytes, to path. The one place where
+    generate.py and check_register.py write.
+
+    Refused, with RegistryError, unless refuse_links passed a tree in this process that path stands in, after "." and
+    ".." are resolved. The file is opened without following a link at its last part, and is written only if it is a
+    regular file with no second hard link. With parents, the directories above it are made as needed.
+    """
+    target = os.path.abspath(path)
+    if not _WALKED:
+        raise RegistryError("%s: not written: no tree was checked for links first" % path)
+    if not any(os.path.commonpath([top, target]) == top and target != top for top in _WALKED):
+        raise RegistryError("%s: not written: it stands outside the tree that was checked for links" % path)
+    if isinstance(data, str):
+        data = data.encode("utf-8", errors="strict")
+    if parents:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(target, flags, 0o666)
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode):
+            raise RegistryError("%s: not written: it is not a regular file" % path)
+        if status.st_nlink != 1:
+            raise RegistryError("%s: not written: it has a second hard link, which could stand outside the tree" % path)
+        os.ftruncate(descriptor, 0)
+        handle = os.fdopen(descriptor, "wb")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with handle:
+        handle.write(data)
 
 
 def compare(name, current, expected, source):
