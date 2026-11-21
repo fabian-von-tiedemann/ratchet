@@ -1492,9 +1492,6 @@ class StartPath(unittest.TestCase):
                 self.assertIsNone(re.search(r"\.[a-z]+/skills/", read("templates", name)), "a tool's own directory for skills")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class ExactFormEnd(unittest.TestCase):
     """An exact form ends at the end of the value: a trailing line break is refused."""
@@ -1513,3 +1510,83 @@ class ExactFormEnd(unittest.TestCase):
             with self.subTest(pattern=pattern.pattern):
                 self.assertTrue(pattern.match(value))
                 self.assertIsNone(pattern.match(value + "\n"))
+
+
+class NestedTooDeeply(unittest.TestCase):
+    """Issue #26: the strict reader refuses data nested deeper than registry.MAX_DEPTH itself, with its own message, on
+    every Python from 3.9 up. From Python 3.14 json.loads measures the C stack, not the recursion limit, and reads
+    100000 levels."""
+
+    def assert_too_deep(self, text):
+        import registry
+        with self.assertRaises(RecursionError) as raised:
+            registry.strict_loads(text)
+        self.assertEqual(str(raised.exception), "nested too deeply")
+        with self.assertRaises(registry.RegistryError) as raised:
+            registry.parse_json(text.encode("utf-8"))
+        self.assertEqual(str(raised.exception), "not a valid data file: it is nested too deeply")
+
+    def test_one_level_past_the_limit_is_refused(self):
+        import registry
+        self.assertEqual(registry.MAX_DEPTH, 100)
+        self.assert_too_deep("[" * 101 + "]" * 101)
+        self.assert_too_deep('{"a": ' * 101 + "1" + "}" * 101)
+        self.assert_too_deep("[" * 50 + '{"a": ' * 51 + "1" + "}" * 51 + "]" * 50)
+        self.assert_too_deep("[" * 100000 + "]" * 100000)
+
+    def test_text_cut_off_deep_is_refused_as_too_deep(self):
+        self.assert_too_deep("[" * 101)
+
+    def test_the_limit_itself_is_read(self):
+        import registry
+        value = registry.strict_loads('{"a": ' * 100 + "1" + "}" * 100)
+        for _ in range(100):
+            self.assertEqual(list(value), ["a"])
+            value = value["a"]
+        self.assertEqual(value, 1)
+        value = registry.strict_loads("[" * 100 + "]" * 100)
+        for _ in range(99):
+            self.assertEqual(len(value), 1)
+            value = value[0]
+        self.assertEqual(value, [])
+
+    def test_brackets_in_a_string_are_not_nesting(self):
+        import registry
+        for text in ('["' + "[{" * 200 + '"]', '["\\"' + "[" * 200 + '"]', '{"' + "{" * 200 + '": "]"}'):
+            with self.subTest(text=text[:12]):
+                self.assertIsInstance(registry.strict_loads(text), (list, dict))
+
+    def run_reader(self, text):
+        """What strict_loads says of text, from a child process stopped after a few seconds. The old reader took about
+        10 seconds on 64 KB of escaped quotes and 1.5 to 2 minutes on 200 KB (review of #106)."""
+        code = ("import sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, sys.argv[1])\nimport registry\n"
+                "text = sys.stdin.read()\ntry:\n    registry.strict_loads(text)\n"
+                "except (ValueError, RecursionError) as error:\n    print(type(error).__name__, error)\n"
+                "else:\n    print('read')\n")
+        try:
+            result = subprocess.run([sys.executable, "-B", "-c", code, HERE], input=text, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, universal_newlines=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            self.fail("the reader took more than 5 seconds on %d characters" % len(text))
+        self.assertEqual(result.returncode, 0, result.stdout)
+        return result.stdout
+
+    def test_a_string_that_never_ends_is_read_in_linear_time(self):
+        # An opening quote, then 100000 escaped quotes and no closing one: 200001 characters.
+        output = self.run_reader('"' + '\\"' * 100000)
+        self.assertTrue(output.startswith("JSONDecodeError Unterminated string"), output)
+
+    def test_brackets_after_a_quote_that_never_ends_are_not_nesting(self):
+        output = self.run_reader('"' + "[" * 101)
+        self.assertTrue(output.startswith("JSONDecodeError Unterminated string"), output)
+        self.assertNotIn("nested too deeply", output)
+
+    def test_an_escaped_backslash_ends_the_escape(self):
+        # The string holds one backslash, so the quote after it ends the string, and the 100 levels after it count,
+        # one more than the limit with the array around them.
+        self.assertEqual(self.run_reader('["\\\\",' + "[" * 100 + "]" * 100 + "]"), "RecursionError nested too deeply\n")
+        self.assertEqual(self.run_reader('["\\\\",' + "[" * 99 + "]" * 99 + "]"), "read\n")
+
+
+if __name__ == "__main__":
+    unittest.main()

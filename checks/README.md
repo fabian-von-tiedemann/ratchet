@@ -139,7 +139,7 @@ A rule of the project's own may carry `status` and `where` (#60). It does not ha
 | `own-time-with-seconds` | A time with seconds. It has digits between two colons, and is the cost of the rule above. | Fails |
 | `own-mail-address` | A mail address in text, which becomes a link whatever is escaped. | Fails |
 | `version-other-digits` | The version is written with the digits of another script. | Fails |
-| `nested-too-deep` | A file nested so deeply that it cannot be read. | Fails |
+| `nested-too-deep` | A file nested more than 100 levels deep, which the strict reader, `registry.strict_loads`, refuses itself, with the same message on every Python from 3.9 up. | Fails |
 | `not-an-object`, `not-json` | The file is not a register at all. | Fails |
 | `not-utf8` | The file holds a byte that is not UTF-8. | Fails |
 | `instructions-outside`, `instructions-absolute`, `instructions-not-markdown`, `instructions-not-text`, `instructions-hidden`, `instructions-dash` | The instruction file is outside the repo, an absolute path, not a Markdown file, not text, holds a character that shows as nothing, or has a part that starts with `-`, which would read as an option to `rm` and `mv` in the printed commands. | Fails |

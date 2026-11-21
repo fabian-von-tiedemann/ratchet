@@ -142,11 +142,52 @@ def _constant(name):
     raise ValueError("%s is not allowed" % name)
 
 
-def strict_loads(text):
-    """Parse JSON text strictly: no field twice in one object, no NaN or Infinity.
+# The deepest nesting of arrays and objects that a data file may have. The reader counts it itself, before json.loads:
+# from Python 3.14 json.loads measures the C stack, not the recursion limit, and reads 100000 levels (issue #26).
+MAX_DEPTH = 100
 
-    Raises ValueError, or RecursionError for text nested too deeply. Every check that reads JSON parses it here.
+# The characters that change the depth or the state of a string. Each match is one character, so the scan cannot
+# backtrack and takes time in proportion to the text (review of #106: a pattern for a whole string took minutes on a
+# string that never ends).
+_NESTING = re.compile(r'["\\\[\]{}]')
+
+
+def nesting_too_deep(text):
+    """Whether text holds arrays and objects nested deeper than MAX_DEPTH, read in one pass from the start.
+
+    Inside a string a bracket is not counted, a backslash escapes the character right after it, and a quote that is
+    not escaped ends the string. A string that never ends hides every bracket after it, and json.loads refuses it as
+    an unterminated string. Up to the first fault in the text, this reads it as json.loads does, so json.loads never
+    goes deeper than the depth counted here."""
+    depth, in_string, escaped = 0, False, -1
+    for match in _NESTING.finditer(text):
+        char, at = match.group(), match.start()
+        if in_string:
+            if at == escaped:
+                continue
+            if char == "\\":
+                escaped = at + 1
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in ("[", "{"):
+            depth += 1
+            if depth > MAX_DEPTH:
+                return True
+        elif char in ("]", "}"):
+            depth -= 1
+    return False
+
+
+def strict_loads(text):
+    """Parse JSON text strictly: no field twice in one object, no NaN or Infinity, no nesting deeper than MAX_DEPTH.
+
+    Raises ValueError, or RecursionError("nested too deeply") for text nested too deeply, on every Python from 3.9
+    up. Every check that reads JSON parses it here.
     """
+    if nesting_too_deep(text):
+        raise RecursionError("nested too deeply")
     return json.loads(text, object_pairs_hook=_pairs, parse_constant=_constant)
 
 

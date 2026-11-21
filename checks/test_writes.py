@@ -374,6 +374,42 @@ class PartFiles(unittest.TestCase):
                 self.assertIn("the file of a part must be a plain path inside the repo", str(raised.exception))
 
 
+def bytecode_env(prefix):
+    """os.environ for a run whose bytecode is looked for: without PYTHONDONTWRITEBYTECODE, so only what the scripts set
+    keeps it out, without PYTHONPATH, so nothing is imported from the real checks (review of #106), and with the cache
+    prefix in the scratch tree, so bytecode that goes there instead of to __pycache__ is seen too."""
+    env = dict((k, v) for k, v in os.environ.items() if k not in ("PYTHONDONTWRITEBYTECODE", "PYTHONPATH", "PYTHONPYCACHEPREFIX"))
+    env["PYTHONPYCACHEPREFIX"] = prefix
+    return env
+
+
+def startup_bytecode(case):
+    """The .pyc, relative to a cache prefix, that this interpreter writes under it before the first line of a script
+    runs. They are modules of the standard library, such as site and encodings, which it imports at its start, and only
+    -B from the caller would stop them. The script sets sys.dont_write_bytecode, as the checks do, and nothing else."""
+    scratch = scratch_dir(case)
+    prefix = os.path.join(scratch, "prefix")
+    script = os.path.join(scratch, "start.py")
+    with open(script, "w", encoding="utf-8") as handle:
+        handle.write("import sys\nsys.dont_write_bytecode = True\n")
+    result = subprocess.run([sys.executable, script], cwd=scratch, env=bytecode_env(prefix), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, universal_newlines=True)
+    case.assertEqual(result.returncode, 0, result.stdout)
+    return set(os.path.relpath(os.path.join(folder, name), prefix)
+               for folder, _, names in os.walk(prefix) for name in names if name.endswith(".pyc"))
+
+
+def bytecode_written(scratch, prefix, baseline):
+    """Every .pyc in scratch that is not under prefix, and every .pyc under prefix that is not in baseline."""
+    found = []
+    for folder, _, names in os.walk(scratch):
+        for name in (name for name in names if name.endswith(".pyc")):
+            path = os.path.join(folder, name)
+            if os.path.commonpath([path, prefix]) != prefix or os.path.relpath(path, prefix) not in baseline:
+                found.append(os.path.relpath(path, scratch))
+    return sorted(found)
+
+
 class NoBytecode(unittest.TestCase):
     def test_every_script_that_runs_as_a_program_sets_no_bytecode_first(self):
         names = runnable()
@@ -409,9 +445,11 @@ class NoBytecode(unittest.TestCase):
 
     def test_scripts_run_as_programs_write_no_bytecode(self):
         # Run without -B and without PYTHONDONTWRITEBYTECODE: only the flag each script sets keeps the bytecode out.
-        copy = os.path.join(scratch_dir(self), "ratchet")
+        # Review of #106: the cache prefix is in the scratch tree, so bytecode that goes there is seen too.
+        scratch = scratch_dir(self)
+        copy, prefix = os.path.join(scratch, "ratchet"), os.path.join(scratch, "prefix")
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        env = dict((k, v) for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE")
+        env, baseline = bytecode_env(prefix), startup_bytecode(self)
         for args in ((os.path.join(copy, "checks", "generate.py"), "--check"),
                      (os.path.join(copy, "checks", "check_register.py"), "register.json", "--markdown", "REGISTER.md"),
                      (os.path.join(copy, "checks", "check_register.py"), "register.json", "--print-markdown")):
@@ -421,6 +459,8 @@ class NoBytecode(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout)
                 caches = [folder for folder, folders, _ in os.walk(copy) if "__pycache__" in folders]
                 self.assertEqual(caches, [], "no __pycache__ was written")
+                self.assertEqual(bytecode_written(scratch, prefix, baseline), [],
+                                 "no bytecode beyond what the interpreter writes at its start")
 
 
 class NoBytecodeFromTheSuite(unittest.TestCase):
@@ -452,13 +492,19 @@ class NoBytecodeFromTheSuite(unittest.TestCase):
                 "        subprocess.run([sys.executable, '-m', 'unittest', 'probe_helper'], cwd=HERE,",
                 "                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)",
                 ""]))
-        env = dict((k, v) for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE")
+        # Review of #100 and #106: the cache prefix is in the scratch tree, PYTHONPATH is not passed, and what the
+        # interpreter writes under a prefix at its start is read from a run of its own, not allowed by its path.
+        prefix = os.path.join(scratch, "prefix")
+        baseline = startup_bytecode(self)
         result = subprocess.run([sys.executable, os.path.join(copy, "expected_tests.py"), "--start", start, "--fixtures", fixtures],
-                                cwd=scratch, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                                cwd=scratch, env=bytecode_env(prefix), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True)
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("every expected test ran and passed", result.stdout)
         caches = [folder for folder, folders, _ in os.walk(scratch) if "__pycache__" in folders]
         self.assertEqual(caches, [], "no __pycache__ was written")
+        self.assertEqual(bytecode_written(scratch, prefix, baseline), [],
+                         "no bytecode beyond what the interpreter writes at its start")
 
     def test_the_suite_passes_the_variable_to_the_python_it_spawns(self):
         # The tests that spawn python -m unittest or python -c pass -B as well.
@@ -937,17 +983,19 @@ class GitLinks(Trees):
 
     def test_generate_refuses_a_root_given_with_dot_dot(self):
         # Review of 7787374, P2: --root jump/.. through a link that git tracks is refused, not folded away.
+        # Review of #100: the link is made before the commit, so git tracks it. The gate would then refuse the tree for
+        # the link as well, so the test asks for the message of the refusal of "..", which comes first.
         self.repo_copy()
-        commit_all(self.repo)
         os.mkdir(os.path.join(self.outside, "subdir"))
         os.symlink(os.path.join(self.outside, "subdir"), os.path.join(self.repo, "jump"))
+        commit_all(self.repo)
         before = snapshot(self.base)
         for root in (os.path.join(self.repo, "jump", ".."), os.path.join(self.repo, "checks", "..")):
             with self.subTest(root=root):
                 code, output = run("generate.py", "--check", "--root", root, cwd=self.repo)
                 self.assertNotEqual(code, 0, output)
-                self.assertIn("..", output)
-                self.assertIn("refused", output)
+                self.assertIn('%s holds "..", which is refused' % root, output)
+                self.assertNotIn("that git tracks", output)
                 self.assertEqual(snapshot(self.base), before)
 
     def test_generate_refuses_a_root_that_is_a_tracked_link(self):
