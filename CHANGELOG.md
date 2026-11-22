@@ -3,16 +3,39 @@
 ## 0.11 (unreleased)
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 19 experimental rules, under a cap of 23: 8 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
+
+Step 2 of the migration in the decision `D-2026-11-22-second-redraw`: the clean-out of the control room's experimental rules. Six experimental rules leave, three are changed, and the cap goes from 23 to 17. No core rule changes. What each rule that leaves loses is a row of the table "What is lost, and what is authorized" in that decision, R4 to R8 and R11, and Ratchet's own path list moves out by row M3. Nothing else is lost.
 
 Added:
 
 - `checks/README.md`: one threat model for every check, before the first, by step 1 of the decision `D-2026-11-22-second-redraw`. The checks catch mistakes and drift, not someone who means to get past them. What stands against that is the owner's required review at the host, and nothing stands against someone who controls the owner's account, the host or the machine a session runs on. A script with no lock at the host behind it is a tripwire. Each check's own claim sets what it covers, and a finding outside that claim becomes one question to the owner, not a new round of hardening. `generate.py` and the tag ruleset now say what they do not claim, under that heading. `AGENTS.md`, "How to change a check", points at the text.
 
+Changes of form:
+
+- `experimental_cap` is 17, from 23 (`D-2026-11-22-second-redraw`, "The product module and the cap"): the ten experimental rules that stay after steps 2 and 3 of the migration, and the seven product rules of step 12.
+- The part `phases` of `CONTROL-ROOM.md` is gone, with the section "The phases", since no rule stands in it.
+
+Removed and moved. A register that adopts one of these takes it out of `adopted`, and to keep it, adds it to `own` under its own prefix, as `checks/upgrade.py` prints: see [UPGRADING.md](UPGRADING.md). A handbook line is added in this version for each rule that leaves as one.
+
+- `ratchet.cr-does-not-build` leaves, and is a line of `templates/CONTROL-ROOM-HANDBOOK.md`, under "Ways of working" (R4).
+- `ratchet.cr-analysis-model` leaves. That overall, scope and architecture assessments run in a fresh context, and that a task stops and is reported when its model is unavailable, with no silent switch to another model, go into `ratchet.review-by-risk`. That they run on the strongest model the project has is a line of the handbook template (R5).
+- `ratchet.cr-next-task` is merged into `ratchet.cr-wake`, whole.
+- `ratchet.cr-quiet-hours` leaves, and is a line of the handbook template (R7).
+- `ratchet.cr-verify-reports` is removed as a duplicate of `ratchet.evidence-before-done`, which keeps that a subagent's "done" is checked independently (R11).
+- `ratchet.phases` leaves. Its sentence that building starts only on a work package the owner approved, and changes only the files it names, goes into `ratchet.cr-workspace`. The three phases are a section of the handbook template, "Phases" (R8).
+- The count: 19 experimental rules before this, less the six, is 13, under a cap of 17.
+
 Changed:
 
-- Three tests in `checks/` no longer take the version of `ratchet.json` for the one that `ratchet.review-by-risk` and `ratchet.one-exact-form` entered in, or the date of the newest release for 2026-11-19. The test that a rule entering now must be used gives the rule the current version in its copy of the repo, so it still fails as before.
+- `ratchet.cr-wake` holds what was `ratchet.cr-next-task`. "Hourly is a good default, with a full status update every second time" leaves it for a line of the handbook template, under "Schedule" (R6), and so does "using whatever wait mechanism its agent tool has", which carried no obligation. Its ratchet adds that the check cannot judge progress.
+- `ratchet.cr-workspace` holds the sentence from `ratchet.phases`. Its ratchet adds that a check cannot see whether the owner approved the work package.
+- `ratchet.review-by-risk` no longer lists Ratchet's own paths: a project lists the paths of its light and full classes in a file the owner owns (M3). A test is still in the full class even when it is only added to. It holds the two clauses from `ratchet.cr-analysis-model`, and its ratchet says that the model a review runs on is set where the reviewer runs too.
+- This repo's register takes `ratchet.cr-does-not-build` and `ratchet.cr-verify-reports` out of `adopted`, and the new entry of `ratchet.review-by-risk` in. Ratchet's own light and full classes are its own rule `repo.review-classes`, word for word as `D-2026-11-19-review-by-risk` has them.
+- `CONTROL-ROOM.md` points to the handbook template for the ways of working that are not rules. `UPGRADING.md` says what a register does from 0.10 to 0.11. `README.md`, `checks/README.md` and `docs/index.html` no longer cite the rules that left or the cap of 23.
+- The tests that pinned the cap, the count of experimental rules or a rule that left count again: `checks/test_budget.py`, `test_age.py`, `test_tripwire.py`, `test_upgrade.py`, `test_pages.py` and `test_checks.py`. `test_budget.py` checks that each rule that left is gone and that its handbook line stands, and that Ratchet's own classes are an own rule. No rule enters in 0.11, so the tests of a rule that enters make `ratchet.review-by-risk` enter in a copy.
+- `checks/README.md` says that the age check names the nine rules since 0.2, as `test_age.py` has it, not fourteen, and `test_age.py` no longer lists `ratchet.phases`, which left.
 
 ## 0.10 (2026-11-21)
 

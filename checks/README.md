@@ -839,7 +839,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 | `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
 | `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
 
-The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 23, with 19 experimental rules under it, and one experimental rule over it fails the check.
+The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 17, with 13 experimental rules under it, and one experimental rule over it fails the check.
 
 ## The age of an experimental rule
 
@@ -864,7 +864,7 @@ Every experimental rule in `ratchet.json` names `since`, the version it entered 
 | `age/form/since-not-a-version.json`, `age/form/since-number.json` | `since` is `9.8.1` or a number | Fails |
 | `age/form/kept-by-not-an-id.json`, `age/form/kept-by-no-such-date.json`, `age/form/kept-by-no-file.json` | `kept_by` is not the id of a decision, names 2026-02-30, or names a decision with no file | Fails |
 | `age/form/kept-by-misspelled.json`, `age/form/since-twice.json` | `keptby` in place of `kept_by`, and `since` twice | Fails |
-| This repo, and a copy with its newest release dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes as it stands. Fails at 60 days, naming the fourteen rules since 0.2 and no other, and passes at 59 |
+| This repo, and a copy with its newest release dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes as it stands. Fails at 60 days, naming the nine rules since 0.2 and no other, and passes at 59 |
 
 The tests are in [test_age.py](test_age.py). The faults of form run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does. The age is tested on `registry.age_problems`, with the dates that `generate.release_dates` reads from the fixture's changelog, and on a copy of this repo.
 
@@ -880,8 +880,8 @@ A new experimental rule is already used by Ratchet itself, or says why Ratchet c
 
 | Case | Result |
 |---|---|
-| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` enter in 0.10, and the register adopts both | Passes |
-| A copy whose register does not adopt `ratchet.review-by-risk` | Fails, naming it |
+| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` entered in 0.10, and the register adopts both | Passes |
+| A copy in which `ratchet.review-by-risk` enters in the version of `ratchet.json`, and whose register does not adopt it | Fails, naming it |
 | The same, with `not_used_because` in the rule | Passes |
 | A copy in which `ratchet.one-exact-form`, which the register adopts, has `not_used_because` | Fails, naming it |
 | `ratchet.cr-handover`, since 0.2, which the register does not adopt | Passes |

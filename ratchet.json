@@ -1,6 +1,6 @@
 {
   "version": "0.11",
-  "experimental_cap": 23,
+  "experimental_cap": 17,
   "start": [
     "ratchet.register-on-top",
     "ratchet.protected-main",
@@ -106,11 +106,6 @@
       "title": "The control room"
     },
     {
-      "id": "phases",
-      "file": "CONTROL-ROOM.md",
-      "title": "The phases"
-    },
-    {
       "id": "irreversible",
       "file": "CONTROL-ROOM.md",
       "title": "What cannot be undone"
@@ -130,7 +125,6 @@
     {
       "key": "ratchet.register-on-top",
       "part": "truth",
-
       "principle": "principle.one-register",
       "status": "core",
       "enforcement": "enforced",
@@ -142,7 +136,6 @@
     {
       "key": "ratchet.protected-main",
       "part": "truth",
-
       "principle": "principle.one-gate",
       "status": "core",
       "enforcement": "enforced",
@@ -153,7 +146,6 @@
     {
       "key": "ratchet.decision-as-file",
       "part": "truth",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "enforced",
@@ -164,7 +156,6 @@
     {
       "key": "ratchet.one-approver",
       "part": "truth",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "enforced",
@@ -175,7 +166,6 @@
     {
       "key": "ratchet.kinds-apart",
       "part": "truth",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "text-only",
@@ -186,7 +176,6 @@
     {
       "key": "ratchet.work-in-issues",
       "part": "truth",
-
       "principle": "principle.state-in-the-repo",
       "status": "core",
       "enforcement": "text-only",
@@ -197,7 +186,6 @@
     {
       "key": "ratchet.glossary",
       "part": "truth",
-
       "principle": "principle.one-register",
       "status": "core",
       "enforcement": "enforced",
@@ -208,7 +196,6 @@
     {
       "key": "ratchet.one-channel",
       "part": "questions",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "text-only",
@@ -219,7 +206,6 @@
     {
       "key": "ratchet.five-choices",
       "part": "questions",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "text-only",
@@ -230,7 +216,6 @@
     {
       "key": "ratchet.look-up-facts",
       "part": "questions",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "text-only",
@@ -241,7 +226,6 @@
     {
       "key": "ratchet.grill-first",
       "part": "questions",
-
       "principle": "principle.owner-decides",
       "status": "core",
       "enforcement": "text-only",
@@ -252,7 +236,6 @@
     {
       "key": "ratchet.fresh-context",
       "part": "review",
-
       "principle": "principle.fresh-review",
       "status": "core",
       "enforcement": "enforced",
@@ -263,7 +246,6 @@
     {
       "key": "ratchet.once-per-version",
       "part": "review",
-
       "principle": "principle.fresh-review",
       "status": "core",
       "enforcement": "enforced",
@@ -274,7 +256,6 @@
     {
       "key": "ratchet.two-rounds",
       "part": "review",
-
       "principle": "principle.fresh-review",
       "status": "core",
       "enforcement": "enforced",
@@ -285,7 +266,6 @@
     {
       "key": "ratchet.findings-marked",
       "part": "review",
-
       "principle": "principle.claim-carries-run",
       "status": "core",
       "enforcement": "text-only",
@@ -296,7 +276,6 @@
     {
       "key": "ratchet.verify-findings",
       "part": "review",
-
       "principle": "principle.claim-carries-run",
       "status": "core",
       "enforcement": "text-only",
@@ -307,7 +286,6 @@
     {
       "key": "ratchet.checks-owner-read",
       "part": "review",
-
       "principle": "principle.one-gate",
       "status": "core",
       "enforcement": "enforced",
@@ -318,7 +296,6 @@
     {
       "key": "ratchet.register-review-first",
       "part": "review",
-
       "principle": "principle.fresh-review",
       "status": "core",
       "enforcement": "text-only",
@@ -329,7 +306,6 @@
     {
       "key": "ratchet.root-cause",
       "part": "building",
-
       "principle": "principle.failure-becomes-check",
       "status": "core",
       "enforcement": "enforced",
@@ -340,7 +316,6 @@
     {
       "key": "ratchet.reuse-first",
       "part": "building",
-
       "principle": "principle.subtract-first",
       "status": "core",
       "enforcement": "text-only",
@@ -351,7 +326,6 @@
     {
       "key": "ratchet.simplest",
       "part": "building",
-
       "principle": "principle.subtract-first",
       "status": "core",
       "enforcement": "text-only",
@@ -362,7 +336,6 @@
     {
       "key": "ratchet.run-early",
       "part": "building",
-
       "principle": "principle.claim-carries-run",
       "status": "core",
       "enforcement": "text-only",
@@ -373,7 +346,6 @@
     {
       "key": "ratchet.test-first",
       "part": "building",
-
       "principle": "principle.check-has-seen-red",
       "status": "core",
       "enforcement": "enforced",
@@ -384,7 +356,6 @@
     {
       "key": "ratchet.test-can-fail",
       "part": "building",
-
       "principle": "principle.check-has-seen-red",
       "status": "core",
       "enforcement": "enforced",
@@ -395,7 +366,6 @@
     {
       "key": "ratchet.evidence-before-done",
       "part": "building",
-
       "principle": "principle.claim-carries-run",
       "status": "core",
       "enforcement": "text-only",
@@ -406,7 +376,6 @@
     {
       "key": "ratchet.slices",
       "part": "building",
-
       "principle": "principle.subtract-first",
       "status": "core",
       "enforcement": "text-only",
@@ -417,7 +386,6 @@
     {
       "key": "ratchet.experiment-plan",
       "part": "building",
-
       "principle": "principle.subtract-first",
       "status": "core",
       "enforcement": "text-only",
@@ -428,7 +396,6 @@
     {
       "key": "ratchet.no-secrets",
       "part": "security",
-
       "principle": "principle.secrets-stay-out",
       "status": "core",
       "enforcement": "enforced",
@@ -439,7 +406,6 @@
     {
       "key": "ratchet.no-tracing",
       "part": "security",
-
       "principle": "principle.secrets-stay-out",
       "status": "core",
       "enforcement": "enforced",
@@ -450,7 +416,6 @@
     {
       "key": "ratchet.material-not-instructions",
       "part": "security",
-
       "principle": "principle.outside-text-is-material",
       "status": "core",
       "enforcement": "text-only",
@@ -461,7 +426,6 @@
     {
       "key": "ratchet.skills-pinned",
       "part": "security",
-
       "principle": "principle.outside-text-is-material",
       "status": "core",
       "enforcement": "enforced",
@@ -472,7 +436,6 @@
     {
       "key": "ratchet.nightly-visible",
       "part": "security",
-
       "principle": "principle.state-in-the-repo",
       "status": "core",
       "enforcement": "enforced",
@@ -483,7 +446,6 @@
     {
       "key": "ratchet.agents-without-keys",
       "part": "security",
-
       "principle": "principle.secrets-stay-out",
       "status": "core",
       "enforcement": "text-only",
@@ -494,7 +456,6 @@
     {
       "key": "ratchet.lesson-names-check",
       "part": "lessons",
-
       "principle": "principle.failure-becomes-check",
       "status": "core",
       "enforcement": "enforced",
@@ -505,7 +466,6 @@
     {
       "key": "ratchet.lesson-loop",
       "part": "lessons",
-
       "principle": "principle.failure-becomes-check",
       "status": "core",
       "enforcement": "text-only",
@@ -514,21 +474,8 @@
       "source": ""
     },
     {
-      "key": "ratchet.cr-does-not-build",
-      "part": "control-room",
-
-      "principle": "principle.state-in-the-repo",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "The control room does not build the product. It may make small fixes after a review and maintain its own tools. Building happens in workspaces.",
-      "ratchet": "Text only: a check cannot tell which session wrote a commit",
-      "source": ""
-    },
-    {
       "key": "ratchet.cr-handover",
       "part": "control-room",
-
       "principle": "principle.state-in-the-repo",
       "status": "experimental",
       "since": "0.2",
@@ -540,103 +487,39 @@
     {
       "key": "ratchet.cr-workspace",
       "part": "control-room",
-
       "principle": "principle.state-in-the-repo",
       "status": "experimental",
       "since": "0.2",
       "enforcement": "text-only",
-      "rule": "A work package gets its own issue (assignment, files it may change, cap in time or cost, stop rule), its own branch and its own worktree from the main branch. The workspace reports back with the PR link and the head.",
-      "ratchet": "Text only until the project has an issue template with these fields as required",
+      "rule": "A work package gets its own issue (assignment, files it may change, cap in time or cost, stop rule), its own branch and its own worktree from the main branch. Building starts only on a work package the owner approved, and changes only the files it names. The workspace reports back with the PR link and the head.",
+      "ratchet": "Text only until the project has an issue template with these fields as required. A check cannot see whether the owner approved the work package",
       "source": ""
     },
     {
       "key": "ratchet.review-by-risk",
       "part": "control-room",
-
       "principle": "principle.fresh-review",
       "status": "experimental",
       "since": "0.10",
       "enforcement": "text-only",
-      "rule": "The depth of a review follows the risk of what the PR changes, read from the paths it changes. The light class is the directory `docs/`, the landing page, and the file `CHANGELOG.md`; a release also changes `RATCHET.md`, so it gets the full review. Every other path is in the full class, among them every test and fixture, `README.md`, `GLOSSARY.md`, `UPGRADING.md`, `MIGRATING.md` and `HANDOVER.md`, which define terms, give commands that tests run or instruct agents, everything under `templates/`, `AGENTS.md`, `CONTROL-ROOM.md`, `SELF-IMPROVEMENT.md`, `RATCHET.md`, `CONTRIBUTING.md`, `.claude/`, `.github/`, `checks/`, `ratchet.json`, `register.json`, `sources.json` and `decisions/`. A test is in the full class even when it is only added to, because a test runs with the others and can weaken what they cover. A PR whose paths are all light gets a light review, from the same reviewer from another model family at a lower effort. A PR with any path in the full class gets the full review. A finding that the reviewer marks as not blocking the merge starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed.",
-      "ratchet": "Text only: the effort of a review is set where the reviewer runs, and a check in the repo cannot see it. The class could be read from the paths, but that alone guards nothing",
-      "source": ""
-    },
-    {
-      "key": "ratchet.cr-analysis-model",
-      "part": "control-room",
-
-      "principle": "principle.fresh-review",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "Overall, scope and architecture assessments run on the strongest model the project has, in a fresh context. If that model is unavailable, the task stops and is reported. There is no silent switch to another model.",
-      "ratchet": "Text only: a check in the repo cannot see which model ran a task",
+      "rule": "The depth of a review follows the risk of what the PR changes, read from the paths it changes. The project lists the paths of its light class and its full class in a file the owner owns. A test is in the full class even when it is only added to, because a test runs with the others and can weaken what they cover. A PR whose paths are all light gets a light review, from the same reviewer from another model family at a lower effort. A PR with any path in the full class gets the full review. Overall, scope and architecture assessments run in a fresh context. If the model a review or an assessment is to run on is unavailable, the task stops and is reported. There is no silent switch to another model. A finding that the reviewer marks as not blocking the merge starts no new round: the control room fixes it in its next PR and says so on the PR that was reviewed.",
+      "ratchet": "Text only: the effort of a review and the model it runs on are set where the reviewer runs, and a check in the repo cannot see them. The class could be read from the paths, but that alone guards nothing",
       "source": ""
     },
     {
       "key": "ratchet.cr-wake",
       "part": "control-room",
-
       "principle": "principle.state-in-the-repo",
       "status": "experimental",
       "since": "0.2",
       "enforcement": "enforced",
-      "rule": "A scheduled wake-up reads the feed of new PRs, checks and issues and advances whatever is ready. The project sets the interval. Hourly is a good default, with a full status update every second time. The control room keeps what it has delegated in a list in a file, not only in its context: the workspace or review, the PR, the head and when it started. At every wake-up it checks that each run on the list is still going or has reported, and a delegation leaves the list only when its report has been read and acted on. A workspace that starts a long run in the background keeps its thread alive until the run is done, using whatever wait mechanism its agent tool has, and does not end its turn while a run it promised to report on is still going.",
-      "ratchet": "Check: the schedule exists, and the status issue shows the time of the last wake-up and the number of open delegations. It does not see whether a workspace waited on its run",
-      "source": ""
-    },
-    {
-      "key": "ratchet.cr-next-task",
-      "part": "control-room",
-
-      "principle": "principle.state-in-the-repo",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "When nobody asks anything, the control room takes the next permitted task. A blocked task gets its cause written down, and an independent task is taken instead. Reporting status alone is not progress.",
-      "ratchet": "Text only: a check cannot judge progress",
-      "source": ""
-    },
-    {
-      "key": "ratchet.cr-quiet-hours",
-      "part": "control-room",
-
-      "principle": "principle.owner-decides",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "During the owner's quiet hours, the control room only continues work already under way and experiments already approved, and collects questions for the morning. It asks at night only if the owner is already in the conversation.",
-      "ratchet": "Text only: messages pass no check",
-      "source": ""
-    },
-    {
-      "key": "ratchet.cr-verify-reports",
-      "part": "control-room",
-
-      "principle": "principle.claim-carries-run",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "The control room verifies a workspace's report against the repo, the PR and the running processes before acting on it (see `ratchet.evidence-before-done`).",
-      "ratchet": "Text only: a check cannot see whether a report was verified",
-      "source": "obra/superpowers `verification-before-completion`"
-    },
-    {
-      "key": "ratchet.phases",
-      "part": "phases",
-
-      "principle": "principle.owner-decides",
-      "status": "experimental",
-      "since": "0.6",
-      "enforcement": "text-only",
-      "rule": "A work package is in one phase at a time, named in its issue: explore, build or run. In explore, an agent reads, searches, tries things in scratch space and writes proposals and questions. It does not merge, release or change the register. Explore ends when the owner picks a proposal to build, or drops it. In build, an agent works on one work package the owner approved, on its own branch, changes only the files the package names, and merges only on green checks and a passed review. Build ends when the PR is merged or the stop rule is reached. In run, an agent watches what is merged, reports on it and undoes a change that fails. A fix, or anything new, goes back to build. Run ends when the owner retires what runs or opens a new phase.",
-      "ratchet": "Text only: a check cannot tell which phase a session is in. In build, the required checks and the review on the PR guard the merge",
+      "rule": "A scheduled wake-up reads the feed of new PRs, checks and issues and advances whatever is ready. The project sets the interval. When nobody asks anything, the control room takes the next permitted task. A blocked task gets its cause written down, and an independent task is taken instead. Reporting status alone is not progress. The control room keeps what it has delegated in a list in a file, not only in its context: the workspace or review, the PR, the head and when it started. At every wake-up it checks that each run on the list is still going or has reported, and a delegation leaves the list only when its report has been read and acted on. A workspace that starts a long run in the background keeps its thread alive until the run is done, and does not end its turn while a run it promised to report on is still going.",
+      "ratchet": "Check: the schedule exists, and the status issue shows the time of the last wake-up and the number of open delegations. It does not see whether a workspace waited on its run, and it cannot judge progress",
       "source": ""
     },
     {
       "key": "ratchet.irreversible-waits",
       "part": "irreversible",
-
       "principle": "principle.owner-decides",
       "status": "experimental",
       "since": "0.7",
@@ -649,7 +532,6 @@
     {
       "key": "ratchet.si-harden",
       "part": "tightening",
-
       "principle": "principle.failure-becomes-check",
       "status": "experimental",
       "since": "0.2",
@@ -661,7 +543,6 @@
     {
       "key": "ratchet.si-repeat-is-signal",
       "part": "tightening",
-
       "principle": "principle.failure-becomes-check",
       "status": "experimental",
       "since": "0.2",
@@ -673,7 +554,6 @@
     {
       "key": "ratchet.si-promote",
       "part": "tightening",
-
       "principle": "principle.failure-becomes-check",
       "status": "experimental",
       "since": "0.2",
@@ -685,7 +565,6 @@
     {
       "key": "ratchet.si-pull",
       "part": "tightening",
-
       "principle": "principle.one-register",
       "status": "experimental",
       "since": "0.2",
@@ -697,7 +576,6 @@
     {
       "key": "ratchet.si-measure",
       "part": "tightening",
-
       "principle": "principle.failure-becomes-check",
       "status": "experimental",
       "since": "0.2",
@@ -709,7 +587,6 @@
     {
       "key": "ratchet.si-subtract",
       "part": "tightening",
-
       "principle": "principle.subtract-first",
       "status": "experimental",
       "since": "0.2",
@@ -721,7 +598,6 @@
     {
       "key": "ratchet.expected-tests-ran",
       "part": "promoted",
-
       "principle": "principle.check-has-seen-red",
       "status": "experimental",
       "since": "0.4",
@@ -734,7 +610,6 @@
     {
       "key": "ratchet.one-exact-form",
       "part": "promoted",
-
       "principle": "principle.check-has-seen-red",
       "status": "experimental",
       "since": "0.10",
