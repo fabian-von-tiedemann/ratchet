@@ -1,0 +1,1 @@
+{"mcpServers": {"files": {"command": "files-server", "env": {"API_KEY": "FIXTURE-SECRET-MCP"}}, "search": {"url": "https://example.com/mcp"}}}

@@ -1,0 +1,5 @@
+# Owners
+* @fixture-owner
+
+/.github/ @fixture-owner
+/checks/ @fixture-owner @fixture-second

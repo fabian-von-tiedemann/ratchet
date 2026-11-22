@@ -1163,6 +1163,69 @@ It runs only from the root of a git repo, read from the files and not by running
 | A checkout at the tag of its version, and one that is not | Named either way |
 | No temporary file is left behind | Passes |
 
+## inventory.py
+
+```sh
+python3 .ratchet/checks/inventory.py                          # the repo in the folder it runs in
+python3 .ratchet/checks/inventory.py --uses claude,codex      # and the files no harness in use loads
+python3 .ratchet/checks/inventory.py --ruleset main.json      # and the jobs that run and are not required
+python3 .ratchet/checks/inventory.py --global --json          # with the user's own layer, as JSON
+```
+
+This one checks no rule in a register. It is the inventory of [D-2026-11-21-inventory-and-easy-upgrade](../decisions/D-2026-11-21-inventory-and-easy-upgrade.md), with the three additions of [D-2026-11-22-second-redraw](../decisions/D-2026-11-22-second-redraw.md): a repo that already has an agent layer runs it first, to see what it has before it chooses. It is new in 0.11.
+
+**What it claims.** It lists, as names and short facts, the files that make up a repo's agent layer as it stands, and with `--global` the user's own layer under the home folder (`--home` names another folder). It reports facts and does not interpret Markdown (D-2026-11-16-strict-forms). Judging what each part means, and which principle it answers to, is the agent's job on its output, and the result is a proposal to the owner, never a change.
+
+- **The files.** Instruction files at any depth (`CLAUDE.md`, `CLAUDE.local.md`, `AGENTS.md`, `AGENTS.override.md`, `GEMINI.md`) and in the places a harness reads them, skills, commands, agents, hooks, settings, MCP config, workflows, pull request and issue templates, the code owners file and the register, each with its kind and the harnesses that load it. Which harness loads which file is the table `KINDS` in the script, as of 2026-11: Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot, Windsurf and Cline. Every file in a harness's own folder, such as `.claude/`, is listed, of a kind the table knows or not. From settings and MCP config it gives only the names of hook events, with a count, and of servers.
+- **Same content and same name.** Files with the same bytes, by sha256, and skills, commands and agents with the same name, in the repo, across harnesses and, with `--global`, across the two layers, each group marked as the same or a different content.
+- **Not loaded by a harness in use** (addition 2). With `--uses`, the files that no harness named there loads, such as a session prompt for a harness the project left, each with the instruction files that name it. Without `--uses` it does not guess which harnesses are in use, and says to give them.
+- **Look unused.** A hook under `.claude/hooks/` that no settings file of its layer names, a skill folder without `SKILL.md`, an empty file, and a file in a harness's folder of a kind the table does not know.
+- **Paths named that do not exist.** In each instruction file, by line: the target of a Markdown link, read from the file's folder; an import `@path`; and a span in backticks with a `/` in it, read from the file's folder or from the root. A span with no `/`, such as `` `generate.py` ``, is a name and is not looked at, and so is one with no known extension whose first part does not exist, such as `owner/repo`. A URL, an anchor, an absolute path, `~` and a path that leaves the root are not looked at.
+- **Workflows and the host's rules** (addition 1). For each workflow, the events it runs on and its jobs, each with its name. Given with `--ruleset` the ruleset or branch protection exported from the host as JSON, once or more: whether each job is required, the jobs that run on a pull request and are not required, under the heading "they look like a gate and are not", the required checks no job here names, and what the export says of required review and bypass: the number of approvals, code owner review, stale reviews dismissed, approval of the last push, the actors that may bypass, and administrators when branch protection does not apply to them. A ruleset that is not `active`, or not on branches, requires nothing. A job is required when a required check is its id or its name, alone, with a matrix `(...)` after it, or with ` / ` and a called job. A type of rule it does not read is named.
+- **Code owners beside the register** (addition 3). The lines of the code owners file that GitHub reads, `.github/CODEOWNERS`, `CODEOWNERS` or `docs/CODEOWNERS`, first found, with their numbers, beside the files `register.json` names: its `instructions`, a row's `stands_in`, and the paths in backticks in a row's `where`, each marked when it does not exist. It does not match one against the other: the owner compares them.
+
+It writes nothing, reaches no network and runs no program. It reads only under the root, the home folder with `--global`, and the files given with `--ruleset`. In the home folder it looks only at the names at the top of `.claude`, `.codex` and `.gemini`, at `.claude.json`, and in the folders of `GLOBAL_WALKED`, and reads only the files of `GLOBAL_KINDS`. It follows no link: each one in the layer is named with its target and whether the target is inside the root, and nothing behind it is read. It does not read a file whose name looks like a credential (`CREDENTIAL_NAMES`: `.env`, `*.pem`, `*token*`, `*secret*`, `*credential*`, `auth.json`, `.claude.json` and others), and names it as skipped. It does not read a file over 1,000,000 bytes, and names it. It opens each file without following a link and reads it only if it is a regular file. Every name it prints is on one line, with a line break, a control character and a backslash escaped. It does not walk `.git`, `node_modules` or `.claude/worktrees`. The export is read with the strict reader, `registry.parse_json`, and the fields it reads must be of their kind. Exit code 0 when it ran, 2 when it could not: a root that is not a folder, a harness it does not know, an export it cannot read, that is not JSON or not UTF-8, has a field twice, has a field of the wrong kind, a rule without a type, or is neither a ruleset nor a branch protection.
+
+**Against which threat.** Not knowing what governs a repo: instruction files and skills that grew over time, collide with each other or with the user's global ones, that no harness in use reads any longer, or that name files that are gone; and a job that runs on every pull request and looks like a gate, when the host does not require it, which is how a check is taken to be "built" when it cannot refuse (#78). It is read only, so that a repo can be looked at before anything in it is chosen or changed. As [the threat model](#the-threat-model) says of every check, it catches mistakes and drift, not someone who means to hide a file from it.
+
+**What it does not claim.**
+
+- It does not read what a file says, or judge whether a rule is good, a duplicate in meaning, or in force. Two files that say the same thing in other words are not the same content.
+- The table of harnesses and their files is as of 2026-11 and is not complete. It does not see a harness's own configuration that changes what it loads, such as Gemini CLI's `contextFileName` (named as a fact, not followed), an import beyond the one line `@path`, a rule set in an application's settings, or a plugin.
+- It does not see whether a harness is in use. `--uses` is the owner's word.
+- A path in an instruction file may be meant as something else, and a path written in another way is not seen. A name in backticks with no `/` is not looked at.
+- It reads workflows as far as their top-level keys, their jobs and each job's `name`, in the block form of YAML with spaces. A workflow in another form, or indented with tabs, is named as not read. It does not see a job's `if`, the branches or paths a trigger is limited to, or what a reusable workflow runs.
+- It does not reach the host. The export is what the owner gives it: it does not see whether the file is current, or a rule the export leaves out, such as one set at the organization. A required check from an app that is not a job here is listed, not judged.
+- It does not match the code owners file against the files the register names, and does not see whether the owner's review is required. The register's `where` says where a check is enforced and when that was read back (D-2026-11-22-second-redraw).
+- A credential under a name not on the list is read like any other file of its kind, though it prints only names and short facts from it. A credential outside the layer is not looked at.
+- It does not stand against a repo set up to mislead it: a file can be named or placed so that it looks like another kind.
+
+**The cases.** Each is a test in [test_inventory.py](test_inventory.py). The fixtures are under [fixtures/inventory/](fixtures/inventory/): a repo with an agent layer under `repo/`, a user's layer under `home/`, a ruleset, a branch protection and a ruleset that is only evaluated under `ruleset/`, and exports with one fault each under `faults/`. A fixture's name cannot start with a dot, so a part that starts with `dot-` is renamed to start with `.` in the copy the test makes. This repo holds no link, so the test makes the links in that copy.
+
+| Case | Result |
+|---|---|
+| The repo | Every file of the layer, each with its kind and the harnesses that load it, and nothing else: a file an instruction file names is not part of the layer |
+| Settings and MCP config with values that stand for secrets | The names of hook events with a count, and of servers; no value, command or name of a variable |
+| `.claude/.credentials.json`, `.claude/.env`, `~/.claude.json` and `~/.codex/auth.json` | Named as skipped, not read, not listed; none of their values printed |
+| A link to a folder outside the root, a link to a file inside it, and `GEMINI.md` as a link to `AGENTS.md` | Each named with its target and inside or outside; none followed, and nothing behind the outside one read |
+| Two commands with the same bytes, and two skills `deploy` with different ones | Same content, and same name with the same or a different content; an empty file is in neither |
+| Without and with `--global` | Without it, nothing from the home folder; with it, the four files of the global layer, a skill of the same name and content in both layers, `~/.agents/skills` and `~/.codex/skills` as links to a folder outside, each named once and not followed, and `--home` in place of `HOME` |
+| `--uses claude,codex`, `--uses claude`, and no `--uses` | `.cursorrules` and the Copilot prompt; then also `AGENTS.md`, named by `CLAUDE.md` through `@AGENTS.md`, the nested `AGENTS.md` and the Codex skill; without it, no list and a line that says to give it |
+| A hook no settings file names, a skill folder without `SKILL.md`, an empty agent, a file of no known kind in `.claude/` | Each looks unused, and the hook that the settings name does not |
+| Paths named in `AGENTS.md` and a nested `AGENTS.md`: a link and spans that do not exist, a link and spans that do, URLs, an anchor, `owner/repo`, `../outside.md`, a bare name | The four that do not exist, by file and line, and nothing else |
+| Workflows without `--ruleset` | Events and jobs, with a job's name, a quoted id, a name that is an expression, a comment after a value, and `# jobs:` in a block of text; nothing said of required |
+| A ruleset that requires `checks`, `test (3.9)` and a check from an app | `lint` runs on a pull request and is not required; `test` is required by its matrix; the app's check has no job here; review, bypass, other rules and a rule not read, as exported |
+| Branch protection | `lint` and `test` not required; two approvals, a user who may bypass review, and administrators not held by it |
+| A ruleset that is only evaluated, alone and with the branch protection | It requires nothing; with the other, what the other requires |
+| An export that is not JSON, not UTF-8, has a field twice, a list where text is due, a rule without a type, text in place of an object, an object of neither form | Cannot run, exit 2, with the fault named and nothing printed on standard output |
+| The code owners file and the register | The lines that are not comments, with their numbers, beside `instructions` and the paths in a `where`, one marked as not existing |
+| Every run, with every option | Nothing under the repo or the home folder changes: no file, size, time or byte |
+| The script's imports and calls | No module that reaches the network or runs a program, and from `registry` only the strict reader |
+| A file name with a line break | Printed as `\n`, on one line |
+| An instruction file over 1,000,000 bytes, and one that is not UTF-8 | Listed, named as not read or with the byte, and no path from it looked at |
+| A harness it does not know, a missing export, an option it does not know, a root that does not exist | Cannot run, exit 2 |
+| This repo | Runs, with `AGENTS.md`, the job `checks`, and the fixtures' instruction files at depth |
+
 ## tripwire.py
 
 ```sh

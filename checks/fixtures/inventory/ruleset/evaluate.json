@@ -1,0 +1,1 @@
+[{"name": "trial", "target": "branch", "enforcement": "evaluate", "rules": [{"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "lint"}]}}]}]

@@ -1,0 +1,26 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo checks
+  lint:
+    name: Lint the docs
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo lint
+          # jobs:
+  test:
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo test

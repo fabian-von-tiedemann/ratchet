@@ -1,0 +1,7 @@
+{
+  "env": {"FIXTURE_TOKEN": "FIXTURE-SECRET-SETTINGS"},
+  "hooks": {
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard.py"}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "true"}]}]
+  }
+}
