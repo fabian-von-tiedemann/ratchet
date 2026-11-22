@@ -196,7 +196,7 @@ class RepoAge(RepoCopy, unittest.TestCase):
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
         since = dict((rule["key"], rule["since"]) for rule in data["rules"] if rule["status"] == "experimental")
         # ratchet.review-by-risk entered in 0.10, and the tag v0.10 is the first that holds it.
-        later = {"ratchet.expected-tests-ran": "0.4", "ratchet.phases": "0.6", "ratchet.irreversible-waits": "0.7",
+        later = {"ratchet.expected-tests-ran": "0.4", "ratchet.irreversible-waits": "0.7",
                  "ratchet.review-by-risk": "0.10"}
         # ratchet.one-exact-form entered in 0.10 too. Six rules since 0.2 left in 0.10 (D-2026-11-20-proposal-triage).
         # In 0.11 five rules since 0.2 and ratchet.phases left (D-2026-11-22-second-redraw, step 2), and three more
