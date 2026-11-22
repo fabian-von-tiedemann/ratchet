@@ -4,9 +4,17 @@ Ratchet takes proposals from people and from agents, in the same steps. The word
 
 ## Propose
 
-1. Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml), [.github/ISSUE_TEMPLATE/proposal.yml](.github/ISSUE_TEMPLATE/proposal.yml). It asks for five things, each required: what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source ([D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md)). An issue opened with the form gets the label `proposal`. A lesson from a project comes the same way (`ratchet.si-promote`).
+1. Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml), [.github/ISSUE_TEMPLATE/proposal.yml](.github/ISSUE_TEMPLATE/proposal.yml). It asks for five things, each required: what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source ([D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md)). An issue opened with the form gets the label `proposal`. A lesson from a project comes the same way: see [A lesson from a project](#a-lesson-from-a-project).
 2. Ratchet's maintainer decides. A decision is written as a file in [decisions/](decisions/). Until then the issue is a proposal (P), not a rule.
-3. A new rule starts as experimental, outside the core, which is frozen: see [RATCHET.md](RATCHET.md#the-core-is-frozen). It counts against `experimental_cap` in [ratchet.json](ratchet.json). At the cap, a new rule replaces, merges or removes one, or a decision raises the cap. A new rule is already used by Ratchet itself, adopted in [register.json](register.json), or says in `not_used_because` why Ratchet cannot use it: `checks/generate.py --check` fails otherwise. A proposal may also remove a rule (`ratchet.si-subtract`).
+3. A new rule starts as experimental, outside the core, which is frozen: see [RATCHET.md](RATCHET.md#the-core-is-frozen). It counts against `experimental_cap` in [ratchet.json](ratchet.json). At the cap, a new rule replaces, merges or removes one, or a decision raises the cap. A new rule is already used by Ratchet itself, adopted in [register.json](register.json), or says in `not_used_because` why Ratchet cannot use it: `checks/generate.py --check` fails otherwise. A proposal may also remove a rule, as far as this repo's own rule `repo.subtract`, in [REGISTER.md](REGISTER.md), allows.
+
+## A lesson from a project
+
+Ratchet invites it. This is not a rule, and Ratchet cannot see a lesson that was never sent. Until 0.11 it was the experimental rule `si-promote`, and the text is the same ([D-2026-11-22-second-redraw](decisions/D-2026-11-22-second-redraw.md), M1):
+
+> A lesson that would have applied in another project becomes a PR to Ratchet within a week, with what happened, the ratchet and the result in the project. Everything that identifies the project is removed first.
+
+It starts as an issue with the proposal form, as in step 1 above, and the PR links that issue.
 
 ## Change
 

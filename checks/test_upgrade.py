@@ -426,14 +426,17 @@ class Upgrade(FixtureTest):
                     # ratchet.cr-wake and ratchet.si-subtract, and removes six: ratchet.cr-background-wait, merged into
                     # ratchet.cr-wake, three more and the two this repo moved to its own rules (D-2026-11-20-proposal-triage).
                     # 0.11 removes six more and changes ratchet.cr-workspace, and changes ratchet.cr-wake and
-                    # ratchet.review-by-risk again (D-2026-11-22-second-redraw, step 2): 11 + 6 + 1 = 18.
-                    self.assertIn("In Ratchet %s, 18 rules are new, changed or removed." % new["version"], output)
+                    # ratchet.review-by-risk again (D-2026-11-22-second-redraw, step 2): 11 + 6 + 1 = 18. Step 3 changes
+                    # ratchet.si-harden, removes ratchet.si-repeat-is-signal and ratchet.si-promote, and removes
+                    # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21.
+                    self.assertIn("In Ratchet %s, 21 rules are new, changed or removed." % new["version"], output)
                     self.assertIn("Not adopted, so nothing to do: ratchet.cr-analysis-model (removed), ratchet.cr-background-wait "
                                   "(removed), ratchet.cr-does-not-build (removed), ratchet.cr-lead-with-ask (removed), "
                                   "ratchet.cr-next-task (removed), ratchet.cr-quiet-hours (removed), ratchet.cr-reads-first "
                                   "(removed), ratchet.cr-review (removed), ratchet.cr-verify-reports (removed), ratchet.cr-wake "
                                   "(changed), ratchet.cr-workspace (changed), ratchet.phases (removed), ratchet.root-cause "
-                                  "(changed), ratchet.si-subtract (changed).", output)
+                                  "(changed), ratchet.si-harden (changed), ratchet.si-promote (removed), "
+                                  "ratchet.si-repeat-is-signal (removed), ratchet.si-subtract (removed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])

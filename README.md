@@ -64,12 +64,12 @@ Ratchet follows its own rules, and this repo is where they are tried first. Its 
 - **Tags are locked by a ruleset.** No one but a repository admin can move or delete a tag. The ruleset is [templates/tag-ruleset.json](templates/tag-ruleset.json), applied on 2026-11-19 and read back ([D-2026-11-19-tag-ruleset-scope](decisions/D-2026-11-19-tag-ruleset-scope.md), [D-2026-11-19-tripwire-and-settings](decisions/D-2026-11-19-tripwire-and-settings.md)).
 - **A release is published by the merge that dates it.** Changes are collected under an entry headed `(unreleased)`, and the pull request that gives it its date is the release. The [release workflow](.github/workflows/release.yml) tags it after the merge ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)). Every PR compares released text with its tag ([checks/released_text.py](checks/released_text.py)), because the generator once rewrote a released entry, in a round of [PR #12](https://github.com/fabian-von-tiedemann/ratchet/pull/12).
 - **A change to a rule or a check is merged only after a model from another family has passed its exact head** ([D-2026-11-17-agent-merges-after-approval](decisions/D-2026-11-17-agent-merges-after-approval.md)). The reviews are comments on the PRs, such as the two rounds on [PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50). This is an instruction the agents follow, not a lock, and AGENTS.md says so.
-- **The register says honestly which checks are built.** Most of the rules this repo adopts that name a check stand as "text only for now", and `ratchet.protected-main` says "Not met in this repo" ([REGISTER.md](REGISTER.md)).
+- **The register says honestly which checks are built.** Every rule this repo adopts that names a check stands as "text only for now", and `ratchet.protected-main` says "Not met in this repo" ([REGISTER.md](REGISTER.md)).
 
 ## The honest limits
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 - **Most of the core is still text.** The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below, each run in this repo's CI with a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until it does, the rule is text only in your project, and your register says so.
@@ -152,7 +152,7 @@ Ratchet is how I, Fabian von Tiedemann, work with AI coding agents. I keep it up
 
 ## Contributing
 
-A lesson from a project is welcome. It starts as an issue with the proposal form, which asks for what happened, the failure class, the ratchet, whether it would apply in other projects and the primary source, with everything that identifies the project removed. See [CONTRIBUTING.md](CONTRIBUTING.md) and `ratchet.si-promote` in [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md). The working rules for this repo are in [AGENTS.md](AGENTS.md).
+A lesson from a project is welcome. It starts as an issue with the proposal form, which asks for what happened, the failure class, the ratchet, whether it would apply in other projects and the primary source, with everything that identifies the project removed. See [CONTRIBUTING.md](CONTRIBUTING.md#a-lesson-from-a-project). The working rules for this repo are in [AGENTS.md](AGENTS.md).
 
 ## License
 

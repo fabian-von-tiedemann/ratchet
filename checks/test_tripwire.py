@@ -459,18 +459,24 @@ class Rule(FixtureTest):
             self.assertIn(words, rule["ratchet"])
         # 23 when it was added in 0.7. 0.10 adds ratchet.review-by-risk (D-2026-11-19-review-by-risk) and
         # ratchet.one-exact-form, and takes six out (D-2026-11-20-proposal-triage): 19. 0.11 takes six more out, step 2
-        # of D-2026-11-22-second-redraw: 13.
-        self.assertEqual(registry.counts(data)["experimental"]["rules"], 13)
+        # of D-2026-11-22-second-redraw: 13. Step 3 takes three more out: 10.
+        self.assertEqual(registry.counts(data)["experimental"]["rules"], 10)
 
-    def test_this_repo_adopts_it_as_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
-        # Built since the maintainer applied the tag ruleset and the control room read it back on 2026-11-19
-        # (D-2026-11-19-tripwire-and-settings). The tripwire is the check the rule names, and the place where it
-        # lives says which steps a lock refuses and which the tripwire alone catches.
+    def test_this_repo_adopts_it_as_not_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
+        # Built from 2026-11-19, when the maintainer applied the tag ruleset and the control room read it back
+        # (D-2026-11-19-tripwire-and-settings), until D-2026-11-22-second-redraw defined "built" by where a check is
+        # enforced: a hook is built only when it runs in every harness the project uses, and Codex, which also works on
+        # this repo, does not run it. The tripwire is the check the rule names, and the place where it lives says which
+        # steps a lock refuses and which the tripwire alone catches.
         register = registry.parse_json(read("register.json").encode("utf-8"))
         entries = [entry for entry in register["adopted"] if entry["key"] == "ratchet.irreversible-waits"]
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["status"], "built")
+        self.assertEqual(entries[0]["status"], "text only for now")
         where = entries[0]["where"]
+        self.assertTrue(where.startswith("Not built. "), where)
+        for words in ("runs as a hook only in Claude Code", "Codex and the other harnesses that work on this repo do not run it",
+                      "D-2026-11-22-second-redraw"):
+            self.assertIn(words, where)
         for words in ("`checks/tripwire.py`", "`.claude/settings.json`", "not every spelling", "`templates/tag-ruleset.json`",
                       "`tags-stay`", "read back on 2026-11-19", "D-2026-11-19-tag-ruleset-scope", "role Write", "only an admin",
                       "`main`", "caught by the tripwire alone", "creating a tag or a release", "a force push to another branch",
