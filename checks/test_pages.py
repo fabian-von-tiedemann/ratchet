@@ -990,7 +990,7 @@ class PageSources(RepoCopy, unittest.TestCase):
             ("https://github.com/google/elephant-goldfish-model", "google/elephant-goldfish-model", "Apache-2.0",
              ("ratchet.fresh-context",)),
             ("https://github.com/mattpocock/skills", "mattpocock/skills", "MIT",
-             ("ratchet.ask-the-owner", "ratchet.root-cause", "ratchet.test-first", "ratchet.evidence-before-done", "ratchet.slices")),
+             ("ratchet.ask-the-owner", "ratchet.root-cause", "ratchet.simplest", "ratchet.test-can-fail", "ratchet.evidence-before-done")),
             ("https://github.com/cursor/plugins/tree/HEAD/pstack", "pstack", "MIT",
              ("ratchet.two-rounds", "ratchet.root-cause", "ratchet.simplest", "ratchet.evidence-before-done",
               "ratchet.lesson-names-check", "ratchet.si-harden")),
@@ -1026,11 +1026,11 @@ class PageSources(RepoCopy, unittest.TestCase):
         path = os.path.join(self.copy, "ratchet.json")
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
-        at = text.index('"key": "ratchet.reuse-first"')
+        at = text.index('"key": "ratchet.no-tracing"')
         cut = text.index('"source": ""', at)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text[:cut] + '"source": "obra/superpowers `example`"' + text[cut + len('"source": ""'):])
-        self.assert_fails("obra/superpowers", "ratchet.reuse-first")
+        self.assert_fails("obra/superpowers", "ratchet.no-tracing")
 
     def test_a_key_on_the_page_that_does_not_cite_the_source_fails(self):
         for old, new in (("<code>ratchet.fresh-context</code>", "<code>ratchet.fresh-context</code>, <code>ratchet.simplest</code>"),

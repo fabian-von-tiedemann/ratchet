@@ -49,7 +49,7 @@ A work package is in one phase at a time, named in its issue: explore, build or 
 
 ## Lessons
 
-- [ ] After a failed review or a failed experiment: propose at most three lessons with the lesson template.
+- [ ] After a failed review or a failed experiment: propose lessons with the lesson template.
 - [ ] After the owner approves a lesson: add its ratchet, and send the lesson to Ratchet if it would apply in another project.
 
 ## Handover

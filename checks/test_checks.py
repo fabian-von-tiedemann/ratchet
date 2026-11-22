@@ -1475,7 +1475,7 @@ class StartPath(unittest.TestCase):
     def test_the_entry_that_is_printed_can_be_pasted(self):
         code, output = self.run_in_project("python3 .ratchet/checks/init.py")
         self.assertEqual(code, 0, output)
-        code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-first")
+        code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-can-fail")
         self.assertEqual(code, 0, output)
         path = os.path.join(self.project, "register.json")
         with open(path, encoding="utf-8") as handle:

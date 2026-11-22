@@ -195,34 +195,14 @@
       "source": "mattpocock/skills `diagnosing-bugs`; pstack `principle-fix-root-causes`"
     },
     {
-      "key": "ratchet.reuse-first",
-      "part": "building",
-      "principle": "principle.subtract-first",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Prefer proven tools, libraries and skills to writing your own code and text. New code is justified against a requirement and a simpler alternative.",
-      "ratchet": "Text only: a check cannot judge whether an alternative existed",
-      "source": ""
-    },
-    {
       "key": "ratchet.simplest",
       "part": "building",
       "principle": "principle.subtract-first",
       "status": "core",
       "enforcement": "text-only",
-      "rule": "Choose the simplest solution that meets the requirements. Try removing something before adding something. After repeated patches to the same area, stop and assess the whole.",
-      "ratchet": "Text only: simplicity is a judgment",
-      "source": "pstack `principle-subtract-before-you-add`"
-    },
-    {
-      "key": "ratchet.test-first",
-      "part": "building",
-      "principle": "principle.checks-that-fail",
-      "status": "core",
-      "enforcement": "enforced",
-      "rule": "Red before green, one vertical slice at a time, tests only at agreed seams. An expected value comes from an independent source and is never computed the way the code computes it.",
-      "ratchet": "Check: mutations of the changed code that the new tests must kill",
-      "source": "mattpocock/skills `tdd`"
+      "rule": "Choose the simplest solution that meets the requirements. Try removing something before adding something. After repeated patches to the same area, stop and assess the whole. Prefer proven tools, libraries and skills to writing your own code and text. New code is justified against a requirement and a simpler alternative. Work is split into vertical slices that each fit in a fresh context, with dependencies and acceptance criteria.",
+      "ratchet": "Text only: simplicity is a judgment, a check cannot judge whether an alternative existed, and slice size is a judgment",
+      "source": "pstack `principle-subtract-before-you-add`; mattpocock/skills `to-tickets`"
     },
     {
       "key": "ratchet.test-can-fail",
@@ -230,9 +210,9 @@
       "principle": "principle.checks-that-fail",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "A test must fail on exactly the bug it claims to catch, whatever the machine's speed and the time of day. Time and waiting are tested with a replaceable clock or wait function.",
-      "ratchet": "Check: one mutation per test case",
-      "source": ""
+      "rule": "A test must fail on exactly the bug it claims to catch, whatever the machine's speed and the time of day. Time and waiting are tested with a replaceable clock or wait function. Red before green, one vertical slice at a time, tests only at agreed seams. An expected value comes from an independent source and is never computed the way the code computes it.",
+      "ratchet": "Check: one mutation per test case, and mutations of the changed code that the new tests must kill. Mutations may run on a schedule the project sets, not in every PR. A scheduled run names the revision it tested and posts its result. It is red when a mutation survives or when the last run is older than the age the project sets",
+      "source": "mattpocock/skills `tdd`"
     },
     {
       "key": "ratchet.evidence-before-done",
@@ -243,16 +223,6 @@
       "rule": "No claim that something is done without a check run just now, shown with the command and its result. A claim shows the head it ran on, and for a change a user sees, the run shows what the user sees. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise. Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". An unproven finding keeps its severity. Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
       "ratchet": "Text only: a check cannot see a claim made in a message or whether a finding was verified, and a script can see that a finding's marks are there, not that they are true. Required checks on the PR head cover the claims they run",
       "source": "obra/superpowers `verification-before-completion`, `receiving-code-review`; pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
-    },
-    {
-      "key": "ratchet.slices",
-      "part": "building",
-      "principle": "principle.subtract-first",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Work is split into vertical slices that each fit in a fresh context, with dependencies and acceptance criteria.",
-      "ratchet": "Text only: slice size is a judgment",
-      "source": "mattpocock/skills `to-tickets`"
     },
     {
       "key": "ratchet.no-secrets",
@@ -295,13 +265,13 @@
       "source": ""
     },
     {
-      "key": "ratchet.nightly-visible",
+      "key": "ratchet.silence-is-red",
       "part": "security",
       "principle": "principle.show-the-run",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "The result of the nightly security scan is posted where the control room reads every day, so that a red night does not go unnoticed.",
-      "ratchet": "Check: the nightly job posts its own result, pass or fail, to the status issue",
+      "rule": "Every scheduled job posts its result, and a late post is red. The result of the nightly security scan is posted where the control room reads every day, so that a red night does not go unnoticed.",
+      "ratchet": "Check: every scheduled job, the nightly job among them, posts its own result, pass or fail, to the status issue, and a late post is red",
       "source": ""
     },
     {
@@ -310,8 +280,8 @@
       "principle": "principle.guard-the-boundaries",
       "status": "core",
       "enforcement": "text-only",
-      "rule": "Interactive agents run as a separate OS user without the operator's keys. Every key the project uses is on a revocation list.",
-      "ratchet": "Text only: the repo cannot see how a machine is set up",
+      "rule": "Interactive agents run as a separate OS user without the operator's keys. Every key the project uses is on a revocation list. The agents' forge account has no admin role, and agents use a temporary directory of their own.",
+      "ratchet": "Text only: the repo cannot see how a machine is set up, or what role an account has at the forge",
       "source": ""
     },
     {
@@ -320,19 +290,9 @@
       "principle": "principle.checks-that-fail",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check.",
-      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field",
+      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check. After a failed review or a failed experiment, lessons are proposed. They apply only after the owner approves them.",
+      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field. It does not see whether a lesson was proposed, or whether the owner approved it",
       "source": "pstack `principle-encode-lessons-in-structure`"
-    },
-    {
-      "key": "ratchet.lesson-loop",
-      "part": "lessons",
-      "principle": "principle.checks-that-fail",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "After a failed review or a failed experiment, at most three lessons are proposed. They apply only after the owner approves them.",
-      "ratchet": "Text only: a check cannot see whether a lesson was proposed",
-      "source": ""
     },
     {
       "key": "ratchet.cr-handover",
