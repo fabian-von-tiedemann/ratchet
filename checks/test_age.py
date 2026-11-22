@@ -199,8 +199,9 @@ class RepoAge(RepoCopy, unittest.TestCase):
         later = {"ratchet.expected-tests-ran": "0.4", "ratchet.phases": "0.6", "ratchet.irreversible-waits": "0.7",
                  "ratchet.review-by-risk": "0.10"}
         # ratchet.one-exact-form entered in 0.10 too. Six rules since 0.2 left in 0.10 (D-2026-11-20-proposal-triage).
+        # In 0.11 five rules since 0.2 and ratchet.phases left (D-2026-11-22-second-redraw, step 2).
         later["ratchet.one-exact-form"] = "0.10"
-        self.assertEqual(len(since), 19)
+        self.assertEqual(len(since), 13)
         for key, version in sorted(since.items()):
             with self.subTest(rule=key):
                 self.assertEqual(version, later.get(key, "0.2"))
@@ -220,8 +221,9 @@ class RepoAge(RepoCopy, unittest.TestCase):
         return "## %s (%s)" % (newest, releases[newest].isoformat()), newest, len(after)
 
     def test_a_release_60_days_on_fails_the_check_and_names_the_rules(self):
-        # The newest release dated 60 days after 0.2: the fourteen rules since 0.2 have stood through every release since.
-        # There were twenty until 0.10 merged, removed and moved six of them (D-2026-11-20-proposal-triage).
+        # The newest release dated 60 days after 0.2: the nine rules since 0.2 have stood through every release since.
+        # There were twenty until 0.10 merged, removed and moved six of them (D-2026-11-20-proposal-triage), and 0.11
+        # took five more out (D-2026-11-22-second-redraw, step 2).
         # It is the newest release in this repo, and the version being released in the copy that test_released_text.py dates.
         heading, newest, after = self.newest_release()
         self.edit("CHANGELOG.md", heading, "## %s (2027-01-15)" % newest)
@@ -231,9 +233,8 @@ class RepoAge(RepoCopy, unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("ratchet.json: ratchet.cr-wake is experimental since 0.2 and has stood through %d releases and 60 days, "
                       "up to %s (2027-01-15), with no decision to keep it" % (after, newest), output)
-        self.assertEqual(output.count("with no decision to keep it"), 14)
-        # 0.6 and 0.7 came on 2026-11-19, 57 days before. 0.4 came on 2026-11-17, a day after 0.2: 59 days.
-        self.assertNotIn("ratchet.phases is", output)
+        self.assertEqual(output.count("with no decision to keep it"), 9)
+        # 0.7 came on 2026-11-19, 57 days before. 0.4 came on 2026-11-17, a day after 0.2: 59 days.
         self.assertNotIn("ratchet.irreversible-waits is", output)
         self.assertNotIn("ratchet.expected-tests-ran is", output)
 

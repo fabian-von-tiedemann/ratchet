@@ -821,7 +821,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 | `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
 | `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
 
-The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 23, with 19 experimental rules under it, and one experimental rule over it fails the check.
+The tests are in [test_budget.py](test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 17, with 13 experimental rules under it, and one experimental rule over it fails the check.
 
 ## The age of an experimental rule
 
@@ -862,8 +862,8 @@ A new experimental rule is already used by Ratchet itself, or says why Ratchet c
 
 | Case | Result |
 |---|---|
-| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` enter in 0.10, and the register adopts both | Passes |
-| A copy whose register does not adopt `ratchet.review-by-risk` | Fails, naming it |
+| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` entered in 0.10, and the register adopts both | Passes |
+| A copy in which `ratchet.review-by-risk` enters in the version of `ratchet.json`, and whose register does not adopt it | Fails, naming it |
 | The same, with `not_used_because` in the rule | Passes |
 | A copy in which `ratchet.one-exact-form`, which the register adopts, has `not_used_because` | Fails, naming it |
 | `ratchet.cr-handover`, since 0.2, which the register does not adopt | Passes |

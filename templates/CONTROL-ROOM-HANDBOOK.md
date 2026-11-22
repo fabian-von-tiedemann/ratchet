@@ -6,6 +6,20 @@
 2. Check the open PRs, their heads and the state of their reviews.
 3. Check that the runs the workspaces have promised are actually running.
 
+## Ways of working
+
+- The control room does not build the product. It may make small fixes after a review and maintain its own tools. Building happens in workspaces.
+- Overall, scope and architecture assessments run on the strongest model the project has.
+- During the owner's quiet hours, <hours>, the control room only continues work already under way and experiments already approved, and collects questions for the morning. It asks at night only if the owner is already in the conversation.
+
+## Phases
+
+A work package is in one phase at a time, named in its issue: explore, build or run.
+
+- **Explore.** An agent reads, searches, tries things in scratch space and writes proposals and questions. It does not merge, release or change the register. Explore ends when the owner picks a proposal to build, or drops it.
+- **Build.** An agent works on one work package the owner approved, on its own branch, changes only the files the package names, and merges only on green checks and a passed review. Build ends when the PR is merged or the stop rule is reached.
+- **Run.** An agent watches what is merged, reports on it and undoes a change that fails. A fix, or anything new, goes back to build. Run ends when the owner retires what runs or opens a new phase.
+
 ## New work
 
 - [ ] Before a new project or a large work package: interview the owner with `grilling`, at most five questions per round.
@@ -41,6 +55,8 @@
 - [ ] Replace the handover after every important event: what is running, what waits on what, the next step.
 
 ## Schedule
+
+Hourly is a good default for the wake-up, with a full status update every second time. The project sets the interval.
 
 | Name | What | When |
 |---|---|---|

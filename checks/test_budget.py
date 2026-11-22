@@ -26,11 +26,13 @@ import registry  # noqa: E402
 
 # The cap was 25 on the day of D-2026-11-17-pull-and-budget: 20 experimental rules in ratchet.json at the commit on
 # main that added that decision, plus five. D-2026-11-20-proposal-triage, choice 5, moved two rules that apply only to
-# Ratchet into this repo's own rules and lowered the cap by two, so that the move frees no place.
-CAP = 23
+# Ratchet into this repo's own rules and lowered the cap by two, so that the move frees no place. D-2026-11-22-second-redraw
+# set it to 17: the ten experimental rules left after steps 2 and 3 of its migration, and the seven product rules.
+CAP = 17
 # The experimental rules after D-2026-11-20-proposal-triage: 24, one added, one merged into another, three removed and
-# two moved into this repo's own rules.
-EXPERIMENTAL = 24 + 1 - 1 - 3 - 2
+# two moved into this repo's own rules. Step 2 of D-2026-11-22-second-redraw takes out six more: one merged into
+# ratchet.cr-wake, and five that leave as a handbook line, as a sentence of another rule, or as a duplicate.
+EXPERIMENTAL = 24 + 1 - 1 - 3 - 2 - 6
 # The rules that D-2026-11-20-proposal-triage, choice 5, takes out of ratchet.json, and where each went.
 GONE = {
     "ratchet.cr-background-wait": "merged into ratchet.cr-wake",
@@ -39,6 +41,15 @@ GONE = {
     "ratchet.cr-review": "removed",
     "ratchet.si-version": "repo.version",
     "ratchet.si-maintainer-approves": "repo.maintainer-approves",
+}
+# The rules that step 2 of D-2026-11-22-second-redraw takes out of ratchet.json, with the row of its table of losses.
+CLEANED_OUT = {
+    "ratchet.cr-does-not-build": "R4, a line of the handbook template",
+    "ratchet.cr-analysis-model": "R5, two clauses into ratchet.review-by-risk and a line of the handbook template",
+    "ratchet.cr-next-task": "merged into ratchet.cr-wake, whole",
+    "ratchet.cr-quiet-hours": "R7, a line of the handbook template",
+    "ratchet.cr-verify-reports": "R11, a duplicate of ratchet.evidence-before-done",
+    "ratchet.phases": "R8, one sentence into ratchet.cr-workspace and a section of the handbook template",
 }
 NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
@@ -92,14 +103,18 @@ class RepoBudget(RepoCopy, unittest.TestCase):
         self.edit("ratchet.json", '"experimental_cap": %d,' % CAP, '"experimental_cap": %d,' % (count - 1))
         self.assert_check_fails("%d experimental rules, which is more than the cap of %d" % (count, count - 1))
 
-    def test_the_phases_are_one_experimental_rule_that_is_text_only(self):
-        # D-2026-11-19-locks-not-parsing, item 5: explore, build and run are one rule, outside the core.
+    def test_the_phases_are_a_section_of_the_handbook_and_one_sentence_of_cr_workspace(self):
+        # D-2026-11-22-second-redraw, R8: the part and the rule are gone, one sentence stands in ratchet.cr-workspace,
+        # and the three phases are a section of the handbook template.
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
-        parts = dict((part["id"], part["file"]) for part in data["parts"])
-        self.assertEqual(parts.get("phases"), "CONTROL-ROOM.md")
-        rules = [(rule["key"], rule["status"], rule["enforcement"]) for rule in data["rules"] if rule["part"] == "phases"]
-        self.assertEqual(rules, [("ratchet.phases", "experimental", "text-only")])
-        self.assertFalse([rule["key"] for rule in data["rules"] if rule["key"].startswith("ratchet.phase-")])
+        self.assertNotIn("phases", [part["id"] for part in data["parts"]])
+        self.assertFalse([rule["key"] for rule in data["rules"] if rule["key"].startswith("ratchet.phase")])
+        workspace = registry.rules_by_key(data)["ratchet.cr-workspace"]
+        self.assertIn("Building starts only on a work package the owner approved, and changes only the files it names.", workspace["rule"])
+        handbook = read(os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"))
+        for words in ("## Phases", "**Explore.**", "**Build.**", "**Run.**"):
+            self.assertIn(words, handbook)
+        self.assertNotIn("## The phases", read("CONTROL-ROOM.md"))
 
     def test_review_by_risk_is_one_experimental_rule_of_the_control_room_that_is_text_only(self):
         # D-2026-11-19-review-by-risk, choices 1 and 3: one rule outside the core, counted against the cap.
@@ -151,6 +166,39 @@ class Triage(RepoCopy, unittest.TestCase):
         with open(os.path.join(ROOT, "checks", "fixtures", "upgrade", "released", version, "ratchet.json"), "rb") as handle:
             return handle.read()
 
+    def test_the_control_rooms_cleaned_out_rules_are_gone_and_their_lines_stand_in_the_handbook(self):
+        # D-2026-11-22-second-redraw, step 2 of the migration: a handbook line is added in the PR in which its rule leaves.
+        for key in CLEANED_OUT:
+            with self.subTest(key=key):
+                self.assertNotIn(key, self.by_key)
+                self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
+                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "REGISTER.md", "AGENTS.md"):
+                    self.assertNotIn(key, read(name), name)
+        handbook = read(os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"))
+        for words in ("The control room does not build the product.",
+                      "Overall, scope and architecture assessments run on the strongest model the project has.",
+                      "Hourly is a good default for the wake-up, with a full status update every second time.",
+                      "During the owner's quiet hours"):
+            self.assertIn(words, handbook)
+        wake = self.by_key["ratchet.cr-wake"]["rule"]
+        self.assertIn("When nobody asks anything, the control room takes the next permitted task.", wake)
+        self.assertNotIn("Hourly", wake)
+        review = self.by_key["ratchet.review-by-risk"]["rule"]
+        self.assertIn("Overall, scope and architecture assessments run in a fresh context.", review)
+        self.assertIn("There is no silent switch to another model.", review)
+        self.assertIn("A test is in the full class even when it is only added to", review)
+
+    def test_this_repos_review_classes_are_an_own_rule_and_no_longer_in_the_rule_of_ratchet(self):
+        # D-2026-11-22-second-redraw, M3: the paths of Ratchet's own classes move word for word into an own rule.
+        own = dict((item["key"], item) for item in self.register["own"])
+        classes = own["repo.review-classes"]["rule"]
+        for words in ("The light class is the directory `docs/`, the landing page, and `CHANGELOG.md`",
+                      "a release also changes `RATCHET.md` and gets the full review",
+                      "`sources.json` and `decisions/`. A mixed PR gets the full review."):
+            self.assertIn(words, classes)
+        for path in ("`docs/`", "`CHANGELOG.md`", "`decisions/`", "`templates/`"):
+            self.assertNotIn(path, self.by_key["ratchet.review-by-risk"]["rule"])
+
     def test_background_wait_is_merged_into_wake_which_keeps_its_key_and_since(self):
         wake = self.by_key["ratchet.cr-wake"]
         self.assertEqual((wake["since"], wake["status"], wake["part"]), ("0.2", "experimental", "control-room"))
@@ -170,7 +218,7 @@ class Triage(RepoCopy, unittest.TestCase):
     def test_one_exact_form_enters_as_experimental_and_this_repo_adopts_it(self):
         rule = self.by_key["ratchet.one-exact-form"]
         self.assertEqual((rule["status"], rule["enforcement"], rule["part"], rule["since"]),
-                         ("experimental", "text-only", "promoted", self.data["version"]))
+                         ("experimental", "text-only", "promoted", "0.10"))
         self.assertIn("ratchet.one-exact-form", [item["key"] for item in self.register["adopted"]])
 
     def rewrite_register(self, change):
@@ -193,18 +241,26 @@ class Triage(RepoCopy, unittest.TestCase):
     def unadopt(self, key):
         self.rewrite_register(lambda register: register.update(adopted=[item for item in register["adopted"] if item["key"] != key]))
 
+    def enter_now(self, key):
+        """Make key, in this copy's ratchet.json, a rule that enters in the version of the file."""
+        rule = self.by_key[key]
+        fields = '      "key": "%s",\n      "part": "%s",\n      "principle": "%s",\n      "status": "experimental",\n      "since": ' % (
+            key, rule["part"], rule["principle"])
+        self.edit("ratchet.json", fields + '"%s"' % rule["since"], fields + '"%s"' % self.data["version"])
+
     def give_reason(self, key, reason='"Ratchet runs no such step"'):
         self.edit("ratchet.json", '      "key": "%s",\n' % key, '      "key": "%s",\n      "%s": %s,\n' % (key, NOT_USED, reason))
 
     def test_a_rule_that_enters_in_this_version_and_is_not_adopted_here_fails(self):
-        for key in ("ratchet.review-by-risk", "ratchet.one-exact-form"):
-            self.assertEqual(self.by_key[key]["since"], self.data["version"])
+        # No rule enters in 0.11, so the copy makes ratchet.review-by-risk enter in the version of the file.
+        self.enter_now("ratchet.review-by-risk")
         self.unadopt("ratchet.review-by-risk")
         self.assert_check_fails("ratchet.review-by-risk enters Ratchet in %s, and register.json does not adopt it. A rule "
                                 "that enters is used by Ratchet itself, or says in %s why Ratchet cannot use it"
                                 % (self.data["version"], NOT_USED))
 
     def test_a_rule_that_enters_and_says_why_ratchet_cannot_use_it_passes(self):
+        self.enter_now("ratchet.review-by-risk")
         self.unadopt("ratchet.review-by-risk")
         self.give_reason("ratchet.review-by-risk")
         code, output = run("generate.py", "--check", root=self.copy)

@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.10, 2026-11-21. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.11, not yet released. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 Each rule has a **key**, a **ratchet** and a **source**.
@@ -38,19 +38,19 @@ Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `
 
 Is this a fact I can look up\, or a decision that is the owner\'s\? Can I undo this step myself\? If it is the owner\'s decision or cannot be undone\, stop and ask through the one channel\, with a recommendation\, and write the answer down word for word\.
 
-Guidance, text only. Rules under it: `ratchet.decision-as-file` (names a check), `ratchet.one-approver` (names a check), `ratchet.kinds-apart` (text only), `ratchet.one-channel` (text only), `ratchet.five-choices` (text only), `ratchet.look-up-facts` (text only), `ratchet.grill-first` (text only), `ratchet.cr-quiet-hours` (experimental, text only), `ratchet.phases` (experimental, text only), `ratchet.irreversible-waits` (experimental, names a check)
+Guidance, text only. Rules under it: `ratchet.decision-as-file` (names a check), `ratchet.one-approver` (names a check), `ratchet.kinds-apart` (text only), `ratchet.one-channel` (text only), `ratchet.five-choices` (text only), `ratchet.look-up-facts` (text only), `ratchet.grill-first` (text only), `ratchet.irreversible-waits` (experimental, names a check)
 
 ### Show the run behind a claim
 
 What run shows this claim\, on what\, and what did that run not cover\? If there is none\, run it now or mark the claim unproven\. When a claim reaches me\, have I tested it against the code before I act on it\?
 
-Guidance, text only. Rules under it: `ratchet.findings-marked` (text only), `ratchet.verify-findings` (text only), `ratchet.run-early` (text only), `ratchet.evidence-before-done` (text only), `ratchet.cr-verify-reports` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.findings-marked` (text only), `ratchet.verify-findings` (text only), `ratchet.run-early` (text only), `ratchet.evidence-before-done` (text only)
 
 ### Review in a fresh context\, by another family
 
 Who reviews this head\, in a fresh context and on a model from another family than the author\'s\, and how deep should the review go for what changed\? Has the same kind of finding come back twice in a row\? If so\, start no third round\, test the premise the fixes shared\, and take a different approach to the owner\.
 
-Guidance, text only. Rules under it: `ratchet.fresh-context` (names a check), `ratchet.once-per-version` (names a check), `ratchet.two-rounds` (names a check), `ratchet.register-review-first` (text only), `ratchet.review-by-risk` (experimental, text only), `ratchet.cr-analysis-model` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.fresh-context` (names a check), `ratchet.once-per-version` (names a check), `ratchet.two-rounds` (names a check), `ratchet.register-review-first` (text only), `ratchet.review-by-risk` (experimental, text only)
 
 ### Make every check see red
 
@@ -80,7 +80,7 @@ Guidance, text only. Rules under it: `ratchet.material-not-instructions` (text o
 
 If this session ended now\, could the next one find the open work\, its status and the next step where every session reads first\? Is everything I delegated on a list\, and has each report been read and acted on\? Treat a run or a scan that has not reported as red until it has\.
 
-Guidance, text only. Rules under it: `ratchet.work-in-issues` (text only), `ratchet.nightly-visible` (names a check), `ratchet.cr-does-not-build` (experimental, text only), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.cr-wake` (experimental, names a check), `ratchet.cr-next-task` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.work-in-issues` (text only), `ratchet.nightly-visible` (names a check), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.cr-wake` (experimental, names a check)
 
 ### Subtract first
 
@@ -96,7 +96,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.10, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 19 experimental rules, under a cap of 23: 8 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions

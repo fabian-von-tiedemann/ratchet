@@ -1045,7 +1045,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("register.json: the rule of ratchet.one-approver differs from Ratchet")
 
     def test_a_row_changed_behind_a_removed_end_marker_fails(self):
-        self.edit("CONTROL-ROOM.md", "The control room does not build the product", "The control room builds the product")
+        self.edit("CONTROL-ROOM.md", "The status lives in the status issue", "The status lives in the agent\'s memory")
         self.edit("CONTROL-ROOM.md", "<!-- /generated -->", "<!-- broken -->", count=-1)
         self.assert_check_fails("CONTROL-ROOM.md: the markers of the generated blocks are broken")
 
@@ -1241,8 +1241,9 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         with open(path, "w", encoding="utf-8", newline="") as handle:
             handle.write(rest[:at] + moved + rest[at:])
         self.edit("README.md", "--branch v%s " % fetched, "--branch v0.6 ")
+        heading = re.search(r"^## %s \(\d{4}-\d{2}-\d{2}\)$" % re.escape(fetched), rest, re.M).group(0)
         self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
-                                "it. '## 0.6 (2026-11-19)' stands before '## %s (2026-11-19)'" % fetched)
+                                "it. '## 0.6 (2026-11-19)' stands before '%s'" % heading)
         self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
     def test_a_version_twice_in_the_changelog_fails(self):
