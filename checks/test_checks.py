@@ -1590,6 +1590,11 @@ class StartPath(unittest.TestCase):
             subprocess.run(["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid",
                             "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + command, cwd=directory, check=True, stdout=subprocess.DEVNULL,
                            env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
+            if command[0] == "init":
+                # In the new repo's own config too, so that what the README runs there starts no gc or maintenance.
+                for setting in (["gc.auto", "0"], ["maintenance.auto", "false"]):
+                    subprocess.run(["git", "config"] + setting, cwd=directory, check=True, stdout=subprocess.DEVNULL,
+                                   env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
         self.readme = read("README.md")
 
     def run_in_project(self, command):
@@ -1706,7 +1711,7 @@ class StartPath(unittest.TestCase):
     def test_the_entry_that_is_printed_can_be_pasted(self):
         code, output = self.run_in_project("python3 .ratchet/checks/init.py")
         self.assertEqual(code, 0, output)
-        code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-first")
+        code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-can-fail")
         self.assertEqual(code, 0, output)
         path = os.path.join(self.project, "register.json")
         with open(path, encoding="utf-8") as handle:

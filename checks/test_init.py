@@ -38,12 +38,21 @@ def environment():
     return env
 
 
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git(cwd, *args):
     result = subprocess.run(
         ["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
          "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + list(args),
         cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
     assert result.returncode == 0, result.stdout
+    # No automatic gc or maintenance in a repo a test makes, not for this call alone but in the new repo's own config, so
+    # that init.py, or anything else that runs git there, starts none either.
+    if args[:1] in (("init",), ("clone",)):
+        repo = cwd if args[0] == "init" else os.path.join(cwd, args[-1])
+        for name, value in QUIET:
+            git(repo, "config", name, value)
     return result.stdout.strip()
 
 

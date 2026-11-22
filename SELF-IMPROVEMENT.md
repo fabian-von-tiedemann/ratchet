@@ -10,7 +10,7 @@ Two owners appear below. The **project's owner** approves lessons in the project
 
 1. **Something fails.** A review rejects a change, an experiment fails, or a bug reaches the main branch.
 2. **Capture the lesson.** The project writes it down with [templates/LESSON.md](templates/LESSON.md): what happened, the failure class, the ratchet, and whether it would apply elsewhere (`ratchet.lesson-names-check`).
-3. **Tighten locally.** The project's owner approves the lesson (`ratchet.lesson-loop`). The project adds the ratchet, as a check if a check can see it.
+3. **Tighten locally.** The project's owner approves the lesson (`ratchet.lesson-names-check`). The project adds the ratchet, as a check if a check can see it.
 4. **Promote.** If the lesson would have applied in another project, it becomes a PR to Ratchet, with the evidence. Ratchet invites this in [CONTRIBUTING.md](CONTRIBUTING.md#a-lesson-from-a-project). It is not a rule, since Ratchet cannot see a lesson that was never sent.
 5. **Release.** Ratchet gets a new version, a tag and a changelog entry. Changes are collected under the first entry of the changelog, headed `(unreleased)`, and released together when the entry gets its date.
 6. **Pull.** Projects see that they are behind and upgrade in a PR of its own.
@@ -92,5 +92,5 @@ If the number of rules grows while these numbers stand still, Ratchet is getting
 The count is computed from `ratchet.json` by `checks/generate.py --count` and stated with every version in the [changelog](CHANGELOG.md). The share covers the core. A rule counts as shipped with a reference check only if that check has a fixture it fails on.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 23 rules. 14 name a check and 9 are text only (39%). Ratchet ships a reference check for 1 of the 14. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->

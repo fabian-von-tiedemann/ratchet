@@ -68,8 +68,8 @@
     },
     {
       "key": "ratchet.lesson-names-check",
-      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check.",
-      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field",
+      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check. After a failed review or a failed experiment, lessons are proposed. They apply only after the owner approves them.",
+      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field. It does not see whether a lesson was proposed, or whether the owner approved it",
       "source": "pstack `principle-encode-lessons-in-structure`",
       "status": "text only for now"
     }

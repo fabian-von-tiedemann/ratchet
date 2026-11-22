@@ -76,15 +76,28 @@ def sha256(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
+# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
+# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
+# own config, so that a script under test that runs git there starts none either.
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git(directory, *args):
     """What git prints for args in directory, as text. No GIT_ variable, and no global or system config, is used."""
     env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
     env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
-    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false",
-                             "-C", directory] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    if args[:1] == ("clone",):
+        args = args[:1] + tuple(part for name, value in QUIET for part in ("--config", "%s=%s" % (name, value))) + args[1:]
+    quiet = [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
+    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false"]
+                            + quiet + ["-C", directory] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             universal_newlines=True)
     if result.returncode != 0:
         raise AssertionError("git %s: %s" % (" ".join(args), result.stdout))
+    if args[:1] == ("init",):
+        for name, value in QUIET:
+            git(directory, "config", name, value)
     return result.stdout.strip()
 
 
@@ -486,26 +499,35 @@ class Upgrade(FixtureTest):
                     # Step 9a changes ratchet.register-on-top, by the clause on adoption by reference: 35 + 1 = 36.
                     # Step 10, core batch B, removes the five rules that go into ratchet.fresh-context and
                     # ratchet.evidence-before-done or leave the core, and changes those two: 36 + 5 + 2 = 43.
-                    self.assertIn("In Ratchet %s, 43 rules are new, changed or removed." % new["version"], output)
+                    # Step 11, core batch C, removes ratchet.reuse-first, ratchet.slices, ratchet.test-first and
+                    # ratchet.lesson-loop, which go into other rules, renames ratchet.nightly-visible to
+                    # ratchet.silence-is-red, which upgrade.py reports as one rule removed and one new, and changes
+                    # ratchet.simplest, ratchet.test-can-fail, ratchet.agents-without-keys and ratchet.lesson-names-check:
+                    # 43 + 4 + 2 + 4 = 53.
+                    self.assertIn("In Ratchet %s, 53 rules are new, changed or removed." % new["version"], output)
                     self.assertIn("ratchet.register-on-top: changed: the rule and the ratchet.", output)
-                    for key in ("ratchet.owner-paths", "ratchet.ask-the-owner"):
+                    for key in ("ratchet.owner-paths", "ratchet.ask-the-owner", "ratchet.silence-is-red"):
                         self.assertIn("- %s: new. The register may adopt it." % key, output)
                     for key in ("ratchet.one-approver", "ratchet.kinds-apart", "ratchet.glossary", "ratchet.checks-owner-read"):
                         self.assertIn('%s: removed. Remove it from "adopted".' % key, output)
                     for key in ("ratchet.decision-as-file", "ratchet.expected-tests-ran"):
                         self.assertIn("%s: changed: " % key, output)
                     self.assertIn("ratchet.evidence-before-done: changed: the rule, the ratchet and the source.", output)
-                    self.assertIn("Not adopted, so nothing to do: ratchet.cr-analysis-model (removed), ratchet.cr-background-wait "
-                                  "(removed), ratchet.cr-does-not-build (removed), ratchet.cr-lead-with-ask (removed), "
-                                  "ratchet.cr-next-task (removed), ratchet.cr-quiet-hours (removed), ratchet.cr-reads-first "
-                                  "(removed), ratchet.cr-review (removed), ratchet.cr-verify-reports (removed), ratchet.cr-wake "
-                                  "(changed), ratchet.cr-workspace (changed), ratchet.experiment-plan (removed), "
-                                  "ratchet.findings-marked (removed), ratchet.five-choices (removed), ratchet.fresh-context (changed), "
-                                  "ratchet.grill-first (removed), ratchet.look-up-facts (removed), ratchet.once-per-version (removed), "
-                                  "ratchet.one-channel (removed), ratchet.phases (removed), ratchet.register-review-first (removed), "
-                                  "ratchet.root-cause (changed), ratchet.run-early (removed), ratchet.si-harden (changed), "
-                                  "ratchet.si-measure (changed), ratchet.si-promote (removed), ratchet.si-repeat-is-signal (removed), "
-                                  "ratchet.si-subtract (removed), ratchet.verify-findings (removed).", output)
+                    self.assertIn("Not adopted, so nothing to do: ratchet.agents-without-keys (changed), ratchet.cr-analysis-model "
+                                  "(removed), ratchet.cr-background-wait (removed), ratchet.cr-does-not-build (removed), "
+                                  "ratchet.cr-lead-with-ask (removed), ratchet.cr-next-task (removed), ratchet.cr-quiet-hours "
+                                  "(removed), ratchet.cr-reads-first (removed), ratchet.cr-review (removed), "
+                                  "ratchet.cr-verify-reports (removed), ratchet.cr-wake (changed), ratchet.cr-workspace (changed), "
+                                  "ratchet.experiment-plan (removed), ratchet.findings-marked (removed), ratchet.five-choices "
+                                  "(removed), ratchet.fresh-context (changed), ratchet.grill-first (removed), ratchet.lesson-loop "
+                                  "(removed), ratchet.lesson-names-check (changed), ratchet.look-up-facts (removed), "
+                                  "ratchet.nightly-visible (removed), ratchet.once-per-version (removed), ratchet.one-channel "
+                                  "(removed), ratchet.phases (removed), ratchet.register-review-first (removed), "
+                                  "ratchet.reuse-first (removed), ratchet.root-cause (changed), ratchet.run-early (removed), "
+                                  "ratchet.si-harden (changed), ratchet.si-measure (changed), ratchet.si-promote (removed), "
+                                  "ratchet.si-repeat-is-signal (removed), ratchet.si-subtract (removed), ratchet.simplest (changed), "
+                                  "ratchet.slices (removed), ratchet.test-can-fail (changed), ratchet.test-first (removed), "
+                                  "ratchet.verify-findings (removed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
