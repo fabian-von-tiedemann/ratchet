@@ -11,6 +11,7 @@ that were merged, removed and moved are gone, and ratchet.root-cause names a che
 
 import json
 import os
+import re
 import shutil
 import sys
 import unittest
@@ -170,7 +171,7 @@ class Triage(RepoCopy, unittest.TestCase):
     def test_one_exact_form_enters_as_experimental_and_this_repo_adopts_it(self):
         rule = self.by_key["ratchet.one-exact-form"]
         self.assertEqual((rule["status"], rule["enforcement"], rule["part"], rule["since"]),
-                         ("experimental", "text-only", "promoted", self.data["version"]))
+                         ("experimental", "text-only", "promoted", "0.10"))
         self.assertIn("ratchet.one-exact-form", [item["key"] for item in self.register["adopted"]])
 
     def rewrite_register(self, change):
@@ -193,18 +194,34 @@ class Triage(RepoCopy, unittest.TestCase):
     def unadopt(self, key):
         self.rewrite_register(lambda register: register.update(adopted=[item for item in register["adopted"] if item["key"] != key]))
 
+    def enter_now(self, key):
+        """In this copy's ratchet.json, give the rule key the version of the file as its since, so that it enters now."""
+        path = os.path.join(self.copy, "ratchet.json")
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        start = text.index('"key": "%s",\n' % key)
+        end = text.find('"key": ', start + 1)
+        end = len(text) if end < 0 else end
+        part, count = re.subn(r'"since": "[0-9]+\.[0-9]+"', '"since": "%s"' % self.data["version"], text[start:end])
+        self.assertEqual(count, 1, "the test expects one since in %s" % key)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text[:start] + part + text[end:])
+
     def give_reason(self, key, reason='"Ratchet runs no such step"'):
         self.edit("ratchet.json", '      "key": "%s",\n' % key, '      "key": "%s",\n      "%s": %s,\n' % (key, NOT_USED, reason))
 
     def test_a_rule_that_enters_in_this_version_and_is_not_adopted_here_fails(self):
+        # Both entered in 0.10. A rule entering in a version after it is made in this copy.
         for key in ("ratchet.review-by-risk", "ratchet.one-exact-form"):
-            self.assertEqual(self.by_key[key]["since"], self.data["version"])
+            self.assertEqual(self.by_key[key]["since"], "0.10")
+        self.enter_now("ratchet.review-by-risk")
         self.unadopt("ratchet.review-by-risk")
         self.assert_check_fails("ratchet.review-by-risk enters Ratchet in %s, and register.json does not adopt it. A rule "
                                 "that enters is used by Ratchet itself, or says in %s why Ratchet cannot use it"
                                 % (self.data["version"], NOT_USED))
 
     def test_a_rule_that_enters_and_says_why_ratchet_cannot_use_it_passes(self):
+        self.enter_now("ratchet.review-by-risk")
         self.unadopt("ratchet.review-by-risk")
         self.give_reason("ratchet.review-by-risk")
         code, output = run("generate.py", "--check", root=self.copy)

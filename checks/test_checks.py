@@ -1238,11 +1238,12 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         start, end = text.index("## 0.6 ("), text.index("## 0.5 (")
         moved, rest = text[start:end], text[:start] + text[end:]
         at = rest.index("## %s (" % fetched)
+        heading = rest[at:rest.index("\n", at)]
         with open(path, "w", encoding="utf-8", newline="") as handle:
             handle.write(rest[:at] + moved + rest[at:])
         self.edit("README.md", "--branch v%s " % fetched, "--branch v0.6 ")
         self.assert_check_fails("CHANGELOG.md: the entries must stand newest first, each version higher than the one after "
-                                "it. '## 0.6 (2026-11-19)' stands before '## %s (2026-11-19)'" % fetched)
+                                "it. '## 0.6 (2026-11-19)' stands before '%s'" % heading)
         self.assert_check_fails(fetch_problem(fetched, 0, 1))
 
     def test_a_version_twice_in_the_changelog_fails(self):

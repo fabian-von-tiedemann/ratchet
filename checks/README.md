@@ -10,6 +10,20 @@ Checks that Ratchet ships. Each one runs in this repo's CI ([checks.yml](../.git
 | ratchet.expected-tests-ran | [checks/expected_tests.py](expected_tests.py) |
 <!-- /generated -->
 
+## The threat model
+
+One text for every check here, by [D-2026-11-22-second-redraw](../decisions/D-2026-11-22-second-redraw.md). A review brief cites it.
+
+**What every check here is for.** Ratchet's checks catch mistakes and drift: a rule copied wrong, a test that was dropped, a step taken the usual way without its approval, a job that stopped reporting.
+
+**What no check here is for.** They are not written to stop someone who means to get past them. An agent or a person with write access can soften a rule, reword a check or take a step another way, and a check in the repo will often not see it. What stands against that is a lock at the host: the owner's required review of the paths that hold the rules and the checks, from an account the agents cannot approve with. Where that lock is not built, nothing stands against it, and the register says so. No check guards against someone who controls the owner's account, the host, or the machine a session runs on.
+
+**Tripwires.** A script that runs only on an agent's machine, with no lock at the host behind it, is a tripwire. It catches the usual way and no other.
+
+**Each check's own limits.** This shared text sets the threat model for every check. Each check states its own, narrower claim, under "What it claims" and "What it does not claim", and that claim sets what the check covers.
+
+**When a review finds something the check does not cover.** A finding that the check's own claim does not cover starts no new round of hardening. It becomes one question to the owner: widen the claim by a decision, or record the finding as outside it. A finding inside the check's own claim is fixed as before, and `ratchet.two-rounds` still applies.
+
 ## Data files and strict forms
 
 No check here looks for rules in free Markdown. A check that does can be shown a file in which a reader sees a row and the check does not: an indented row, a row in a comment, a row under a heading that is not a heading. Each way that was found is closed the same way:
@@ -510,7 +524,9 @@ python3 checks/generate.py            # write the generated text
 python3 checks/generate.py --check    # fail if any generated text is out of date
 ```
 
-[ratchet.json](../ratchet.json) is the one place a rule is written. From it the generator writes the rule tables, the section of the principles in `RATCHET.md` and the list of their titles in `README.md`, the count of rules, [templates/register.json](../templates/register.json) and the registers under [fixtures/register/](fixtures/register/). From this repo's [register.json](../register.json) it writes `REGISTER.md`, and the block of rules at the start of the instruction file that the register names in `instructions`, `AGENTS.md`, as `check_register.py --print-instructions` prints it, with no other byte of that file changed. It fails, and writes nothing there, where the markers of that block are broken, the block is not at the start, or a part of the path is a symbolic link or leads out of the repo. Before anything else, with or without `--check`, it refuses to run when the repo, as given, passes through a symbolic link, while git tracks one in the repo, or, outside a git work tree, while any entry in it is one. It writes only through one function, which never writes through a link on its path, and its scan of Markdown files takes in no link (see [No write through a link](#no-write-through-a-link)). With `--check` it changes nothing and fails when:
+[ratchet.json](../ratchet.json) is the one place a rule is written. From it the generator writes the rule tables, the section of the principles in `RATCHET.md` and the list of their titles in `README.md`, the count of rules, [templates/register.json](../templates/register.json) and the registers under [fixtures/register/](fixtures/register/). From this repo's [register.json](../register.json) it writes `REGISTER.md`, and the block of rules at the start of the instruction file that the register names in `instructions`, `AGENTS.md`, as `check_register.py --print-instructions` prints it, with no other byte of that file changed. It fails, and writes nothing there, where the markers of that block are broken, the block is not at the start, or a part of the path is a symbolic link or leads out of the repo. Before anything else, with or without `--check`, it refuses to run when the repo, as given, passes through a symbolic link, while git tracks one in the repo, or, outside a git work tree, while any entry in it is one. It writes only through one function, which never writes through a link on its path, and its scan of Markdown files takes in no link (see [No write through a link](#no-write-through-a-link)).
+
+**What it claims.** With `--check` it changes nothing and fails when:
 
 - a generated table, count, file or fixture differs from what its data file gives
 - a file does not hold exactly the generated blocks it must hold, once each, or a marker is missing or broken
@@ -536,6 +552,8 @@ python3 checks/generate.py --check    # fail if any generated text is out of dat
 From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged with a date in its heading. While it is headed `(unreleased)`, changes are collected under it, and no merge publishes it. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
+
+**What it does not claim.** It compares what it generates with its data files, and the data files with their form. It does not judge whether the data is right beyond that form: the words of a rule, the cap or a pin in `sources.json`. The maintainer reads those in the pull request (`ratchet.checks-owner-read`). It reads no tags, so whether released text stayed as it was released is `released_text.py`'s to see. Its guards against links are a safety net, not a boundary: see [No write through a link](#no-write-through-a-link).
 
 ## released_text.py
 
@@ -1256,6 +1274,8 @@ Under the maintainer's login, it shows `target` `tag`, `enforcement` `active`, `
 **Applied and read back in this repo.** The maintainer applied the ruleset on 2026-11-19, as `tags-stay`. The answer to the maintainer's `POST` showed the one bypass actor, `[{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]`. The control room read it back the same day with the agents' account: target `tag`, enforcement `active`, `conditions.ref_name.include` `["~ALL"]`, the rules `deletion`, `update` and `non_fast_forward` and no `creation`, `current_user_can_bypass` `never`, and `bypass_actors` null, because the role Write is not shown it. Not tried: deleting or moving a tag with the agents' account, which would put a published tag at risk if the rule did not apply. Tried: 0.7 is the first release under the ruleset, and the release workflow created the tag `v0.7` and its release with the built-in token, about two and a half hours after the ruleset was made. With the read-back recorded, `ratchet.irreversible-waits` is "built" in [REGISTER.md](../REGISTER.md) ([D-2026-11-19-tripwire-and-settings](../decisions/D-2026-11-19-tripwire-and-settings.md)).
 
 **The case.** `TagRuleset` in [test_tripwire.py](test_tripwire.py) reads the file strictly and pins exactly these fields, these three rules in this order and no `creation`, and the one bypass actor. It also reads `release.py` and fails if it holds a `PATCH`, `DELETE` or `PUT`, or no longer creates a tag with its one `POST`.
+
+**What it does not claim.** The test reads the file and `release.py`, not GitHub. It does not see whether the ruleset on GitHub is still the one in the file, or still active: that was read back once, on 2026-11-19. Deleting or moving a tag has not been tried.
 
 ## Why JSON
 

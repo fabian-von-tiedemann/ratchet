@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 19 experimental rules, under a cap of 23: 8 name a check and 11 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+Added:
+
+- `checks/README.md`: one threat model for every check, before the first, by step 1 of the decision `D-2026-11-22-second-redraw`. The checks catch mistakes and drift, not someone who means to get past them. What stands against that is the owner's required review at the host, and nothing stands against someone who controls the owner's account, the host or the machine a session runs on. A script with no lock at the host behind it is a tripwire. Each check's own claim sets what it covers, and a finding outside that claim becomes one question to the owner, not a new round of hardening. `generate.py` and the tag ruleset now say what they do not claim, under that heading. `AGENTS.md`, "How to change a check", points at the text.
+
+Changed:
+
+- Three tests in `checks/` no longer take the version of `ratchet.json` for the one that `ratchet.review-by-risk` and `ratchet.one-exact-form` entered in, or the date of the newest release for 2026-11-19. The test that a rule entering now must be used gives the rule the current version in its copy of the repo, so it still fails as before.
+
 ## 0.10 (2026-11-21)
 
 <!-- generated:count -->
