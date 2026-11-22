@@ -5,6 +5,7 @@
     "ratchet.register-on-top",
     "ratchet.protected-main",
     "ratchet.decision-as-file",
+    "ratchet.owner-paths",
     "ratchet.fresh-context",
     "ratchet.root-cause",
     "ratchet.evidence-before-done",
@@ -129,28 +130,18 @@
       "principle": "principle.keep-one-place",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "Each decision by the owner is written as a file with the question and the answer verbatim, and an id of the form `D-YYYY-MM-DD-<slug>`.",
-      "ratchet": "Check: a lint of the decision file's name and format",
+      "rule": "Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`, as a file of its own or as a record in one log the project names.",
+      "ratchet": "Check: a strict lint of the form chosen, each decision file's name and format or each record of the log",
       "source": ""
     },
     {
-      "key": "ratchet.one-approver",
+      "key": "ratchet.owner-paths",
       "part": "truth",
       "principle": "principle.independent-gate",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals.",
-      "ratchet": "Check: required review by the owner on the directory that holds the decisions, with agents under an account of their own",
-      "source": ""
-    },
-    {
-      "key": "ratchet.kinds-apart",
-      "part": "truth",
-      "principle": "principle.independent-gate",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) and open question (Q).",
-      "ratchet": "Text only: a check cannot tell a proposal from a decision",
+      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals. The project lists the paths that are the owner's: the decisions, the register and every file it names, the checks, the gates and the automated reviewers. A change to any of them merges only after the owner has read it and approved its head. A work package that changes a check, a gate or an automated reviewer states, before review, what it claims and against which threat, with a finite list of cases.",
+      "ratchet": "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and agents work under an account of their own that cannot approve and cannot bypass the requirement. It does not see whether the claim and the threat were stated, or whether a proposal is marked as one",
       "source": ""
     },
     {
@@ -164,53 +155,13 @@
       "source": ""
     },
     {
-      "key": "ratchet.glossary",
-      "part": "truth",
-      "principle": "principle.keep-one-place",
-      "status": "core",
-      "enforcement": "enforced",
-      "rule": "The project has a glossary: each canonical term with its meaning and the terms to avoid in its place. The register, the working rules and the handbooks use the canonical terms.",
-      "ratchet": "Check: a lint that fails on the glossary's terms to avoid in those files",
-      "source": "mattpocock/skills `domain-modeling`"
-    },
-    {
-      "key": "ratchet.one-channel",
+      "key": "ratchet.ask-the-owner",
       "part": "questions",
       "principle": "principle.wait-for-the-owner",
       "status": "core",
       "enforcement": "text-only",
-      "rule": "Questions to the owner come through one channel, the control room, never directly from the workspaces. So do manual steps only the owner can do.",
-      "ratchet": "Text only: messages pass no check",
-      "source": ""
-    },
-    {
-      "key": "ratchet.five-choices",
-      "part": "questions",
-      "principle": "principle.wait-for-the-owner",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "The owner gets at most five decisions at a time, each in one sentence with a recommendation, so the answer can be \"yes\" or \"yes except 2\". Housekeeping and technical choices are made by the control room and shown in PRs.",
-      "ratchet": "Text only: messages pass no check",
-      "source": ""
-    },
-    {
-      "key": "ratchet.look-up-facts",
-      "part": "questions",
-      "principle": "principle.wait-for-the-owner",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "The agent looks up facts itself. Decisions belong to the owner.",
-      "ratchet": "Text only: a check cannot tell a fact from a decision",
-      "source": "mattpocock/skills `grilling`"
-    },
-    {
-      "key": "ratchet.grill-first",
-      "part": "questions",
-      "principle": "principle.wait-for-the-owner",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Before a new project or a large work package, the control room interviews the owner in rounds about the decisions, with a recommended answer for each question, until no decision is left as an unstated assumption.",
-      "ratchet": "Text only. Measured as decisions that come up after work has started",
+      "rule": "The agent looks up facts itself. Decisions belong to the owner. Questions to the owner come through one channel, the control room, never directly from the workspaces, and so do manual steps only the owner can do. The owner gets at most five decisions at a time, each in one sentence with a recommendation, so the answer can be \"yes\" or \"yes except 2\". Housekeeping and technical choices are made by the control room and shown in PRs. An experiment that costs money needs the owner's approval of scope, cost cap, account and timing before anything is created.",
+      "ratchet": "Text only: messages pass no check, a check cannot tell a fact from a decision, and a check cannot see spending before it happens. A spending limit on the account is the backstop",
       "source": "mattpocock/skills `grilling`"
     },
     {
@@ -262,16 +213,6 @@
       "rule": "Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
       "ratchet": "Text only: a check cannot see whether a finding was verified",
       "source": "obra/superpowers `receiving-code-review`"
-    },
-    {
-      "key": "ratchet.checks-owner-read",
-      "part": "review",
-      "principle": "principle.independent-gate",
-      "status": "core",
-      "enforcement": "enforced",
-      "rule": "Checks, gates and automated reviewers change only after the owner has read the change. A work package that changes them states, before review, what it claims and against which threat, with a finite list of cases.",
-      "ratchet": "Check: required review by the owner on the paths the project lists as checks, with agents under an account of their own. It does not see whether the claim and the threat were stated",
-      "source": ""
     },
     {
       "key": "ratchet.register-review-first",
@@ -362,16 +303,6 @@
       "rule": "Work is split into vertical slices that each fit in a fresh context, with dependencies and acceptance criteria.",
       "ratchet": "Text only: slice size is a judgment",
       "source": "mattpocock/skills `to-tickets`"
-    },
-    {
-      "key": "ratchet.experiment-plan",
-      "part": "building",
-      "principle": "principle.wait-for-the-owner",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "An experiment states its hypothesis, the alternatives, how the result is measured, the threshold for success and what would falsify the hypothesis. An experiment that costs money needs the owner's approval of scope, cost cap, account and timing before anything is created.",
-      "ratchet": "Text only: a check cannot see spending before it happens. A spending limit on the account is the backstop",
-      "source": ""
     },
     {
       "key": "ratchet.no-secrets",
@@ -538,7 +469,7 @@
       "status": "experimental",
       "since": "0.2",
       "enforcement": "enforced",
-      "rule": "Every two weeks, the project reports four numbers: review rounds before approval, decisions that came up after work started, repeated failure classes, and the share of rules enforced by a check. The trend goes in the status issue.",
+      "rule": "Every two weeks, the project reports four numbers: review rounds before approval, the steps and minutes its last upgrade of Ratchet took, repeated failure classes, and the share of rules enforced by a check. The trend goes in the status issue.",
       "ratchet": "Check: the report is a scheduled job, and the status issue shows the date of the last one",
       "source": ""
     },
@@ -550,7 +481,7 @@
       "since": "0.4",
       "enforcement": "enforced",
       "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
-      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.owner-paths`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
       "source": "",
       "reference_check": "checks/expected_tests.py"
     },

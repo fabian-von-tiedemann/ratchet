@@ -113,7 +113,7 @@ A rule of the project's own may carry `status` and `where` (#60). It does not ha
 
 | Fixture | What is wrong | Result |
 |---|---|---|
-| `clean` | Nothing. Nine adopted rules and one rule of the project's own. | Passes |
+| `clean` | Nothing. Ten adopted rules and one rule of the project's own. | Passes |
 | `changed-row` | The rule of an adopted rule has been softened. | Fails |
 | `changed-ratchet` | The ratchet of an adopted rule has been replaced. | Fails |
 | `changed-source` | The source of an adopted rule has been removed. | Fails |
@@ -239,7 +239,7 @@ The registers above are generated from `ratchet.json`. [fixtures/handwritten/](f
 - It does not see whether a translation says what the English rule says. A check cannot judge meaning. A changed translation is reviewed like any change to the register.
 - A translation is in Latin script only, from the fixed list, and a rule has one translation, in one language.
 - The block is written with LF. A project whose instruction file has CRLF keeps it in the rest of the file, and the block, with its markers, has LF.
-- It runs from the version of Ratchet it was fetched at. The project's workflow pins that version by commit, and a change to the workflow is a change to a check (`ratchet.checks-owner-read`).
+- It runs from the version of Ratchet it was fetched at. The project's workflow pins that version by commit, and a change to the workflow is a change to a check (`ratchet.owner-paths`).
 
 ## expected_tests.py
 
@@ -253,7 +253,7 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 
 **Against which threat.** Tests dropped by mistake, while the suite still looks green: a test skipped, errored or not prepared, a class or module whose set-up skips, a module that no longer imports, a run that exits before it is done, a run that returns before it is done because it was interrupted, told to stop or stopped at the first failure, two tests under one id so that one hides the other, a fixture added and never tested, or a test that names a fixture that is gone. A green summary says only that the tests that ran passed, not that the tests that were meant to run did.
 
-**What it does not claim.** It does not stop test code written to defeat it. Such code runs with the same rights as the check: it can write records of its own, rewrite the runner or this check, or pass without testing anything. A change to `checks/` is read by the maintainer before it is merged (`ratchet.checks-owner-read`), and that reading is what stands against it.
+**What it does not claim.** It does not stop test code written to defeat it. Such code runs with the same rights as the check: it can write records of its own, rewrite the runner or this check, or pass without testing anything. A change to `checks/` is read by the maintainer before it is merged (`ratchet.owner-paths`), and that reading is what stands against it.
 
 **How it works.**
 
@@ -515,7 +515,7 @@ Five rounds of review of #100 found ways for a script here to write outside the 
 - The methods of `pathlib` that write, and the functions of `os`, `shutil` and `tempfile` that write, move, remove, link or make.
 - `__import__`, an import of `pathlib` or `importlib`, a writing module imported under another name, and `open` used without being called.
 
-`check_register.py` and `generate.py` must have no such call, and `registry.py` only in `write_file`. `init.py`'s two functions that write must call `registry.guard_path` first. A sample file shows each kind of write found and each kind of call that only reads let through. The files `test_*.py` are not swept: they are the suite, not the checks, and they write only in directories they make with `tempfile`. The sweep reads code, not what it does: a write through `getattr`, `eval`, a subprocess or a module outside `checks/`, or any spelling written to get past it, is not seen. A change to `checks/` is read by the maintainer before it is merged (`ratchet.checks-owner-read`).
+`check_register.py` and `generate.py` must have no such call, and `registry.py` only in `write_file`. `init.py`'s two functions that write must call `registry.guard_path` first. A sample file shows each kind of write found and each kind of call that only reads let through. The files `test_*.py` are not swept: they are the suite, not the checks, and they write only in directories they make with `tempfile`. The sweep reads code, not what it does: a write through `getattr`, `eval`, a subprocess or a module outside `checks/`, or any spelling written to get past it, is not seen. A change to `checks/` is read by the maintainer before it is merged (`ratchet.owner-paths`).
 
 ## generate.py
 
@@ -553,7 +553,7 @@ From [sources.json](../sources.json) it writes the table of sources in `RATCHET.
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged with a date in its heading. While it is headed `(unreleased)`, changes are collected under it, and no merge publishes it. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
-**What it does not claim.** It compares what it generates with its data files, and the data files with their form. It does not judge whether the data is right beyond that form: the words of a rule, the cap or a pin in `sources.json`. The maintainer reads those in the pull request (`ratchet.checks-owner-read`). It reads no tags, so whether released text stayed as it was released is `released_text.py`'s to see. Its guards against links are a safety net, not a boundary: see [No write through a link](#no-write-through-a-link).
+**What it does not claim.** It compares what it generates with its data files, and the data files with their form. It does not judge whether the data is right beyond that form: the words of a rule, the cap or a pin in `sources.json`. The maintainer reads those in the pull request (`ratchet.owner-paths`). It reads no tags, so whether released text stayed as it was released is `released_text.py`'s to see. Its guards against links are a safety net, not a boundary: see [No write through a link](#no-write-through-a-link).
 
 ## released_text.py
 
@@ -631,7 +631,7 @@ That holds through:
 
 It does not stand against someone who changes the runner's git data, such as a graft, a replace ref, a shallow file, an object store of its own or a forged object, nor against someone who deliberately writes a version in an unusual form. Two cheap barriers stand there anyway, and they are not a claim: every version must have one strict form, and a checkout with any of the first four is refused.
 
-**Why that boundary holds.** Nothing reaches `main` but through a pull request, and every commit on it has passed the code owner's approval and the required job `checks` (`ratchet.checks-owner-read`). The ruleset on `main` refuses a force push and a deletion, so a commit on `main` stays as it was approved. Every run of the release workflow starts from a fresh checkout on a runner of GitHub's, so the git data it reads are the ones the checkout wrote, from `main`, and not ones a person left behind. To change the git data or the version on purpose, someone has to get it past that approval, or turn the ruleset off. The review of the change, not the script, is what stands against that.
+**Why that boundary holds.** Nothing reaches `main` but through a pull request, and every commit on it has passed the code owner's approval and the required job `checks` (`ratchet.owner-paths`). The ruleset on `main` refuses a force push and a deletion, so a commit on `main` stays as it was approved. Every run of the release workflow starts from a fresh checkout on a runner of GitHub's, so the git data it reads are the ones the checkout wrote, from `main`, and not ones a person left behind. To change the git data or the version on purpose, someone has to get it past that approval, or turn the ruleset off. The review of the change, not the script, is what stands against that.
 
 **What it claims, in detail.**
 
@@ -829,7 +829,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 **Against which threat.** Ratchet grows a rule at a time until no one reads it. With the cap, a new experimental rule replaces, merges or removes one, or a decision raises the cap.
 
-**What it does not claim.** It does not count the core, which is frozen, and it does not judge whether a rule is worth its place. A PR can raise the cap in the same change that adds a rule. That is a change to `ratchet.json`, which the maintainer reads before it is merged (`ratchet.checks-owner-read`), and raising the cap is a decision.
+**What it does not claim.** It does not count the core, which is frozen, and it does not judge whether a rule is worth its place. A PR can raise the cap in the same change that adds a rule. That is a change to `ratchet.json`, which the maintainer reads before it is merged (`ratchet.owner-paths`), and raising the cap is a decision.
 
 | Fixture | What is wrong | Result |
 |---|---|---|
@@ -849,7 +849,7 @@ Every experimental rule in `ratchet.json` names `since`, the version it entered 
 
 **Against which threat.** A mistake in the bookkeeping of rules: an experimental rule that lingers release after release with no one deciding on it, and a field misspelled so that the reader passes over it.
 
-**What it does not claim.** It does not see whether `since` is true. It was read from the tags once, for 0.10, and a released `ratchet.json` cannot change after its tag (`released_text.py`), but between two releases a pull request can change it, as it can raise the cap, and the maintainer reads it (`ratchet.checks-owner-read`). A check that it stays as it was at the last tag is issue #74. It does not judge the decision in `kept_by`, only that it exists. A rule removed and added again under another key starts a new age, which the maintainer reads in the pull request. It reads no clock: a rule that has stood long since the last release is not caught until the next one is dated. It passes on the releases up to 0.10, which are dated from 2026-11-16 to 2026-11-21. The first release that can make it fail is one dated 2027-01-15 or later.
+**What it does not claim.** It does not see whether `since` is true. It was read from the tags once, for 0.10, and a released `ratchet.json` cannot change after its tag (`released_text.py`), but between two releases a pull request can change it, as it can raise the cap, and the maintainer reads it (`ratchet.owner-paths`). A check that it stays as it was at the last tag is issue #74. It does not judge the decision in `kept_by`, only that it exists. A rule removed and added again under another key starts a new age, which the maintainer reads in the pull request. It reads no clock: a rule that has stood long since the last release is not caught until the next one is dated. It passes on the releases up to 0.10, which are dated from 2026-11-16 to 2026-11-21. The first release that can make it fail is one dated 2027-01-15 or later.
 
 | Fixture | What is wrong | Result |
 |---|---|---|
@@ -876,7 +876,7 @@ A new experimental rule is already used by Ratchet itself, or says why Ratchet c
 
 **Against which threat.** A mistake in the bookkeeping of rules: a rule enters Ratchet that Ratchet itself does not use, and nobody notices that it was never tried here, or a rule is said to be used when the register does not adopt it.
 
-**What it does not claim.** It reads the register, not the repo: it does not see whether Ratchet follows a rule that the register adopts, or whether a check marked "built" works. It does not judge the reason, only that it is words. It holds a rule only in the version it enters, as `since` gives it, so it does not see a rule that was in Ratchet before 0.10, and a rule whose `since` is changed to an older version passes, which the maintainer reads in the pull request (`ratchet.checks-owner-read`) and issue #74 would catch.
+**What it does not claim.** It reads the register, not the repo: it does not see whether Ratchet follows a rule that the register adopts, or whether a check marked "built" works. It does not judge the reason, only that it is words. It holds a rule only in the version it enters, as `since` gives it, so it does not see a rule that was in Ratchet before 0.10, and a rule whose `since` is changed to an older version passes, which the maintainer reads in the pull request (`ratchet.owner-paths`) and issue #74 would catch.
 
 | Case | Result |
 |---|---|
@@ -1309,7 +1309,7 @@ The reference check for `ratchet.irreversible-waits`. It is a `PreToolUse` hook 
 
 **What it claims.** For a Bash command, it exits 2 and names each step on a line of its own, `tripwire: <step>`, when the command is one of the cases below and the approvals file has no entry for each step it takes with that exact command. For `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, it exits 2 when the path is the approvals file. Every other tool exits 0. Input it cannot read, an empty call, a call that is not JSON or not UTF-8, has a field twice, names no tool or lacks the command or the path, exits 2. Any failure of its own exits 2 as well: it never exits other than 0 or 2, and its settings use `"onFailure": "block"`, so a hook that cannot start or times out blocks the call too.
 
-**Against which threat.** An agent's mistake: a force push it takes to be harmless, a tag or a release nobody asked for, `rm -rf` on the wrong directory, a change to the settings, written in the way agents usually write these commands. It does not stand against an agent that means to get past it: such an agent writes the step another way, from a script, from another language, or edits the hook and its settings, which are files the maintainer reads before a merge (`ratchet.checks-owner-read`).
+**Against which threat.** An agent's mistake: a force push it takes to be harmless, a tag or a release nobody asked for, `rm -rf` on the wrong directory, a change to the settings, written in the way agents usually write these commands. It does not stand against an agent that means to get past it: such an agent writes the step another way, from a script, from another language, or edits the hook and its settings, which are files the maintainer reads before a merge (`ratchet.owner-paths`).
 
 **How it reads a line.** It splits the line into simple commands at `;`, `&`, `|`, `&&`, `||`, newlines and parentheses, and also reads every `$(...)`, backtick and `<(...)` as commands of their own. It takes quotes and backslashes away as the shell does, skips the body of a here-document, and skips assignments, `if`, `then`, `do` and the like. It looks past `env`, `command`, `builtin`, `exec`, `nohup`, `nice`, `timeout`, `sudo`, `xargs`, `stdbuf` and `time`, and past a path before the program, such as `/usr/bin/git`. A `cd` to a literal path is followed for the commands after it in the same line, and a `cd` to anything else makes every later path unknown. It does not expand a variable, a pattern or a tilde other than a leading `~`.
 

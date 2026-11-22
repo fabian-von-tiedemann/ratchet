@@ -1,6 +1,6 @@
 # Glossary
 
-Ratchet's own terms. Ratchet follows `ratchet.glossary`: the rules, the templates and the other files here use the term in the first column, never a form listed in the last one. Each form to avoid is listed as it is written: a plural stands next to its singular.
+Ratchet's own terms. Ratchet follows its own rule `repo.glossary`: the rules, the templates and the other files here use the term in the first column, never a form listed in the last one. Each form to avoid is listed as it is written: a plural stands next to its singular.
 
 ## The rules
 
@@ -44,7 +44,7 @@ Ratchet's own terms. Ratchet follows `ratchet.glossary`: the rules, the template
 
 ## Kinds of statement
 
-Every statement that matters is one of four kinds (`ratchet.kinds-apart`).
+Every statement that matters is one of four kinds (`repo.kinds-apart`, and a line of the control room's handbook template). That only the owner approves decisions, and that agents mark their proposals as proposals, is in the core, in `ratchet.owner-paths`.
 
 | Letter | Kind | Meaning |
 |---|---|---|

@@ -23,7 +23,7 @@ Workspaces build. Each one works on one issue, on its own branch, and reports ba
 
 Ways of working that are not rules, such as the phases of a work package, quiet hours and the interval of the wake-up, are in the handbook template, [templates/CONTROL-ROOM-HANDBOOK.md](templates/CONTROL-ROOM-HANDBOOK.md). A project copies what it wants into its own handbook.
 
-The owner does not read every PR. Code is merged on green checks and a passed review by an independent reviewer. The owner reads decisions, changes to the register and changes to the checks themselves (`ratchet.checks-owner-read`). A project that wants the owner to read more adds those paths to the list.
+The owner does not read every PR. Code is merged on green checks and a passed review by an independent reviewer. The owner reads decisions, changes to the register and every file it names, and changes to the checks, gates and automated reviewers (`ratchet.owner-paths`). A project that wants the owner to read more adds those paths to the list.
 
 ## Rules
 

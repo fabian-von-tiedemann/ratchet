@@ -272,7 +272,7 @@ class RegisterCheck(FixtureTest):
     def test_clean_project_copy_passes(self):
         code, output = self.check("clean")
         self.assertEqual(code, 0, output)
-        self.assertIn("9 rules match Ratchet", output)
+        self.assertIn("10 rules match Ratchet", output)
 
     def test_every_fault_in_the_data_fails_for_its_own_reason(self):
         for name, message in sorted(FAILING_DATA.items()):
@@ -821,18 +821,18 @@ class GeneratedText(RepoCopy, unittest.TestCase):
 
     def test_a_rule_that_holds_an_invisible_character_fails(self):
         self.edit("ratchet.json", "Only the owner approves decisions.", "Only the owner\u200b approves decisions.")
-        self.assert_check_fails("ratchet.one-approver: " + outside("rule", "200B"))
+        self.assert_check_fails("ratchet.owner-paths: " + outside("rule", "200B"))
 
     def test_a_rule_that_is_text_only_without_a_reason_fails(self):
-        self.edit("ratchet.json", '"ratchet": "Text only: a check cannot tell a proposal from a decision"', '"ratchet": "Text only"')
-        self.assert_check_fails('ratchet.kinds-apart: the ratchet is "Check: " and the check, or "Text only" and the reason')
+        self.edit("ratchet.json", '"ratchet": "Text only: a check cannot see work that was never written down"', '"ratchet": "Text only"')
+        self.assert_check_fails('ratchet.work-in-issues: the ratchet is "Check: " and the check, or "Text only" and the reason')
 
     def test_a_rule_with_html_is_written_as_text(self):
         self.edit("ratchet.json", "Only the owner approves decisions.", "<!-- Only the owner approves decisions. -->")
         code, output = run("generate.py", root=self.copy)
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             text = handle.read()
-        self.assertIn("| ratchet.one-approver | \\<\\!\\-\\- Only the owner approves decisions\\. \\-\\-\\> Agents write", text)
+        self.assertIn("| ratchet.owner-paths | \\<\\!\\-\\- Only the owner approves decisions\\. \\-\\-\\> Agents write", text)
         self.assertNotIn("<!-- Only the owner", text)
 
     def test_a_rule_that_mixes_a_link_a_comment_and_code_is_written_as_text_and_code(self):
@@ -840,22 +840,22 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         run("generate.py", root=self.copy)
         with open(os.path.join(self.copy, "RATCHET.md"), encoding="utf-8") as handle:
             text = handle.read()
-        self.assertIn("| ratchet.one-approver | \\[ok\\]\\(https\\:\\/\\/example\\.invalid\\/`)<span hidden>Only the owner approves decisions.</span>`tail Agents write", text)
+        self.assertIn("| ratchet.owner-paths | \\[ok\\]\\(https\\:\\/\\/example\\.invalid\\/`)<span hidden>Only the owner approves decisions.</span>`tail Agents write", text)
 
     def test_a_rule_with_a_combining_accent_fails_without_a_traceback(self):
         self.edit("ratchet.json", "Only the owner approves decisions.", "Cafe\\u0301 approval is mandatory.")
-        self.assert_check_fails("ratchet.one-approver: rule holds U+0301")
+        self.assert_check_fails("ratchet.owner-paths: rule holds U+0301")
 
     def test_a_rule_with_a_name_between_two_colons_fails(self):
         self.edit("ratchet.json", "Only the owner approves decisions.", "Only the owner :example: approves decisions.")
-        self.assert_check_fails("ratchet.one-approver: rule has :example:, " + EMOJI_NAME)
+        self.assert_check_fails("ratchet.owner-paths: rule has :example:, " + EMOJI_NAME)
 
     def test_a_rule_in_another_script_fails_the_same_on_every_version(self):
         # U+1E4D0 is a letter that only the newer of the supported interpreters knows.
         for escape, code in (("\\ud839\\udcd0", "1E4D0"), ("\\u05be", "05BE"), ("\\u202e", "202E"), ("\\ufffd", "FFFD")):
             with self.subTest(code=code):
                 self.edit("ratchet.json", "Only the owner approves decisions.", "Only the owner %s approves decisions." % escape)
-                self.assert_check_fails("ratchet.one-approver: " + outside("rule", code))
+                self.assert_check_fails("ratchet.owner-paths: " + outside("rule", code))
                 self.edit("ratchet.json", "Only the owner %s approves decisions." % escape, "Only the owner approves decisions.")
 
     def test_a_version_in_other_digits_fails(self):
@@ -1042,7 +1042,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
 
     def test_this_repos_register_data_with_a_changed_rule_fails(self):
         self.edit("register.json", "Only the owner approves decisions.", "The owner usually approves decisions.")
-        self.assert_check_fails("register.json: the rule of ratchet.one-approver differs from Ratchet")
+        self.assert_check_fails("register.json: the rule of ratchet.owner-paths differs from Ratchet")
 
     def test_a_row_changed_behind_a_removed_end_marker_fails(self):
         self.edit("CONTROL-ROOM.md", "The status lives in the status issue", "The status lives in the agent\'s memory")
@@ -1103,16 +1103,16 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("parts must be a list")
 
     def test_a_rule_written_twice_in_the_data_fails(self):
-        self.edit("ratchet.json", '"key": "ratchet.one-approver",', '"key": "ratchet.one-approver",\n      "rule": "Anyone approves.",')
+        self.edit("ratchet.json", '"key": "ratchet.owner-paths",', '"key": "ratchet.owner-paths",\n      "rule": "Anyone approves.",')
         self.assert_check_fails("the field 'rule' appears twice in one object")
 
     def test_a_label_that_disagrees_with_its_ratchet_fails(self):
-        self.edit("ratchet.json", '"ratchet": "Text only: a check cannot tell a proposal from a decision"', '"ratchet": "Check: a check tells them apart"')
-        self.assert_check_fails("ratchet.kinds-apart: a text-only rule has a ratchet that starts with")
+        self.edit("ratchet.json", '"ratchet": "Text only: a check cannot see work that was never written down"', '"ratchet": "Check: a check sees it"')
+        self.assert_check_fails("ratchet.work-in-issues: a text-only rule has a ratchet that starts with")
 
     def test_a_mention_of_a_key_that_is_not_a_rule_fails(self):
-        self.edit("CONTROL-ROOM.md", "`ratchet.checks-owner-read`", "`ratchet.checks-owner-reads`")
-        self.assert_check_fails("ratchet.checks-owner-reads is not a rule in ratchet.json")
+        self.edit("CONTROL-ROOM.md", "`ratchet.owner-paths`", "`ratchet.owner-pathss`")
+        self.assert_check_fails("ratchet.owner-pathss is not a rule in ratchet.json")
 
     def test_an_inline_link_that_leads_nowhere_fails(self):
         self.edit(os.path.join("checks", "README.md"), "](../ratchet.json)", "](ratchet.json)")
@@ -1485,7 +1485,7 @@ class StartPath(unittest.TestCase):
             json.dump(register, handle, indent=2)
         code, output = self.run_in_project("python3 .ratchet/checks/check_register.py register.json")
         self.assertEqual(code, 0, output)
-        self.assertIn("11 rules match Ratchet", output)
+        self.assertIn("12 rules match Ratchet", output)
 
     def test_the_templates_name_no_agent_tool(self):
         for name in sorted(os.listdir(os.path.join(ROOT, "templates"))):

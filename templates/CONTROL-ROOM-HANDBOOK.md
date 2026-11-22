@@ -22,7 +22,7 @@ A work package is in one phase at a time, named in its issue: explore, build or 
 
 ## New work
 
-- [ ] Before a new project or a large work package: interview the owner with `grilling`, at most five questions per round.
+- [ ] Before a new project or a large work package: interview the owner with `grilling`, in rounds of at most five questions, with a recommended answer for each question, until no decision is left as an unstated assumption.
 - [ ] Split the work package into issues with `to-tickets`.
 - [ ] Give each issue: assignment, files it may change, cap (time or cost), stop rule.
 - [ ] Start a workspace as its own thread with its own worktree from the main branch, with the issue number in the prompt.
@@ -38,11 +38,12 @@ A work package is in one phase at a time, named in its issue: explore, build or 
 
 - [ ] Review approved at the exact head.
 - [ ] Required checks and the security scan green on that head.
-- [ ] Changes to the register, or to checks, gates and automated reviewers: the owner has read them.
+- [ ] Changes to the owner's paths, the decisions, the register and every file it names, the checks, the gates and the automated reviewers: the owner has read them and approved the head.
 
 ## Decisions
 
-- [ ] Write the question and the owner's answer verbatim in a decision file `decisions/D-YYYY-MM-DD-<slug>.md`, in a PR.
+- [ ] Write the question and the owner's answer verbatim in a decision file `decisions/D-YYYY-MM-DD-<slug>.md`, or as a record with that id in the one log the project names, in a PR.
+- [ ] Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) and open question (Q).
 - [ ] Propose any change to the register in the same PR.
 
 ## Lessons

@@ -58,6 +58,23 @@ LOOP_CLEANED_OUT = {
     "ratchet.si-promote": "M1, the same text in CONTRIBUTING.md",
     "ratchet.si-subtract": "M2, the own rule repo.subtract with the same text",
 }
+# The rules that step 8 of D-2026-11-22-second-redraw, core batch A, takes out of ratchet.json, and where each went.
+CORE_BATCH_A_OUT = {
+    "ratchet.one-approver": "into ratchet.owner-paths, whole",
+    "ratchet.checks-owner-read": "into ratchet.owner-paths, whole, tightened by T4",
+    "ratchet.one-channel": "into ratchet.ask-the-owner, whole",
+    "ratchet.five-choices": "into ratchet.ask-the-owner, whole",
+    "ratchet.look-up-facts": "into ratchet.ask-the-owner, whole",
+    "ratchet.experiment-plan": "R9, the spending approval and the backstop into ratchet.ask-the-owner word for word",
+    "ratchet.glossary": "L3, the own rule repo.glossary with the same text",
+    "ratchet.grill-first": "R1, a line of the handbook template, and its number leaves ratchet.si-measure",
+    "ratchet.kinds-apart": "M5, a line of the handbook template and the own rule repo.kinds-apart",
+}
+# Where a rule of core batch A could still be cited. The changelog and the decisions keep the old keys as history.
+CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "MIGRATING.md", "RATCHET.md",
+          "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "UPGRADING.md", os.path.join("checks", "README.md"),
+          os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
+          os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
 NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
 FORM = "experimental_cap must be a whole number from 0"
@@ -162,7 +179,9 @@ class Triage(RepoCopy, unittest.TestCase):
         old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
         # ratchet.si-maintainer-approves is as it stood at v0.9. ratchet.si-version changed in 0.10, before it moved, and
         # moves with what 1.0 promises (D-2026-11-19-one-point-oh, choice 1).
-        self.assertEqual(own["repo.maintainer-approves"]["rule"], old["ratchet.si-maintainer-approves"]["rule"])
+        # The key it cites, ratchet.checks-owner-read, merged into ratchet.owner-paths in step 8 of D-2026-11-22-second-redraw.
+        self.assertEqual(own["repo.maintainer-approves"]["rule"],
+                         old["ratchet.si-maintainer-approves"]["rule"].replace("`ratchet.checks-owner-read`", "`ratchet.owner-paths`"))
         for words in ("Ratchet is versioned `MAJOR.MINOR`", "Only a major version changes the form of `ratchet.json` or `register.json`",
                       "Before 1.0, a minor version may do these too"):
             self.assertIn(words, own["repo.version"]["rule"])
@@ -280,6 +299,144 @@ class Triage(RepoCopy, unittest.TestCase):
         built = [entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built"]
         self.assertEqual(built, [])
 
+    def test_core_batch_a_rules_are_gone_and_stand_where_the_decision_put_them(self):
+        # D-2026-11-22-second-redraw, step 8 of the migration: each rule that leaves is gone from ratchet.json, from this
+        # repo's register and from every file that cites rules, and a handbook line is added in the PR in which its rule
+        # leaves.
+        for key in CORE_BATCH_A_OUT:
+            with self.subTest(key=key):
+                self.assertNotIn(key, self.by_key)
+                self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
+                for name in CITING:
+                    self.assertNotIn(key, read(name), name)
+        old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
+        own = dict((item["key"], item) for item in self.register["own"])
+        # L3 and M5: the glossary and the four letters are rules of Ratchet's own, with the text they had in the core.
+        for key, was in (("repo.glossary", "ratchet.glossary"), ("repo.kinds-apart", "ratchet.kinds-apart")):
+            self.assertEqual((own[key]["rule"], own[key]["ratchet"]), (old[was]["rule"], old[was]["ratchet"]), key)
+        handbook = read(os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"))
+        # R1: the interview before the work, with what the rule asked of it.
+        for words in ("Before a new project or a large work package: interview the owner with `grilling`",
+                      "with a recommended answer for each question, until no decision is left as an unstated assumption."):
+            self.assertIn(words, handbook)
+        # M5: the four letters.
+        self.assertIn("Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) "
+                      "and open question (Q).", handbook)
+        # R1: the number of ratchet.grill-first leaves ratchet.si-measure, and the overhead takes its place (M4).
+        measure = self.by_key["ratchet.si-measure"]["rule"]
+        self.assertNotIn("decisions that came up after work started", measure)
+        self.assertIn("four numbers", measure)
+        self.assertIn("the steps and minutes its last upgrade of Ratchet took", measure)
+        self.assertNotIn("decisions come up after work has started", read("SELF-IMPROVEMENT.md"))
+
+    def test_owner_paths_holds_one_approver_and_checks_owner_read_and_names_the_register_and_every_file_it_names(self):
+        # D-2026-11-22-second-redraw: ratchet.owner-paths as decided, word for word, with T4: the owner's paths include the
+        # register and every file it names, the review is dismissed on a new push, and the agents cannot bypass it.
+        rule = self.by_key["ratchet.owner-paths"]
+        self.assertEqual((rule["status"], rule["enforcement"], rule["part"], rule["principle"], rule["source"]),
+                         ("core", "enforced", "truth", "principle.independent-gate", ""))
+        self.assertEqual(rule["rule"],
+                         "Only the owner approves decisions. Agents write proposals and mark them as proposals. The project "
+                         "lists the paths that are the owner's: the decisions, the register and every file it names, the checks, "
+                         "the gates and the automated reviewers. A change to any of them merges only after the owner has read it "
+                         "and approved its head. A work package that changes a check, a gate or an automated reviewer states, "
+                         "before review, what it claims and against which threat, with a finite list of cases.")
+        self.assertEqual(rule["ratchet"],
+                         "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and "
+                         "agents work under an account of their own that cannot approve and cannot bypass the requirement. It does "
+                         "not see whether the claim and the threat were stated, or whether a proposal is marked as one")
+        old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
+        # ratchet.one-approver, whole. M5 keeps exactly this in the core.
+        self.assertIn(old["ratchet.one-approver"]["rule"], rule["rule"])
+        # ratchet.checks-owner-read: what a work package that changes a check states, and that the check does not see it.
+        self.assertIn("states, before review, what it claims and against which threat, with a finite list of cases.", rule["rule"])
+        self.assertIn("It does not see whether the claim and the threat were stated", rule["ratchet"])
+        # This repo adopts it as text only for now: owner coverage stays not built until there is evidence from the host.
+        adopted = dict((item["key"], item) for item in self.register["adopted"])
+        self.assertEqual(adopted["ratchet.owner-paths"]["status"], "text only for now")
+        self.assertTrue(adopted["ratchet.owner-paths"]["where"].startswith("Pending setup, not built."))
+
+    def test_this_repos_code_owner_owns_the_register_and_every_file_it_names(self):
+        # ratchet.owner-paths: the owner's paths are the decisions, the register and every file it names, and the checks.
+        # This reads .github/CODEOWNERS with the last matching line winning, as the host does, for the forms it holds
+        # today: "*", a directory ending in "/" and a plain path. Any other form fails here, so that this test is widened
+        # before the file is. It does not see whether the host requires the review: the register says that is not built.
+        lines = []
+        for line in read(os.path.join(".github", "CODEOWNERS")).split("\n"):
+            parts = line.split("#", 1)[0].split()
+            if parts:
+                self.assertTrue(parts[0] == "*" or not any(mark in parts[0] for mark in "*?[!"), "a form not read: %r" % line)
+                lines.append((parts[0].lstrip("/"), parts[1:]))
+
+        def owners(path):
+            found = []
+            for pattern, names in lines:
+                if pattern == "*" or path == pattern or (pattern.endswith("/") and path.startswith(pattern)):
+                    found = names
+            return found
+
+        paths = ["register.json", "REGISTER.md", self.register["instructions"], "decisions/D-2026-11-22-second-redraw.md",
+                 "checks/check_register.py", ".github/workflows/checks.yml", "ratchet.json", ".github/CODEOWNERS"]
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue(os.path.isfile(os.path.join(ROOT, path)), path)
+                self.assertEqual(owners(path), ["@fabian-von-tiedemann"])
+
+    def test_the_start_set_has_ten_rules_with_owner_paths(self):
+        # D-2026-11-22-second-redraw: the start set grows from nine rules to ten, since the protection of a row by
+        # reference depends on ratchet.owner-paths. Eight of the ten name a check.
+        start = self.data["start"]
+        self.assertEqual(len(start), 10)
+        self.assertEqual(len(set(start)), 10)
+        self.assertIn("ratchet.owner-paths", start)
+        self.assertEqual(sum(self.by_key[key]["enforcement"] == "enforced" for key in start), 8)
+        template = registry.load_json(os.path.join(ROOT, "templates", "register.json"))
+        self.assertEqual([item["key"] for item in template["adopted"]], start)
+        self.assertIn("The ten rules to start with:", read("README.md"))
+        self.assertIn("| Ratchet uses all ten of its start rules. |", read("SELF-IMPROVEMENT.md"))
+
+    def test_ask_the_owner_holds_the_three_rules_and_the_spending_clause_word_for_word(self):
+        # D-2026-11-22-second-redraw: ratchet.ask-the-owner as decided, holding ratchet.look-up-facts,
+        # ratchet.one-channel and ratchet.five-choices whole, and from ratchet.experiment-plan the owner's approval of
+        # spending and the spending limit as the backstop, word for word (R9). The design checklist is gone.
+        rule = self.by_key["ratchet.ask-the-owner"]
+        self.assertEqual((rule["status"], rule["enforcement"], rule["part"], rule["principle"], rule["source"]),
+                         ("core", "text-only", "questions", "principle.wait-for-the-owner", "mattpocock/skills `grilling`"))
+        old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
+        for whole in (old["ratchet.look-up-facts"]["rule"], old["ratchet.five-choices"]["rule"],
+                      "Questions to the owner come through one channel, the control room, never directly from the workspaces",
+                      "and so do manual steps only the owner can do.",
+                      "An experiment that costs money needs the owner's approval of scope, cost cap, account and timing before "
+                      "anything is created."):
+            self.assertIn(whole, rule["rule"])
+        self.assertIn("An experiment that costs money", old["ratchet.experiment-plan"]["rule"])
+        for words in ("Text only: messages pass no check", "a check cannot tell a fact from a decision",
+                      "a check cannot see spending before it happens. A spending limit on the account is the backstop"):
+            self.assertIn(words, rule["ratchet"])
+        self.assertNotIn("hypothesis", rule["rule"])
+
+    def test_decision_as_file_allows_one_log_and_keeps_the_id_the_verbatim_answer_and_a_strict_lint(self):
+        # D-2026-11-22-second-redraw, L2: a decision may be a record in one log the project names. The id form, the
+        # verbatim question and answer, and a strict lint of the form chosen all stay. This repo keeps one file each.
+        rule = self.by_key["ratchet.decision-as-file"]
+        self.assertEqual((rule["status"], rule["enforcement"]), ("core", "enforced"))
+        for words in ("the question and the answer verbatim", "an id of the form `D-YYYY-MM-DD-<slug>`",
+                      "as a file of its own or as a record in one log the project names"):
+            self.assertIn(words, rule["rule"])
+        self.assertTrue(rule["ratchet"].startswith("Check: a strict lint of the form chosen"))
+        adopted = dict((item["key"], item) for item in self.register["adopted"])
+        self.assertEqual(adopted["ratchet.decision-as-file"]["status"], "text only for now")
+        self.assertIn("one file per decision in `decisions/`", adopted["ratchet.decision-as-file"]["where"])
+        files = [name for name in os.listdir(os.path.join(ROOT, "decisions")) if name.endswith(".md")]
+        self.assertTrue(files)
+        for name in files:
+            self.assertIsNotNone(registry.decision_date(name[:-3]), name)
+
+    def test_expected_tests_ran_cites_owner_paths(self):
+        # D-2026-11-22-second-redraw: expected-tests-ran is unchanged but for the key it cites.
+        self.assertIn("so a change to the checks is read by the owner (`ratchet.owner-paths`)",
+                      self.by_key["ratchet.expected-tests-ran"]["ratchet"])
+
     def test_background_wait_is_merged_into_wake_which_keeps_its_key_and_since(self):
         wake = self.by_key["ratchet.cr-wake"]
         self.assertEqual((wake["since"], wake["status"], wake["part"]), ("0.2", "experimental", "control-room"))
@@ -294,7 +451,8 @@ class Triage(RepoCopy, unittest.TestCase):
         adopted = dict((item["key"], item) for item in self.register["adopted"])
         self.assertEqual(adopted["ratchet.root-cause"]["status"], "text only for now")
         core = registry.counts(self.data)["core"]
-        self.assertEqual((core["rules"], core["enforced"], core["text_only"]), (35, 17, 18))
+        # Step 8 of D-2026-11-22-second-redraw: 35 core rules less the nine of core batch A, and the two new ones.
+        self.assertEqual((core["rules"], core["enforced"], core["text_only"]), (28, 15, 13))
 
     def test_one_exact_form_enters_as_experimental_and_this_repo_adopts_it(self):
         rule = self.by_key["ratchet.one-exact-form"]

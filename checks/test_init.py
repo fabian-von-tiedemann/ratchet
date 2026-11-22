@@ -239,7 +239,7 @@ class Init(unittest.TestCase):
         self.assertEqual(register, template)
         self.assertEqual(self.text(".gitignore"), "/.ratchet/\n")
         self.assert_ratchet_ignored()
-        self.assertIn("9 rules match Ratchet %s" % self.version, output)
+        self.assertIn("10 rules match Ratchet %s" % self.version, output)
 
     def test_the_pinned_commit_is_in_the_workflow(self):
         code, output = self.init()

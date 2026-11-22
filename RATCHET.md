@@ -11,7 +11,7 @@ Each rule has a **key**, a **ratchet** and a **source**.
 
 The rules live in [ratchet.json](ratchet.json). The tables in this file are generated from it, and a check fails if a table is edited by hand. The words this file uses are defined in [GLOSSARY.md](GLOSSARY.md).
 
-A project's register is a data file, `register.json`. It holds the rules the project adopts, copied verbatim, and states which version of Ratchet they come from. The project chooses which rules it takes. It never rewrites one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. The [README](README.md#start-here) names nine rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
+A project's register is a data file, `register.json`. It holds the rules the project adopts, copied verbatim, and states which version of Ratchet they come from. The project chooses which rules it takes. It never rewrites one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. The [README](README.md#start-here) names ten rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
 
 Ratchet ships a reference check for some of the rules, listed in [checks/README.md](checks/README.md). For every other rule, "Check:" says what the project's check must do.
 
@@ -26,19 +26,19 @@ Ratchet reads as seven principles, with every rule under one of them. A principl
 
 Where is this rule\, this state or this decision written\, and is that the one place the next session reads\?
 
-Guidance, text only. Rules under it: `ratchet.register-on-top` (names a check), `ratchet.decision-as-file` (names a check), `ratchet.work-in-issues` (text only), `ratchet.glossary` (names a check), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.si-pull` (experimental, names a check)
+Guidance, text only. Rules under it: `ratchet.register-on-top` (names a check), `ratchet.decision-as-file` (names a check), `ratchet.work-in-issues` (text only), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.si-pull` (experimental, names a check)
 
 ### Make the gate independent of the author
 
 Does this change reach main only through required checks at the merged head and a reviewer who never saw my reasoning\?
 
-Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.one-approver` (names a check), `ratchet.kinds-apart` (text only), `ratchet.fresh-context` (names a check), `ratchet.once-per-version` (names a check), `ratchet.two-rounds` (names a check), `ratchet.checks-owner-read` (names a check), `ratchet.register-review-first` (text only), `ratchet.review-by-risk` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.owner-paths` (names a check), `ratchet.fresh-context` (names a check), `ratchet.once-per-version` (names a check), `ratchet.two-rounds` (names a check), `ratchet.register-review-first` (text only), `ratchet.review-by-risk` (experimental, text only)
 
 ### Wait for the owner on what cannot be undone
 
 Can I undo this myself\, and is it mine to decide\? If not\, ask once with a recommendation and record the answer\.
 
-Guidance, text only. Rules under it: `ratchet.one-channel` (text only), `ratchet.five-choices` (text only), `ratchet.look-up-facts` (text only), `ratchet.grill-first` (text only), `ratchet.experiment-plan` (text only), `ratchet.irreversible-waits` (experimental, names a check)
+Guidance, text only. Rules under it: `ratchet.ask-the-owner` (text only), `ratchet.irreversible-waits` (experimental, names a check)
 
 ### Show the run\, and treat silence as red
 
@@ -72,7 +72,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 28 rules. 15 name a check and 13 are text only (46%). Ratchet ships a reference check for 1 of the 15. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -82,11 +82,9 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 |---|---|---|---|
 | ratchet.register-on-top | One file\, the register\, lists every rule in force and takes precedence over all other text in the repo\. Where a text and the register differ\, the register wins\. | Check\: in every PR\, the Ratchet rows in the register match Ratchet at the stated version | — |
 | ratchet.protected-main | The main branch takes changes only through PRs with the required checks green\. The protection applies to administrators and agents too\. | Check\: branch protection with required checks | — |
-| ratchet.decision-as-file | Each decision by the owner is written as a file with the question and the answer verbatim\, and an id of the form `D-YYYY-MM-DD-<slug>`\. | Check\: a lint of the decision file\'s name and format | — |
-| ratchet.one-approver | Only the owner approves decisions\. Agents write proposals and mark them as proposals\. | Check\: required review by the owner on the directory that holds the decisions\, with agents under an account of their own | — |
-| ratchet.kinds-apart | Keep four kinds of statement apart and label them\: decision \(D\)\, proposal \(P\)\, outside observation \(O\) and open question \(Q\)\. | Text only\: a check cannot tell a proposal from a decision | — |
+| ratchet.decision-as-file | Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`\, as a file of its own or as a record in one log the project names\. | Check\: a strict lint of the form chosen\, each decision file\'s name and format or each record of the log | — |
+| ratchet.owner-paths | Only the owner approves decisions\. Agents write proposals and mark them as proposals\. The project lists the paths that are the owner\'s\: the decisions\, the register and every file it names\, the checks\, the gates and the automated reviewers\. A change to any of them merges only after the owner has read it and approved its head\. A work package that changes a check\, a gate or an automated reviewer states\, before review\, what it claims and against which threat\, with a finite list of cases\. | Check\: the host requires the owner\'s review on the listed paths and dismisses it on a new push\, and agents work under an account of their own that cannot approve and cannot bypass the requirement\. It does not see whether the claim and the threat were stated\, or whether a proposal is marked as one | — |
 | ratchet.work-in-issues | Open work and open questions are issues\. The status and the handover between sessions live in one place that every session reads first\, a pinned status issue or a handover file it links to\, not in the agent\'s memory\. | Text only\: a check cannot see work that was never written down | — |
-| ratchet.glossary | The project has a glossary\: each canonical term with its meaning and the terms to avoid in its place\. The register\, the working rules and the handbooks use the canonical terms\. | Check\: a lint that fails on the glossary\'s terms to avoid in those files | mattpocock\/skills `domain-modeling` |
 <!-- /generated -->
 
 ## 2. Questions and choices
@@ -94,10 +92,7 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 <!-- generated:table questions -->
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
-| ratchet.one-channel | Questions to the owner come through one channel\, the control room\, never directly from the workspaces\. So do manual steps only the owner can do\. | Text only\: messages pass no check | — |
-| ratchet.five-choices | The owner gets at most five decisions at a time\, each in one sentence with a recommendation\, so the answer can be \"yes\" or \"yes except 2\"\. Housekeeping and technical choices are made by the control room and shown in PRs\. | Text only\: messages pass no check | — |
-| ratchet.look-up-facts | The agent looks up facts itself\. Decisions belong to the owner\. | Text only\: a check cannot tell a fact from a decision | mattpocock\/skills `grilling` |
-| ratchet.grill-first | Before a new project or a large work package\, the control room interviews the owner in rounds about the decisions\, with a recommended answer for each question\, until no decision is left as an unstated assumption\. | Text only\. Measured as decisions that come up after work has started | mattpocock\/skills `grilling` |
+| ratchet.ask-the-owner | The agent looks up facts itself\. Decisions belong to the owner\. Questions to the owner come through one channel\, the control room\, never directly from the workspaces\, and so do manual steps only the owner can do\. The owner gets at most five decisions at a time\, each in one sentence with a recommendation\, so the answer can be \"yes\" or \"yes except 2\"\. Housekeeping and technical choices are made by the control room and shown in PRs\. An experiment that costs money needs the owner\'s approval of scope\, cost cap\, account and timing before anything is created\. | Text only\: messages pass no check\, a check cannot tell a fact from a decision\, and a check cannot see spending before it happens\. A spending limit on the account is the backstop | mattpocock\/skills `grilling` |
 <!-- /generated -->
 
 ## 3. Review
@@ -110,7 +105,6 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 | ratchet.two-rounds | After two failed rounds in a row with the same kind of failure\, no third round starts\. The author writes down the premise that every fix shared\, tests it\, and proposes a different approach as a decision\. | Check\: the review script refuses a third round without a decision that names the PR | pstack `principle-attack-the-premise` |
 | ratchet.findings-marked | Every finding is marked \"proven by a run\"\, with the command and its result\, or \"unproven\"\. It is also marked \"standards\" \(breaks the repo\'s documented rules\) or \"spec\" \(does not do what the issue asked\)\. An unproven finding keeps its severity\. | Text only\: a script can see that the marks are there\, not that they are true | pstack `interrogate`\, which goes further and drops unproven findings\; mattpocock\/skills `code-review` |
 | ratchet.verify-findings | Whoever receives a review checks each finding against the code before changing anything\, and pushes back with evidence when a finding is wrong\. | Text only\: a check cannot see whether a finding was verified | obra\/superpowers `receiving-code-review` |
-| ratchet.checks-owner-read | Checks\, gates and automated reviewers change only after the owner has read the change\. A work package that changes them states\, before review\, what it claims and against which threat\, with a finite list of cases\. | Check\: required review by the owner on the paths the project lists as checks\, with agents under an account of their own\. It does not see whether the claim and the threat were stated | — |
 | ratchet.register-review-first | A change to the register is reviewed before it is merged\, by a model from a different family than the author\'s\. A review after the merge does not replace it\. | Text only until the project\'s merge check can see review outcomes | — |
 <!-- /generated -->
 
@@ -136,7 +130,6 @@ Three rules in this part lean on one script that the project writes: `ratchet.fr
 | ratchet.test-can-fail | A test must fail on exactly the bug it claims to catch\, whatever the machine\'s speed and the time of day\. Time and waiting are tested with a replaceable clock or wait function\. | Check\: one mutation per test case | — |
 | ratchet.evidence-before-done | No claim that something is done without a check run just now\, shown with the command and its result\. A subagent\'s \"done\" is checked independently\. A working demo or a green scan does not prove the whole promise\. | Text only\: a check cannot see a claim made in a message\. Required checks on the PR head cover the claims they run | obra\/superpowers `verification-before-completion` |
 | ratchet.slices | Work is split into vertical slices that each fit in a fresh context\, with dependencies and acceptance criteria\. | Text only\: slice size is a judgment | mattpocock\/skills `to-tickets` |
-| ratchet.experiment-plan | An experiment states its hypothesis\, the alternatives\, how the result is measured\, the threshold for success and what would falsify the hypothesis\. An experiment that costs money needs the owner\'s approval of scope\, cost cap\, account and timing before anything is created\. | Text only\: a check cannot see spending before it happens\. A spending limit on the account is the backstop | — |
 <!-- /generated -->
 
 ### The check for the root cause

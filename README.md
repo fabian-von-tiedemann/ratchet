@@ -46,7 +46,7 @@ Ratchet is a set of working rules, templates and reference checks for long-lived
 | Key | Rule | Ratchet |
 |---|---|---|
 | ratchet.no-secrets | No secrets, tokens or real personal data in the repo or in the chat. | Check: a secret scan in every PR and every night |
-| ratchet.kinds-apart | Keep four kinds of statement apart and label them: decision, proposal, observation and question. | Text only: a check cannot tell a proposal from a decision |
+| ratchet.ask-the-owner | The agent looks up facts itself. Decisions belong to the owner. | Text only: a check cannot tell a fact from a decision |
 
 Your project keeps a register, `register.json`, with the rules it adopts, copied verbatim, and for each check whether it is built. The register that people read, `REGISTER.md`, is generated from it, and a check in every PR fails when a rule was softened or the file differs by one character.
 
@@ -65,7 +65,7 @@ Ratchet follows its own rules, and this repo is where they are tried first. Its 
 ## The honest limits
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 28 rules. 15 name a check and 13 are text only (46%). Ratchet ships a reference check for 1 of the 15. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 - **Most of the core is still text.** The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below, each run in this repo's CI with a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until it does, the rule is text only in your project, and your register says so.
@@ -78,7 +78,7 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 | ratchet.expected-tests-ran | [checks/expected_tests.py](checks/expected_tests.py) |
 <!-- /generated -->
 
-- **It is built for one person who decides, several coding agents, and a repo that has to last.** It assumes issues, pull requests and branch protection, and an agent tool that reads `AGENTS.md`. For a single agent on a short project it is more than you need: take the nine rules under [Start here](#start-here) and stop.
+- **It is built for one person who decides, several coding agents, and a repo that has to last.** It assumes issues, pull requests and branch protection, and an agent tool that reads `AGENTS.md`. For a single agent on a short project it is more than you need: take the ten rules under [Start here](#start-here) and stop.
 - **Some of what holds here is an instruction, not a lock,** such as the review from another family. This repo's register and AGENTS.md say which.
 - **The form may still change.** Before 1.0, a minor version may change the form of the data files, and the changelog lists every such change ([D-2026-11-18-form-change-before-1-0](decisions/D-2026-11-18-form-change-before-1-0.md)).
 
@@ -106,10 +106,10 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
 
    It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. With `--solo`, for one agent and no control room, it leaves the control room and the skills out of `AGENTS.md`. Then it names what is left: the placeholders in `AGENTS.md`, the jobs to require in the protection of `main`, and, when the repo has no remote yet, the adopted rules that wait for one. Last it runs the register check. See [checks/README.md](checks/README.md#initpy).
 
-   `register.json` holds nine rules to start with, copied verbatim: you choose which rules you take, and you never rewrite one. Your own rules go in the list `own`, under your own prefix. `REGISTER.md` is generated: to change it, change `register.json` and write it again.
+   `register.json` holds ten rules to start with, copied verbatim: you choose which rules you take, and you never rewrite one. Your own rules go in the list `own`, under your own prefix. `REGISTER.md` is generated: to change it, change `register.json` and write it again.
 
 4. Fill in the parts of `AGENTS.md` in angle brackets, and commit the files. The workflow runs the register check on every PR, and it fails while `AGENTS.md` still holds a placeholder of the template.
-5. Build the two checks that cost almost nothing: turn on branch protection with the jobs `ratchet` and `project-checks` required, and add a secret scanner to your CI, in the job `project-checks`, which is the place for your own checks. When your agents have an account of their own, add code ownership for the register, the checks and the decisions. It is what turns `ratchet.one-approver` and `ratchet.checks-owner-read` into checks.
+5. Build the two checks that cost almost nothing: turn on branch protection with the jobs `ratchet` and `project-checks` required, and add a secret scanner to your CI, in the job `project-checks`, which is the place for your own checks. When your agents have an account of their own, add code ownership for the decisions, the register and every file it names, and the checks. It is what turns `ratchet.owner-paths` into a check.
 6. When a check exists, set the rule's `status` to `built` in `register.json` and say in `where` where the check lives. Everything else stays `text only for now`.
 7. Add rules when a failure shows you need them. This prints a rule in the form `register.json` takes. Paste it into the list `adopted`, then print `REGISTER.md` again and put it in place. The check writes nothing: the second command prints the file to a new one and moves that into place, and `rm -f` first removes a link at either name, so nothing is written through one.
 
@@ -118,15 +118,15 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
    rm -f REGISTER.md.new && python3 .ratchet/checks/check_register.py register.json --print-markdown > REGISTER.md.new && rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md
    ```
 
-The nine rules to start with:
+The ten rules to start with:
 
 <!-- generated:start -->
-`ratchet.register-on-top`, `ratchet.protected-main`, `ratchet.decision-as-file`, `ratchet.fresh-context`, `ratchet.root-cause`, `ratchet.evidence-before-done`, `ratchet.no-secrets`, `ratchet.material-not-instructions`, `ratchet.lesson-names-check`
+`ratchet.register-on-top`, `ratchet.protected-main`, `ratchet.decision-as-file`, `ratchet.owner-paths`, `ratchet.fresh-context`, `ratchet.root-cause`, `ratchet.evidence-before-done`, `ratchet.no-secrets`, `ratchet.material-not-instructions`, `ratchet.lesson-names-check`
 <!-- /generated -->
 
 ## What is in it
 
-- [RATCHET.md](RATCHET.md): the core, 35 rules in six parts, frozen from version 0.3.
+- [RATCHET.md](RATCHET.md): the core, 28 rules in six parts, frozen from version 0.3.
 - [ratchet.json](ratchet.json): every rule as data. The tables in the markdown files are generated from it. It caps the number of experimental rules, and raising the cap is a decision.
 - [sources.json](sources.json): the sources that rules cite, each pinned at a commit. It is not part of what is released, so a pin that moves needs no new version.
 - [checks/](checks/): the reference checks, the generator, `init.py` for the start and `upgrade.py` for an upgrade, in Python with no dependencies.
