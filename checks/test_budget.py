@@ -11,8 +11,10 @@ that were merged, removed and moved are gone, and ratchet.root-cause names a che
 
 import json
 import os
+import re
 import shutil
 import sys
+import tempfile
 import unittest
 
 from suite_runner import FixtureTest
@@ -83,8 +85,13 @@ CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HAN
           "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "UPGRADING.md", os.path.join("checks", "README.md"),
           os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
           os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
-# The sentence D-2026-11-22-owner-reads-outside-gates puts back into ratchet.owner-paths.
-OUTSIDE_GATES = ("Checks, gates and automated reviewers that act outside the repo, such as the host's rules or the brief and "
+# The sentence D-2026-11-22-owner-reads-outside-gates puts back into ratchet.owner-paths, as the maintainer's second answer
+# has it: it covers a setting outside the repo that a check depends on, such as a variable of the host.
+OUTSIDE_GATES = ("Checks, gates and automated reviewers, and the settings outside the repo they depend on, such as the host's "
+                 "rules, its variables or the brief and model of an automated reviewer, change only after the owner has read "
+                 "the change.")
+# The first wording, which the second answer replaced. The decision quotes it in the second question.
+FIRST_WORDING = ("Checks, gates and automated reviewers that act outside the repo, such as the host's rules or the brief and "
                  "model of an automated reviewer, change only after the owner has read the change.")
 NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
@@ -100,6 +107,50 @@ FAILING = {
     "cap-negative": FORM,
     "cap-twice": "the field 'experimental_cap' appears twice in one object",
 }
+
+
+# Where each rule of 0.2 that is no longer in Ratchet from 0.11 went, as the 0.11 entry of the changelog says: the head
+# of its bullet in MIGRATING.md -> the keys named there, without the prefix.
+MIGRATED_0_11 = {
+    "into `ratchet.owner-paths`, which keeps the owner's required review through code ownership": (
+        "checks-owner-read", "one-approver"),
+    "into `ratchet.ask-the-owner`": ("experiment-plan", "five-choices", "look-up-facts", "one-channel"),
+    "into `ratchet.fresh-context`": ("once-per-version", "register-review-first"),
+    "into `ratchet.evidence-before-done`": ("findings-marked", "verify-findings"),
+    "into another rule that stays": ("cr-next-task", "si-repeat-is-signal"),
+    "into Ratchet's own register": ("glossary", "kinds-apart", "si-subtract"),
+    "into `CONTRIBUTING.md`, as an invitation": ("si-promote",),
+    "into a line of the control room's handbook template": (
+        "cr-analysis-model", "cr-does-not-build", "cr-quiet-hours", "grill-first", "run-early"),
+    "removed as a duplicate of `ratchet.evidence-before-done`": ("cr-verify-reports",),
+}
+
+
+def migrating_destinations(text):
+    """The list in MIGRATING.md of the rules of 0.2 no longer in Ratchet from 0.11: the head of each bullet -> the keys it
+    names without the prefix, sorted. A key named under two bullets, or twice, fails."""
+    block = text.split("Twenty-two more are no longer in Ratchet from 0.11", 1)[1].split("\n\n", 1)[0]
+    found, seen = {}, []
+    for line in block.split("\n")[1:]:
+        assert line.startswith("  - "), line
+        head, names = line[len("  - "):].split(": ", 1)
+        keys = [name for name in re.findall(r"`([^`]+)`", names) if not name.startswith("ratchet.")]
+        seen += keys
+        found[head] = tuple(sorted(keys))
+    assert len(seen) == len(set(seen)), seen
+    return found
+
+
+def decision_name_problems(folder):
+    """Every entry of a folder of decisions that is not a plain file, not through a link, named D-YYYY-MM-DD-<slug>.md
+    with a date that exists, sorted."""
+    problems = []
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        if (os.path.islink(path) or not os.path.isfile(path) or not name.endswith(".md")
+                or registry.decision_date(name[:-3]) is None):
+            problems.append(name)
+    return problems
 
 
 def sole_owner(text):
@@ -345,7 +396,17 @@ class Triage(RepoCopy, unittest.TestCase):
         # M5: the four letters.
         self.assertIn("Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) "
                       "and open question (Q).", handbook)
-        # R1: the number of ratchet.grill-first leaves ratchet.si-measure, and the overhead takes its place (M4).
+        # R1: the number of ratchet.grill-first leaves ratchet.si-measure, and the overhead takes its place (M4). Word for
+        # word, the rule and its ratchet, as for ratchet.owner-paths, ratchet.ask-the-owner and ratchet.decision-as-file
+        # (the review at 18d1ce8).
+        self.assertEqual(self.by_key["ratchet.si-measure"]["rule"],
+                         "Every two weeks, the project reports four numbers: review rounds before approval, the steps and "
+                         "minutes its last upgrade of Ratchet took, repeated failure classes, and the share of rules enforced by "
+                         "a check. The trend goes in the status issue. With each release of Ratchet, the steps and minutes to "
+                         "adopt it in an empty repo and to upgrade it by one version are recorded in its changelog.")
+        self.assertEqual(self.by_key["ratchet.si-measure"]["ratchet"],
+                         "Check: the report is a scheduled job, and the status issue shows the date of the last one. No check "
+                         "sees the record with a release")
         measure = self.by_key["ratchet.si-measure"]["rule"]
         self.assertNotIn("decisions that came up after work started", measure)
         self.assertIn("four numbers", measure)
@@ -378,6 +439,21 @@ class Triage(RepoCopy, unittest.TestCase):
             self.assertIn("`%s`" % key[len("ratchet."):], text)
         self.assertIn("Twenty-two more are no longer in Ratchet from 0.11", text)
         self.assertNotIn("Nine more", text)
+        # Where each went (the review at 18d1ce8): the list in MIGRATING.md, read bullet by bullet, names each of the 22
+        # once, under the place the 0.11 entry of the changelog gives it.
+        self.assertEqual(migrating_destinations(text), MIGRATED_0_11)
+        self.assertEqual(sorted("ratchet." + name for names in MIGRATED_0_11.values() for name in names), gone)
+
+    def test_a_rule_named_under_another_place_in_migrating_fails(self):
+        text = read("MIGRATING.md")
+        moved = text.replace("Ratchet's own register: `glossary`, `kinds-apart` and `si-subtract`",
+                             "Ratchet's own register: `glossary` and `kinds-apart`").replace(
+                             "as an invitation: `si-promote`", "as an invitation: `si-promote` and `si-subtract`")
+        self.assertNotEqual(moved, text)
+        self.assertNotEqual(migrating_destinations(moved), MIGRATED_0_11)
+        twice = text.replace("as an invitation: `si-promote`", "as an invitation: `si-promote` and `glossary`")
+        with self.assertRaises(AssertionError):
+            migrating_destinations(twice)
 
     def test_core_batch_b_rules_are_gone_and_stand_where_the_decision_put_them(self):
         # D-2026-11-22-second-redraw, step 10 of the migration: each rule that leaves is gone from ratchet.json, from this
@@ -474,7 +550,8 @@ class Triage(RepoCopy, unittest.TestCase):
                          "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and "
                          "agents work under an account of their own that cannot approve and cannot bypass the requirement. It does "
                          "not see whether the claim and the threat were stated, whether a proposal is marked as one, or whether "
-                         "the owner read a change to a gate or a reviewer outside the repo")
+                         "the owner read a change to a check, gate or automated reviewer, or to a setting outside the repo they "
+                         "depend on")
         old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
         # ratchet.one-approver, whole. M5 keeps exactly this in the core.
         self.assertIn(old["ratchet.one-approver"]["rule"], rule["rule"])
@@ -487,11 +564,15 @@ class Triage(RepoCopy, unittest.TestCase):
         where = adopted["ratchet.owner-paths"]["where"]
         self.assertTrue(where.startswith("Pending setup, not built."))
         # The review of step 8: on its way to built it names the gates and automated reviewers outside .github/CODEOWNERS,
-        # and it says plainly that the control room can submit the owner's approval.
-        for words in ("gates and automated reviewers that act outside the repo", "are not in `.github/CODEOWNERS`",
-                      "The control room can submit the code owner's approval itself"):
+        # and it says plainly that the control room can submit the owner's approval. The second answer of
+        # D-2026-11-22-owner-reads-outside-gates: it names the settings outside the repo that the checks depend on too.
+        for words in ("the gates and automated reviewers outside the repo, and the settings outside the repo that the checks "
+                      "depend on, are listed among the owner's paths too",
+                      "the variables and secrets of Actions, which the agents' account may change",
+                      "are not in `.github/CODEOWNERS`", "The control room can submit the code owner's approval itself"):
             self.assertIn(words, where)
         self.assertNotIn("when that the", where)
+        self.assertNotIn("that act outside the repo", where)
 
     def test_owner_paths_holds_the_sentence_on_gates_outside_the_repo_by_the_maintainers_decision(self):
         # D-2026-11-22-owner-reads-outside-gates: the old ratchet.checks-owner-read said that checks, gates and automated
@@ -501,10 +582,34 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertIn("Checks, gates and automated reviewers change only after the owner has read the change.",
                       old["ratchet.checks-owner-read"]["rule"])
         self.assertTrue(self.by_key["ratchet.owner-paths"]["rule"].endswith(" " + OUTSIDE_GATES))
+        self.assertNotIn("that act outside the repo", self.by_key["ratchet.owner-paths"]["rule"])
         decision = read(os.path.join("decisions", "D-2026-11-22-owner-reads-outside-gates.md"))
         for words in ("# D-2026-11-22-owner-reads-outside-gates: ", "- Decided by: Ratchet's maintainer",
-                      "> 1. **Fables fråga om kärnan.**", "> Ja\n", OUTSIDE_GATES, "GPT-6 Astra", "Claude Fable"):
+                      "> 1. **Fables fråga om kärnan.**", "> Ja\n", OUTSIDE_GATES, "GPT-6 Astra", "Claude Fable",
+                      "The mark `[…]` shows where this file leaves out part of a message.\n"):
             self.assertIn(words, decision)
+        # The second exchange, after the reviews of #125 at 18d1ce8: the maintainer saw the exact sentence, Fable's gap,
+        # and chose to close it, in Swedish first and then in English. Each exchange is answered "Ja".
+        question, answer, follows = (decision.split("\n## Question\n")[1].split("\n## Answer\n")[0],
+                                     decision.split("\n## Answer\n")[1].split("\n## What follows\n")[0],
+                                     decision.split("\n## What follows\n")[1])
+        second = question.split("The second question")[1]
+        for words in ("> Alla tre granskarna godkänner nu #125. Fable påpekar två saker som gäller just dig.",
+                      "> > *\"" + FIRST_WORDING + "\"*", "> Fable hittade dessutom en lucka i formuleringen.",
+                      "> 1. **Täpp till luckan först** (mitt råd). Meningen blir:", ">    > *\"" + OUTSIDE_GATES + "\"*",
+                      "> 2. **Slå ihop som den är**, vid head `18d1ce8`, och ta luckan i en senare PR.", "> […]\n",
+                      "> All three reviewers now approve #125.", "> 1. **Close the gap first** (my recommendation).",
+                      "> Vad rekommenderar du?\n", "> What do you recommend?\n"):
+            self.assertIn(words, second)
+        self.assertLess(second.index("> Alla tre granskarna"), second.index("> All three reviewers"))
+        self.assertLess(second.index("> Vad rekommenderar du?"), second.index("> What do you recommend?"))
+        self.assertEqual(answer.count("> Ja\n"), 2)
+        self.assertLess(answer.index("To the first question."), answer.index("To the second question."))
+        # What follows records the sentence of the second answer, not the first, and says who found the gap.
+        self.assertIn(OUTSIDE_GATES, follows)
+        self.assertNotIn(FIRST_WORDING, follows)
+        for words in ("Claude Fable found the gap", "a variable of Actions that the agents' account may change"):
+            self.assertIn(words, follows)
 
     def test_this_repos_code_owner_owns_the_register_and_every_file_it_names(self):
         # ratchet.owner-paths: the owner's paths are the decisions, the register and every file it names, and the checks.
@@ -600,10 +705,34 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertIn("a test in the job `checks`, which is required, fails on a file in `decisions/` whose name is not an id",
                       where)
         self.assertIn("nothing checks their format", where)
-        files = [name for name in os.listdir(os.path.join(ROOT, "decisions")) if name.endswith(".md")]
-        self.assertTrue(files)
-        for name in files:
-            self.assertIsNotNone(registry.decision_date(name[:-3]), name)
+        # Every entry of decisions/, not only the .md files (the review at 18d1ce8), as the where says.
+        self.assertTrue(os.listdir(os.path.join(ROOT, "decisions")))
+        self.assertEqual(decision_name_problems(os.path.join(ROOT, "decisions")), [])
+
+    def test_a_file_in_decisions_whose_name_is_not_an_id_fails(self):
+        # Each entry that the test of ratchet.decision-as-file must fail on, beside one that passes.
+        good = "D-2026-11-22-good.md"
+        for name in ("notes.txt", "README", ".DS_Store", "D-2026-11-22-good.txt", "D-2026-11-22-good", "D-2026-02-30-bad.md",
+                     "D-2026-11-22-.md", "d-2026-11-22-low.md", "x-D-2026-11-22-good.md", "D-2026-11-22-good.md.bak"):
+            with self.subTest(name=name):
+                folder = self.fresh_decisions(good)
+                with open(os.path.join(folder, name), "w", encoding="utf-8") as handle:
+                    handle.write("x\n")
+                self.assertEqual(decision_name_problems(folder), [name])
+        folder = self.fresh_decisions(good)
+        os.mkdir(os.path.join(folder, "D-2026-11-22-folder.md"))
+        self.assertEqual(decision_name_problems(folder), ["D-2026-11-22-folder.md"])
+        folder = self.fresh_decisions(good)
+        os.symlink(good, os.path.join(folder, "D-2026-11-22-link.md"))
+        self.assertEqual(decision_name_problems(folder), ["D-2026-11-22-link.md"])
+        self.assertEqual(decision_name_problems(self.fresh_decisions(good)), [])
+
+    def fresh_decisions(self, good):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        with open(os.path.join(folder, good), "w", encoding="utf-8") as handle:
+            handle.write("x\n")
+        return folder
 
     def test_expected_tests_ran_cites_owner_paths(self):
         # D-2026-11-22-second-redraw: expected-tests-ran is unchanged but for the key it cites.

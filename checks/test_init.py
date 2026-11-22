@@ -352,6 +352,7 @@ class Init(unittest.TestCase):
                 self.assertIn("names no remote", output)
                 for key in waiting:
                     self.assertIn(key, output)
+                    self.assertIn("  %s: %s\n" % (key, init.WAIT_FOR_REMOTE[key]), output)
                 for key in ("ratchet.decision-as-file", "ratchet.root-cause"):
                     self.assertNotIn(key, output)
         git(self.project, "remote", "add", "origin", "https://example.invalid/demo.git")
@@ -966,6 +967,25 @@ os.link = link
             with self.subTest(outer=outer):
                 edited = filled_in(text.replace(outer, outer[1:-1].replace(inner, "INNER-LEFT"))).replace("INNER-LEFT", inner)
                 self.assertEqual(check_register.placeholders(edited), [inner])
+
+    def test_the_reasons_for_waiting_and_the_case_table_are_pinned(self):
+        # The review at 18d1ce8: the small texts of the fix that named ratchet.owner-paths among the rules that wait for
+        # a remote. Each reason word for word, and checks/README.md counts and names the five.
+        self.assertEqual(init.WAIT_FOR_REMOTE, {
+            "ratchet.register-on-top": "the workflow runs its check on the host",
+            "ratchet.protected-main": "the protection of main is a setting of the host",
+            "ratchet.owner-paths": "the owner's required review on the owner's paths is a setting of the host",
+            "ratchet.no-secrets": "its scan runs in CI on the host",
+            "ratchet.lesson-names-check": "the lesson template is an issue template of the host",
+        })
+        with open(os.path.join(ROOT, "checks", "README.md"), encoding="utf-8") as handle:
+            readme = handle.read()
+        self.assertEqual(len(init.WAIT_FOR_REMOTE), 5)
+        self.assertIn("| No remote in the git config, with and without `--check` | The five rules that wait for one are "
+                      "named, and no other; after `git remote add`, none |\n", readme)
+        self.assertIn("the adopted rules whose check cannot run before it has one, with why: `ratchet.register-on-top`, "
+                      "`ratchet.protected-main`, `ratchet.owner-paths`, `ratchet.no-secrets` and "
+                      "`ratchet.lesson-names-check`, as far as the register that stands after the run adopts them.", readme)
 
     def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
         keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]
