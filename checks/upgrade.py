@@ -31,9 +31,15 @@ Either way the script compares the two versions, rule by rule, and prints:
 - a step for each adopted rule that changed and carries a translation whose English
   text changed: the translation must be made again, and the entry is printed without
   it, with the sha256 of the new text
+- for a changed rule that the register adopts by reference: whether its sha256 still
+  matches, and when the rule or its ratchet changed, that it no longer does, the new
+  sha256 in the entry, and that the project reads its own wording in the file the row
+  names again. Nothing fails until the owner moves "ratchet_version"
 - a step for each adopted rule that was removed: take it out of "adopted", and to
   keep it, add the printed entry to "own", which has the fields of an own rule only:
-  its status and "where" are kept, and its translation is not.
+  its status and "where" are kept, and its translation is not. A rule adopted by
+  reference gets Ratchet's text in that entry, and the step names its marker line to
+  take out of the file.
   A rule merged into another, or moved into Ratchet's own register, shows as removed:
   the step says that the changelog says why, and that the rule it was merged into may
   be adopted in its place
@@ -43,8 +49,9 @@ Either way the script compares the two versions, rule by rule, and prints:
 - when the fields of ratchet.json differ between the two, at the top or in its rules,
   a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
   check of its own, that reads it.
-- when the form of register.json changed between the two versions, what changed. Every
-  field that came in 0.10 may be left out, so none of it is a step.
+- when the form of register.json changed between the two versions, what changed, with
+  the new fields named. Every field that came in 0.10 or 0.11 may be left out, so none
+  of it is a step.
 
 It writes no file of the project. Only the one command changes anything: the tags
 and the checkout of .ratchet, through git. Before it prints a
@@ -93,6 +100,12 @@ REGISTER_FORMS = (
              '"instructions", and check_register.py then checks the block of rules it generates into that file. An adopted rule '
              'may carry a "translation", bound to its English rule by a sha256. An own rule may carry "status" and "where". A '
              'register without them stays valid, so none of this is a step.'),
+    ("0.11", 'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw), the last change of form before the '
+             'count toward 1.0. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", '
+             'the Markdown file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its '
+             'ratchet. Such a row holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> '
+             'once. check_register.py sees that marker, not the words. REGISTER.md may be left out by a register with such '
+             'rows. A register without them stays valid, so none of this is a step.'),
 )
 
 
@@ -130,9 +143,14 @@ def load_older(path, data=None):
 def entry(rule, old_entry=None):
     """A rule as it stands in a register, keeping the status, the place of the check and the translation that still hold.
 
-    A translation is kept when the English text it is bound to did not change, and is left out when it did.
+    A translation is kept when the English text it is bound to did not change, and is left out when it did. A row
+    adopted by reference stays one: its key, its file, and the sha256 of the rule and its ratchet in this version.
     """
-    result = dict((field, rule[field]) for field in check_register.RULE_FIELDS)
+    if old_entry is not None and check_register.is_reference(old_entry):
+        result = {"key": rule["key"], check_register.STANDS_IN: old_entry[check_register.STANDS_IN],
+                  check_register.SHA: check_register.reference_sha256(rule)}
+    else:
+        result = dict((field, rule[field]) for field in check_register.RULE_FIELDS)
     if rule["enforcement"] == "enforced":
         if old_entry is not None and "status" in old_entry:
             result["status"] = old_entry["status"]
@@ -203,6 +221,19 @@ def changed_fields(old, new):
     return [name for field, name in COMPARED if old[field] != new[field]]
 
 
+def reference_text(before, rule):
+    """What the step for a changed rule says to a row adopted by reference: whether its sha256 still matches, and if not,
+    the new one and that the project reads its own wording again."""
+    new = check_register.reference_sha256(rule)
+    if before[check_register.SHA] == new:
+        return ("It is adopted by reference, and its rule and its ratchet did not change, so its sha256 still matches and the "
+                "entry is as it was.")
+    return ("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the new sha256 "
+            "is %s. Read the project's own wording in %s again against the new rule, and change it where it no longer says "
+            "what the rule says. check_register.py fails from when \"ratchet_version\" is moved until sha256 is set to the "
+            "new one, and not before." % (new, before[check_register.STANDS_IN]))
+
+
 def joined(names):
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
@@ -237,6 +268,8 @@ def plan(register, old, new):
             elif step["entry"].get("status") == "built" and old_by[key]["ratchet"] != rule["ratchet"]:
                 text.append('It keeps the status "built". Its ratchet changed: check that the check in "where" still does what '
                             'the ratchet says, or set the status to "text only for now".')
+            if check_register.is_reference(before):
+                text.append(reference_text(before, rule))
             if check_register.TRANSLATION in before and check_register.TRANSLATION not in step["entry"]:
                 text.append('Its rule changed, so its translation must be made again, and the entry has none. Translate the new '
                             'rule and add its "translation" with "sha256": "%s".' % check_register.rule_sha256(rule["rule"]))
@@ -263,6 +296,11 @@ def plan(register, old, new):
                     text.append('An own rule may say where its check stands, so the entry keeps its status and its "where".')
                 if check_register.TRANSLATION in adopted[key]:
                     text.append("An own rule has no translation, so the entry has none.")
+                if check_register.is_reference(adopted[key]):
+                    text.append("It was adopted by reference, and an own rule stands in the register in full, so the entry "
+                                "holds Ratchet's text of it, which the project may replace with its own wording. Take the line "
+                                "%s out of %s, since no row names it there." % (
+                                    check_register.MARKER % key, adopted[key][check_register.STANDS_IN]))
                 text.append(MERGED % new["version"])
                 step["text"] = " ".join(text)
             steps.append(step)

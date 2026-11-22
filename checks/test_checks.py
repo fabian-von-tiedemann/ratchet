@@ -38,6 +38,12 @@ MARKER_LINE = "must be exactly <!-- ratchet:"
 PLACE = "AGENTS.md: the block must stand at the start of the file"
 LINKED = "is a symbolic link. The instruction file is read and written only as a plain file in the repo"
 REFUSED = "Replace each link with a regular file"
+STANDS_IN_FORM = "ratchet.fresh-context: stands_in must be the path of a Markdown file in the repo"
+BY_REFERENCE_TEXT = "%s: a row adopted by reference holds no rule text"
+RULE_MARKER_LINE = "RULES.md: the line that holds ratchet:rule, line "
+# The label of every row by reference, word for word as D-2026-11-22-second-redraw has it.
+LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
+         "sees a marker, not the words. Protection against a softened wording: %s.")
 
 
 def outside(field, code):
@@ -175,6 +181,33 @@ FAILING_DATA = {
     "own-where-hidden": "example.changelog: " + outside("where", "200B"),
     "own-unknown-field": "example.changelog: unknown field 'waived'",
     "own-missing-field": "example.changelog: missing field 'source'",
+    # A row adopted by reference, the weaker mode (D-2026-11-22-second-redraw, step 9a). Each fixture is the register of
+    # ref-clean with one fault, and the check fails on the data before it reads any file.
+    "ref-unknown-key": "ratchet.ship-first is not a rule in Ratchet",
+    "ref-wrong-hash": "ratchet.fresh-context: the sha256 is ",
+    "ref-hash-of-rule-only": "ratchet.fresh-context: the sha256 is ",
+    "ref-hash-of-other-ratchet": "ratchet.fresh-context: the sha256 is ",
+    "ref-hash-form": "ratchet.fresh-context: sha256 must be 64 characters 0 to 9 and a to f: the sha256 of the rule and its ratchet",
+    "ref-with-text": BY_REFERENCE_TEXT % "ratchet.fresh-context",
+    "ref-copied-with-sha": BY_REFERENCE_TEXT % "ratchet.register-on-top",
+    "ref-translation": "ratchet.fresh-context: a row adopted by reference has no translation",
+    "ref-on-own": "example.changelog: an own rule is not adopted by reference",
+    "ref-unknown-field": "ratchet.fresh-context: unknown field 'reviewed_by'",
+    "ref-missing-sha": "ratchet.fresh-context: missing field 'sha256'",
+    "ref-missing-stands-in": "ratchet.fresh-context: missing field 'stands_in'",
+    "ref-not-text": "ratchet.fresh-context: every field must be a string",
+    "ref-path-parent": STANDS_IN_FORM,
+    "ref-path-absolute": STANDS_IN_FORM,
+    "ref-path-dot": STANDS_IN_FORM,
+    "ref-path-dash": STANDS_IN_FORM,
+    "ref-path-hidden": STANDS_IN_FORM,
+    "ref-not-markdown": STANDS_IN_FORM,
+    "ref-is-instructions": "ratchet.fresh-context: stands_in names AGENTS.md, the instruction file",
+    "ref-is-instructions-case": "ratchet.fresh-context: stands_in names agents.md, the instruction file",
+    "ref-adopted-twice": "ratchet.fresh-context is adopted twice",
+    "ref-status-missing": "ratchet.fresh-context names a check, so it needs a status",
+    "ref-status-on-text-only": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status",
+    "ref-built-nowhere": "ratchet.fresh-context is marked built but does not say where the check lives",
 }
 
 # Fixtures with a clean register.json that names AGENTS.md, and an AGENTS.md whose block is not what it generates,
@@ -226,6 +259,36 @@ FAILING_BLOCK = {
 }
 # Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates.
 PASSING_BLOCK = ("block-clean", "block-crlf-outside")
+
+# Fixtures with the register of ref-clean, its REGISTER.md, and a RULES.md, the file its rows by reference name, with one
+# fault. Fixture name -> the text the check must print.
+FAILING_REFERENCE = {
+    "ref-marker-missing": "RULES.md: holds no marker for ratchet.evidence-before-done",
+    "ref-marker-twice": "RULES.md: the marker <!-- ratchet:rule ratchet.fresh-context --> stands 2 times",
+    "ref-marker-stray": "RULES.md: holds the marker <!-- ratchet:rule ratchet.root-cause -->, and no row adopted by reference names this file",
+    "ref-marker-spaces": RULE_MARKER_LINE,
+    "ref-marker-no-spaces": RULE_MARKER_LINE,
+    "ref-marker-case": RULE_MARKER_LINE,
+    "ref-marker-key-case": RULE_MARKER_LINE,
+    "ref-marker-indented": RULE_MARKER_LINE,
+    "ref-marker-trailing-space": RULE_MARKER_LINE,
+    "ref-marker-text-after": RULE_MARKER_LINE,
+    "ref-marker-crlf": RULE_MARKER_LINE,
+    "ref-marker-no-newline": RULE_MARKER_LINE,
+    "ref-marker-other-form": RULE_MARKER_LINE,
+    "ref-marker-two-on-line": RULE_MARKER_LINE,
+    "ref-marker-zero-width": RULE_MARKER_LINE,
+    "ref-key-lookalike": RULE_MARKER_LINE,
+    "ref-lookalike-cyrillic": RULE_MARKER_LINE,
+    "ref-lookalike-zero-width": RULE_MARKER_LINE,
+    "ref-lookalike-fullwidth": RULE_MARKER_LINE,
+    "ref-lookalike-control": RULE_MARKER_LINE,
+    "ref-not-utf8": "RULES.md: " + NOT_UTF8,
+    "ref-file-missing": "RULES.md: the file is missing. register.json names it in stands_in for ratchet.fresh-context, ratchet.evidence-before-done",
+    "ref-md-edited": NOT_GENERATED,
+}
+# Fixtures with rows by reference that pass, with --markdown REGISTER.md.
+PASSING_REFERENCE = ("ref-clean", "ref-no-markdown", "ref-crlf-outside", "ref-in-code-block", "ref-only", "ref-owner-built", "ref-block")
 
 # Fixtures with a clean register.json and a REGISTER.md that is not what it generates.
 FAILING_MARKDOWN = (
@@ -488,6 +551,7 @@ class RegisterCheck(FixtureTest):
     def test_every_fixture_has_an_expectation(self):
         self.assertEqual(sorted(os.listdir(REGISTERS)), sorted(
             list(FAILING_DATA) + list(FAILING_MARKDOWN) + list(FAILING_BLOCK) + list(PASSING_BLOCK)
+            + list(FAILING_REFERENCE) + list(PASSING_REFERENCE)
             + ["clean", "escaped", "latin", "references", "md-missing", "md-not-utf8"]))
 
     def test_the_template_and_this_repos_register_pass(self):
@@ -765,6 +829,173 @@ class RegisterBlock(FixtureTest):
         self.assertEqual(code, 0, output)
         self.assertIn("block/AGENTS.md: the block between the markers is what register.json generates", output)
         self.assertIn("1 rules of the project's own, 1 with a status: 1 built", output)
+
+
+class RegisterByReference(FixtureTest):
+    """Rows adopted by reference, the weaker mode, in a register that mixes them with copied rows
+    (D-2026-11-22-second-redraw, step 9a)."""
+
+    def check(self, name, *args):
+        """A copy of the fixture's directory, and what the check says about its register.json with --markdown REGISTER.md."""
+        directory = self.fixture_directory("register/" + name)
+        return directory, run("check_register.py", os.path.join(directory, "register.json"),
+                              "--markdown", os.path.join(directory, "REGISTER.md"), *args)
+
+    def test_rows_by_reference_that_pass_are_labeled(self):
+        for name in PASSING_REFERENCE:
+            with self.subTest(fixture=name):
+                directory, (code, output) = self.check(name)
+                self.assertEqual(code, 0, output)
+                register = json.loads(self.fixture_text("register/%s/register.json" % name))
+                rows = [entry for entry in register["adopted"] if "stands_in" in entry]
+                self.assertTrue(rows)
+                said = LABEL % ("built" if name == "ref-owner-built" else "not built")
+                for entry in rows:
+                    self.assertIn("register.json: %s stands in %s. %s\n" % (entry["key"], entry["stands_in"], said), output)
+                self.assertIn("%d rules are adopted by reference, the weaker mode" % len(rows), output)
+                self.assertIn("RULES.md: holds the marker line of ", output)
+        self.assertIn("REGISTER.md: not there, which a register with rows adopted by reference may leave out",
+                      self.check("ref-no-markdown")[1][1])
+        self.assertIn("AGENTS.md: the block between the markers is what register.json generates", self.check("ref-block")[1][1])
+        self.assertIn("docs/more.md: holds the marker line of ", self.check("ref-only")[1][1])
+        self.assertIn("0 rules match Ratchet", self.check("ref-only")[1][1], "every row is by reference")
+
+    def test_every_fault_in_the_file_a_row_names_fails_for_its_own_reason(self):
+        for name, message in sorted(FAILING_REFERENCE.items()):
+            with self.subTest(fixture=name):
+                directory, (code, output) = self.check(name)
+                self.assertEqual(code, 1, output)
+                self.assertIn(message, output)
+                self.assertIn("FAIL: 1 problem(s)", output, "a fixture carries exactly one fault")
+                self.assertNotIn("Traceback", output)
+                self.assertNotIn("stands in RULES.md. Adopted by reference", output, "no label on a register that fails")
+
+    def test_the_label_is_the_decisions_sentence_and_says_built_only_on_the_registers_own_claim(self):
+        sys.path.insert(0, HERE)
+        import check_register
+        self.assertEqual(check_register.LABEL, LABEL)
+        register = json.loads(self.fixture_text("register/ref-clean/register.json"))
+        owner = next(entry for entry in register["adopted"] if entry["key"] == "ratchet.owner-paths")
+        self.assertEqual(owner["status"], "text only for now")
+        self.assertEqual(check_register.label(register), LABEL % "not built")
+        owner.update(status="built", where="`.github/CODEOWNERS`")
+        self.assertEqual(check_register.label(register), LABEL % "built")
+        register["adopted"].remove(owner)
+        self.assertEqual(check_register.label(register), LABEL % "not built", "a register that does not adopt it")
+        built = self.fixture_text("register/ref-owner-built/REGISTER.md")
+        self.assertIn(check_register.registry.cell(LABEL % "built"), built)
+        self.assertNotIn("not built", built)
+        clean = self.fixture_text("register/ref-clean/REGISTER.md")
+        self.assertEqual(clean.count(check_register.registry.cell(LABEL % "not built")), 2, "each row is labeled")
+
+    def test_the_rows_by_reference_stand_in_a_table_of_their_own_with_no_rule_text(self):
+        sys.path.insert(0, HERE)
+        import registry
+        rules = registry.rules_by_key(registry.load())
+        markdown = self.fixture_text("register/ref-clean/REGISTER.md")
+        self.assertIn("## Rules from Ratchet\n", markdown)
+        self.assertIn("## Rules adopted by reference\n", markdown)
+        for key in ("ratchet.fresh-context", "ratchet.evidence-before-done"):
+            self.assertIn("| %s | `RULES.md` | Adopted by reference\\, the weaker mode\\." % key, markdown)
+            self.assertNotIn(registry.cell(rules[key]["rule"]), markdown)
+            self.assertNotIn(registry.cell(rules[key]["ratchet"]), markdown)
+        self.assertIn(registry.row(rules["ratchet.register-on-top"]), markdown, "a copied row stands as before")
+        only = self.fixture_text("register/ref-only/REGISTER.md")
+        self.assertNotIn("## Rules from Ratchet", only, "no table of copied rows when there is none")
+        self.assertNotIn("ratchet:rule", markdown + only, "REGISTER.md holds no marker line")
+
+    def test_the_sha256_is_that_of_the_rule_a_line_feed_and_the_ratchet(self):
+        import hashlib
+        rules = dict((rule["key"], rule) for rule in json.loads(read("ratchet.json"))["rules"])
+        register = json.loads(self.fixture_text("register/ref-only/register.json"))
+        for entry in register["adopted"]:
+            rule = rules[entry["key"]]
+            self.assertEqual(entry["sha256"], hashlib.sha256((rule["rule"] + "\n" + rule["ratchet"]).encode("utf-8")).hexdigest())
+            self.assertNotEqual(entry["sha256"], hashlib.sha256(rule["rule"].encode("utf-8")).hexdigest())
+
+    def test_register_md_is_optional_only_for_a_register_with_rows_by_reference(self):
+        directory, (code, output) = self.check("md-missing")
+        self.assertEqual(code, 1, output)
+        directory = self.fixture_directory("register/ref-no-markdown")
+        os.mkdir(os.path.join(directory, "REGISTER.md"))
+        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--markdown", os.path.join(directory, "REGISTER.md"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("REGISTER.md: the file is missing", output, "a directory in its place is not left out")
+
+    def test_printing_a_mixed_register_prints_the_rows_by_reference_and_no_marker(self):
+        directory = self.fixture_directory("register/ref-block")
+        before = self.fixture_bytes("register/ref-block/RULES.md")
+        code, out, err = printed(os.path.join(directory, "register.json"), "--print-instructions")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, self.fixture_bytes("register/ref-block/AGENTS.md"))
+        block = out.decode("utf-8").split("<!-- ratchet:end -->")[0]
+        self.assertIn("### Rules adopted by reference\n", block)
+        self.assertIn("| ratchet.fresh-context | `RULES.md` | Adopted by reference", block)
+        self.assertNotIn("ratchet:rule", block)
+        with open(os.path.join(directory, "RULES.md"), "rb") as handle:
+            self.assertEqual(handle.read(), before, "nothing is written")
+        code, out, err = printed(os.path.join(directory, "register.json"), "--print-markdown")
+        self.assertEqual((code, out, err), (0, self.fixture_bytes("register/ref-block/REGISTER.md"), ""))
+        # Neither print mode reads the file a row by reference names.
+        directory = self.fixture_directory("register/ref-file-missing")
+        code, out, err = printed(os.path.join(directory, "register.json"), "--print-markdown")
+        self.assertEqual((code, out, err), (0, self.fixture_bytes("register/ref-file-missing/REGISTER.md"), ""))
+
+    def test_a_file_a_row_names_behind_a_symbolic_link_is_not_read(self):
+        for stands_in, link_to in (("RULES.md", "file"), ("docs/RULES.md", "directory")):
+            with self.subTest(stands_in=stands_in):
+                directory = self.fixture_directory("register/ref-no-markdown")
+                outside = scratch(self)
+                shutil.move(os.path.join(directory, "RULES.md"), os.path.join(outside, "RULES.md"))
+                if link_to == "file":
+                    os.symlink(os.path.join(outside, "RULES.md"), os.path.join(directory, "RULES.md"))
+                else:
+                    os.symlink(outside, os.path.join(directory, "docs"))
+                path = os.path.join(directory, "register.json")
+                with open(path, encoding="utf-8") as handle:
+                    register = json.load(handle)
+                for entry in register["adopted"]:
+                    if "stands_in" in entry:
+                        entry["stands_in"] = stands_in
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(register, handle)
+                code, output = run("check_register.py", path)
+                self.assertEqual(code, 1, output)
+                self.assertIn("is a symbolic link. The file a row by reference names is read only as a plain file in the repo", output)
+                self.assertIn("FAIL: 1 problem(s)", output)
+                self.assertNotIn("holds the marker line", output)
+        directory = self.fixture_directory("register/ref-no-markdown")
+        path = os.path.join(directory, "register.json")
+        with open(path, encoding="utf-8") as handle:
+            register = json.load(handle)
+        for entry in register["adopted"]:
+            if "stands_in" in entry:
+                entry["stands_in"] = "docs/RULES.md"
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(register, handle)
+        code, output = run("check_register.py", path)
+        self.assertEqual(code, 1, output)
+        self.assertIn("docs is missing or is not a directory. register.json names docs/RULES.md in stands_in", output)
+
+    def test_the_word_of_the_rule_marker_is_found_in_any_disguise(self):
+        sys.path.insert(0, HERE)
+        import check_register
+        for line in ("<!-- ratchet:rule ratchet.x -->", "RATCHET:RULE", "ratchet\u200b:rule", "r\u0430tchet:rule", "ratchet\uff1arule",
+                     "ratchet\x00:rule", "rat\u00adchet:rule"):
+            with self.subTest(line=line):
+                self.assertEqual(len(check_register.marker_words(line, check_register.RULE_WORD)[0]), 1, line)
+        for line in ("Ratchet: rule of the register.", "ratchet-rule", "the ratchet rules here"):
+            with self.subTest(line=line):
+                self.assertEqual(check_register.marker_words(line, check_register.RULE_WORD)[0], [], line)
+
+    def test_a_mixed_register_typed_by_hand_passes_with_a_hash_typed_by_hand(self):
+        handwritten = self.fixture_directory("handwritten")
+        source = os.path.join(handwritten, "ratchet.json")
+        code, output = run("check_register.py", "--source", source, os.path.join(handwritten, "reference", "register.json"),
+                           "--markdown", os.path.join(handwritten, "reference", "REGISTER.md"))
+        self.assertEqual(code, 0, output)
+        self.assertIn("1 rules match Ratchet 9.9 (1 core, 0 experimental). 1 rules are adopted by reference", output)
+        self.assertIn("ratchet.example-two stands in RULES.md. " + LABEL % "not built", output)
 
 
 class RepoCopy:
