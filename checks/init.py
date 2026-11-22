@@ -26,7 +26,8 @@ The name is the folder's name unless --name gives one. It is ASCII letters and d
 space, "-", "." or "_", at most 100 characters.
 
 It never overwrites a file. A file that exists with the content it would write is unchanged. A file that exists
-with other content, or that is not a plain file, is skipped, named, and left as it is, and the run exits 1. The one
+with other content, or that is not a plain file, is skipped, named, and left as it is. That is reported, not a
+failure: the run goes on and writes the rest (step 5 of D-2026-11-22-second-redraw). The one
 file it changes is .gitignore, and only by adding its line at the end, in one step, and only if .gitignore still
 holds what it read: when it changed meanwhile, init.py stops and leaves it as it is. With --check it writes
 nothing and says the same. A second run says that nothing changed. Then it names what is left to do: each
@@ -35,7 +36,8 @@ the protection of main, and, when the repo's git config names no remote, the ado
 the end it runs check_register.py on register.json and REGISTER.md and shows the result.
 
 The root is the directory it runs in, as the shell gives it in PWD when that is the same directory, taken as given
-and never resolved. It refuses to run when the path to the root passes through a symbolic link, below the enclosing
+and never resolved. The paths it prints are as the user typed them: the Ratchet checkout, when it stands under the
+root, is named from the root, such as .ratchet, and never by the path the system resolves a link above the root to. It refuses to run when the path to the root passes through a symbolic link, below the enclosing
 git root (registry.root_link), and each function that writes refuses a link on any part of the path from the root
 to the file it writes (registry.guard_path), so nothing is written through a link (round 3 of #100).
 
@@ -56,8 +58,11 @@ checkout, whose code it is, or a concurrent attacker. It never runs code from th
 only in the Ratchet checkout, never in the project's repo, whose git config could name a program to run, and the
 check at the end is Ratchet's own. It reads the repo's git config as a file to see whether it names a remote.
 
-Exit code 0: everything is in place and the register passes. 1: a file was skipped, or the register does not
-pass. 2: it could not run, and wrote nothing, or it stopped at a file it could not write or at a .gitignore that
+Exit code 0: the plan was carried out, or with --check can be, and the register passes, files skipped or not. 1: the
+register does not pass, or with --check would not: register.json does not pass check_register.py, REGISTER.md is not
+a plain file or not what register.json generates, or the instruction file that register.json names in instructions
+is not a plain file holding the block it generates. --check reaches that verdict with check_register.generated_problems,
+the function of the check at the end of a real run, given the bytes it would write (review of d86ff3e). 2: it could not run, and wrote nothing, or it stopped at a file it could not write or at a .gitignore that
 changed, and says how many files it wrote before.
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -193,29 +198,39 @@ def git(*args):
     return result.returncode, result.stdout.strip()
 
 
+def typed(path):
+    """path as the user typed it. A path under the root, or under the directory the system gives for it, is named from
+    the root, so that a link above the root, such as /var to /private/var on macOS, is not resolved in what is printed.
+    Any other path is shown as it is."""
+    for base in (here(), os.getcwd()):
+        if os.path.commonpath([base, path]) == base:
+            return os.path.relpath(path, base).replace(os.sep, "/")
+    return path
+
+
 def ratchet_commit():
     """The commit of the Ratchet checkout, checked: the checkout is a git repo of its own, at that commit, clean."""
     code, top = git("rev-parse", "--show-toplevel")
     if code != 0 or os.path.realpath(top) != os.path.realpath(RATCHET):
         raise InitError("%s is not a git checkout of its own, so there is no commit to pin. Fetch Ratchet with git clone, "
-                        "as README.md says" % RATCHET)
+                        "as README.md says" % typed(RATCHET))
     code, commit = git("rev-parse", "--verify", "HEAD^{commit}")
     problem = commit_problem(commit) if code == 0 else "git rev-parse HEAD failed"
     if problem:
-        raise InitError("cannot read the commit of %s: %s" % (RATCHET, problem))
+        raise InitError("cannot read the commit of %s: %s" % (typed(RATCHET), problem))
     code, changes = git("status", "--porcelain", "--untracked-files=no")
     if code != 0:
-        raise InitError("cannot read the state of %s with git status" % RATCHET)
+        raise InitError("cannot read the state of %s with git status" % typed(RATCHET))
     if changes:
         raise InitError("%s has changes that are not committed, so commit %s does not hold the files init.py would copy. "
-                        "Fetch Ratchet again" % (RATCHET, commit))
+                        "Fetch Ratchet again" % (typed(RATCHET), commit))
     return commit
 
 
 def template(name):
     text = registry.read(os.path.join(RATCHET, "templates", name))
     if text is None:
-        raise InitError("templates/%s is missing from %s" % (name, RATCHET))
+        raise InitError("templates/%s is missing from %s" % (name, typed(RATCHET)))
     return text
 
 
@@ -448,7 +463,7 @@ def main(argv=None, out=None):
     version = ratchet["version"]
     code, tags = git("tag", "--points-at", "HEAD")
     tag = "v" + version
-    say("init: Ratchet %s from %s, at commit %s" % (version, RATCHET, commit))
+    say("init: Ratchet %s from %s, at commit %s" % (version, typed(RATCHET), commit))
     if code == 0 and tag in tags.split("\n"):
         say("init: that is the commit of the tag %s, and the workflow pins it" % tag)
     else:
@@ -471,19 +486,21 @@ def main(argv=None, out=None):
             plan.append(("skip", file, None, "it exists and is not a plain file. It was left as it is"))
         else:
             plan.append(("skip", file, None, "it exists and differs from what init.py writes. It was left as it is: "
-                                             "compare it with .ratchet/templates/%s by hand" % {
+                                             "compare it with %s/templates/%s by hand" % (typed(RATCHET), {
                                                  "AGENTS.md": "AGENTS.md", "register.json": "register.json",
-                                                 WORKFLOW: "ratchet-checks.yml"}[file]))
+                                                 WORKFLOW: "ratchet-checks.yml"}[file])))
     state, current, text = states["register.json"]
     standing = text if state == "missing" else current
     markdown, reason = register_md_text(state, standing, ratchet)
-    state, current = existing(os.path.join(root, "REGISTER.md"))
+    markdown_state, current = existing(os.path.join(root, "REGISTER.md"))
     if markdown is None:
         plan.insert(2, ("skip", "REGISTER.md", None, "it cannot be generated: %s" % reason))
-    elif state == "missing":
+    elif markdown_state == "missing":
         plan.insert(2, ("write", "REGISTER.md", markdown.encode("utf-8"), ""))
     elif current == markdown:
         plan.insert(2, ("unchanged", "REGISTER.md", None, ""))
+    elif markdown_state == "other":
+        plan.insert(2, ("skip", "REGISTER.md", None, "it exists and is not a plain file. It was left as it is"))
     else:
         plan.insert(2, ("skip", "REGISTER.md", None, "it exists and is not what register.json generates. It was left as "
                                                      "it is: print it with check_register.py --print-markdown"))
@@ -504,6 +521,7 @@ def main(argv=None, out=None):
 
     shown = {"write": "would write", "add": "would add"} if args.check else {}
     written = skipped = 0
+    changed = []  # the files written or changed, as they are named to commit
     for action, file, data, note in plan:
         label = file.replace(os.sep, "/")
         if action == "add":
@@ -530,6 +548,7 @@ def main(argv=None, out=None):
         say(("%-11s %s" % (shown.get(action, action), label)) + (": " + note if note else ""))
         if action in ("write", "add"):
             written += 1
+            changed.append(file.replace(os.sep, "/"))
         elif action == "skip":
             skipped += 1
     left = "1 file left as it is" if skipped == 1 else "%d files left as they are" % skipped
@@ -541,32 +560,64 @@ def main(argv=None, out=None):
     else:
         say("init: Nothing changed" + (", " + left if skipped else ""))
 
-    result = 1 if skipped else 0
+    # A file skipped is reported, not a failure: only the register decides (step 5 of D-2026-11-22-second-redraw).
+    result = 0
     for line in notes(root, states, standing, args.check):
         say(line)
     say()
     if args.check:
-        if markdown is not None:
+        problems = verdict(plan, markdown, reason, markdown_state, standing)
+        if not problems:
             say("init: the register it would leave passes check_register.py (%s)" % check_register.check(
                 registry.parse_json(standing.encode("utf-8")), ratchet)[1])
         else:
-            say("init: the register it would leave does not pass check_register.py: %s" % reason)
+            say("init: the register it would leave does not pass check_register.py:")
+            for problem in problems:
+                say("  " + problem.replace("\n", "\n  "))
             result = 1
         return result
 
     command = [sys.executable, "-E", "-s", os.path.join(RATCHET, "checks", "check_register.py"), "register.json",
                "--markdown", "REGISTER.md"]
-    say("init: python3 %s register.json --markdown REGISTER.md" % os.path.relpath(command[3], root).replace(os.sep, "/"))
+    say("init: python3 %s register.json --markdown REGISTER.md" % typed(command[3]))
     check = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     for line in check.stdout.rstrip("\n").split("\n"):
         say("  " + line)
     if check.returncode != 0:
         say("init: the register check failed, with exit code %d" % check.returncode)
         return 1
-    if result == 0:
-        say("init: done. Fill in AGENTS.md, and commit AGENTS.md, register.json, REGISTER.md, %s and .gitignore"
-            % WORKFLOW.replace(os.sep, "/"))
-    return result
+    say("init: done. %s" % closing(skipped, changed))
+    return 0
+
+
+def verdict(plan, markdown, reason, markdown_state, standing):
+    """What --check says the register check at the end of a real run would find, as a list of problems. The check is the
+    same function, check_register.generated_problems, given the bytes that the run would write (review of d86ff3e)."""
+    if markdown is None:
+        return [reason]
+    if markdown_state == "other":
+        # The check at the end refuses a link at REGISTER.md, and reads a directory there as missing.
+        return ["REGISTER.md: it is not a plain file"]
+    planned = {file: data for action, file, data, note in plan if action == "write"}
+    return check_register.generated_problems("register.json", registry.parse_json(standing.encode("utf-8")), "REGISTER.md",
+                                             planned)[0]
+
+
+def closing(skipped, changed):
+    """The last line of a run that passed, saying only what applies: compare what was left as it is, fill in AGENTS.md when
+    it was written, and commit what was written or changed."""
+    parts = []
+    if skipped:
+        parts.append("compare each file left as it is with what init.py would write, by hand")
+    if "AGENTS.md" in changed:
+        parts.append("fill in AGENTS.md")
+    if changed:
+        parts.append("commit " + (" and ".join(changed) if len(changed) < 3 else
+                                  ", ".join(changed[:-1]) + " and " + changed[-1]))
+    if not parts:
+        return "Nothing to commit"
+    text = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + ", and " + parts[-1]
+    return text[0].upper() + text[1:]
 
 
 def notes(root, states, standing, check):
