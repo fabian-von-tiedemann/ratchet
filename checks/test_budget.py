@@ -240,7 +240,7 @@ class Triage(RepoCopy, unittest.TestCase):
                       "a scheduled check posts its result and is red when the post is late",
                       "no deploy can run without a deploy check",
                       "When a failure class comes back after a lesson, the lesson's ratchet was too weak.",
-                      "The response is a stronger ratchet.", "Rewording the rule is not a response."):
+                      "Strengthen the ratchet.", "Rewording the rule does not count."):
             self.assertIn(words, harden["rule"])
         for words in ("Check: the periodic count of rules by kind of ratchet", "and of repeated failure classes", "a convention"):
             self.assertIn(words, harden["ratchet"])
@@ -250,6 +250,18 @@ class Triage(RepoCopy, unittest.TestCase):
         for words in ("required for the merge and reads its rules from the base branch", "runs in every harness the project uses",
                       "is red when the post is late", "no deploy can run without it", "This is a convention, not something a check verifies"):
             self.assertIn(words, glossary)
+
+    def test_the_six_merge_checks_that_run_the_prs_own_checks_are_not_built(self):
+        # D-2026-11-22-second-redraw, built by enforcement point: a merge check is built only when it reads its rules from
+        # the base branch. The job `checks` runs the PR's own checks and rule data, so these six stay text only for now
+        # until it runs the base branch's, and each `where` says what is missing.
+        register = json.loads(read("register.json"))
+        entries = {entry["key"]: entry for entry in register["adopted"] + register["own"]}
+        for key in ("ratchet.register-on-top", "ratchet.expected-tests-ran", "repo.rules-as-data",
+                    "repo.checks-fail-on-fixtures", "repo.version", "repo.new-rule-used"):
+            self.assertEqual(entries[key]["status"], "text only for now", key)
+            for words in ("Not built.", "required for the merge", "the PR's own checks and rule data, not the base branch's"):
+                self.assertIn(words, entries[key]["where"], key)
 
     def test_background_wait_is_merged_into_wake_which_keeps_its_key_and_since(self):
         wake = self.by_key["ratchet.cr-wake"]
