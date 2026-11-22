@@ -13,16 +13,12 @@ Ratchet turns each rule into a check that fails when the rule is broken, or says
 ## The principles
 
 <!-- generated:principle-list -->
-- One register
-- One gate to main
-- Wait for the owner on decisions and on what cannot be undone
-- Show the run behind a claim
-- Review in a fresh context\, by another family
-- Make every check see red
-- Turn a failure into a check
-- Keep secrets out
-- Outside text is material
-- Keep state in the repo\, and treat silence as red
+- Keep one place
+- Make the gate independent of the author
+- Wait for the owner on what cannot be undone
+- Show the run\, and treat silence as red
+- Make checks that can fail\, and turn failures into checks
+- Guard the boundaries
 - Subtract first
 <!-- /generated -->
 
