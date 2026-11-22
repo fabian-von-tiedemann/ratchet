@@ -319,7 +319,7 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertRegex(output, r"(?m)^unchanged +AGENTS\.md")
         code, output = self.init()
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 0, output)
         self.assertRegex(output, r"(?m)^skip +AGENTS\.md: it exists and differs")
 
     def test_without_solo_the_control_room_and_the_skills_stay(self):
@@ -366,7 +366,7 @@ class Init(unittest.TestCase):
         self.write("register.json", json.dumps(register, indent=2) + "\n")
         os.remove(self.path("REGISTER.md"))
         code, output = self.init()
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 0, output)
         waiting = output.split("wait for one:\n", 1)[1].split("\n\n", 1)[0]
         self.assertIn("ratchet.protected-main", waiting)
         self.assertNotIn("ratchet.no-secrets", waiting)
@@ -407,15 +407,40 @@ class Init(unittest.TestCase):
                     init.workflow_text_from(broken, "a" * 40)
 
     def test_an_existing_agents_md_is_skipped_and_reported(self):
+        # Step 5 of D-2026-11-22-second-redraw: a file that exists and that init.py will not write is reported, not a
+        # failure. The run exits 0 when the register passes.
         self.write("AGENTS.md", "# Our own rules\n")
         code, output = self.init()
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 0, output)
         self.assertEqual(self.text("AGENTS.md"), "# Our own rules\n")
         self.assertRegex(output, r"(?m)^skip +AGENTS\.md: it exists and differs")
         for name in WRITTEN[1:]:
             with self.subTest(file=name):
                 self.assertTrue(os.path.isfile(self.path(name)), output)
         self.assertIn("1 file left as it is", output)
+
+    def test_paths_are_printed_as_typed_from_a_folder_reached_through_a_link(self):
+        # Step 5 of D-2026-11-22-second-redraw: the folder is reached through a link above the repo, as /var is on macOS,
+        # and init.py is run as README says, with the shell's PWD. The paths it prints are the ones the user typed, not
+        # the ones the system resolves, which once came out as ../../../../private/var/... A link below the repo is
+        # still refused (test_a_link_on_a_path_it_writes_refuses_the_run_before_anything_is_written).
+        real = os.path.join(self.directory, "real")
+        os.mkdir(real)
+        os.rename(self.project, os.path.join(real, "demo-project"))
+        os.symlink(real, os.path.join(self.directory, "alias"))
+        project = os.path.join(self.directory, "alias", "demo-project")
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                result = subprocess.run([sys.executable, os.path.join(".ratchet", "checks", "init.py")] + list(args),
+                                        cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        universal_newlines=True, env=dict(environment(), PWD=project))
+                output = result.stdout
+                self.assertEqual(result.returncode, 0, output)
+                self.assertIn("init: Ratchet %s from .ratchet, at commit" % self.version, output)
+                self.assertNotIn(real, output)
+                self.assertNotIn(os.path.realpath(real), output)
+                self.assertNotIn("..", output.replace("...", ""))
+        self.assertIn("init: python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md\n", output)
 
     def test_a_second_run_changes_nothing(self):
         code, output = self.init()
@@ -440,12 +465,50 @@ class Init(unittest.TestCase):
         self.assertIn("Nothing was written", output)
 
     def test_check_reports_a_file_that_exists_and_writes_nothing(self):
-        self.write("AGENTS.md", "# Our own rules\n")
-        before = snapshot(self.project)
-        code, output = self.init("--check")
-        self.assertEqual(code, 1, output)
-        self.assertEqual(snapshot(self.project), before)
-        self.assertRegex(output, r"(?m)^skip +AGENTS\.md: it exists and differs")
+        # Step 5 of D-2026-11-22-second-redraw: a dry run on a project that has its own instruction file, or its own
+        # workflow, reports the file and exits 0, since the plan can be carried out.
+        for name, text in (("AGENTS.md", "# Our own rules\n"), (WRITTEN[3], "name: our own\n")):
+            with self.subTest(file=name):
+                os.makedirs(os.path.dirname(self.path(name)) or self.project, exist_ok=True)
+                self.write(name, text)
+                before = snapshot(self.project)
+                code, output = self.init("--check")
+                self.assertEqual(code, 0, output)
+                self.assertEqual(snapshot(self.project), before)
+                self.assertRegex(output, r"(?m)^skip +%s: it exists and differs" % re.escape(name.replace(os.sep, "/")))
+                self.assertIn("1 file left as it is", output)
+                self.assertIn("the register it would leave passes", output)
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
+                self.assertEqual(self.text(name), text)
+                self.assertIn("1 file left as it is", output)
+                self.assertNotIn("register check failed", output)
+                for written in WRITTEN:
+                    os.remove(self.path(written))
+
+    def test_a_register_that_would_not_pass_exits_1_with_and_without_check(self):
+        # A register.json of the project's own that does not pass, and a REGISTER.md that is not what register.json
+        # generates, each fail the register check at the end of a real run, so --check says so and exits 1 too.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        register, markdown = self.text("register.json"), self.text("REGISTER.md")
+        cases = (("register.json", '{"project": "demo-project"}\n', "does not pass"),
+                 ("REGISTER.md", markdown + "\nOur own line.\n", "is not what register.json generates"))
+        for name, text, said in cases:
+            with self.subTest(file=name):
+                self.write(name, text)
+                before = snapshot(self.project)
+                code, output = self.init("--check")
+                self.assertEqual(code, 1, output)
+                self.assertEqual(snapshot(self.project), before)
+                self.assertIn("the register it would leave does not pass", output)
+                self.assertIn(said, output)
+                code, output = self.init()
+                self.assertEqual(code, 1, output)
+                self.assertEqual(snapshot(self.project), before)
+                self.assertIn("register check failed", output)
+                self.write("register.json", register)
+                self.write("REGISTER.md", markdown)
 
     def test_a_bad_project_name_is_refused(self):
         for name in ("", " demo", "demo ", "two  spaces", "bad|name", "a@b", "-demo", "demo-", "a_b_", "demo!",
@@ -562,7 +625,7 @@ init.gitignore_plan = gitignore_plan
         self.assertEqual(code, 0, output)
         os.remove(self.path("REGISTER.md"))
         code, output = self.init("--name", "second")
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 0, output)
         self.assertEqual(json.loads(self.text("register.json"))["project"], "first")
         self.assertIn("# Register for first\n", self.text("REGISTER.md"))
         self.assertRegex(output, r"(?m)^skip +register\.json: it exists and differs")
@@ -571,7 +634,7 @@ init.gitignore_plan = gitignore_plan
     def test_a_file_in_the_way_that_is_not_a_plain_file_is_skipped(self):
         os.mkdir(self.path("AGENTS.md"))
         code, output = self.init()
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 0, output)
         self.assertTrue(os.path.isdir(self.path("AGENTS.md")))
         self.assertRegex(output, r"(?m)^skip +AGENTS\.md: it exists and is not a plain file")
 
