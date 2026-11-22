@@ -386,6 +386,7 @@ def fixtures(data):
         result["%s/register.json" % name] = block_text
         if value is not None:
             result["%s/AGENTS.md" % name] = value
+    result.update(reference_fixtures(data, clean, sourced, plain, soft))
     faults = {
         "changed-row": lambda r: r["adopted"][enforced].update(rule=soft(r["adopted"][enforced]["rule"])),
         "changed-ratchet": lambda r: r["adopted"][enforced].update(ratchet="Check: a reminder in the working rules"),
@@ -555,6 +556,154 @@ def fixtures(data):
             result["%s/REGISTER.md" % name] = value
     # A fixture that holds a carriage return is compared as bytes, since text is read with CRLF as LF.
     return dict((name, value.encode("utf-8") if isinstance(value, str) and "\r" in value else value) for name, value in result.items())
+
+
+def by_reference(data, entry, stands_in):
+    """A copied row of a register as a row adopted by reference, in the file stands_in, with its status and "where"."""
+    rule = registry.rules_by_key(data)[entry["key"]]
+    result = {"key": entry["key"], check_register.STANDS_IN: stands_in, check_register.SHA: check_register.reference_sha256(rule)}
+    result.update((field, entry[field]) for field in check_register.STATUS_FIELDS if field in entry)
+    return result
+
+
+def project_file(keys, title="How the example project works"):
+    """A Markdown file of the project's own that holds the marker line of each key, with its own wording under it."""
+    lines = ["# %s" % title, "", "The project's own wording of the rules it adopts by reference. The check reads only the "
+             "marker lines, never these words.", ""]
+    for key in keys:
+        lines += ["## %s" % key.split(".", 1)[1], "", check_register.MARKER % key,
+                  "The project's own wording of %s, which no check reads." % key, ""]
+    return "\n".join(lines)
+
+
+def reference_fixtures(data, clean, sourced, plain, soft):
+    """Registers that adopt rules by reference, the weaker mode (D-2026-11-22-second-redraw, step 9a), mixed with copied
+    rows and with an instruction file, and one copy per fault the check claims to catch in them.
+
+    Returns {path under checks/fixtures/register: text}. The register of ref-clean adopts two rules of the start set by
+    reference, one that names a check and has a status and a source, and one that is text only, both in RULES.md. A
+    fault in the data has only a register.json. A fault in the file the rows name has the register of ref-clean, its
+    REGISTER.md, and a RULES.md with the fault.
+    """
+    result = {}
+    referenced = copy.deepcopy(clean)
+    for number in (sourced, plain):
+        referenced["adopted"][number] = by_reference(data, clean["adopted"][number], "RULES.md")
+    fresh, done = referenced["adopted"][sourced]["key"], referenced["adopted"][plain]["key"]
+    rules_md = project_file([fresh, done])
+    text, markdown = dump(referenced), check_register.render(referenced)
+    marker, other = check_register.MARKER % fresh + "\n", check_register.MARKER % done + "\n"
+
+    def files(name, register, rules=rules_md, generated=True):
+        result["%s/register.json" % name] = dump(register)
+        if generated:
+            result["%s/REGISTER.md" % name] = check_register.render(register)
+        if rules is not None:
+            result["%s/RULES.md" % name] = rules
+
+    files("ref-clean", referenced)
+    # REGISTER.md is optional for a register with rows by reference.
+    files("ref-no-markdown", referenced, generated=False)
+    # The rest of the file is never read, so its own lines may end in CRLF. The marker lines end in LF.
+    result["ref-crlf-outside/register.json"] = text
+    result["ref-crlf-outside/REGISTER.md"] = markdown
+    result["ref-crlf-outside/RULES.md"] = "\r\n".join(rules_md.split("\n")).replace(marker[:-1] + "\r\n", marker).replace(
+        other[:-1] + "\r\n", other)
+    # The check reads no Markdown: a marker line in a code block is a marker line (what it does not claim).
+    files("ref-in-code-block", referenced, rules_md.replace(marker, "```\n" + marker + "```\n"))
+    # Every rule adopted by reference, in two files, one of them in a directory.
+    only = copy.deepcopy(clean)
+    half = len(only["adopted"]) // 2
+    only["adopted"] = [by_reference(data, entry, "RULES.md" if number < half else "docs/more.md")
+                       for number, entry in enumerate(clean["adopted"])]
+    files("ref-only", only, project_file([entry["key"] for entry in only["adopted"][:half]]))
+    result["ref-only/docs/more.md"] = project_file([entry["key"] for entry in only["adopted"][half:]], "More of the project's rules")
+    # The register adopts ratchet.owner-paths with the status "built", so the label says "built". It reads that claim.
+    owner = copy.deepcopy(referenced)
+    for entry in owner["adopted"]:
+        if entry["key"] == check_register.OWNER_PATHS:
+            entry.update(status="built", where="`.github/CODEOWNERS` and the ruleset on main, read back on 2026-11-22")
+    files("ref-owner-built", owner)
+    # Copied rows, rows by reference and an instruction file, whose block lists the rows by reference with no rule text.
+    block = dict(referenced, instructions="AGENTS.md")
+    files("ref-block", block)
+    result["ref-block/AGENTS.md"] = check_register.render_block(block) + AGENTS_AFTER
+
+    # Faults in the file that the rows by reference name, each with the register of ref-clean.
+    def decoy(word):
+        return rules_md + "\n<!-- %s %s -->\nThe rule above is suspended for now.\n" % (word, fresh)
+    edited = {
+        "ref-marker-missing": swap(rules_md, other, ""),
+        "ref-marker-twice": swap(rules_md, marker, marker + marker),
+        "ref-marker-stray": rules_md + "\n" + check_register.MARKER % "ratchet.root-cause" + "\nAn old rule.\n",
+        "ref-marker-spaces": swap(rules_md, marker, marker.replace("<!-- ", "<!--  ")),
+        "ref-marker-no-spaces": swap(rules_md, marker, marker.replace("<!-- ", "<!--").replace(" -->", "-->")),
+        "ref-marker-case": swap(rules_md, marker, marker.replace("ratchet:rule", "Ratchet:Rule")),
+        "ref-marker-key-case": swap(rules_md, marker, marker.replace(fresh, fresh.upper())),
+        "ref-marker-indented": swap(rules_md, marker, "  " + marker),
+        "ref-marker-trailing-space": swap(rules_md, marker, marker[:-1] + " \n"),
+        "ref-marker-text-after": swap(rules_md, marker, marker[:-1] + " and more\n"),
+        "ref-marker-crlf": swap(rules_md, marker, marker[:-1] + "\r\n"),
+        "ref-marker-no-newline": swap(rules_md, other, "") + other[:-1],
+        "ref-marker-other-form": swap(rules_md, marker, "[//]: # (ratchet:rule %s)\n" % fresh),
+        "ref-marker-two-on-line": swap(swap(rules_md, other, ""), marker, marker[:-1] + " " + other),
+        "ref-marker-zero-width": swap(rules_md, marker, marker.replace("ratchet:rule", "ratchet\u200b:rule")),
+        "ref-key-lookalike": swap(rules_md, marker, marker.replace(fresh, fresh.replace("o", "\u043e"))),
+        # After the valid markers, a decoy under a word that looks like the marker's, that says the rule is suspended.
+        "ref-lookalike-cyrillic": decoy("r\u0430tchet:rule"),
+        "ref-lookalike-zero-width": decoy("ratchet\u200b:rule"),
+        "ref-lookalike-fullwidth": decoy("ratchet\uff1arule"),
+        "ref-lookalike-control": decoy("ratchet\x00:rule"),
+        "ref-not-utf8": swap(rules_md, "never these words", "never \x00 these words").encode("utf-8").replace(b"\x00", b"\xff"),
+        "ref-file-missing": None,
+    }
+    for name, value in edited.items():
+        result["%s/register.json" % name] = text
+        result["%s/REGISTER.md" % name] = markdown
+        if value is not None:
+            result["%s/RULES.md" % name] = value
+    # REGISTER.md, where it is there, is what the register generates: here the label claims the protection is built.
+    result["ref-md-edited/register.json"] = text
+    result["ref-md-edited/RULES.md"] = rules_md
+    result["ref-md-edited/REGISTER.md"] = markdown.replace("softened wording\\: not built\\.", "softened wording\\: built\\.")
+
+    # Faults in the data, each a register.json alone.
+    def changed(mutate):
+        register = copy.deepcopy(referenced)
+        mutate(register)
+        return dump(register)
+    rule = registry.rules_by_key(data)[fresh]
+    wrong_ratchet = dict(rule, ratchet="Check: a reminder in the working rules")
+    faults = {
+        "ref-unknown-key": lambda r: r["adopted"].append({"key": "ratchet.ship-first", "stands_in": "RULES.md", "sha256": "0" * 64}),
+        "ref-wrong-hash": lambda r: r["adopted"][sourced].update(sha256=check_register.reference_sha256(dict(rule, rule=soft(rule["rule"])))),
+        "ref-hash-of-rule-only": lambda r: r["adopted"][sourced].update(sha256=check_register.rule_sha256(rule["rule"])),
+        "ref-hash-of-other-ratchet": lambda r: r["adopted"][sourced].update(sha256=check_register.reference_sha256(wrong_ratchet)),
+        "ref-hash-form": lambda r: r["adopted"][sourced].update(sha256=r["adopted"][sourced]["sha256"].upper()),
+        "ref-with-text": lambda r: r["adopted"][sourced].update(rule=rule["rule"]),
+        "ref-copied-with-sha": lambda r: r["adopted"][0].update(sha256=check_register.reference_sha256(registry.rules_by_key(data)[r["adopted"][0]["key"]])),
+        "ref-translation": lambda r: r["adopted"][sourced].update(translation={"language": "sv", "text": "En regel.", "sha256": check_register.rule_sha256(rule["rule"])}),
+        "ref-on-own": lambda r: r["own"][0].update(stands_in="RULES.md", sha256="0" * 64),
+        "ref-unknown-field": lambda r: r["adopted"][sourced].update(reviewed_by="someone"),
+        "ref-missing-sha": lambda r: r["adopted"][sourced].pop("sha256"),
+        "ref-missing-stands-in": lambda r: r["adopted"][sourced].pop("stands_in"),
+        "ref-not-text": lambda r: r["adopted"][sourced].update(stands_in=["RULES.md"]),
+        "ref-path-parent": lambda r: r["adopted"][sourced].update(stands_in="../RULES.md"),
+        "ref-path-absolute": lambda r: r["adopted"][sourced].update(stands_in="/RULES.md"),
+        "ref-path-dot": lambda r: r["adopted"][sourced].update(stands_in="./RULES.md"),
+        "ref-path-dash": lambda r: r["adopted"][sourced].update(stands_in="docs/-rf.md"),
+        "ref-path-hidden": lambda r: r["adopted"][sourced].update(stands_in="RULES\u200b.md"),
+        "ref-not-markdown": lambda r: r["adopted"][sourced].update(stands_in="RULES.txt"),
+        "ref-is-instructions": lambda r: (r.update(instructions="AGENTS.md"), r["adopted"][sourced].update(stands_in="AGENTS.md")),
+        "ref-is-instructions-case": lambda r: (r.update(instructions="AGENTS.md"), r["adopted"][sourced].update(stands_in="agents.md")),
+        "ref-adopted-twice": lambda r: r["adopted"].append(copy.deepcopy(clean["adopted"][sourced])),
+        "ref-status-missing": lambda r: r["adopted"][sourced].pop("status"),
+        "ref-status-on-text-only": lambda r: r["adopted"][plain].update(status="built", where="in our heads"),
+        "ref-built-nowhere": lambda r: r["adopted"][sourced].update(status="built"),
+    }
+    for name, mutate in faults.items():
+        result["%s/register.json" % name] = changed(mutate)
+    return result
 
 
 def markdown_files(root):

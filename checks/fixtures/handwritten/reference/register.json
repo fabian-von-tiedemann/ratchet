@@ -1,0 +1,20 @@
+{
+  "project": "a project written by hand",
+  "ratchet_version": "9.9",
+  "adopted": [
+    {
+      "key": "ratchet.example-one",
+      "rule": "Every change has a test.",
+      "ratchet": "Check: the tests run on every PR",
+      "source": "",
+      "status": "built",
+      "where": "`.github/workflows/tests.yml`"
+    },
+    {
+      "key": "ratchet.example-two",
+      "stands_in": "RULES.md",
+      "sha256": "218ed177a116a961aebf22685109958869f868615dcd07a82fee2b931a132aa9"
+    }
+  ],
+  "own": []
+}

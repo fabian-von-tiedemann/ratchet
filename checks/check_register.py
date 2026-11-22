@@ -2,9 +2,26 @@
 """Reference check for ratchet.register-on-top.
 
 A project's register is a data file, register.json. This check compares it with
-Ratchet at the version it states: every adopted rule must be Ratchet's own rule,
-character for character. A project chooses which rules it adopts. It never
-rewrites one.
+Ratchet at the version it states: every adopted rule that is copied must be
+Ratchet's own rule, character for character. A project chooses which rules it
+adopts. It never rewrites a copied one.
+
+An adopted rule may instead be adopted by reference, the weaker mode
+(D-2026-11-22-second-redraw). The row holds no rule text: it names the key, in
+"stands_in" a Markdown file in the repo where the rule stands in the project's own
+words, and in "sha256" the hash of the rule and its ratchet in Ratchet at the
+version the register states. The check fails unless the key is a rule at that
+version, the hash is that rule's and its ratchet's, and the file holds the line
+"<!-- ratchet:rule <key> -->" exactly once. It reads nothing else in the file, and
+labels each such row, as REGISTER.md does: the check sees a marker, not the words.
+The label says the protection against a softened wording is built only when the
+register itself adopts ratchet.owner-paths with the status "built". stands_in has the
+path form of "instructions", is checked on its path the same way, and is never the
+instruction file. A row by reference has no translation, and an own rule is never
+one. REGISTER.md may be left out by a register with rows by reference: with
+--markdown, a file that is not there is then not a failure. Where it is there, it is
+what the register generates, and the rows by reference stand in a table of their own,
+with their label and no rule text, there and in the block.
 
     python3 checks/check_register.py register.json
     python3 checks/check_register.py register.json --markdown REGISTER.md
@@ -35,7 +52,9 @@ with no other byte of the file changed. Each prints to standard output and nothi
 and prints nothing when there is a problem. The user puts the file in place with the
 commands in checks/README.md. The register and every file named on the command line are
 taken as given and refused when the path to them passes through a symbolic link, below
-the working directory or the enclosing git root (registry.root_link).
+the working directory or the enclosing git root (registry.root_link). Neither print
+mode reads or prints a file that a row by reference names, or a marker line: the
+marker is the project's to put in its own file.
 
 An adopted rule may carry a translation of its rule: a language code, the text, and
 the sha256 of the English rule it translates. The check fails when the sha256 is not
@@ -105,6 +124,24 @@ SHARE = 7
 FULL_WIDTH = dict((code, code - 0xFEE0) for code in range(0xFF01, 0xFF5F))
 STATUSES = ("built", "text only for now")
 OWN_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.[a-z0-9]+(-[a-z0-9]+)*\Z")
+# A row adopted by reference, the weaker mode, from 0.11 (D-2026-11-22-second-redraw). It holds no rule text: the key,
+# the Markdown file where the project's own wording stands, and the sha256 of the rule and its ratchet at the version
+# the register states. It may hold "status" and "where" on the same terms as a copied row, and nothing else.
+STANDS_IN = "stands_in"
+SHA = "sha256"
+REFERENCE_FIELDS = ("key", STANDS_IN, SHA)
+TEXT_FIELDS = ("rule", "ratchet", "source")
+# The one line that stands for a rule adopted by reference in the file its row names, alone on its line. The word
+# "ratchet:rule" anywhere else in that file, in any case and in disguise, is a broken marker.
+MARKER = "<!-- ratchet:rule %s -->"
+MARKER_LINE = re.compile(r"\A<!-- ratchet:rule (ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*) -->\Z")
+RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
+# The label of every row by reference, in the check's output and in REGISTER.md, word for word as the decision has
+# it. The last word is "built" only when the register itself adopts OWNER_PATHS with the status "built": the check
+# reads the register's own claim, not the host.
+LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
+         "sees a marker, not the words. Protection against a softened wording: %s.")
+OWNER_PATHS = "ratchet.owner-paths"
 
 INTRO = (
     "Every rule in force in this project. This file takes precedence over all other text in the repo. "
@@ -125,6 +162,11 @@ TRANSLATIONS = (
     "A translation is there for the people who read the rules in that language. The English text above is the rule. "
     "Each translation is bound to the English text it translates by that text's sha256, so a rule that changes fails "
     "the check until its translation is made again."
+)
+REFERENCED = (
+    "Ratchet version: %s. Each row below names a rule of Ratchet at that version and the file where the project's own "
+    "wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds "
+    "one marker line for each of its rows. No rule text stands here."
 )
 BLOCK_INTRO = (
     "Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` "
@@ -183,7 +225,7 @@ def check(register, ratchet):
 
     by_key = registry.rules_by_key(ratchet)
     seen = set()
-    built = needs = core = translated = 0
+    built = needs = core = translated = referenced = referenced_core = 0
     for number, entry in enumerate(register["adopted"], 1):
         name = "adopted rule %d" % number
         if not isinstance(entry, dict):
@@ -191,38 +233,51 @@ def check(register, ratchet):
             continue
         if isinstance(entry.get("key"), str):
             name = entry["key"]
-        missing = [field for field in RULE_FIELDS if field not in entry]
-        unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS) - {TRANSLATION})
-        if missing or unknown:
-            problems += ["%s: missing field %r" % (name, field) for field in missing]
-            problems += ["%s: unknown field %r" % (name, field) for field in unknown]
-            continue
-        if not all(isinstance(value, str) for field, value in entry.items() if field != TRANSLATION):
-            problems.append("%s: every field must be a string" % name)
-            continue
-        if entry["key"] not in by_key:
-            problems.append("%s is not a rule in Ratchet %s" % (name, version))
-            continue
-        if name in seen:
-            problems.append("%s is adopted twice" % name)
-            continue
-        seen.add(name)
-        rule = by_key[name]
-        differs = False
-        for field in ("rule", "ratchet", "source"):
-            if entry[field] != rule[field]:
-                differs = True
-                problems.append(
-                    "the %s of %s differs from Ratchet %s\n  expected: %s\n  found:    %s" % (field, name, version, rule[field], entry[field])
-                )
-        if differs:
-            continue
-        if TRANSLATION in entry:
-            found = translation_problem(entry[TRANSLATION], rule["rule"], version)
+        if is_reference(entry):
+            found = reference_problem(name, entry, register, by_key, version)
             if found:
-                problems.append("%s: %s" % (name, found))
+                problems.append(found)
                 continue
-            translated += 1
+            if name in seen:
+                problems.append("%s is adopted twice" % name)
+                continue
+            seen.add(name)
+            rule = by_key[name]
+            referenced += 1
+            referenced_core += rule["status"] == "core"
+        else:
+            missing = [field for field in RULE_FIELDS if field not in entry]
+            unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS) - {TRANSLATION})
+            if missing or unknown:
+                problems += ["%s: missing field %r" % (name, field) for field in missing]
+                problems += ["%s: unknown field %r" % (name, field) for field in unknown]
+                continue
+            if not all(isinstance(value, str) for field, value in entry.items() if field != TRANSLATION):
+                problems.append("%s: every field must be a string" % name)
+                continue
+            if entry["key"] not in by_key:
+                problems.append("%s is not a rule in Ratchet %s" % (name, version))
+                continue
+            if name in seen:
+                problems.append("%s is adopted twice" % name)
+                continue
+            seen.add(name)
+            rule = by_key[name]
+            differs = False
+            for field in ("rule", "ratchet", "source"):
+                if entry[field] != rule[field]:
+                    differs = True
+                    problems.append(
+                        "the %s of %s differs from Ratchet %s\n  expected: %s\n  found:    %s" % (field, name, version, rule[field], entry[field])
+                    )
+            if differs:
+                continue
+            if TRANSLATION in entry:
+                found = translation_problem(entry[TRANSLATION], rule["rule"], version)
+                if found:
+                    problems.append("%s: %s" % (name, found))
+                    continue
+                translated += 1
         core += rule["status"] == "core"
         if rule["enforcement"] != "enforced":
             if "status" in entry or "where" in entry:
@@ -250,6 +305,9 @@ def check(register, ratchet):
         if TRANSLATION in unknown:
             problems.append("%s: an own rule has no translation. A translation is bound to a rule of Ratchet; the project "
                             "writes its own rules in the language it chooses" % name)
+        elif STANDS_IN in unknown or SHA in unknown:
+            problems.append("%s: an own rule is not adopted by reference. stands_in and sha256 stand for a rule of Ratchet; "
+                            "the project's own rules stand in the register in full" % name)
         elif missing or unknown:
             problems += ["%s: missing field %r" % (name, field) for field in missing]
             problems += ["%s: unknown field %r" % (name, field) for field in unknown]
@@ -285,9 +343,13 @@ def check(register, ratchet):
             if len(places) != 1:
                 problems.append("a value holds %s in code, and the block of rules for %s would hold it outside its marker. "
                                 "Write it another way" % (word, register[INSTRUCTIONS]))
-    summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now." % (
-        len(seen), version, core, len(seen) - core, needs, built, needs - built,
-    )
+    copied, copied_core = len(seen) - referenced, core - referenced_core
+    summary = "%d rules match Ratchet %s (%d core, %d experimental)." % (copied, version, copied_core, copied - copied_core)
+    if referenced:
+        summary += (" %d rules are adopted by reference, the weaker mode (%d core, %d experimental): each names a rule of "
+                    "Ratchet %s with the sha256 of its rule and ratchet, and the check sees a marker, not the words." % (
+                        referenced, referenced_core, referenced - referenced_core, version))
+    summary += " %d name a check: %d built, %d text only for now." % (needs, built, needs - built)
     if translated:
         summary += " %d translated." % translated
     if own_status:
@@ -309,21 +371,83 @@ def status_problem(name, entry):
     return None
 
 
-def instructions_problem(value):
-    """Why the path of the instruction file breaks its form, or None.
+def instructions_problem(value, field=INSTRUCTIONS):
+    """Why the path of the instruction file, or of the file a row by reference names in stands_in, breaks its form, or
+    None.
 
     A path inside the repo, relative to the register: parts of letters, digits, ".", "_" and "-", joined by single "/",
     none of them "." or "..", none starting with "-", ending in ".md", at most PATH_LENGTH characters. So the block is
     put into a Markdown file of the project's own and nowhere else, and no part of the path reads as an option to the
     rm and mv of the printed commands (review of ef5cbaa).
     """
-    form = ("instructions must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
+    form = ("%s must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
             "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
-            "ending in .md")
+            "ending in .md" % field)
     if not isinstance(value, str) or len(value) > PATH_LENGTH or not value.endswith(".md"):
         return form
     if any(not PATH_PART.match(part) or part in (".", "..") or part.startswith("-") for part in value.split("/")):
         return form
+    return None
+
+
+def is_reference(entry):
+    """Whether an adopted row is meant to be adopted by reference: it has stands_in or sha256."""
+    return STANDS_IN in entry or SHA in entry
+
+
+def references(register):
+    """The rows of a register that passes check() that are adopted by reference, in order."""
+    return [entry for entry in register["adopted"] if is_reference(entry)]
+
+
+def protection(register):
+    """The last word of the label of a row by reference: "built" when the register adopts ratchet.owner-paths with the
+    status "built", else "not built". It reads the register's own claim, not the host (D-2026-11-22-second-redraw)."""
+    built = any(entry.get("key") == OWNER_PATHS and entry.get("status") == "built" for entry in register["adopted"])
+    return "built" if built else "not built"
+
+
+def label(register):
+    """The label of every row by reference in this register, word for word as the decision has it."""
+    return LABEL % protection(register)
+
+
+def reference_sha256(rule):
+    """The sha256 that a row by reference names: of the UTF-8 bytes of the rule, one line feed, and the ratchet, in
+    lowercase hex. Neither holds a line feed, so the two are told apart. A change to either changes it."""
+    return hashlib.sha256((rule["rule"] + "\n" + rule["ratchet"]).encode("utf-8")).hexdigest()
+
+
+def reference_problem(name, entry, register, by_key, version):
+    """Why an adopted row that has stands_in or sha256 is not a valid row by reference at this version, or None."""
+    text = [field for field in TEXT_FIELDS if field in entry]
+    if text:
+        return ("%s: a row adopted by reference holds no rule text, and this one has stands_in or sha256 and %s. Copy the row "
+                "whole, without stands_in and sha256, or adopt it by reference, without rule, ratchet and source" % (name, " and ".join(text)))
+    if TRANSLATION in entry:
+        return ("%s: a row adopted by reference has no translation. The project's own wording of it, in the file it names, "
+                "is in the language the project chooses" % name)
+    missing = [field for field in REFERENCE_FIELDS if field not in entry]
+    unknown = sorted(set(entry) - set(REFERENCE_FIELDS) - set(STATUS_FIELDS))
+    if missing or unknown:
+        return "; ".join(["%s: missing field %r" % (name, field) for field in missing]
+                         + ["%s: unknown field %r" % (name, field) for field in unknown])
+    if not all(isinstance(value, str) for value in entry.values()):
+        return "%s: every field must be a string" % name
+    if entry["key"] not in by_key:
+        return "%s is not a rule in Ratchet %s" % (name, version)
+    if instructions_problem(entry[STANDS_IN], STANDS_IN):
+        return "%s: %s" % (name, instructions_problem(entry[STANDS_IN], STANDS_IN))
+    if INSTRUCTIONS in register and entry[STANDS_IN].lower() == register[INSTRUCTIONS].lower():
+        return ("%s: stands_in names %s, the instruction file, which starts with the generated block. The project's own "
+                "wording of a rule by reference stands in another file" % (name, entry[STANDS_IN]))
+    if not SHA256.match(entry[SHA]):
+        return "%s: sha256 must be 64 characters 0 to 9 and a to f: the sha256 of the rule and its ratchet" % name
+    expected = reference_sha256(by_key[name])
+    if entry[SHA] != expected:
+        return ("%s: the sha256 is %s, and that of the rule and its ratchet in Ratchet %s is %s. The rule or its ratchet is "
+                "not the one the project's wording was read against: read the wording in %s again, and when it says what "
+                "the rule says, set sha256 to the new one" % (name, entry[SHA], version, expected, entry[STANDS_IN]))
     return None
 
 
@@ -360,8 +484,12 @@ def translation_problem(translation, rule, version):
 
 def sections(register, level):
     """The sections of the rules, each headed at the level given: the rules from Ratchet, their translations if there
-    are any, where each check stands, and the project's own rules. REGISTER.md and the block both hold them."""
-    rows = [registry.row(entry) for entry in register["adopted"]]
+    are any, the rules adopted by reference if there are any, where each check stands, and the project's own rules.
+    REGISTER.md and the block both hold them. A row by reference stands in a table of its own, with its label and no
+    rule text."""
+    copied = [entry for entry in register["adopted"] if not is_reference(entry)]
+    referenced = references(register)
+    rows = [registry.row(entry) for entry in copied]
     translations = [
         "| %s | %s | %s |" % (entry["key"], entry[TRANSLATION]["language"], registry.cell(entry[TRANSLATION]["text"]))
         for entry in register["adopted"] if TRANSLATION in entry
@@ -372,9 +500,16 @@ def sections(register, level):
         "| %s | %s | %s |" % (entry["key"], entry["status"], registry.cell(entry.get("where", "")))
         for entry in stated + own_stated
     ]
-    lines = [
-        level + " Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
-        registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [""]
+    lines = []
+    if copied or not referenced:
+        lines += [
+            level + " Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
+            registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [""]
+    if referenced:
+        lines += [level + " Rules adopted by reference", "", REFERENCED % register["ratchet_version"], "",
+                  "| Key | Stands in | Mode |", "|---|---|---|"]
+        lines += ["| %s | `%s` | %s |" % (entry["key"], entry[STANDS_IN], registry.cell(label(register))) for entry in referenced]
+        lines += [""]
     if translations:
         lines += [level + " Translations", "", TRANSLATIONS, "", "| Key | Language | Translation |", "|---|---|---|"]
         lines += translations + [""]
@@ -432,17 +567,18 @@ def disguised(line, word):
     return places
 
 
-def marker_words(text):
-    """For each of the two marker words, where it stands in the text, in any case and in disguise (see MARKER_WORDS).
+def marker_words(text, words=MARKER_WORDS):
+    """For each of the marker words, the two of the block by default, where it stands in the text, in any case and in
+    disguise (see MARKER_WORDS).
 
     A line of printable ASCII alone is searched for the word as it is. A line with any other character, a control
     character of ASCII among them, is read by disguised().
     """
     folded = text.translate(FULL_WIDTH)
-    found = [[], []]
+    found = [[] for _ in words]
     offset = 0
     for line in folded.split("\n"):
-        for places, (word, pattern) in zip(found, MARKER_WORDS):
+        for places, (word, pattern) in zip(found, words):
             if all("\x20" <= char < "\x7f" for char in line):
                 places += [offset + match.start() for match in pattern.finditer(line)]
             else:
@@ -511,6 +647,74 @@ def block_problems(name, data, register):
             % (name, text.count("\n", 0, place[0]) + line, show(want), show(have))]
 
 
+def marker_problems(name, data, keys):
+    """Every problem with the marker lines in the bytes of a file that rows by reference name, for the keys of those
+    rows, or nothing.
+
+    The word "ratchet:rule" is found wherever it stands, in any case and in disguise, as the words of the block are.
+    Each line that holds it must be exactly "<!-- ratchet:rule <key> -->", alone on its line and ending in LF. When
+    every such line is exact, the marker of each key given stands once, and no marker names a key that no row names
+    this file for. Nothing else in the file is read.
+    """
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: %s. Every file a check reads is UTF-8" % (name, registry.not_utf8(error))]
+    problems, counts, lines = [], {}, set()
+    for at in marker_words(text, RULE_WORD)[0]:
+        start = text.rfind("\n", 0, at) + 1
+        if start in lines:
+            continue
+        lines.add(start)
+        stop = text.find("\n", at)
+        line = text[start:] if stop < 0 else text[start:stop + 1]
+        match = MARKER_LINE.match(line[:-1]) if line.endswith("\n") else None
+        if match is None:
+            problems.append("%s: the line that holds ratchet:rule, line %d, must be exactly %s, alone on its line and ending "
+                            "in LF, found %r" % (name, text.count("\n", 0, start) + 1, MARKER % "<key>", line))
+        else:
+            counts[match.group(1)] = counts.get(match.group(1), 0) + 1
+    if problems:
+        return problems
+    for key in keys:
+        if key not in counts:
+            problems.append("%s: holds no marker for %s, and register.json names it in stands_in for that rule. Put the line "
+                            "%s where the project's own wording of the rule stands" % (name, key, MARKER % key))
+        elif counts[key] != 1:
+            problems.append("%s: the marker %s stands %d times. It stands once" % (name, MARKER % key, counts[key]))
+    for key in sorted(set(counts) - set(keys)):
+        problems.append("%s: holds the marker %s, and no row adopted by reference names this file for %s. Take the line "
+                        "out, or adopt the rule by reference here" % (name, MARKER % key, key))
+    return problems
+
+
+def reference_files(register_path, register):
+    """(every problem with the files that the rows by reference of a register that passes check() name, the paths
+    read). Each file is checked on its path as the instruction file is, and read without following a link."""
+    files = {}
+    for entry in references(register):
+        files.setdefault(entry[STANDS_IN], []).append(entry["key"])
+    problems, read = [], []
+    for value, keys in files.items():
+        path, found = file_place(register_path, value, STANDS_IN)
+        if found:
+            problems += found
+            continue
+        if not os.path.isfile(path):
+            problems.append("%s: the file is missing. register.json names it in stands_in for %s" % (path, ", ".join(keys)))
+            continue
+        try:
+            data = registry.read_plain(path)
+        except OSError as error:
+            problems.append("%s: cannot be read as a plain file: %s" % (path, error.strerror))
+            continue
+        found = marker_problems(path, data, keys)
+        problems += found
+        if not found:
+            read.append((path, keys))
+    return problems, read
+
+
 def with_block(text, register, name):
     """(the text of the instruction file with the block brought up to date, or None, problems).
 
@@ -536,21 +740,34 @@ def instruction_place(register_path, register):
     file, resolved, stays inside that directory. So the file is read only inside the repo (round 2 of #100). The last
     part may be missing: --print-instructions then prints the block alone.
     """
+    return file_place(register_path, register[INSTRUCTIONS], INSTRUCTIONS)
+
+
+# How each field that names a file says what is done with it, when a part of its path is a link or a directory missing.
+READ_AS = {
+    INSTRUCTIONS: ("The instruction file is read and written only as a plain file in the repo",
+                   "and the block is neither read nor written there"),
+    STANDS_IN: ("The file a row by reference names is read only as a plain file in the repo",
+                "and its marker is not read there"),
+}
+
+
+def file_place(register_path, value, field):
+    """(the path of the file that value names in field, instructions or stands_in, or None, problems), as
+    instruction_place says, before anything is read there."""
     root = os.path.dirname(register_path)
-    value = register[INSTRUCTIONS]
-    if instructions_problem(value):
-        return None, [instructions_problem(value)]
+    if instructions_problem(value, field):
+        return None, [instructions_problem(value, field)]
+    plain, neither = READ_AS[field]
     parts = value.split("/")
     path = root
     for number, part in enumerate(parts, 1):
         path = os.path.join(path, part)
         shown = os.path.join(root, *parts[:number])
         if os.path.islink(path):
-            return None, ["%s is a symbolic link. The instruction file is read and written only as a plain file in the repo, "
-                          "and no part of its path may be a link" % shown]
+            return None, ["%s is a symbolic link. %s, and no part of its path may be a link" % (shown, plain)]
         if number < len(parts) and not os.path.isdir(path):
-            return None, ["%s is missing or is not a directory. register.json names %s in instructions, and the block is "
-                          "neither read nor written there" % (shown, value)]
+            return None, ["%s is missing or is not a directory. register.json names %s in %s, %s" % (shown, value, field, neither)]
     if os.path.exists(path) and not os.path.isfile(path):
         return None, ["%s: it is not a plain file" % path]
     inside = os.path.realpath(root or ".")
@@ -585,14 +802,18 @@ def generated_problems(register_path, register, markdown=None, planned=None):
     check at the end of a real run (review of d86ff3e). Every other file is read from the disk.
     """
     planned = {os.path.normpath(path): data for path, data in (planned or {}).items()}
-    problems = []
+    problems = reference_files(register_path, register)[0]
     if markdown:
         try:
             if os.path.normpath(markdown) in planned:
                 current = planned[os.path.normpath(markdown)].decode("utf-8", errors="strict").replace("\r\n", "\n")
             else:
                 current = registry.read(markdown)
-            problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
+            # REGISTER.md is optional for a register with rows by reference (D-2026-11-22-second-redraw). Where it is
+            # there, it is what the register generates.
+            absent = os.path.normpath(markdown) not in planned and not os.path.lexists(markdown)
+            if not (absent and references(register)):
+                problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
         except registry.RegistryError as error:
             problems.append(str(error))
     block, found = instruction_place(register_path, register) if INSTRUCTIONS in register else (None, [])
@@ -693,6 +914,12 @@ def main(argv=None):
         print("FAIL: %d problem(s)" % len(problems))
         return 1
     print("%s: %s" % (args.register, summary))
+    for entry in references(register):
+        print("%s: %s stands in %s. %s" % (args.register, entry["key"], entry[STANDS_IN], label(register)))
+    for path, keys in reference_files(args.register, register)[1]:
+        print("%s: holds the marker line of %s once each, and nothing else in it is read" % (path, ", ".join(keys)))
+    if args.markdown and references(register) and not os.path.lexists(args.markdown):
+        print("%s: not there, which a register with rows adopted by reference may leave out" % args.markdown)
     if block is not None:
         print("%s: the block between the markers is what register.json generates" % block)
     if args.agents:
