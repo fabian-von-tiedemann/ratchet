@@ -428,14 +428,24 @@ class Upgrade(FixtureTest):
                     # 0.11 removes six more and changes ratchet.cr-workspace, and changes ratchet.cr-wake and
                     # ratchet.review-by-risk again (D-2026-11-22-second-redraw, step 2): 11 + 6 + 1 = 18. Step 3 changes
                     # ratchet.si-harden, removes ratchet.si-repeat-is-signal and ratchet.si-promote, and removes
-                    # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21.
-                    self.assertIn("In Ratchet %s, 21 rules are new, changed or removed." % new["version"], output)
+                    # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21. Step 8, core batch A, adds ratchet.owner-paths
+                    # and ratchet.ask-the-owner, removes the nine rules that go into them or leave the core, and changes
+                    # ratchet.decision-as-file, ratchet.si-measure and ratchet.expected-tests-ran: 21 + 2 + 9 + 3 = 35.
+                    self.assertIn("In Ratchet %s, 35 rules are new, changed or removed." % new["version"], output)
+                    for key in ("ratchet.owner-paths", "ratchet.ask-the-owner"):
+                        self.assertIn("- %s: new. The register may adopt it." % key, output)
+                    for key in ("ratchet.one-approver", "ratchet.kinds-apart", "ratchet.glossary", "ratchet.checks-owner-read"):
+                        self.assertIn('%s: removed. Remove it from "adopted".' % key, output)
+                    for key in ("ratchet.decision-as-file", "ratchet.expected-tests-ran"):
+                        self.assertIn("%s: changed: " % key, output)
                     self.assertIn("Not adopted, so nothing to do: ratchet.cr-analysis-model (removed), ratchet.cr-background-wait "
                                   "(removed), ratchet.cr-does-not-build (removed), ratchet.cr-lead-with-ask (removed), "
                                   "ratchet.cr-next-task (removed), ratchet.cr-quiet-hours (removed), ratchet.cr-reads-first "
                                   "(removed), ratchet.cr-review (removed), ratchet.cr-verify-reports (removed), ratchet.cr-wake "
-                                  "(changed), ratchet.cr-workspace (changed), ratchet.phases (removed), ratchet.root-cause "
-                                  "(changed), ratchet.si-harden (changed), ratchet.si-promote (removed), "
+                                  "(changed), ratchet.cr-workspace (changed), ratchet.experiment-plan (removed), "
+                                  "ratchet.five-choices (removed), ratchet.grill-first (removed), ratchet.look-up-facts (removed), "
+                                  "ratchet.one-channel (removed), ratchet.phases (removed), ratchet.root-cause "
+                                  "(changed), ratchet.si-harden (changed), ratchet.si-measure (changed), ratchet.si-promote (removed), "
                                   "ratchet.si-repeat-is-signal (removed), ratchet.si-subtract (removed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)

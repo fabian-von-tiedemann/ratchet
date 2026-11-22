@@ -18,8 +18,15 @@
     },
     {
       "key": "ratchet.decision-as-file",
-      "rule": "Each decision by the owner is written as a file with the question and the answer verbatim, and an id of the form `D-YYYY-MM-DD-<slug>`.",
-      "ratchet": "Check: a lint of the decision file's name and format",
+      "rule": "Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`, as a file of its own or as a record in one log the project names.",
+      "ratchet": "Check: a strict lint of the form chosen, each decision file's name and format or each record of the log",
+      "source": "",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.owner-paths",
+      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals. The project lists the paths that are the owner's: the decisions, the register and every file it names, the checks, the gates and the automated reviewers. A change to any of them merges only after the owner has read it and approved its head. A work package that changes a check, a gate or an automated reviewer states, before review, what it claims and against which threat, with a finite list of cases.",
+      "ratchet": "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and agents work under an account of their own that cannot approve and cannot bypass the requirement. It does not see whether the claim and the threat were stated, or whether a proposal is marked as one",
       "source": "",
       "status": "text only for now"
     },

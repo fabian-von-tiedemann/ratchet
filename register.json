@@ -21,45 +21,25 @@
     },
     {
       "key": "ratchet.decision-as-file",
-      "rule": "Each decision by the owner is written as a file with the question and the answer verbatim, and an id of the form `D-YYYY-MM-DD-<slug>`.",
-      "ratchet": "Check: a lint of the decision file's name and format",
-      "source": "",
-      "status": "text only for now"
-    },
-    {
-      "key": "ratchet.one-approver",
-      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals.",
-      "ratchet": "Check: required review by the owner on the directory that holds the decisions, with agents under an account of their own",
+      "rule": "Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`, as a file of its own or as a record in one log the project names.",
+      "ratchet": "Check: a strict lint of the form chosen, each decision file's name and format or each record of the log",
       "source": "",
       "status": "text only for now",
-      "where": "Pending setup. `.github/CODEOWNERS` is in place. It becomes built when the protection on `main` requires the code owner's approval and dismisses it on a new push, the agents' account has the role Write and no more, and all of it has been read back with `gh api` and tried with a pull request from that account. Since D-2026-11-18-approve-on-word, the control room may submit the code owner's approval with a token of the maintainer's own account, on the maintainer's word, so a required review by the code owner no longer shows by itself that the maintainer clicked"
+      "where": "Not built. This repo keeps one file per decision in `decisions/`, written with `templates/DECISION.md`, and no lint of the files' names and format runs. The age check reads the file a rule's `kept_by` names, and nothing more"
     },
     {
-      "key": "ratchet.kinds-apart",
-      "rule": "Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) and open question (Q).",
-      "ratchet": "Text only: a check cannot tell a proposal from a decision",
-      "source": ""
+      "key": "ratchet.owner-paths",
+      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals. The project lists the paths that are the owner's: the decisions, the register and every file it names, the checks, the gates and the automated reviewers. A change to any of them merges only after the owner has read it and approved its head. A work package that changes a check, a gate or an automated reviewer states, before review, what it claims and against which threat, with a finite list of cases.",
+      "ratchet": "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and agents work under an account of their own that cannot approve and cannot bypass the requirement. It does not see whether the claim and the threat were stated, or whether a proposal is marked as one",
+      "source": "",
+      "status": "text only for now",
+      "where": "Pending setup, not built. `.github/CODEOWNERS` makes the maintainer the code owner of every path, so the decisions, the register and every file it names, and the checks are all listed. The ruleset on `main` requires the code owner's review and the job `checks`, and a new push dismissed the code owner's approval in a test pull request, both on 2026-11-17, as AGENTS.md records. It becomes built when that the review is required and dismissed on a new push, and that the agents' account has the role Write and cannot approve or bypass the requirement, have been read back from the host with `gh api` and tried with a pull request from that account, as HANDOVER.md lists. Since D-2026-11-18-approve-on-word, the control room may submit the code owner's approval with a token of the maintainer's own account, on the maintainer's word, so a required review by the code owner no longer shows by itself that the maintainer clicked"
     },
     {
       "key": "ratchet.work-in-issues",
       "rule": "Open work and open questions are issues. The status and the handover between sessions live in one place that every session reads first, a pinned status issue or a handover file it links to, not in the agent's memory.",
       "ratchet": "Text only: a check cannot see work that was never written down",
       "source": ""
-    },
-    {
-      "key": "ratchet.glossary",
-      "rule": "The project has a glossary: each canonical term with its meaning and the terms to avoid in its place. The register, the working rules and the handbooks use the canonical terms.",
-      "ratchet": "Check: a lint that fails on the glossary's terms to avoid in those files",
-      "source": "mattpocock/skills `domain-modeling`",
-      "status": "text only for now"
-    },
-    {
-      "key": "ratchet.checks-owner-read",
-      "rule": "Checks, gates and automated reviewers change only after the owner has read the change. A work package that changes them states, before review, what it claims and against which threat, with a finite list of cases.",
-      "ratchet": "Check: required review by the owner on the paths the project lists as checks, with agents under an account of their own. It does not see whether the claim and the threat were stated",
-      "source": "",
-      "status": "text only for now",
-      "where": "Pending setup, as for `ratchet.one-approver`. The code owner owns every path, the checks included"
     },
     {
       "key": "ratchet.root-cause",
@@ -113,7 +93,7 @@
     {
       "key": "ratchet.expected-tests-ran",
       "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
-      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.checks-owner-read`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
+      "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.owner-paths`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
       "source": "",
       "status": "text only for now",
       "where": "Not built. `checks/expected_tests.py` runs the suite in a child process through `checks/suite_runner.py`, in a step of its own in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
@@ -149,6 +129,20 @@
       "source": "D-2026-11-16-strict-forms"
     },
     {
+      "key": "repo.kinds-apart",
+      "rule": "Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) and open question (Q).",
+      "ratchet": "Text only: a check cannot tell a proposal from a decision",
+      "source": "D-2026-11-22-second-redraw"
+    },
+    {
+      "key": "repo.glossary",
+      "rule": "The project has a glossary: each canonical term with its meaning and the terms to avoid in its place. The register, the working rules and the handbooks use the canonical terms.",
+      "ratchet": "Check: a lint that fails on the glossary's terms to avoid in those files",
+      "source": "mattpocock/skills `domain-modeling`, D-2026-11-22-second-redraw",
+      "status": "text only for now",
+      "where": "Not built. `GLOSSARY.md` lists each term and the forms to avoid, and no lint of those forms runs in this repo"
+    },
+    {
       "key": "repo.core-frozen",
       "rule": "No rule is added to the core or removed from it without a decision by the maintainer. A new rule starts as experimental.",
       "ratchet": "Text only: a check can count the core's rules but cannot tell whether a decision allowed the change",
@@ -170,8 +164,8 @@
     },
     {
       "key": "repo.maintainer-approves",
-      "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.checks-owner-read`).",
-      "ratchet": "Text only for now: the ruleset on `main` requires the code owner's approval and the job `checks`, but until the steps that HANDOVER.md names have been tried and recorded it stands as text only, as `ratchet.one-approver` does",
+      "rule": "Changes to Ratchet itself are proposed in PRs, by people or by agents, and approved by Ratchet's maintainer, like any change to checks (see `ratchet.owner-paths`).",
+      "ratchet": "Text only for now: the ruleset on `main` requires the code owner's approval and the job `checks`, but until the steps that HANDOVER.md names have been tried and recorded it stands as text only, as `ratchet.owner-paths` does",
       "source": "D-2026-11-20-proposal-triage"
     },
     {

@@ -26,7 +26,7 @@ The expected tests are the tests that discover collects, and the expected fixtur
 are the files under checks/fixtures/. The check catches tests dropped by mistake. It
 does not stop test code that defeats it on purpose: that code runs with the same
 rights as the check, and a change to checks/ is read by the maintainer
-(ratchet.checks-owner-read).
+(ratchet.owner-paths).
 
 Standard library only. Run on Python 3.9 and 3.12.
 """

@@ -14,11 +14,9 @@ The keys. Every rule in 0.2 has the same key in 0.3. The core is the same 35 rul
 
 A register takes Ratchet's wording at the version it states, so these change when you move:
 
-- `ratchet.glossary`: the rule and its ratchet now say the same thing.
 - `ratchet.work-in-issues`: the handover may be a file in the repo.
 - `ratchet.lesson-names-check`: the rule no longer holds a link.
-- `ratchet.one-approver` and `ratchet.checks-owner-read`: the ratchet is now a check, a required review by the owner through code ownership.
-- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
+- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. Nine more are no longer in Ratchet from 0.11: two merged into `ratchet.owner-paths`, which keeps the owner's required review through code ownership, three merged into `ratchet.ask-the-owner`, a fourth left and gave it its spending clause, two moved into Ratchet's own register, and one became a line of the control room's handbook template. The entry for 0.11 in the changelog names them. `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
 
 ## Steps
 
@@ -32,7 +30,7 @@ Run these in the root of your own repo.
    cp .ratchet/templates/register.json register.json
    ```
 
-4. Print the rules you adopt, and put them in the list `adopted` in place of the nine that the template holds. Use the keys your project adopts, not these two.
+4. Print the rules you adopt, and put them in the list `adopted` in place of the ten that the template holds. Use the keys your project adopts, not these two.
 
    ```sh
    python3 .ratchet/checks/generate.py --entries ratchet.register-on-top ratchet.no-secrets

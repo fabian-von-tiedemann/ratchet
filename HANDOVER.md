@@ -10,7 +10,7 @@ Replaced, not appended to, after every important event. The [decision](decisions
 
 ## Who waits on whom
 
-- **Rules that lean on code ownership** wait on the protection of `main`. These are `ratchet.one-approver` and `ratchet.checks-owner-read`, which stay "text only for now" in [REGISTER.md](REGISTER.md), and this repo's own rule `repo.maintainer-approves`, whose ratchet says "Text only for now". They become "built", and the own rule's ratchet a check, in a PR of their own, after four steps:
+- **Rules that lean on code ownership** wait on the protection of `main`. This is `ratchet.owner-paths`, which stays "text only for now" in [REGISTER.md](REGISTER.md), and this repo's own rule `repo.maintainer-approves`, whose ratchet says "Text only for now". They become "built", and the own rule's ratchet a check, in a PR of their own, after four steps:
   1. The protection on `main` shows one required approval, the code owner's review required, approvals dismissed on a new push, and the job `checks` as a required status check. The ruleset that protects `main` is listed by `gh api repos/fabian-von-tiedemann/ratchet/rulesets`, and its rules are read from `gh api repos/fabian-von-tiedemann/ratchet/rulesets/<id>`.
   2. The agents' account has the role Write and no more.
   3. A pull request from the agents' account, with its checks green and an approval from that account, cannot be merged before the code owner approves.
