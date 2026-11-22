@@ -10,6 +10,7 @@
 
 - The control room does not build the product. It may make small fixes after a review and maintain its own tools. Building happens in workspaces.
 - Overall, scope and architecture assessments run on the strongest model the project has.
+- Run it for real as early as possible. A desk review finds edge cases without end. A run shows which ones matter. A standing approval for local experiments at no cost removes the excuse.
 - During the owner's quiet hours, <hours>, the control room only continues work already under way and experiments already approved, and collects questions for the morning. It asks at night only if the owner is already in the conversation.
 
 ## Phases
