@@ -33,9 +33,9 @@
     {
       "key": "ratchet.fresh-context",
       "stands_in": "RULES.md",
-      "sha256": "2d9c6738f713b5e4f2484fb0d1749692b89870398e14784fe0ce263f5ff262ba",
+      "sha256": "c5c587009e9ee65ede565c998f68abbcf949751864f8074d4b79f9b6a6618eb8",
       "status": "text only for now",
-      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed."
+      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed. An assignment covers exactly one head and is started once per head and model. A change to the register is reviewed before it is merged, by a model from a different family than the author's. A review after the merge does not replace it."
     },
     {
       "key": "ratchet.root-cause",
@@ -47,7 +47,7 @@
     {
       "key": "ratchet.evidence-before-done",
       "stands_in": "RULES.md",
-      "sha256": "ef017e7adeda5b0d256b2152dae1ab31444743cbd1a6b1416c3286b872492a01"
+      "sha256": "10d814e6604d12abb5d9a88f5aecfb14e42f000012878c05efd7f4e20569de70"
     },
     {
       "key": "ratchet.no-secrets",

@@ -33,7 +33,7 @@
     {
       "key": "ratchet.fresh-context",
       "stands_in": "RULES.md",
-      "sha256": "4692a1fe35042cdcd667bdfe5abf1ba2064a66005407f7e606ead319a37b1ea5",
+      "sha256": "5bff24d00f982c962c95058c31caebff9d89157d63444fe4145a146f79deb8bb",
       "status": "text only for now"
     },
     {
@@ -46,7 +46,7 @@
     {
       "key": "ratchet.evidence-before-done",
       "stands_in": "RULES.md",
-      "sha256": "ef017e7adeda5b0d256b2152dae1ab31444743cbd1a6b1416c3286b872492a01"
+      "sha256": "10d814e6604d12abb5d9a88f5aecfb14e42f000012878c05efd7f4e20569de70"
     },
     {
       "key": "ratchet.no-secrets",

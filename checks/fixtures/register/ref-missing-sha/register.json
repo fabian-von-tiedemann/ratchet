@@ -45,7 +45,7 @@
     {
       "key": "ratchet.evidence-before-done",
       "stands_in": "RULES.md",
-      "sha256": "ef017e7adeda5b0d256b2152dae1ab31444743cbd1a6b1416c3286b872492a01"
+      "sha256": "10d814e6604d12abb5d9a88f5aecfb14e42f000012878c05efd7f4e20569de70"
     },
     {
       "key": "ratchet.no-secrets",

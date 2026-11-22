@@ -65,7 +65,7 @@ Ratchet follows its own rules, and this repo is where they are tried first. Its 
 ## The honest limits
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 28 rules. 15 name a check and 13 are text only (46%). Ratchet ships a reference check for 1 of the 15. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 23 rules. 14 name a check and 9 are text only (39%). Ratchet ships a reference check for 1 of the 14. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 - **Most of the core is still text.** The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below, each run in this repo's CI with a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until it does, the rule is text only in your project, and your register says so.
@@ -126,7 +126,7 @@ The ten rules to start with:
 
 ## What is in it
 
-- [RATCHET.md](RATCHET.md): the core, 28 rules in six parts, frozen from version 0.3.
+- [RATCHET.md](RATCHET.md): the core, 23 rules in six parts, frozen from version 0.3.
 - [ratchet.json](ratchet.json): every rule as data. The tables in the markdown files are generated from it. It caps the number of experimental rules, and raising the cap is a decision.
 - [sources.json](sources.json): the sources that rules cite, each pinned at a commit. It is not part of what is released, so a pin that moves needs no new version.
 - [checks/](checks/): the reference checks, the generator, `init.py` for the start and `upgrade.py` for an upgrade, in Python with no dependencies.
