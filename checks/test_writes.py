@@ -46,6 +46,7 @@ WRITERS = {
     "init.py": {"temporary", "write_new", "add_line"},
     "release.py": {"git"},
     "expected_tests.py": {"main"},
+    "from_base.py": {"judge", "placeholders"},
     "suite_runner.py": {"Recorder.__init__", "FixtureTest.scratch", "FixtureTest.fixture_file", "FixtureTest.fixture_directory"},
 }
 

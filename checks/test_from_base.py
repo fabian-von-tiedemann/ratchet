@@ -190,12 +190,25 @@ class DryRun(unittest.TestCase):
         head = self.pull_request({"checks/generate.py": None, "checks/test_generate.py": None})
         self.assertFails(head, "failed in the tree of the code", "checks/generate.py, checks/test_generate.py")
 
-    def test_a_module_added_beside_the_checks_is_not_in_the_tree_of_the_data(self):
-        # A json.py beside the checks would be imported by the base's generate.py in place of the standard library's.
+    def test_a_module_added_beside_the_checks_is_empty_in_the_tree_of_the_data(self):
+        # A json.py beside the checks would be imported by the base's generate.py in place of the standard library's. In
+        # the tree of the data it is there, empty, so the base's script fails on it and never passes on what it says.
         shadow = "def load(handle):\n    return {'value': 0}\n"
         head = self.pull_request({"checks/json.py": shadow, "data.json": '{"value": 9}\n'})
         self.assertEqual(self.own("checks/generate.py", "--check"), 0)
-        self.assertFails(head, "generate: 9 is above 3", "the base judges by: checks/json.py")
+        output = self.assertFails(head, "the base's `python3 checks/generate.py --check` failed in the tree of the data",
+                                  "the base judges by: checks/json.py")
+        self.assertIn("AttributeError", output)
+        self.assertNotIn("is at most", output)
+
+    def test_a_new_check_that_the_data_links_to_is_there_in_the_tree_of_the_data(self):
+        # The base's generate.py fails on a link in the data that leads nowhere. A new check, linked from the data, is there.
+        linking = GENERATE.replace("LIMIT = 3", "LIMIT = 3\nimport os\nif not os.path.exists(open('checks/README.md').read().strip()):\n"
+                                   "    sys.exit('the link leads nowhere')")
+        self.write({"checks/generate.py": linking, "checks/README.md": "checks/generate.py\n"})
+        self.base = self.commit("the base checks its link")
+        head = self.pull_request({"checks/new.py": "print('new')\n", "checks/README.md": "checks/new.py\n"})
+        self.assertPasses(head)
 
     def test_a_tightened_check_passes(self):
         tighter = GENERATE.replace("if value > LIMIT:", "if not isinstance(value, int) or value > LIMIT:")

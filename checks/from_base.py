@@ -12,7 +12,8 @@ directory of its own. It then:
   parent is the base, --base-sha, or a later commit of the base branch. The first parent is the base it judges by.
 - fails when the pull request changes .github/workflows/checks.yml, the job that runs this: the base branch cannot
   judge the job that judges it.
-- makes the tree of the data: the merge commit, with the code of the checks taken from the base. It runs the base's
+- makes the tree of the data: the merge commit, with the code of the checks taken from the base, and each file of
+  code that only the pull request has left empty, so that a link to it leads somewhere. It runs the base's
   generate.py --check, check_register.py on register.json and REGISTER.md, and released_text.py there. So the base's
   scripts read the pull request's ratchet.json, register.json, generated text and changelog.
 - makes the tree of the code: the base commit, with the pull request's code of the checks, but the base's tests and
@@ -140,6 +141,15 @@ def swap(work, remove, add_from, add):
             data=b"\0".join(path.encode("utf-8", "surrogateescape") for path in add))
 
 
+def placeholders(work, paths):
+    """Write an empty file at each path in the work tree, so that a link to it leads somewhere and none of its code runs."""
+    for path in paths:
+        full = os.path.join(work, *path.split("/"))
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "x", encoding="utf-8"):
+            pass
+
+
 def run(work, command):
     """Run one command of the base in a work tree. Returns its exit status. Its output goes where this process's goes."""
     sys.stdout.flush()
@@ -165,6 +175,9 @@ def judge(repo, base, head="HEAD", data_commands=DATA_COMMANDS, code_commands=CO
         data = tree(repo, head, os.path.join(scratch, "data"))
         works.append(data)
         swap(data, [path for path in head_files if is_code(path)], base, [path for path in base_files if is_code(path)])
+        # A file of code that only the pull request has is there, empty: a link to it from the data leads somewhere, and a
+        # module that would stand in for one the base imports, such as json.py, has nothing in it.
+        placeholders(data, sorted(set(path for path in head_files if is_code(path)) - set(base_files)))
         # The tree of the code: the base, with the pull request's code of the checks but the base's tests and runner.
         code = tree(repo, base, os.path.join(scratch, "code"))
         works.append(code)
