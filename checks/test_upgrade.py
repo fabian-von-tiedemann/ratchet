@@ -57,6 +57,15 @@ REGISTER_FORM = ('The form of register.json grew in Ratchet 0.10 (D-2026-11-20-g
                  'An adopted rule may carry a "translation", bound to its English rule by a sha256. An own rule may carry '
                  '"status" and "where". A register without them stays valid, so none of this is a step.')
 
+# What the upgrade says to a register that moves from a version before 0.11 to 0.11 or later (D-2026-11-22-second-redraw).
+REGISTER_FORM_BY_REFERENCE = (
+    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw), the last change of form before the count '
+    'toward 1.0. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
+    'file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its ratchet. Such a row '
+    'holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> once. check_register.py sees '
+    'that marker, not the words. REGISTER.md may be left out by a register with such rows. A register without them stays '
+    'valid, so none of this is a step.')
+
 
 # What a copy of this repo leaves out when a test makes a clone of Ratchet from it: git's own files, bytecode, and what
 # the checks do not read, so that each test copies little.
@@ -231,6 +240,47 @@ class Upgrade(FixtureTest):
             with self.subTest(line=line):
                 self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' ", line)
         self.assertNotIn("--write", out.getvalue())
+
+    def test_a_row_by_reference_whose_rule_or_ratchet_changed_is_told_its_new_sha256(self):
+        # D-2026-11-22-second-redraw, step 9a: the sha256 of a row by reference covers the rule and its ratchet, so an
+        # upgrade that changes either says that it no longer matches, prints the new one, and asks the project to read its
+        # own wording again. The register passes against the version it states until the owner moves the version.
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        old_by, new_by = registry.rules_by_key(old), registry.rules_by_key(new)
+        def reference(rule):
+            return sha256(rule["rule"] + "\n" + rule["ratchet"])
+        for item in register["adopted"]:
+            if item["key"] in ("ratchet.keep", "ratchet.reworded", "ratchet.new-ratchet", "ratchet.dropped"):
+                for field in ("rule", "ratchet", "source"):
+                    del item[field]
+                item.update(stands_in="RULES.md", sha256=reference(old_by[item["key"]]))
+        self.assertEqual(check_register.check(register, old)[0], [], "it passes against the version it states")
+        moved = dict(register, ratchet_version=new["version"])
+        self.assertIn("ratchet.reworded: the sha256 is ", "\n".join(check_register.check(moved, new)[0]),
+                      "it fails once the version is moved and the sha256 is not")
+        out = io.StringIO()
+        code = upgrade.report("register.json", register, old, new, out, "check_register.py")
+        output = out.getvalue()
+        self.assertEqual(code, 0, output)
+        for key in ("ratchet.reworded", "ratchet.new-ratchet"):
+            self.assertIn("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the "
+                          "new sha256 is %s. Read the project's own wording in RULES.md again against the new rule, and change "
+                          "it where it no longer says what the rule says." % reference(new_by[key]), output)
+        self.assertNotIn("ratchet.keep:", output, "a rule that did not change is not listed")
+        self.assertIn("It was adopted by reference, and an own rule stands in the register in full, so the entry holds Ratchet's "
+                      "text of it, which the project may replace with its own wording. Take the line "
+                      "<!-- ratchet:rule ratchet.dropped --> out of RULES.md, since no row names it there.", output)
+        printed = dict((entry["key"], entry) for entry in entries(output))
+        self.assertEqual(printed["ratchet.reworded"], {"key": "ratchet.reworded", "stands_in": "RULES.md",
+                                                       "sha256": reference(new_by["ratchet.reworded"])})
+        self.assertEqual(printed["ratchet.new-ratchet"]["status"], "built", "the status and where stay")
+        self.assertNotIn("rule", printed["ratchet.new-ratchet"])
+        self.assertEqual(printed["example.dropped"]["rule"], old_by["ratchet.dropped"]["rule"])
+        steps, after = upgrade.plan(register, old, new)
+        self.assertEqual(check_register.check(after, new)[0], [])
+        # A rule whose rule and ratchet did not change keeps its sha256.
+        self.assertIn("its sha256 still matches", upgrade.reference_text({"stands_in": "RULES.md", "sha256": reference(old_by["ratchet.keep"])},
+                                                                         old_by["ratchet.keep"]))
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -410,6 +460,8 @@ class Upgrade(FixtureTest):
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # 0.10 also changes the form of register.json, and every new field is optional (D-2026-11-20-generated-block).
                 self.assertIn(REGISTER_FORM, output)
+                # 0.11 changes it once more, with the rows by reference, and names the two new fields.
+                self.assertIn(REGISTER_FORM_BY_REFERENCE, output)
                 # The rules that 0.7 and 0.10 add are new to each register before them. 0.8 adds none: it moves two pins
                 # in "sources", which is not a field that the register holds. 0.9 adds none. ratchet.phases, which 0.6
                 # added, leaves in 0.11 (D-2026-11-22-second-redraw, R8), so it is new to no register.
@@ -431,9 +483,11 @@ class Upgrade(FixtureTest):
                     # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21. Step 8, core batch A, adds ratchet.owner-paths
                     # and ratchet.ask-the-owner, removes the nine rules that go into them or leave the core, and changes
                     # ratchet.decision-as-file, ratchet.si-measure and ratchet.expected-tests-ran: 21 + 2 + 9 + 3 = 35.
+                    # Step 9a changes ratchet.register-on-top, by the clause on adoption by reference: 35 + 1 = 36.
                     # Step 10, core batch B, removes the five rules that go into ratchet.fresh-context and
-                    # ratchet.evidence-before-done or leave the core, and changes those two: 35 + 5 + 2 = 42.
-                    self.assertIn("In Ratchet %s, 42 rules are new, changed or removed." % new["version"], output)
+                    # ratchet.evidence-before-done or leave the core, and changes those two: 36 + 5 + 2 = 43.
+                    self.assertIn("In Ratchet %s, 43 rules are new, changed or removed." % new["version"], output)
+                    self.assertIn("ratchet.register-on-top: changed: the rule and the ratchet.", output)
                     for key in ("ratchet.owner-paths", "ratchet.ask-the-owner"):
                         self.assertIn("- %s: new. The register may adopt it." % key, output)
                     for key in ("ratchet.one-approver", "ratchet.kinds-apart", "ratchet.glossary", "ratchet.checks-owner-read"):

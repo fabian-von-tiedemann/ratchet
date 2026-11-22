@@ -4,14 +4,14 @@
   "adopted": [
     {
       "key": "ratchet.register-on-top",
-      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins.",
-      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version",
+      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins. A Ratchet row may point at the project's own wording, and the check then sees a marker, not the rule's text.",
+      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version: a copied row character for character, and a row by reference by the sha256 of the rule and its ratchet and by one marker line in the file it names, not by the words there",
       "source": "",
       "status": "text only for now",
       "translation": {
         "language": "sv",
         "text": "Varje regel som g\u00e4ller st\u00e5r i en fil, registret, som g\u00e5r f\u00f6re all annan text i repot. D\u00e4r en text och registret skiljer sig \u00e5t, g\u00e4ller registret.",
-        "sha256": "9a7a555c2cfa259f28a0fb079b3ba735374612d03a2fdd2aae7f640041eafac8"
+        "sha256": "3372a4ddf1571e24d32f57545031962bd9351d81b0c2d00a9fa6de55a8236734"
       }
     },
     {
