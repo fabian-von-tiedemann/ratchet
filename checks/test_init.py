@@ -611,6 +611,106 @@ init.gitignore_plan = gitignore_plan
         self.assertEqual(self.text(".gitignore"), "build/\n/.ratchet/\n")
         self.assertEqual(sorted(os.listdir(self.project)), [".git", ".gitignore", ".ratchet"])
 
+    def instructions_case(self, value, prepare):
+        """A new project whose own register.json names value in instructions, prepared by prepare(project, register), with
+        no REGISTER.md. (the exit code of --check, the exit code of a real run, the output of each)."""
+        import check_register
+        self.project = self.make_project("case-%d" % len(os.listdir(self.directory)))
+        register = json.loads(init.register_text("demo-project", init.registry.load(os.path.join(ROOT, "ratchet.json"))))
+        register["instructions"] = value
+        self.write("register.json", json.dumps(register, indent=2) + "\n")
+        prepare(self.project, register, check_register.render_block(register))
+        before = snapshot(self.project)
+        checked, check_output = self.init("--check")
+        self.assertEqual(snapshot(self.project), before)
+        code, output = self.init()
+        return checked, code, check_output, output
+
+    def test_check_and_a_real_run_agree_on_the_instruction_file_the_register_names(self):
+        # Review of d86ff3e (Gemini, proven by run): the check at the end of a real run also reads the instruction file
+        # that register.json names in instructions, and --check said nothing of it, so it exited 0 where a real run exits
+        # 1. Both now reach the verdict with check_register.generated_problems, --check with the bytes it would write.
+        def nothing(project, register, block):
+            pass
+
+        def write(name, text):
+            def prepare(project, register, block):
+                os.makedirs(os.path.dirname(os.path.join(project, name)) or project, exist_ok=True)
+                with open(os.path.join(project, name), "w", encoding="utf-8", newline="") as handle:
+                    handle.write(text(block))
+            return prepare
+
+        def linked(project, register, block):
+            os.mkdir(os.path.join(project, "real"))
+            with open(os.path.join(project, "real", "AGENTS.md"), "w", encoding="utf-8", newline="") as handle:
+                handle.write(block + "\n# Our own rules\n")
+            os.symlink("real", os.path.join(project, "link"))
+
+        failing = (
+            ("AGENTS.md", nothing, "AGENTS.md: holds no generated block"),
+            ("AGENTS.md", write("AGENTS.md", lambda block: "# Our own rules\n"), "AGENTS.md: holds no generated block"),
+            ("AGENTS.md", write("AGENTS.md", lambda block: block.replace("## Rules in force", "## Rules once") + "\n# Ours\n"),
+             "is not what register.json generates"),
+            ("AGENTS.md", write("AGENTS.md", lambda block: block + block), "the markers of the generated block are broken"),
+            ("CLAUDE.md", nothing, "CLAUDE.md: the file is missing"),
+            ("link/AGENTS.md", linked, "link is a symbolic link"),
+            ("REGISTER.md", nothing, "REGISTER.md: holds no generated block"),
+        )
+        for value, prepare, said in failing:
+            with self.subTest(instructions=value, said=said):
+                checked, code, check_output, output = self.instructions_case(value, prepare)
+                self.assertEqual((checked, code), (1, 1), check_output + output)
+                self.assertIn(said, check_output)
+                self.assertIn(said, output)
+                self.assertIn("the register it would leave does not pass", check_output)
+        for value, prepare in (("AGENTS.md", write("AGENTS.md", lambda block: block + "\n# Our own rules\n")),
+                               ("docs/RULES.md", write(os.path.join("docs", "RULES.md"), lambda block: block))):
+            with self.subTest(instructions=value, passes=True):
+                checked, code, check_output, output = self.instructions_case(value, prepare)
+                self.assertEqual((checked, code), (0, 0), check_output + output)
+                self.assertIn("the register it would leave passes", check_output)
+
+    def test_a_register_md_that_is_not_a_plain_file_is_named_so_and_fails_both_ways(self):
+        # Review of d86ff3e: a directory or a link at REGISTER.md is "not a plain file", not "not what register.json
+        # generates", and both --check and a real run exit 1.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        markdown = self.text("REGISTER.md")
+        os.remove(self.path("REGISTER.md"))
+        with open(self.path("ours.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(markdown)
+        for make in (lambda path: os.mkdir(path), lambda path: os.symlink("ours.md", path)):
+            make(self.path("REGISTER.md"))
+            with self.subTest(link=os.path.islink(self.path("REGISTER.md"))):
+                checked, check_output = self.init("--check")
+                real, output = self.init()
+                self.assertEqual((checked, real), (1, 1), check_output + output)
+                self.assertRegex(check_output, r"(?m)^skip +REGISTER\.md: it exists and is not a plain file")
+                self.assertRegex(output, r"(?m)^skip +REGISTER\.md: it exists and is not a plain file")
+            if os.path.islink(self.path("REGISTER.md")):
+                os.remove(self.path("REGISTER.md"))
+            else:
+                os.rmdir(self.path("REGISTER.md"))
+
+    def test_the_last_line_says_only_what_applies(self):
+        # Review of d86ff3e: with nothing written, or with the project's own AGENTS.md kept, the last line does not ask
+        # to fill in AGENTS.md or name files that were not written.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertIn("init: done. Fill in AGENTS.md, and commit AGENTS.md, register.json, REGISTER.md, "
+                      ".github/workflows/ratchet.yml and .gitignore\n", output)
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertIn("init: done. Nothing to commit\n", output)
+        for name in WRITTEN:
+            os.remove(self.path(name))
+        self.write("AGENTS.md", "# Our own rules\n")
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertIn("init: done. Compare each file left as it is with what init.py would write, by hand, and commit "
+                      "register.json, REGISTER.md, .github/workflows/ratchet.yml and .gitignore\n", output)
+        self.assertNotIn("Fill in AGENTS.md", output)
+
     def run_patched(self, patch, *args):
         """Run init.py as the README does, with a change to it or to os made first, in the same process."""
         code = "\n".join(["import errno, os, sys",
