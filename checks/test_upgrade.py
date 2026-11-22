@@ -346,9 +346,11 @@ class Upgrade(FixtureTest):
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # 0.10 also changes the form of register.json, and every new field is optional (D-2026-11-20-generated-block).
                 self.assertIn(REGISTER_FORM, output)
-                # The rule that 0.6 adds is new to each register before it, and so are the rules that 0.7 and 0.10 add.
-                # 0.8 adds none: it moves two pins in "sources", which is not a field that the register holds. 0.9 adds none.
-                for added, rule in (("0.6", "ratchet.phases"), ("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk"),
+                # The rules that 0.7 and 0.10 add are new to each register before them. 0.8 adds none: it moves two pins
+                # in "sources", which is not a field that the register holds. 0.9 adds none. ratchet.phases, which 0.6
+                # added, leaves in 0.11 (D-2026-11-22-second-redraw, R8), so it is new to no register.
+                self.assertNotIn("- ratchet.phases: new.", output)
+                for added, rule in (("0.7", "ratchet.irreversible-waits"), ("0.10", "ratchet.review-by-risk"),
                                     ("0.10", "ratchet.one-exact-form")):
                     line = "- %s: new. The register may adopt it." % rule
                     if tuple(map(int, version.split("."))) < tuple(map(int, added.split("."))):
@@ -359,10 +361,15 @@ class Upgrade(FixtureTest):
                     # 0.10 adds two rules, ratchet.review-by-risk and ratchet.one-exact-form, changes three, ratchet.root-cause,
                     # ratchet.cr-wake and ratchet.si-subtract, and removes six: ratchet.cr-background-wait, merged into
                     # ratchet.cr-wake, three more and the two this repo moved to its own rules (D-2026-11-20-proposal-triage).
-                    self.assertIn("In Ratchet %s, 11 rules are new, changed or removed." % new["version"], output)
-                    self.assertIn("Not adopted, so nothing to do: ratchet.cr-background-wait (removed), ratchet.cr-lead-with-ask "
-                                  "(removed), ratchet.cr-reads-first (removed), ratchet.cr-review (removed), ratchet.cr-wake "
-                                  "(changed), ratchet.root-cause (changed), ratchet.si-subtract (changed).", output)
+                    # 0.11 removes six more and changes ratchet.cr-workspace, and changes ratchet.cr-wake and
+                    # ratchet.review-by-risk again (D-2026-11-22-second-redraw, step 2): 11 + 6 + 1 = 18.
+                    self.assertIn("In Ratchet %s, 18 rules are new, changed or removed." % new["version"], output)
+                    self.assertIn("Not adopted, so nothing to do: ratchet.cr-analysis-model (removed), ratchet.cr-background-wait "
+                                  "(removed), ratchet.cr-does-not-build (removed), ratchet.cr-lead-with-ask (removed), "
+                                  "ratchet.cr-next-task (removed), ratchet.cr-quiet-hours (removed), ratchet.cr-reads-first "
+                                  "(removed), ratchet.cr-review (removed), ratchet.cr-verify-reports (removed), ratchet.cr-wake "
+                                  "(changed), ratchet.cr-workspace (changed), ratchet.phases (removed), ratchet.root-cause "
+                                  "(changed), ratchet.si-subtract (changed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
