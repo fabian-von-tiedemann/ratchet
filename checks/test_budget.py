@@ -251,10 +251,12 @@ class Triage(RepoCopy, unittest.TestCase):
                       "is red when the post is late", "no deploy can run without it", "This is a convention, not something a check verifies"):
             self.assertIn(words, glossary)
 
-    def test_the_six_merge_checks_that_run_the_prs_own_checks_are_not_built(self):
+    def test_the_seven_checks_that_do_not_run_where_they_can_refuse_are_not_built(self):
         # D-2026-11-22-second-redraw, built by enforcement point: a merge check is built only when it reads its rules from
-        # the base branch. The job `checks` runs the PR's own checks and rule data, so these six stay text only for now
-        # until it runs the base branch's, and each `where` says what is missing.
+        # the base branch, and a hook only when it runs in every harness the project uses. The job `checks` runs the PR's
+        # own checks and rule data, so six merge checks stay text only for now until it runs the base branch's. The
+        # tripwire of ratchet.irreversible-waits runs as a hook only in Claude Code, and Codex also works on this repo.
+        # Each `where` says what is missing.
         register = json.loads(read("register.json"))
         entries = {entry["key"]: entry for entry in register["adopted"] + register["own"]}
         for key in ("ratchet.register-on-top", "ratchet.expected-tests-ran", "repo.rules-as-data",
@@ -262,6 +264,21 @@ class Triage(RepoCopy, unittest.TestCase):
             self.assertEqual(entries[key]["status"], "text only for now", key)
             for words in ("Not built.", "required for the merge", "the PR's own checks and rule data, not the base branch's"):
                 self.assertIn(words, entries[key]["where"], key)
+        waits = entries["ratchet.irreversible-waits"]
+        self.assertEqual(waits["status"], "text only for now")
+        self.assertTrue(waits["where"].startswith("Not built. "), waits["where"])
+        for words in ("runs as a hook only in Claude Code", "`.claude/settings.json`",
+                      "Codex and the other harnesses that work on this repo do not run it",
+                      "the hook does not run in every harness this repo uses"):
+            self.assertIn(words, waits["where"])
+
+    def test_no_entry_of_this_repos_register_claims_built(self):
+        # After step 3 of D-2026-11-22-second-redraw no check of this repo is built by where it is enforced: the six
+        # merge checks run the PR's own checks and rule data, and the tripwire runs in one harness only. An entry that
+        # becomes built again changes this test in the same pull request, with its enforcement point.
+        register = json.loads(read("register.json"))
+        built = [entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built"]
+        self.assertEqual(built, [])
 
     def test_background_wait_is_merged_into_wake_which_keeps_its_key_and_since(self):
         wake = self.by_key["ratchet.cr-wake"]

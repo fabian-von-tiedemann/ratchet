@@ -687,10 +687,18 @@ class Trees(FixtureTest):
         self.stale(os.path.join(self.repo, "AGENTS.md"))
 
     def stale(self, path):
+        # Swap the first status in the file, whichever there is: since step 3 of D-2026-11-22-second-redraw this repo's
+        # register has no entry that is built. A file left unchanged would let the tests pass for the wrong reason.
         with open(path, "rb") as handle:
             data = handle.read()
+        for old, new in ((b"| built |", b"| text only for now |"), (b"| text only for now |", b"| built |")):
+            if old in data:
+                changed = data.replace(old, new, 1)
+                break
+        else:
+            self.fail("%s holds no status to make stale" % path)
         with open(path, "wb") as handle:
-            handle.write(data.replace(b"| built |", b"| text only for now |", 1))
+            handle.write(changed)
 
     def repo_copy(self):
         self.tree()
