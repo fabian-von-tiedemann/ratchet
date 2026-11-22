@@ -51,9 +51,9 @@
     },
     {
       "key": "ratchet.evidence-before-done",
-      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise.",
-      "ratchet": "Text only: a check cannot see a claim made in a message. Required checks on the PR head cover the claims they run",
-      "source": "obra/superpowers `verification-before-completion`"
+      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A claim shows the head it ran on, and for a change a user sees, the run shows what the user sees. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise. Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". An unproven finding keeps its severity. Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
+      "ratchet": "Text only: a check cannot see a claim made in a message or whether a finding was verified, and a script can see that a finding's marks are there, not that they are true. Required checks on the PR head cover the claims they run",
+      "source": "obra/superpowers `verification-before-completion`, `receiving-code-review`; pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
     },
     {
       "key": "ratchet.no-secrets",

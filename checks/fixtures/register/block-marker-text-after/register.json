@@ -38,8 +38,8 @@
     },
     {
       "key": "ratchet.fresh-context",
-      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed.",
-      "ratchet": "Check: the review script builds the assignment and saves it next to the review",
+      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed. An assignment covers exactly one head and is started once per head and model. A change to the register is reviewed before it is merged, by a model from a different family than the author's. A review after the merge does not replace it.",
+      "ratchet": "Check: the review script builds the assignment and saves it next to the review, and keeps a lock file per PR, head and model. That a change to the register was reviewed before it was merged is text only until the project's merge check can see review outcomes",
       "source": "google/elephant-goldfish-model (the fresh context)",
       "status": "text only for now"
     },
@@ -52,9 +52,9 @@
     },
     {
       "key": "ratchet.evidence-before-done",
-      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise.",
-      "ratchet": "Text only: a check cannot see a claim made in a message. Required checks on the PR head cover the claims they run",
-      "source": "obra/superpowers `verification-before-completion`"
+      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A claim shows the head it ran on, and for a change a user sees, the run shows what the user sees. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise. Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". An unproven finding keeps its severity. Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
+      "ratchet": "Text only: a check cannot see a claim made in a message or whether a finding was verified, and a script can see that a finding's marks are there, not that they are true. Required checks on the PR head cover the claims they run",
+      "source": "obra/superpowers `verification-before-completion`, `receiving-code-review`; pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
     },
     {
       "key": "ratchet.no-secrets",

@@ -170,19 +170,9 @@
       "principle": "principle.independent-gate",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed.",
-      "ratchet": "Check: the review script builds the assignment and saves it next to the review",
+      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed. An assignment covers exactly one head and is started once per head and model. A change to the register is reviewed before it is merged, by a model from a different family than the author's. A review after the merge does not replace it.",
+      "ratchet": "Check: the review script builds the assignment and saves it next to the review, and keeps a lock file per PR, head and model. That a change to the register was reviewed before it was merged is text only until the project's merge check can see review outcomes",
       "source": "google/elephant-goldfish-model (the fresh context)"
-    },
-    {
-      "key": "ratchet.once-per-version",
-      "part": "review",
-      "principle": "principle.independent-gate",
-      "status": "core",
-      "enforcement": "enforced",
-      "rule": "An assignment covers exactly one head and is started once per head and model.",
-      "ratchet": "Check: the review script keeps a lock file per PR, head and model",
-      "source": ""
     },
     {
       "key": "ratchet.two-rounds",
@@ -193,36 +183,6 @@
       "rule": "After two failed rounds in a row with the same kind of failure, no third round starts. The author writes down the premise that every fix shared, tests it, and proposes a different approach as a decision.",
       "ratchet": "Check: the review script refuses a third round without a decision that names the PR",
       "source": "pstack `principle-attack-the-premise`"
-    },
-    {
-      "key": "ratchet.findings-marked",
-      "part": "review",
-      "principle": "principle.show-the-run",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". It is also marked \"standards\" (breaks the repo's documented rules) or \"spec\" (does not do what the issue asked). An unproven finding keeps its severity.",
-      "ratchet": "Text only: a script can see that the marks are there, not that they are true",
-      "source": "pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
-    },
-    {
-      "key": "ratchet.verify-findings",
-      "part": "review",
-      "principle": "principle.show-the-run",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
-      "ratchet": "Text only: a check cannot see whether a finding was verified",
-      "source": "obra/superpowers `receiving-code-review`"
-    },
-    {
-      "key": "ratchet.register-review-first",
-      "part": "review",
-      "principle": "principle.independent-gate",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "A change to the register is reviewed before it is merged, by a model from a different family than the author's. A review after the merge does not replace it.",
-      "ratchet": "Text only until the project's merge check can see review outcomes",
-      "source": ""
     },
     {
       "key": "ratchet.root-cause",
@@ -255,16 +215,6 @@
       "source": "pstack `principle-subtract-before-you-add`"
     },
     {
-      "key": "ratchet.run-early",
-      "part": "building",
-      "principle": "principle.show-the-run",
-      "status": "core",
-      "enforcement": "text-only",
-      "rule": "Run it for real as early as possible. A desk review finds edge cases without end. A run shows which ones matter.",
-      "ratchet": "Text only: when to run is a judgment. A standing approval for local experiments at no cost removes the excuse",
-      "source": ""
-    },
-    {
       "key": "ratchet.test-first",
       "part": "building",
       "principle": "principle.checks-that-fail",
@@ -290,9 +240,9 @@
       "principle": "principle.show-the-run",
       "status": "core",
       "enforcement": "text-only",
-      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise.",
-      "ratchet": "Text only: a check cannot see a claim made in a message. Required checks on the PR head cover the claims they run",
-      "source": "obra/superpowers `verification-before-completion`"
+      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A claim shows the head it ran on, and for a change a user sees, the run shows what the user sees. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise. Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". An unproven finding keeps its severity. Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
+      "ratchet": "Text only: a check cannot see a claim made in a message or whether a finding was verified, and a script can see that a finding's marks are there, not that they are true. Required checks on the PR head cover the claims they run",
+      "source": "obra/superpowers `verification-before-completion`, `receiving-code-review`; pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
     },
     {
       "key": "ratchet.slices",

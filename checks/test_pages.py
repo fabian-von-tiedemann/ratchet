@@ -990,12 +990,12 @@ class PageSources(RepoCopy, unittest.TestCase):
             ("https://github.com/google/elephant-goldfish-model", "google/elephant-goldfish-model", "Apache-2.0",
              ("ratchet.fresh-context",)),
             ("https://github.com/mattpocock/skills", "mattpocock/skills", "MIT",
-             ("ratchet.ask-the-owner", "ratchet.findings-marked", "ratchet.root-cause", "ratchet.test-first", "ratchet.slices")),
+             ("ratchet.ask-the-owner", "ratchet.root-cause", "ratchet.test-first", "ratchet.evidence-before-done", "ratchet.slices")),
             ("https://github.com/cursor/plugins/tree/HEAD/pstack", "pstack", "MIT",
-             ("ratchet.two-rounds", "ratchet.findings-marked", "ratchet.root-cause", "ratchet.simplest",
+             ("ratchet.two-rounds", "ratchet.root-cause", "ratchet.simplest", "ratchet.evidence-before-done",
               "ratchet.lesson-names-check", "ratchet.si-harden")),
             ("https://github.com/obra/superpowers", "obra/superpowers", "MIT",
-             ("ratchet.verify-findings", "ratchet.evidence-before-done")),
+             ("ratchet.evidence-before-done",)),
         )
         reader = PageReader()
         reader.feed(text)
