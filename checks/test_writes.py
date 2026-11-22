@@ -1141,6 +1141,8 @@ class InitRoot(Trees):
         project = os.path.join(self.outside, "project")
         os.mkdir(project)
         git(project, "init", "-q")
+        git(project, "config", "gc.auto", "0")
+        git(project, "config", "maintenance.auto", "false")
         os.symlink(project, os.path.join(self.repo, "project"))
         commit_all(self.repo)
         linked = os.path.join(self.repo, "project")

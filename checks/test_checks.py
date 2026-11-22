@@ -1359,6 +1359,11 @@ class StartPath(unittest.TestCase):
             subprocess.run(["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid",
                             "-c", "commit.gpgsign=false", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + command, cwd=directory, check=True, stdout=subprocess.DEVNULL,
                            env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
+            if command[0] == "init":
+                # In the new repo's own config too, so that what the README runs there starts no gc or maintenance.
+                for setting in (["gc.auto", "0"], ["maintenance.auto", "false"]):
+                    subprocess.run(["git", "config"] + setting, cwd=directory, check=True, stdout=subprocess.DEVNULL,
+                                   env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
         self.readme = read("README.md")
 
     def run_in_project(self, command):

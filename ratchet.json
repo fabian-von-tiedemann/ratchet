@@ -271,7 +271,7 @@
       "status": "core",
       "enforcement": "enforced",
       "rule": "Every scheduled job posts its result, and a late post is red. The result of the nightly security scan is posted where the control room reads every day, so that a red night does not go unnoticed.",
-      "ratchet": "Check: every scheduled job, the nightly job among them, posts its own result, pass or fail, to the status issue, and a late post is red",
+      "ratchet": "Check: every scheduled job posts its own result, pass or fail, and a late post is red. The nightly job posts its own result, pass or fail, to the status issue",
       "source": ""
     },
     {

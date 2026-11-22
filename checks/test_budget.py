@@ -481,9 +481,13 @@ class Triage(RepoCopy, unittest.TestCase):
         old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
         self.assertEqual(rule["rule"], "Every scheduled job posts its result, and a late post is red. " + old["ratchet.nightly-visible"]["rule"])
         self.assertIn("nightly security scan", rule["rule"])
-        for words in ("Check: every scheduled job", "the nightly job among them", "posts its own result, pass or fail, to the status issue",
-                      "a late post is red"):
-            self.assertIn(words, rule["ratchet"])
+        # T1 adds that every job posts and that a late post is red, and names no destination for the other jobs, so the
+        # status issue stays the destination of the nightly job alone, in the words of the old ratchet.
+        self.assertEqual(old["ratchet.nightly-visible"]["ratchet"],
+                         "Check: the nightly job posts its own result, pass or fail, to the status issue")
+        self.assertEqual(rule["ratchet"], "Check: every scheduled job posts its own result, pass or fail, and a late post is red. "
+                                          "The nightly job posts its own result, pass or fail, to the status issue")
+        self.assertEqual(rule["ratchet"].count("status issue"), 1)
         keys = [item["key"] for item in self.data["rules"]]
         self.assertEqual(keys.index("ratchet.silence-is-red"), keys.index("ratchet.skills-pinned") + 1, "it stands where the old key stood")
         self.assertIn("`ratchet.silence-is-red`", read("RATCHET.md"))
