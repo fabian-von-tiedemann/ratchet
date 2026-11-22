@@ -32,7 +32,7 @@ Guidance, text only. Rules under it: `ratchet.register-on-top` (names a check), 
 
 Does this change reach main only through required checks at the merged head and a reviewer who never saw my reasoning\?
 
-Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.owner-paths` (names a check), `ratchet.fresh-context` (names a check), `ratchet.once-per-version` (names a check), `ratchet.two-rounds` (names a check), `ratchet.register-review-first` (text only), `ratchet.review-by-risk` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.owner-paths` (names a check), `ratchet.fresh-context` (names a check), `ratchet.two-rounds` (names a check), `ratchet.review-by-risk` (experimental, text only)
 
 ### Wait for the owner on what cannot be undone
 
@@ -44,7 +44,7 @@ Guidance, text only. Rules under it: `ratchet.ask-the-owner` (text only), `ratch
 
 What run shows this\, on which head\, and what did it not cover\? What should have reported and has not\?
 
-Guidance, text only. Rules under it: `ratchet.findings-marked` (text only), `ratchet.verify-findings` (text only), `ratchet.run-early` (text only), `ratchet.evidence-before-done` (text only), `ratchet.nightly-visible` (names a check), `ratchet.cr-wake` (experimental, names a check)
+Guidance, text only. Rules under it: `ratchet.evidence-before-done` (text only), `ratchet.nightly-visible` (names a check), `ratchet.cr-wake` (experimental, names a check)
 
 ### Make checks that can fail\, and turn failures into checks
 
@@ -72,7 +72,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 28 rules. 15 name a check and 13 are text only (46%). Ratchet ships a reference check for 1 of the 15. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 23 rules. 14 name a check and 9 are text only (39%). Ratchet ships a reference check for 1 of the 14. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -100,17 +100,13 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 28 rules. 15 name a che
 <!-- generated:table review -->
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
-| ratchet.fresh-context | A reviewer starts in a new thread\, on a model from a different model family than the author\'s\. A script builds the assignment from the role\, the PR and the issue\, without the author\'s account of what was fixed\. | Check\: the review script builds the assignment and saves it next to the review | google\/elephant\-goldfish\-model \(the fresh context\) |
-| ratchet.once-per-version | An assignment covers exactly one head and is started once per head and model\. | Check\: the review script keeps a lock file per PR\, head and model | — |
+| ratchet.fresh-context | A reviewer starts in a new thread\, on a model from a different model family than the author\'s\. A script builds the assignment from the role\, the PR and the issue\, without the author\'s account of what was fixed\. An assignment covers exactly one head and is started once per head and model\. A change to the register is reviewed before it is merged\, by a model from a different family than the author\'s\. A review after the merge does not replace it\. | Check\: the review script builds the assignment and saves it next to the review\, and keeps a lock file per PR\, head and model\. That a change to the register was reviewed before it was merged is text only until the project\'s merge check can see review outcomes | google\/elephant\-goldfish\-model \(the fresh context\) |
 | ratchet.two-rounds | After two failed rounds in a row with the same kind of failure\, no third round starts\. The author writes down the premise that every fix shared\, tests it\, and proposes a different approach as a decision\. | Check\: the review script refuses a third round without a decision that names the PR | pstack `principle-attack-the-premise` |
-| ratchet.findings-marked | Every finding is marked \"proven by a run\"\, with the command and its result\, or \"unproven\"\. It is also marked \"standards\" \(breaks the repo\'s documented rules\) or \"spec\" \(does not do what the issue asked\)\. An unproven finding keeps its severity\. | Text only\: a script can see that the marks are there\, not that they are true | pstack `interrogate`\, which goes further and drops unproven findings\; mattpocock\/skills `code-review` |
-| ratchet.verify-findings | Whoever receives a review checks each finding against the code before changing anything\, and pushes back with evidence when a finding is wrong\. | Text only\: a check cannot see whether a finding was verified | obra\/superpowers `receiving-code-review` |
-| ratchet.register-review-first | A change to the register is reviewed before it is merged\, by a model from a different family than the author\'s\. A review after the merge does not replace it\. | Text only until the project\'s merge check can see review outcomes | — |
 <!-- /generated -->
 
 ### The review script
 
-Three rules in this part lean on one script that the project writes: `ratchet.fresh-context`, `ratchet.once-per-version` and `ratchet.two-rounds`. Ratchet does not ship it. This is what it must do:
+Two rules in this part lean on one script that the project writes: `ratchet.fresh-context` and `ratchet.two-rounds`. Ratchet does not ship it. This is what it must do:
 
 - **Build.** Given a PR, its issue, the head, a reviewer role and a model, write the assignment to a file next to where the review will be saved. The assignment contains the role, the PR and the issue, and nothing the author said about the change. It states its base and the size of the diff, and the script refuses when the base is not the PR's own: for a PR stacked on another, that is the head of the layer below, not the main branch.
 - **Lock.** Refuse to build a second assignment for the same PR, head and model. A command that locks for good states what stays locked and what the next allowed step is before it does anything.
@@ -125,10 +121,9 @@ Three rules in this part lean on one script that the project writes: `ratchet.fr
 | ratchet.root-cause | Fix the root cause\, not the symptom\. First build a fast run that goes red on exactly this bug\. Hypotheses come after that\. The run stays\, as a test tagged with the defect\'s issue\, and is merged with the fix\. When the bug is one case of a failure class\, the fix closes the class and not only the case\. A guard is removed only when a test shows that its case is still caught\. | Check\: a PR that links an issue labeled as a defect adds or changes a test tagged with that issue\, or says in a required field why no test can catch it\, and a registry of the tagged tests\, generated from the tags\, is checked in every PR\. A finding that names a failure class is closed by a test that lists every place where the class can occur and fails on each place that lacks the guard\. A PR that removes a tagged test or a guard shows a run in which a test still catches its case\. It catches a fix merged without its test and a guard removed on a belief\. It does not see whether the cause found is the root cause\, and a sweep does not catch a spelling built to get past it | mattpocock\/skills `diagnosing-bugs`\; pstack `principle-fix-root-causes` |
 | ratchet.reuse-first | Prefer proven tools\, libraries and skills to writing your own code and text\. New code is justified against a requirement and a simpler alternative\. | Text only\: a check cannot judge whether an alternative existed | — |
 | ratchet.simplest | Choose the simplest solution that meets the requirements\. Try removing something before adding something\. After repeated patches to the same area\, stop and assess the whole\. | Text only\: simplicity is a judgment | pstack `principle-subtract-before-you-add` |
-| ratchet.run-early | Run it for real as early as possible\. A desk review finds edge cases without end\. A run shows which ones matter\. | Text only\: when to run is a judgment\. A standing approval for local experiments at no cost removes the excuse | — |
 | ratchet.test-first | Red before green\, one vertical slice at a time\, tests only at agreed seams\. An expected value comes from an independent source and is never computed the way the code computes it\. | Check\: mutations of the changed code that the new tests must kill | mattpocock\/skills `tdd` |
 | ratchet.test-can-fail | A test must fail on exactly the bug it claims to catch\, whatever the machine\'s speed and the time of day\. Time and waiting are tested with a replaceable clock or wait function\. | Check\: one mutation per test case | — |
-| ratchet.evidence-before-done | No claim that something is done without a check run just now\, shown with the command and its result\. A subagent\'s \"done\" is checked independently\. A working demo or a green scan does not prove the whole promise\. | Text only\: a check cannot see a claim made in a message\. Required checks on the PR head cover the claims they run | obra\/superpowers `verification-before-completion` |
+| ratchet.evidence-before-done | No claim that something is done without a check run just now\, shown with the command and its result\. A claim shows the head it ran on\, and for a change a user sees\, the run shows what the user sees\. A subagent\'s \"done\" is checked independently\. A working demo or a green scan does not prove the whole promise\. Every finding is marked \"proven by a run\"\, with the command and its result\, or \"unproven\"\. An unproven finding keeps its severity\. Whoever receives a review checks each finding against the code before changing anything\, and pushes back with evidence when a finding is wrong\. | Text only\: a check cannot see a claim made in a message or whether a finding was verified\, and a script can see that a finding\'s marks are there\, not that they are true\. Required checks on the PR head cover the claims they run | obra\/superpowers `verification-before-completion`\, `receiving-code-review`\; pstack `interrogate`\, which goes further and drops unproven findings\; mattpocock\/skills `code-review` |
 | ratchet.slices | Work is split into vertical slices that each fit in a fresh context\, with dependencies and acceptance criteria\. | Text only\: slice size is a judgment | mattpocock\/skills `to-tickets` |
 <!-- /generated -->
 

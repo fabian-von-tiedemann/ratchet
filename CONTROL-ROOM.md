@@ -64,7 +64,7 @@ The tripwire is [checks/tripwire.py](checks/tripwire.py), a `PreToolUse` hook fo
 
 ## The review script
 
-The control room starts each review with the review script that three rules in the core lean on: `ratchet.fresh-context`, `ratchet.once-per-version` and `ratchet.two-rounds`. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).
+The control room starts each review with the review script that two rules in the core lean on: `ratchet.fresh-context` and `ratchet.two-rounds`. What the script must do is in [RATCHET.md](RATCHET.md#the-review-script).
 
 ## A day in the control room
 
