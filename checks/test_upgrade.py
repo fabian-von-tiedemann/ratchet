@@ -643,9 +643,29 @@ class OneCommand(FixtureTest):
         code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json", "--no-fetch")
         self.assertEqual(code, 2, output)
         self.assertIn("upgrade: cannot run: .ratchet has changes to files that git tracks in it, so it is not moved.", output)
-        self.assertEqual(snapshot(project, skip=(os.path.join(".ratchet", ".git"),)),
-                         dict((k, v) for k, v in before.items() if not k.startswith(os.path.join(".ratchet", ".git"))))
+        inside = os.path.join(".ratchet", ".git")
+        self.assertEqual(snapshot(project, skip=(inside,)),
+                         dict((k, v) for k, v in before.items() if k != inside and not k.startswith(inside + os.sep)))
         self.assertEqual(self.head(project), was)
+
+    def test_a_clone_on_a_branch_is_not_moved(self):
+        # A clone on a branch, such as a checkout someone works on Ratchet in, is not moved. A clone already at the
+        # release is used where it stands.
+        project = self.scratch()
+        with open(os.path.join(project, "register.json"), "wb") as handle:
+            handle.write(self.fixture_bytes("upgrade/register.json"))
+        git(project, "clone", "-q", self.origin, ".ratchet")
+        clone = os.path.join(project, ".ratchet")
+        git(clone, "checkout", "-q", "-b", "work", "v9.8")
+        code, output = self.upgrade(project, "--no-fetch")
+        self.assertEqual(code, 2, output)
+        self.assertIn("upgrade: cannot run: .ratchet is on the branch work, so it is not moved. Move it to the tag of the "
+                      "version the register states, git -C .ratchet checkout --detach v9.8, and run again.", output)
+        self.assertEqual(git(clone, "symbolic-ref", "--short", "HEAD"), "work")
+        git(clone, "checkout", "-q", "-B", "work", "v9.10")
+        code, output = self.upgrade(project, "--no-fetch")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(git(clone, "symbolic-ref", "--short", "HEAD"), "work")
 
     def test_a_git_variable_of_the_caller_does_not_lead_git_to_another_repo(self):
         # Run from a git hook, GIT_DIR names the project's repo. The command still reads .ratchet, and nothing else.
@@ -815,7 +835,9 @@ class UpgradingSteps(FixtureTest):
             handle.write(self.fixture_bytes("upgrade/released/0.9/register.json"))
         git(project, "clone", "-q", "--branch", "v0.9", origin, ".ratchet")
         text = read("UPGRADING.md")
-        self.assertNotIn("git clone", text, "the README fetches Ratchet the first time, and the command fetches each upgrade")
+        self.assertIsNone(re.search(r"git clone (-|http)", text), "the README clones Ratchet the first time, and the command fetches")
+        # A clone on 0.10 or earlier has an upgrade.py that does not fetch: it is moved once, to the first that does.
+        self.assertIn("git -C .ratchet fetch --tags origin\ngit -C .ratchet checkout --detach v%s\n" % upgrade.FIRST, text)
         commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", text)
         self.assertEqual(commands, ["python3 .ratchet/checks/upgrade.py register.json"])
         code, output = in_project(project, *shlex.split(commands[0])[1:])

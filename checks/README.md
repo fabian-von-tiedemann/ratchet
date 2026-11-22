@@ -1038,12 +1038,22 @@ Each case is the page with one change, so the cases follow the page when it chan
 ## upgrade.py
 
 ```sh
-python3 .ratchet/checks/upgrade.py register.json --from .ratchet/from.json
+python3 .ratchet/checks/upgrade.py register.json
 ```
 
-This one checks no rule in a register. It is the upgrade path for a project ([UPGRADING.md](../UPGRADING.md)). `--from` is the `ratchet.json` of the version the register states, taken from its tag. `--source`, by default the `ratchet.json` next to the script, is the newer Ratchet.
+This one checks no rule in a register. It is the upgrade path for a project ([UPGRADING.md](../UPGRADING.md)), in one command ([D-2026-11-22-second-redraw](../decisions/D-2026-11-22-second-redraw.md), step 6). `.ratchet` is a git clone of Ratchet. The command fetches its tags from `origin`, reads the version the register states, and compares that tag with the latest release, or with the one given with `--to`. `--no-fetch` uses the tags the clone has. Offline, `--from` is the `ratchet.json` of the version the register states, taken from its tag, and `--source`, by default the `ratchet.json` next to the script, is the newer Ratchet: `python3 .ratchet/checks/upgrade.py register.json --from .ratchet/from.json`. `--from` is not given with `--to` or `--no-fetch`, and `--source` only with `--from`.
 
-**What it claims.** It reads three data files strictly, and when they are valid it prints, rule by rule, what is different between the two versions of Ratchet and what the register must do about it:
+**What the one command claims.** It runs git on the clone the script stands in, and on nothing else: no `GIT_` variable of the caller is used, and git does not look for a repo above the clone. It reaches no network but the clone's `origin`, through `git fetch --tags`. It refuses, with exit 2 and what to do, when:
+
+- the clone is not a git work tree of its own, as when `.ratchet` is a copy. It names `--from`.
+- the fetch fails. It names `--no-fetch`.
+- the version the register states has no tag `v` and that version. After a fetch, that version was never released, and it lists the release tags. With `--no-fetch`, in a shallow clone, it says the clone holds only the tags it was cloned with, and prints the command that fetches them.
+- `--to` is not a version, or names no release tag, or a release before 0.11, whose `upgrade.py` does not fetch.
+- the clone has changes to files git tracks in it, or is on a branch and must move. Neither is moved.
+
+A release is a tag `v`, a major and a minor version, with no leading zero, and nothing else. The latest is the highest by number, so `v0.10` comes after `v0.9`. When the release is older than the register's version, it fails with exit 1, and when it is the same, it says the register is not behind. Otherwise it reads `ratchet.json` at the register's tag with the reader for an older version below, and checks the register against it, as the offline mode does, before anything moves. Then it moves the clone, detached, to the commit of the release, prints the commit it was at and the command that moves it back, and runs the `upgrade.py` of the release, which knows that release's forms. That one says how many releases after the register's version the release is, and which, prints the steps as below, the commands to run after with the path of the script as typed, and the commit to pin `.github/workflows/ratchet.yml` to. It writes no file of the project, and changes `.ratchet` only through git: its tags and its checkout.
+
+**What it claims, in both modes.** It reads three data files strictly, and when they are valid it prints, rule by rule, what is different between the two versions of Ratchet and what the register must do about it:
 
 - a rule the register adopts that changed: which of its status, enforcement, rule, ratchet and source changed, and the entry to put in its place. The entry is the newer rule, character for character. It keeps the status and the place of the check when the rule still names a check, gets `text only for now` when its ratchet now names one, and loses both when it is text only now. When the ratchet of a rule marked `built` changed, it says to look at the check again.
 - a rule the register adopts that was removed: take it out of `adopted`, and, to keep it, add the printed entry to `own`. The entry is the older rule with the fields of an own rule, `key`, `rule`, `ratchet` and `source`, and the status and the `where` it had, which an own rule may have from 0.10. A translation is dropped, since an own rule has none. Its key is the prefix of the register's first own rule, or one made from the project's name, then a dot and the name in Ratchet's key, with `-2` and so on when that key is taken. A name that gives no prefix, or gives `ratchet`, gives `project`.
@@ -1054,16 +1064,17 @@ This one checks no rule in a register. It is the upgrade path for a project ([UP
 - a rule the register adopts with a translation, whose rule changed: the translation must be made again. The entry is printed without it, with the sha256 of the new text. A translation of a rule whose text did not change, only its ratchet or its source, stays in the entry.
 - when the register moves past a version that changed the form of `register.json`, what changed. In 0.10 the fields `instructions`, `translation` and the status of an own rule came, all of which may be left out, so none of it is a step. It prints the commands that put `REGISTER.md` in place again, and, for a register that names an instruction file, that file too, as [check_register.py](#check_registerpy) gives them, with the path of the file.
 
-Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. It writes nothing, and reads no file but the three it is given. It runs offline.
+Before it prints a step, it checks that the register passes `check_register.py` against the older Ratchet, and that the register with every step done, and no new rule adopted, passes it against the newer one. When the register adopts a removed rule, it checks that register twice: with each removed rule taken out, and with each also moved to `own` by the printed entry. When every adopted rule was removed, it checks both with every rule it printed to choose from adopted. A register that does not pass against the older Ratchet is not upgraded, so one that adopts no rule from Ratchet, or a rule that is not in the version it states, still fails. Offline, it writes nothing, runs no git, and reads no file but the three it is given.
 
-**Against which threat.** A project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's.
+**Against which threat.** Mistakes and drift, as every check here: a project that upgrades by hand misses a rule that changed, keeps a softened copy, or keeps a status that no longer holds, and the register still looks like Ratchet's. A project that compares the wrong two versions, by hand, from a clone that lacks the tag it needs, or from a newer clone with an older script, gets steps for versions it is not on. An upgrade that moves `.ratchet` by hand loses the commit it was at, or moves a clone someone works in.
 
 **The older `ratchet.json`.** It is read with the same strict reader, `registry.validate`, with these things left out, because they are not what an upgrade compares and an older version may not have them in today's form: it may lack the cap, which came in 0.5, it may hold `date` and `sources`, which left in 0.9, its experimental rules may lack `since`, which came in 0.10, its sources are not read (Ratchet 0.3 wrote one in a form that 0.4 refuses), the files of its reference checks and of the decisions in `kept_by` are not looked for, and its budget is not counted. A field it does not know, a field twice, a rule of another form or bytes that are not UTF-8 still fail.
 
 **What it does not claim.**
 
-- It does not find the latest version, and does not reach the network. It compares the files it is given.
-- It does not see that the file given with `--from` is the one at the tag. It checks that the register passes against it and that the version is older or the same, and that two files that name the same version have the same rules.
+- It does not see that `origin` is Ratchet, or that a tag is the one Ratchet released. It trusts the clone's `origin` and its tags, as the README's clone does. Someone who controls them, or the clone, is outside what it is for.
+- It does not run the `upgrade.py` of a release before 0.11. A clone on one is moved once by hand, as `UPGRADING.md` says.
+- Offline, it does not see that the file given with `--from` is the one at the tag. It checks that the register passes against it and that the version is older or the same, and that two files that name the same version have the same rules.
 - It does not see whether a check marked `built` exists or works.
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
@@ -1076,14 +1087,14 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | Each printed entry is the newer rule, with the status that holds | the same | Passes |
 | The register with every step done passes against the newer Ratchet, and the rules that did not change keep their entries | the same | Passes |
 | Nothing is written | the same | Passes, every file as it was |
-| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, a note that the form of `register.json` grew in 0.10, and the steps in `UPGRADING.md` run on the register at 0.9. The steps fetch a version with a date in the changelog | `released/0.3/` to `released/0.9/` | Passes |
+| This repo's register at 0.3 to 0.9, upgraded to this version, with a note that `date` and `sources` are gone before 0.9 and that `since` in a rule is new, and a note that the form of `register.json` grew in 0.10 | `released/0.3/` to `released/0.9/` | Passes |
 | An older `ratchet.json` whose sources have a form that is no longer read | `old-source-form/ratchet.json` | Passes |
 | A register already on the newer version | `register-current.json` | Passes: nothing to change |
 | A register whose rule was softened | `register-drifted.json` | Fails: no step is printed |
 | A register on another version than the older `ratchet.json` | `register-other-version.json` | Fails |
 | A newer Ratchet that is older than the register | `register-current.json` with the two swapped | Fails |
 | A `ratchet.json`, older or newer, with a field twice, not JSON, not UTF-8, a field it does not know at the top or in a rule, a field missing, a character not on the list, a version that is a number, a key twice, a rule in a part that does not exist | `faults/` | Cannot run, with the fault named |
-| A file that does not exist, or no `--from` | none | Cannot run |
+| A file that does not exist | none | Cannot run |
 | An older `ratchet.json` without the cap, as at `v0.3` and `v0.4`, and two with the same fields | `old-source-form/ratchet.json`, `released/`, and `old/ratchet.json` with the cap taken out in the test | Passes, with a note that `experimental_cap` is new, after the steps, and that `date` and `sources` are gone where the older file holds them. With the same fields, no note |
 | A removed rule marked `built` with a `where`, and one whose key in `own` is taken, each kept in `own` by the printed entry | `removed/register.json`, `removed/old.json`, `removed/new.json` | Passes, with an entry that keeps its status and its `where`, and `-2` on the taken key |
 | The same, with an entry for `own` that gives the rule that is text only a status | the same, with the entry changed in the test | Fails: no step is printed |
@@ -1093,6 +1104,27 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 | The same, against a Ratchet with no new rule | the same, with the new rule left out in the test | Passes, with the rules to start with |
 | A register without own rules whose project name gives no prefix, or gives `ratchet` | the same, with the name changed in the test | Passes, with the prefix `project` |
 | A register that adopts no rule from Ratchet | `removed/register-adopts-nothing.json` | Fails: it does not pass against the version it states |
+
+The cases of the one command are in the class `OneCommand`. A git repo made in a scratch directory stands in for Ratchet's `origin`, with this repo's checks and the `ratchet.json` of `old/` at `v9.8`, of `new/` at `v9.9`, the rules of 9.9 as `v9.10`, and a `v0.10`. The project is a scratch directory with a register from `upgrade/` and a clone at a tag in `.ratchet`. No test reaches the network. Every run checks that no file of the project changed and no file git tracks in `.ratchet`.
+
+| Case | Fixture | Result |
+|---|---|---|
+| A shallow clone at the register's tag, with no other tag | `register.json`, the clone at `v9.8` with depth 1 | Passes: it fetches, finds `v9.10` the latest by number, says 2 releases behind, moves the clone and says from where, and prints what the offline mode prints for the same files, and the commit to pin |
+| The release asked for, as `9.9` and as `v9.9` | the same | Passes: 1 release behind |
+| A clone already at the latest release, with `--no-fetch` | the clone at `v9.10` | Passes: nothing fetched, nothing moved |
+| A register already on the release asked for | `register-current.json` | Passes: not behind, nothing to change, nothing to pin |
+| `--to` a version with no tag, a tag that is not a release, `latest`, a version of three parts, and a release before 0.11 | the clone at `v9.8` | Cannot run, the tags listed, the clone not moved |
+| A release older than the register | `register-current.json`, `--to 9.8` | Fails |
+| A shallow clone that lacks the register's tag, with `--no-fetch`, then without | the clone at `v9.9`, depth 1 | Cannot run, with the command to fetch the tags. Without `--no-fetch`, passes |
+| A register on a version that was never released | `register-other-version.json` | Cannot run: origin has no tag either, and the release tags are listed |
+| A fetch that fails, then `--no-fetch` | the clone's `origin` set to a path that does not exist | Cannot run, naming `--no-fetch`. With it, passes |
+| A register that does not pass against its version | `register-drifted.json` | Fails: the clone is not moved |
+| A clone with a change to a file git tracks | `README.md` of the clone changed in the test | Cannot run: nothing moved or written |
+| A clone on a branch | the clone on a branch `work` | Cannot run, not moved. On the branch at the release, passes |
+| `GIT_DIR` and `GIT_WORK_TREE` of the caller naming another repo | a scratch repo | Passes, and that repo is unchanged |
+| A copy of the checks that is not a git clone | `register.json` | Cannot run, naming `--from` |
+| `--from` with `--to` or `--no-fetch`, and `--source` without `--from` | `register.json` | Cannot run |
+| The command in `UPGRADING.md`, run on this repo's register at 0.9 in a clone at `v0.9` whose origin has this version's `ratchet.json` at its tag, then the steps done and each printed command run | `released/0.9/` | Passes |
 
 ## init.py
 
