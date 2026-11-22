@@ -535,13 +535,14 @@ def one_command(args, out):
     else:
         raise UpgradeError("%s has no release tag to compare with.%s" % (
             shown, " Its tags were not fetched: run again without --no-fetch." if args.no_fetch else ""))
-    if version_key(target) < version_key(FIRST):
-        raise UpgradeError("Ratchet %s comes before %s, the first version whose upgrade.py fetches and compares the tags "
-                           "itself. Compare two files with --from, as the UPGRADING.md of v%s says." % (target, FIRST, target))
+    # Going back is what is wrong with a release older than the register, even one before FIRST, so that is said first.
     if version_key(target) < version_key(stated):
         print("FAIL: Ratchet %s, %s, is older than %s, the version %s states. An upgrade does not go back." % (
             target, which, stated, name), file=out)
         return 1
+    if version_key(target) < version_key(FIRST):
+        raise UpgradeError("Ratchet %s comes before %s, the first version whose upgrade.py fetches and compares the tags "
+                           "itself. Compare two files with --from, as the UPGRADING.md of v%s says." % (target, FIRST, target))
     if stated not in known:
         missing = "%s states Ratchet %s, and %s has no tag v%s to compare with." % (name, stated, shown, stated)
         if not args.no_fetch:
@@ -568,16 +569,22 @@ def one_command(args, out):
         code, branch, _ = git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
         if code == 0:
             # A clone on a branch may be someone's work on Ratchet, so it is not moved. A clone made at a tag is not on one.
-            raise UpgradeError("%s is on the branch %s, so it is not moved. Move it to the tag of the version the register "
-                               "states, git -C %s checkout --detach %s, and run again." % (
-                                   shown, branch.decode("utf-8", errors="replace").strip(), quoted, known[stated]))
+            # It is told to move to the release itself, whose upgrade.py does the one command, so that the same command
+            # then runs: the tag the register states may be before FIRST, and its upgrade.py would not (Gemini's review
+            # of 0425ffe).
+            branch = branch.decode("utf-8", errors="replace").strip()
+            raise UpgradeError("%s is on the branch %s, so it is not moved. Move it to %s, the release to upgrade to, with "
+                               "git -C %s checkout --detach %s, and run again. The branch stays where it is: git -C %s "
+                               "checkout %s goes back to it." % (shown, branch, known[target], quoted, known[target], quoted,
+                                                                 shlex.quote(branch)))
         code, _, stderr = git(root, "checkout", "--quiet", "--detach", commit)
         if code != 0 or git_text(root, "rev-parse", "--verify", "HEAD") != commit:
             raise UpgradeError("%s could not be moved to %s: %s." % (shown, known[target], said(stderr)))
         print("Moved %s to %s. It was at %s. To move it back: git -C %s checkout --detach %s" % (
             shown, known[target], head, quoted, head), file=out)
         # The steps are printed by the upgrade.py of the version moved to, which knows its own forms.
-        again = [args.register] + (["--to", args.to] if args.to is not None else []) + ["--no-fetch"]
+        # The register's path comes after --, so that one that starts with - is not read as an option there.
+        again = (["--to", args.to] if args.to is not None else []) + ["--no-fetch", "--", args.register]
         result = subprocess.run([sys.executable, "-B", typed] + again,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         out.write(result.stdout)

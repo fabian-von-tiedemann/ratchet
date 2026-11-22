@@ -81,18 +81,24 @@ def git(directory, *args):
 
 def make_origin(directory, releases):
     """A git repo at directory that stands in for Ratchet on GitHub: this repo's files, then one commit and one annotated
-    tag per release, each with its own ratchet.json. releases is [(version, the bytes of ratchet.json), ...]."""
+    tag per release, each with its own ratchet.json. releases is [(version, the bytes of ratchet.json), ...], or
+    [(version, the bytes of ratchet.json, {path: bytes}), ...] for a release whose other files differ from this repo's.
+    Those files are this repo's again in the next release."""
     shutil.copytree(ROOT, directory, ignore=shutil.ignore_patterns(*COPY_IGNORED))
     git(directory, "init", "-q")
     for name, value in (("user.name", "Test"), ("user.email", "test@example.invalid"), ("gc.auto", "0"),
                         ("maintenance.auto", "false")):
         git(directory, "config", name, value)
-    for version, data in releases:
-        with open(os.path.join(directory, "ratchet.json"), "wb") as handle:
-            handle.write(data)
+    for release in releases:
+        version, data, others = release if len(release) == 3 else release + ({},)
+        for path, content in dict(others, **{"ratchet.json": data}).items():
+            with open(os.path.join(directory, path), "wb") as handle:
+                handle.write(content)
         git(directory, "add", "-A")
         git(directory, "commit", "-q", "-m", "Release %s" % version)
         git(directory, "tag", "-a", "-m", "Ratchet %s" % version, "v" + version)
+        for path in others:
+            shutil.copyfile(os.path.join(ROOT, path), os.path.join(directory, path))
 
 
 def snapshot(top, skip=()):
@@ -460,27 +466,56 @@ class Upgrade(FixtureTest):
         self.assertIn("--source is the newer file of --from", output)
 
 
+# What the upgrade.py of v9.10 in the origin of OneCommand prints first, and no other release's does: a test that moves
+# the clone to v9.10 sees it only when the upgrade.py there runs.
+MARKER = "This is the upgrade.py of the test's v9.10."
+
+# The upgrade.py of v0.10 in the origin of OneCommand: as Ratchet 0.10's, it compares two files given with --from, and
+# without it fails as argparse does.
+UPGRADE_0_10 = b"""import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("register")
+parser.add_argument("--from", dest="older", required=True)
+parser.parse_args()
+print("This is the upgrade.py of the test's v0.10, which compares two files.")
+"""
+
+
 class OneCommand(FixtureTest):
     """The upgrade in one command (D-2026-11-22-second-redraw, step 6): without --from, upgrade.py fetches the tags of the
     clone of Ratchet it stands in, compares the tag the register states with the latest release, or the one asked for,
     and says how far behind the register is. A git repo made in a scratch directory stands in for Ratchet on GitHub, with
     this repo's checks and the ratchet.json of upgrade/old/ at v9.8 and of upgrade/new/ at v9.9. v9.10 has the rules of
-    9.9, so that the latest release is found by number and not by text, and v0.10 comes before the first version whose
-    upgrade.py does this. No test reaches the network."""
+    9.9, so that the latest release is found by number and not by text, and an upgrade.py that prints MARKER first.
+    v0.10 has the rules of 9.8, comes before the first version whose upgrade.py does this, and has an upgrade.py that
+    only compares two files. Two tags are not releases: v9.11-rc1 and v09.10. No test reaches the network."""
 
     def setUp(self):
         old, new = self.fixture_bytes("upgrade/old/ratchet.json"), self.fixture_bytes("upgrade/new/ratchet.json")
         newest = new.replace(b'"version": "9.9"', b'"version": "9.10"', 1)
         self.assertNotEqual(newest, new)
+        script = read("checks/upgrade.py").encode("utf-8")
+        start = b"    out = out or sys.stdout\n"
+        marked = script.replace(start, start + b"    print(%r, file=out)\n" % MARKER.encode("utf-8"), 1)
+        self.assertNotEqual(marked, script)
         self.origin = os.path.join(self.scratch(), "ratchet")
-        make_origin(self.origin, [("0.10", old.replace(b'"version": "9.8"', b'"version": "0.10"', 1)), ("9.8", old),
-                                  ("9.9", new), ("9.10", newest)])
+        make_origin(self.origin, [("0.10", old.replace(b'"version": "9.8"', b'"version": "0.10"', 1),
+                                   {"checks/upgrade.py": UPGRADE_0_10}),
+                                  ("9.8", old), ("9.9", new), ("9.10", newest, {"checks/upgrade.py": marked})])
+        # Tags that are not releases: a release candidate after the latest, and the latest with a leading zero.
+        git(self.origin, "tag", "v9.11-rc1", "v9.10^{commit}")
+        git(self.origin, "tag", "-a", "-m", "Not a release", "v09.10", "v9.10^{commit}")
 
-    def project(self, register="register.json", at="v9.8", shallow=False):
-        """A project with a register from upgrade/ and Ratchet cloned into .ratchet at a tag. Returns its path."""
+    def project(self, register="register.json", at="v9.8", shallow=False, version=None):
+        """A project with a register from upgrade/ and Ratchet cloned into .ratchet at a tag. Returns its path. With version,
+        the register states that version in place of its own."""
         project = self.scratch()
+        data = self.fixture_bytes("upgrade/" + register)
+        if version is not None:
+            data = re.sub(rb'"ratchet_version": "[0-9.]+"', b'"ratchet_version": "' + version.encode("ascii") + b'"', data, 1)
+            self.assertEqual(registry.parse_json(data)["ratchet_version"], version)
         with open(os.path.join(project, "register.json"), "wb") as handle:
-            handle.write(self.fixture_bytes("upgrade/" + register))
+            handle.write(data)
         if shallow:
             git(project, "clone", "-q", "--depth", "1", "--branch", at, "file://" + self.origin, ".ratchet")
         else:
@@ -528,6 +563,11 @@ class OneCommand(FixtureTest):
         self.assertIn("Moved .ratchet to v9.10. It was at %s. To move it back: git -C .ratchet checkout --detach %s" % (was, was), output)
         self.assertIn("register.json states Ratchet 9.8. The latest release is 9.10, 2 releases after it: 9.9 and 9.10.", output)
         self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of v9.10: %s." % self.tag("v9.10"), output)
+        # The steps come from the upgrade.py of v9.10, which the command runs once .ratchet is there: it prints MARKER,
+        # and v9.8's, which the command was started with, does not.
+        self.assertEqual(output.count(MARKER), 1, output)
+        self.assertLess(output.index("Moved .ratchet to v9.10."), output.index(MARKER))
+        self.assertLess(output.index(MARKER), output.index("register.json states Ratchet 9.8."))
         offline = self.offline().replace("Ratchet 9.9", "Ratchet 9.10").replace('"9.9"', '"9.10"')
         self.assertIn("In Ratchet 9.10, 9 rules are new, changed or removed.", output)
         self.assertIn(offline, output)
@@ -543,6 +583,7 @@ class OneCommand(FixtureTest):
                 self.assertIn("register.json states Ratchet 9.8. The release asked for is 9.9, 1 release after it: 9.9.", output)
                 self.assertIn(self.offline(), output)
                 self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of v9.9: %s." % self.tag("v9.9"), output)
+                self.assertNotIn(MARKER, output)
 
     def test_a_clone_already_at_the_release_is_not_moved(self):
         project = self.project(at="v9.10")
@@ -563,27 +604,59 @@ class OneCommand(FixtureTest):
         self.assertEqual(self.head(project), self.tag("v9.9"))
 
     def test_a_release_that_is_not_a_tag_is_refused(self):
+        # The release tags are listed, and the two tags of the origin that are not releases are not among them.
         project = self.project()
         was = self.head(project)
-        for asked, said in (("9.7", "there is no release tag v9.7 in .ratchet. Its release tags are v0.10, v9.8, v9.9 and v9.10."),
-                            ("v12.0", "there is no release tag v12.0 in .ratchet."),
-                            ("latest", "--to takes a version such as 0.11, or its tag, v0.11, not 'latest'"),
-                            ("9.9.1", "--to takes a version such as 0.11"),
-                            ("0.10", "Ratchet 0.10 comes before 0.11, the first version whose upgrade.py fetches and compares "
-                                     "the tags itself. Compare two files with --from, as the UPGRADING.md of v0.10 says.")):
+        tags = git(os.path.join(project, ".ratchet"), "tag", "--list").split()
+        self.assertIn("v9.11-rc1", tags)
+        self.assertIn("v09.10", tags)
+        listed = " Its release tags are v0.10, v9.8, v9.9 and v9.10."
+        for asked, said in (("9.7", "there is no release tag v9.7 in .ratchet." + listed),
+                            ("v12.0", "there is no release tag v12.0 in .ratchet." + listed),
+                            ("9.11", "there is no release tag v9.11 in .ratchet." + listed),
+                            ("v9.11-rc1", "--to takes a version such as 0.11, or its tag, v0.11, not 'v9.11-rc1'."),
+                            ("v09.10", "--to takes a version such as 0.11, or its tag, v0.11, not 'v09.10'."),
+                            ("09.10", "--to takes a version such as 0.11, or its tag, v0.11, not '09.10'."),
+                            ("latest", "--to takes a version such as 0.11, or its tag, v0.11, not 'latest'."),
+                            ("9.9.1", "--to takes a version such as 0.11, or its tag, v0.11, not '9.9.1'.")):
             with self.subTest(asked=asked):
                 code, output = self.upgrade(project, "--to", asked)
                 self.assertEqual(code, 2, output)
                 self.assertIn("upgrade: cannot run: " + said, output)
                 self.assertEqual(self.head(project), was, ".ratchet is not moved")
 
+    def test_a_tag_that_is_not_a_release_is_not_the_latest(self):
+        # v9.11-rc1 comes after v9.10 if read as text or by its first numbers, and v09.10 names 9.10 with a leading zero.
+        # Neither is a release, so the latest is v9.10, and .ratchet moves to its commit by the tag v9.10.
+        project = self.project()
+        code, output = self.upgrade(project, "--no-fetch")
+        self.assertEqual(code, 0, output)
+        self.assertIn("Moved .ratchet to v9.10.", output)
+        self.assertIn("The latest release is 9.10, 2 releases after it: 9.9 and 9.10.", output)
+        self.assertNotIn("9.11", output)
+        self.assertNotIn("v09.10", output)
+
+    def test_a_release_before_the_first_that_fetches_is_refused(self):
+        # A register before 0.10, asked to move to 0.10, is told to compare two files: 0.10's upgrade.py does not fetch.
+        project = self.project(version="0.9")
+        was = self.head(project)
+        code, output = self.upgrade(project, "--to", "0.10")
+        self.assertEqual(code, 2, output)
+        self.assertIn("upgrade: cannot run: Ratchet 0.10 comes before 0.11, the first version whose upgrade.py fetches and "
+                      "compares the tags itself. Compare two files with --from, as the UPGRADING.md of v0.10 says.", output)
+        self.assertEqual(self.head(project), was, ".ratchet is not moved")
+
     def test_a_release_older_than_the_register_fails(self):
+        # Also a release before 0.11: that it goes back is what is wrong, not that its upgrade.py does not fetch.
         project = self.project(register="register-current.json", at="v9.9")
-        code, output = self.upgrade(project, "--to", "9.8")
-        self.assertEqual(code, 1, output)
-        self.assertIn("FAIL: Ratchet 9.8, the release asked for, is older than 9.9, the version register.json states. An upgrade "
-                      "does not go back.", output)
-        self.assertEqual(self.head(project), self.tag("v9.9"))
+        for asked, said in (("9.8", "9.8"), ("0.10", "0.10")):
+            with self.subTest(asked=asked):
+                code, output = self.upgrade(project, "--to", asked)
+                self.assertEqual(code, 1, output)
+                self.assertIn("FAIL: Ratchet %s, the release asked for, is older than 9.9, the version register.json states. An "
+                              "upgrade does not go back." % said, output)
+                self.assertNotIn("cannot run", output)
+                self.assertEqual(self.head(project), self.tag("v9.9"))
 
     def test_missing_history_in_a_shallow_clone_is_named(self):
         # A shallow clone at v9.9 holds only that tag. With --no-fetch the tag the register states is not there, and the
@@ -648,24 +721,78 @@ class OneCommand(FixtureTest):
                          dict((k, v) for k, v in before.items() if k != inside and not k.startswith(inside + os.sep)))
         self.assertEqual(self.head(project), was)
 
+    def on_branch(self, version, at):
+        """A project whose register states version, with .ratchet on a branch work at the tag at. Returns its path."""
+        project = self.project(version=version)
+        git(os.path.join(project, ".ratchet"), "checkout", "-q", "-b", "work", at)
+        return project
+
+    def run_printed(self, project, output):
+        """Run, through /bin/sh from the root of the project, the one command the refusal printed to move .ratchet."""
+        commands = re.findall(r"git -C \S+ checkout --detach \S+?(?=,| and|$)", output)
+        self.assertEqual(len(commands), 1, output)
+        env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
+        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        result = subprocess.run(["/bin/sh", "-c", commands[0]], cwd=project, env=env, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        return commands[0]
+
     def test_a_clone_on_a_branch_is_not_moved(self):
-        # A clone on a branch, such as a checkout someone works on Ratchet in, is not moved. A clone already at the
-        # release is used where it stands.
-        project = self.scratch()
-        with open(os.path.join(project, "register.json"), "wb") as handle:
-            handle.write(self.fixture_bytes("upgrade/register.json"))
-        git(project, "clone", "-q", self.origin, ".ratchet")
+        # A clone on a branch, such as a checkout someone works on Ratchet in, is not moved. It is told to leave the branch
+        # at the release, and the same command then runs. A clone already at the release is used where it stands.
+        project = self.on_branch("9.8", "v9.9")
         clone = os.path.join(project, ".ratchet")
-        git(clone, "checkout", "-q", "-b", "work", "v9.8")
         code, output = self.upgrade(project, "--no-fetch")
         self.assertEqual(code, 2, output)
-        self.assertIn("upgrade: cannot run: .ratchet is on the branch work, so it is not moved. Move it to the tag of the "
-                      "version the register states, git -C .ratchet checkout --detach v9.8, and run again.", output)
+        self.assertIn("upgrade: cannot run: .ratchet is on the branch work, so it is not moved. Move it to v9.10, the release "
+                      "to upgrade to, with git -C .ratchet checkout --detach v9.10, and run again. The branch stays where it "
+                      "is: git -C .ratchet checkout work goes back to it.", output)
         self.assertEqual(git(clone, "symbolic-ref", "--short", "HEAD"), "work")
+        self.assertEqual(self.head(project), self.tag("v9.9"))
         git(clone, "checkout", "-q", "-B", "work", "v9.10")
         code, output = self.upgrade(project, "--no-fetch")
         self.assertEqual(code, 0, output)
         self.assertEqual(git(clone, "symbolic-ref", "--short", "HEAD"), "work")
+
+    def test_the_command_printed_for_a_clone_on_a_branch_lets_the_upgrade_run(self):
+        # Gemini's review of 0425ffe: the command printed moved .ratchet to the tag of the version the register states.
+        # For a register on 0.10 or earlier, the upgrade.py there does not do the one command, so running again failed.
+        # The command printed is run as printed, then the upgrade again, as typed the first time: it passes, from a
+        # register on a release before 0.11 and from one after, with --to and without.
+        for version, args, release in (("0.10", ("--no-fetch",), "v9.10"), ("9.8", ("--no-fetch",), "v9.10"),
+                                       ("0.10", ("--no-fetch", "--to", "9.9"), "v9.9"), ("9.8", (), "v9.10")):
+            with self.subTest(version=version, args=args):
+                project = self.on_branch(version, "v9.9" if release == "v9.10" else "v9.8")
+                code, output = self.upgrade(project, *args)
+                self.assertEqual(code, 2, output)
+                self.assertIn("is on the branch work, so it is not moved.", output)
+                printed = self.run_printed(project, output)
+                code, output = self.upgrade(project, *args)
+                self.assertEqual(code, 0, output)
+                self.assertEqual(printed, "git -C .ratchet checkout --detach %s" % release)
+                self.assertIn("register.json states Ratchet %s." % version, output)
+                self.assertIn('1. Set "ratchet_version" to "%s".' % release[1:], output)
+                self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of %s: %s." % (release, self.tag(release)),
+                              output)
+                self.assertNotIn("--from", output)
+                self.assertEqual(self.head(project), self.tag(release))
+                self.assertEqual(git(os.path.join(project, ".ratchet"), "rev-parse", "--verify", "refs/heads/work"),
+                                 self.tag("v9.9" if release == "v9.10" else "v9.8"), "the branch stays where it was")
+
+    def test_a_register_whose_path_starts_with_a_dash_is_read_as_a_path(self):
+        # The command runs the upgrade.py of the release with the register's path after --, so that a path that starts
+        # with - is not read as an option there.
+        project = self.project()
+        os.rename(os.path.join(project, "register.json"), os.path.join(project, "-register.json"))
+        before = snapshot(project, skip=(".ratchet",))
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "--no-fetch", "--", "-register.json")
+        self.assertEqual(code, 0, output)
+        self.assertEqual(snapshot(project, skip=(".ratchet",)), before)
+        self.assertEqual(self.head(project), self.tag("v9.10"))
+        self.assertIn(MARKER, output)
+        self.assertIn("-register.json states Ratchet 9.8. The latest release is 9.10", output)
+        self.assertIn("Steps for -register.json:", output)
 
     def test_a_git_variable_of_the_caller_does_not_lead_git_to_another_repo(self):
         # Run from a git hook, GIT_DIR names the project's repo. The command still reads .ratchet, and nothing else.
