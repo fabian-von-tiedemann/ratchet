@@ -8,6 +8,10 @@ Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a che
 
 Step 2 of the migration in the decision `D-2026-11-22-second-redraw`: the clean-out of the control room's experimental rules. Six experimental rules leave, three are changed, and the cap goes from 23 to 17. No core rule changes. What each rule that leaves loses is a row of the table "What is lost, and what is authorized" in that decision, R4 to R8 and R11, and Ratchet's own path list moves out by row M3. Nothing else is lost.
 
+Added:
+
+- `checks/README.md`: one threat model for every check, before the first, by step 1 of the decision `D-2026-11-22-second-redraw`. The checks catch mistakes and drift, not someone who means to get past them. What stands against that is the owner's required review at the host, and nothing stands against someone who controls the owner's account, the host or the machine a session runs on. A script with no lock at the host behind it is a tripwire. Each check's own claim sets what it covers, and a finding outside that claim becomes one question to the owner, not a new round of hardening. `generate.py` and the tag ruleset now say what they do not claim, under that heading. `AGENTS.md`, "How to change a check", points at the text.
+
 Changes of form:
 
 - `experimental_cap` is 17, from 23 (`D-2026-11-22-second-redraw`, "The product module and the cap"): the ten experimental rules that stay after steps 2 and 3 of the migration, and the seven product rules of step 12.
@@ -31,6 +35,7 @@ Changed:
 - This repo's register takes `ratchet.cr-does-not-build` and `ratchet.cr-verify-reports` out of `adopted`, and the new entry of `ratchet.review-by-risk` in. Ratchet's own light and full classes are its own rule `repo.review-classes`, word for word as `D-2026-11-19-review-by-risk` has them.
 - `CONTROL-ROOM.md` points to the handbook template for the ways of working that are not rules. `UPGRADING.md` says what a register does from 0.10 to 0.11. `README.md`, `checks/README.md` and `docs/index.html` no longer cite the rules that left or the cap of 23.
 - The tests that pinned the cap, the count of experimental rules or a rule that left count again: `checks/test_budget.py`, `test_age.py`, `test_tripwire.py`, `test_upgrade.py`, `test_pages.py` and `test_checks.py`. `test_budget.py` checks that each rule that left is gone and that its handbook line stands, and that Ratchet's own classes are an own rule. No rule enters in 0.11, so the tests of a rule that enters make `ratchet.review-by-risk` enter in a copy.
+- `checks/README.md` says that the age check names the nine rules since 0.2, as `test_age.py` has it, not fourteen, and `test_age.py` no longer lists `ratchet.phases`, which left.
 
 Step 5 of the migration in `D-2026-11-22-second-redraw`: `checks/init.py` exits 0 when a file exists, and prints paths as typed. A file that exists and that `init.py` does not write, such as a project's own `AGENTS.md` or workflow, is skipped and reported as before, and no longer makes the run, or `--check`, exit 1, so a dry run on a project that already has its files says whether the plan can be carried out. Exit 1 is kept for a register that does not pass, and `--check` now also exits 1 when a `REGISTER.md` that exists is not what `register.json` generates, as the register check at the end of a real run does. Exit 2 is kept for a run that cannot run. The paths it prints are as the user typed them: the Ratchet checkout under the project's root is named from the root, such as `.ratchet`, and never through the target of a link above it, which once printed `../../../../private/var/...` from a temporary folder on macOS. No guard on a write changes. See [checks/README.md](checks/README.md#initpy).
 

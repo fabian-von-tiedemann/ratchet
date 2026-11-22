@@ -114,6 +114,8 @@ Edit [register.json](register.json) and run `python3 checks/generate.py`. `REGIS
 
 A change to `checks/`, `.github/`, `ratchet.json`, `register.json` or `decisions/` is read by the maintainer before it is merged (`ratchet.checks-owner-read`). The PR states what the check claims and against which threat, with the list of cases, as [checks/README.md](checks/README.md) does. A check may be tightened. A PR that loosens one cites the decision that allows it.
 
+Every check shares one threat model, [The threat model](checks/README.md#the-threat-model) in `checks/README.md`: mistakes and drift, not someone who means to get past a check. A review finding that a check's own claim does not cover starts no new round of hardening. It becomes one question to the maintainer: widen the claim by a decision, or record the finding as outside it ([D-2026-11-22-second-redraw](decisions/D-2026-11-22-second-redraw.md)).
+
 A check reads a data file, read strictly. It fails on what it does not know, and it never looks for rules in free Markdown ([D-2026-11-16-strict-forms](decisions/D-2026-11-16-strict-forms.md)). A value from a data file is text, never Markdown, and is written into a generated file as text. Its characters come from one fixed list, and every file a check reads is strict UTF-8 ([D-2026-11-17-latin-strict-utf8](decisions/D-2026-11-17-latin-strict-utf8.md)). Every way that has been found to hide something from a check is a copy under `checks/fixtures/` that must fail.
 
 Checks use Python's standard library only.
