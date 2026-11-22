@@ -1,0 +1,72 @@
+{
+  "project": "the example project",
+  "ratchet_version": "0.11",
+  "adopted": [
+    {
+      "key": "ratchet.register-on-top",
+      "stands_in": "RULES.md",
+      "sha256": "307fd57c1819d16908ef698ad067fce6ffa2a8b96b49332da0bd8d8d4372960b",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.protected-main",
+      "stands_in": "RULES.md",
+      "sha256": "bb4902854594797fb1b4a9702ab75b3da7da16bb24785fea3515057ea8f2fddc",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.decision-as-file",
+      "stands_in": "RULES.md",
+      "sha256": "558f7a9eb4966b90f57dcf48f2a52d82b51db355d1117de6af9b4b3e298f503b",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.owner-paths",
+      "stands_in": "RULES.md",
+      "sha256": "9d9a6174c42e2c428d4333d70c112be2d2f4d5069530ff901137fbc743fc9d66",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.fresh-context",
+      "stands_in": "RULES.md",
+      "sha256": "c5c587009e9ee65ede565c998f68abbcf949751864f8074d4b79f9b6a6618eb8",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.root-cause",
+      "stands_in": "docs/more.md",
+      "sha256": "2ab243a55f2a258fb325ed9c6c51b71e1423dc330e6588e1b6f751e31c7334f0",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.evidence-before-done",
+      "stands_in": "docs/more.md",
+      "sha256": "10d814e6604d12abb5d9a88f5aecfb14e42f000012878c05efd7f4e20569de70"
+    },
+    {
+      "key": "ratchet.no-secrets",
+      "stands_in": "docs/more.md",
+      "sha256": "0d7dd10012046c88ca3b0c719cdae2234b0f678aa167533faf33bdf724c1d13a",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.material-not-instructions",
+      "stands_in": "docs/more.md",
+      "sha256": "a09b9b925e6cee394e8de8732f98ccc9ce2e6e8f94672a4386b2bee6e4580e96"
+    },
+    {
+      "key": "ratchet.lesson-names-check",
+      "stands_in": "docs/more.md",
+      "sha256": "0f67c22e9ab2d4d6b67cd50e24eabc7f9320b706b2368574cef47fa4af4b04d9",
+      "status": "text only for now"
+    }
+  ],
+  "own": [
+    {
+      "key": "example.changelog",
+      "rule": "Every release has a changelog entry.",
+      "ratchet": "Text only: a check cannot tell whether an entry is complete",
+      "source": ""
+    }
+  ]
+}

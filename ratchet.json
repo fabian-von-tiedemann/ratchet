@@ -109,8 +109,8 @@
       "principle": "principle.keep-one-place",
       "status": "core",
       "enforcement": "enforced",
-      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins.",
-      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version",
+      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins. A Ratchet row may point at the project's own wording, and the check then sees a marker, not the rule's text.",
+      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version: a copied row character for character, and a row by reference by the sha256 of the rule and its ratchet and by one marker line in the file it names, not by the words there",
       "source": "",
       "reference_check": "checks/check_register.py"
     },
