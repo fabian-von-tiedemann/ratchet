@@ -22,6 +22,17 @@ It writes what README's "Start here" sets up:
 - the line /.ratchet/ at the end of .gitignore, unless the last line there that mentions .ratchet is exactly
   .ratchet/ or /.ratchet/, with no negation after it
 
+A repo that already has an instruction file of its own, a plain file at one of INSTRUCTION_FILES, such as AGENTS.md or
+CLAUDE.md, is adopted, in adopt mode (step 9b of D-2026-11-22-second-redraw), unless .github/workflows/ratchet.yml
+exists, which init.py writes first in a start, or a register.json names an instruction file in instructions. It says
+so, and suggests running inventory.py first. In adopt mode it never writes, reads or compares the instruction file, and
+writes only register.json, the template's with one copied row, ratchet.register-on-top, the floor that makes
+check_register.py pass. No REGISTER.md, no workflow and no line in .gitignore. It prints, for each other rule to start
+with that the register does not adopt yet, the rule, its marker line and its row by reference, pointing at the first
+instruction file, and says where to put the marker. It prints the one step to add to a job that the protection of main
+already requires, pinned to the commit: it adds no workflow and no required job, so no admin is needed. Its check at the
+end, and the verdict of --check, is check_register.py register.json, without REGISTER.md.
+
 The name is the folder's name unless --name gives one. It is ASCII letters and digits, in words joined by one
 space, "-", "." or "_", at most 100 characters.
 
@@ -94,9 +105,16 @@ NAME_LENGTH = 100
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
 TEAM = ("<!-- team -->\n", "<!-- /team -->\n")
 JOBS = ("ratchet", "project-checks")
+# The instruction files of a project's own that switch init.py to adopt mode, in the order the first is named, each as
+# a path from the root: the ones a harness loads at the root of a repo (checks/inventory.py has the full list).
+INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md", ".claude/CLAUDE.md")
+# The one copied row of the register that adopt mode writes: the floor that makes check_register.py pass.
+ADOPT_COPIED = "ratchet.register-on-top"
+# Where the step that adopt mode prints fetches Ratchet from: the repository the workflow template fetches.
+REPOSITORY = "https://github.com/fabian-von-tiedemann/ratchet"
 # The rules of the starter register whose check cannot run before the repo has a remote, and why.
 WAIT_FOR_REMOTE = {
-    "ratchet.register-on-top": "the workflow runs its check on the host",
+    "ratchet.register-on-top": "its check runs in CI on the host",
     "ratchet.protected-main": "the protection of main is a setting of the host",
     "ratchet.no-secrets": "its scan runs in CI on the host",
     "ratchet.lesson-names-check": "the lesson template is an issue template of the host",
@@ -273,6 +291,53 @@ def register_text(name, ratchet):
     if problems:
         raise InitError("the register from the template does not pass: %s" % "; ".join(problems))
     return json.dumps(register, indent=2, ensure_ascii=True) + "\n"
+
+
+def adopt_register_text(name, ratchet):
+    """register.json for adopt mode: the template's, with the project's name and its one copied row, ADOPT_COPIED."""
+    register = json.loads(register_text(name, ratchet))
+    register["adopted"] = [rule for rule in register["adopted"] if rule["key"] == ADOPT_COPIED]
+    problems, _ = check_register.check(register, ratchet)
+    if len(register["adopted"]) != 1 or problems:
+        raise InitError("the register for adopt mode, with %s alone, does not pass: %s" % (ADOPT_COPIED, "; ".join(problems)
+                                                                                           or "templates/register.json does not adopt it"))
+    return json.dumps(register, indent=2, ensure_ascii=True) + "\n"
+
+
+def own_instructions(root):
+    """The instruction files of the project's own that stand under root, from INSTRUCTION_FILES and in that order: each a
+    plain file with no link on its path from root. Only whether each is there is looked at, never what it holds."""
+    found = []
+    for name in INSTRUCTION_FILES:
+        path = os.path.join(root, *name.split("/"))
+        try:
+            registry.guard_path(root, path)
+        except (registry.RegistryError, OSError):
+            continue
+        if os.path.isfile(path) and not os.path.islink(path):
+            found.append(name)
+    return found
+
+
+def names_instructions(root):
+    """Whether a register.json at root names an instruction file in instructions, so that the project has chosen the
+    generated block, the copied mode, and is not adopted by reference."""
+    state, text = existing(os.path.join(root, "register.json"))
+    try:
+        register = registry.parse_json(text.encode("utf-8")) if state == "file" and text is not None else None
+    except registry.RegistryError:
+        return False
+    return isinstance(register, dict) and check_register.INSTRUCTIONS in register
+
+
+def adopt_mode(root):
+    """The instruction files of the project's own when init.py runs in adopt mode, else nothing. Adopt mode is for a repo
+    that already has an instruction file (step 9b of D-2026-11-22-second-redraw). A project that init.py started has
+    its workflow, which init.py writes first, and a register that names an instruction file has chosen the block: either
+    keeps the run as it was."""
+    if os.path.lexists(os.path.join(root, WORKFLOW)) or names_instructions(root):
+        return []
+    return own_instructions(root)
 
 
 def workflow_text_from(text, commit):
@@ -453,8 +518,13 @@ def main(argv=None, out=None):
             raise InitError("%s cannot be the project name: %s%s" % (json.dumps(name), problem, hint))
         ratchet = registry.load(os.path.join(RATCHET, "ratchet.json"))
         commit = ratchet_commit()
-        texts = [("AGENTS.md", agents_text(name, args.solo)), ("register.json", register_text(name, ratchet)),
-                 (WORKFLOW, workflow_text(commit))]
+        adopting = adopt_mode(root)
+        if adopting:
+            texts = [("register.json", adopt_register_text(name, ratchet))]
+        else:
+            # The workflow first: a start that stops halfway has it, so the next run is not taken for adopt mode.
+            texts = [(WORKFLOW, workflow_text(commit)), ("AGENTS.md", agents_text(name, args.solo)),
+                     ("register.json", register_text(name, ratchet))]
     except (InitError, registry.RegistryError, OSError) as error:
         say("init: cannot run: %s" % error)
         say("init: nothing was written")
@@ -463,13 +533,21 @@ def main(argv=None, out=None):
     version = ratchet["version"]
     code, tags = git("tag", "--points-at", "HEAD")
     tag = "v" + version
+    pins = "the step it prints" if adopting else "the workflow"
     say("init: Ratchet %s from %s, at commit %s" % (version, typed(RATCHET), commit))
     if code == 0 and tag in tags.split("\n"):
-        say("init: that is the commit of the tag %s, and the workflow pins it" % tag)
+        say("init: that is the commit of the tag %s, and %s pins it" % (tag, pins))
     else:
-        say("init: that is not the commit of the tag %s. The workflow pins it all the same, and fetches it from GitHub, "
-            "so it must be a commit there. README.md fetches a release" % tag)
+        say("init: that is not the commit of the tag %s. %s pins it all the same, and fetches it from GitHub, "
+            "so it must be a commit there. README.md fetches a release" % (tag, pins[0].upper() + pins[1:]))
     say("init: project name %s" % json.dumps(name))
+    if adopting:
+        say("init: adopt mode: %s is the project's own instruction file, so init.py writes only register.json, never %s, "
+            "and adds no workflow" % (adopting[0], adopting[0]))
+        say("init: to see the agent layer as it stands first, run the inventory, which writes nothing: python3 %s"
+            % typed(os.path.join(RATCHET, "checks", "inventory.py")))
+        if args.solo:
+            say("init: --solo changes nothing in adopt mode, which writes no instruction file")
     say()
 
     # The plan, all of it worked out before anything is written.
@@ -484,6 +562,9 @@ def main(argv=None, out=None):
             plan.append(("unchanged", file, None, ""))
         elif state == "other":
             plan.append(("skip", file, None, "it exists and is not a plain file. It was left as it is"))
+        elif adopting:
+            plan.append(("skip", file, None, "it exists and differs from what init.py writes. It was left as it is, and "
+                                             "is checked as it stands"))
         else:
             plan.append(("skip", file, None, "it exists and differs from what init.py writes. It was left as it is: "
                                              "compare it with %s/templates/%s by hand" % (typed(RATCHET), {
@@ -493,19 +574,24 @@ def main(argv=None, out=None):
     standing = text if state == "missing" else current
     markdown, reason = register_md_text(state, standing, ratchet)
     markdown_state, current = existing(os.path.join(root, "REGISTER.md"))
-    if markdown is None:
-        plan.insert(2, ("skip", "REGISTER.md", None, "it cannot be generated: %s" % reason))
+    # Adopt mode writes register.json alone: no REGISTER.md, which a register with rows by reference may leave out and
+    # its check is not given, and no line in .gitignore.
+    if adopting:
+        pass
+    elif markdown is None:
+        plan.append(("skip", "REGISTER.md", None, "it cannot be generated: %s" % reason))
     elif markdown_state == "missing":
-        plan.insert(2, ("write", "REGISTER.md", markdown.encode("utf-8"), ""))
+        plan.append(("write", "REGISTER.md", markdown.encode("utf-8"), ""))
     elif current == markdown:
-        plan.insert(2, ("unchanged", "REGISTER.md", None, ""))
+        plan.append(("unchanged", "REGISTER.md", None, ""))
     elif markdown_state == "other":
-        plan.insert(2, ("skip", "REGISTER.md", None, "it exists and is not a plain file. It was left as it is"))
+        plan.append(("skip", "REGISTER.md", None, "it exists and is not a plain file. It was left as it is"))
     else:
-        plan.insert(2, ("skip", "REGISTER.md", None, "it exists and is not what register.json generates. It was left as "
-                                                     "it is: print it with check_register.py --print-markdown"))
-    action, data, note = gitignore_plan(os.path.join(root, ".gitignore"))
-    plan.append((action, ".gitignore", data, note))
+        plan.append(("skip", "REGISTER.md", None, "it exists and is not what register.json generates. It was left as "
+                                                  "it is: print it with check_register.py --print-markdown"))
+    if not adopting:
+        action, data, note = gitignore_plan(os.path.join(root, ".gitignore"))
+        plan.append((action, ".gitignore", data, note))
 
     # Every file it would write or change, checked for a link on its path while it plans, as a real run checks it when it
     # writes: so --check never says "would write" for a file a real run refuses, and a real run never writes some files
@@ -562,11 +648,13 @@ def main(argv=None, out=None):
 
     # A file skipped is reported, not a failure: only the register decides (step 5 of D-2026-11-22-second-redraw).
     result = 0
-    for line in notes(root, states, standing, args.check):
+    lines = adopt_notes(root, adopting, standing, ratchet, commit) if adopting else notes(root, states, standing, args.check)
+    for line in lines + waiting(root, standing):
         say(line)
     say()
+    markdown_path = None if adopting else "REGISTER.md"
     if args.check:
-        problems = verdict(plan, markdown, reason, markdown_state, standing)
+        problems = verdict(plan, markdown, reason, markdown_state, standing, markdown_path)
         if not problems:
             say("init: the register it would leave passes check_register.py (%s)" % check_register.check(
                 registry.parse_json(standing.encode("utf-8")), ratchet)[1])
@@ -577,9 +665,10 @@ def main(argv=None, out=None):
             result = 1
         return result
 
-    command = [sys.executable, "-E", "-s", os.path.join(RATCHET, "checks", "check_register.py"), "register.json",
-               "--markdown", "REGISTER.md"]
-    say("init: python3 %s register.json --markdown REGISTER.md" % typed(command[3]))
+    command = [sys.executable, "-E", "-s", os.path.join(RATCHET, "checks", "check_register.py"), "register.json"]
+    if markdown_path:
+        command += ["--markdown", markdown_path]
+    say("init: python3 %s" % " ".join([typed(command[3])] + command[4:]))
     check = subprocess.run(command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     for line in check.stdout.rstrip("\n").split("\n"):
         say("  " + line)
@@ -590,16 +679,18 @@ def main(argv=None, out=None):
     return 0
 
 
-def verdict(plan, markdown, reason, markdown_state, standing):
+def verdict(plan, markdown, reason, markdown_state, standing, markdown_path="REGISTER.md"):
     """What --check says the register check at the end of a real run would find, as a list of problems. The check is the
-    same function, check_register.generated_problems, given the bytes that the run would write (review of d86ff3e)."""
+    same function, check_register.generated_problems, given the bytes that the run would write (review of d86ff3e). In
+    adopt mode the check at the end is not given REGISTER.md, so markdown_path is None, and markdown only says whether
+    the register passes."""
     if markdown is None:
         return [reason]
-    if markdown_state == "other":
+    if markdown_path and markdown_state == "other":
         # The check at the end refuses a link at REGISTER.md, and reads a directory there as missing.
         return ["REGISTER.md: it is not a plain file"]
     planned = {file: data for action, file, data, note in plan if action == "write"}
-    return check_register.generated_problems("register.json", registry.parse_json(standing.encode("utf-8")), "REGISTER.md",
+    return check_register.generated_problems("register.json", registry.parse_json(standing.encode("utf-8")), markdown_path,
                                              planned)[0]
 
 
@@ -621,8 +712,7 @@ def closing(skipped, changed):
 
 
 def notes(root, states, standing, check):
-    """What is left to do after the run: the placeholders that AGENTS.md holds, the jobs to require, and the adopted
-    rules that wait for a remote when the repo's git config names none."""
+    """What is left to do after the run: the placeholders that AGENTS.md holds and the jobs to require."""
     lines = []
     state, current, text = states["AGENTS.md"]
     agents = text if state == "missing" else current
@@ -632,15 +722,71 @@ def notes(root, states, standing, check):
                       "register check fails while one is left" % ("would hold" if check else "holds", len(left))]
         lines += ["  " + placeholder for placeholder in left]
     lines += ["", "init: in the protection of main, require the jobs %s of %s" % (" and ".join(JOBS), WORKFLOW.replace(os.sep, "/"))]
+    return lines
+
+
+def adopted_keys(standing):
+    """The keys that the register which stands after the run adopts, or None when it cannot be read."""
+    try:
+        return [rule.get("key") for rule in registry.parse_json(standing.encode("utf-8"))["adopted"]]
+    except (AttributeError, TypeError, KeyError, registry.RegistryError):
+        return None
+
+
+def waiting(root, standing):
+    """The adopted rules that wait for a remote, when the repo's git config names none."""
     try:
         remote = names_remote(root)
-        adopted = [rule.get("key") for rule in registry.parse_json(standing.encode("utf-8"))["adopted"]]
-    except (OSError, AttributeError, TypeError, KeyError, registry.RegistryError):
-        return lines
-    waiting = [key for key in WAIT_FOR_REMOTE if key in adopted]
-    if not remote and waiting:
-        lines += ["", "init: the repo's git config names no remote, so these adopted rules wait for one:"]
-        lines += ["  %s: %s" % (key, WAIT_FOR_REMOTE[key]) for key in waiting]
+    except OSError:
+        return []
+    adopted = adopted_keys(standing) or []
+    keys = [key for key in WAIT_FOR_REMOTE if key in adopted]
+    if remote or not keys:
+        return []
+    return (["", "init: the repo's git config names no remote, so these adopted rules wait for one:"]
+            + ["  %s: %s" % (key, WAIT_FOR_REMOTE[key]) for key in keys])
+
+
+def reference_row(key, stands_in, ratchet):
+    """The row by reference for a rule of Ratchet, its project's wording in stands_in, as register.json takes it."""
+    rule = registry.rules_by_key(ratchet)[key]
+    row = {"key": key, check_register.STANDS_IN: stands_in, check_register.SHA: check_register.reference_sha256(rule)}
+    if rule["enforcement"] == "enforced":
+        row["status"] = "text only for now"
+    return row
+
+
+def adopt_notes(root, files, standing, ratchet, commit):
+    """What adopt mode prints for the project to do: for each rule to start with that the register does not adopt yet,
+    its marker line and its row by reference, pointing at the first instruction file; the one step to add to a job that
+    is already required; and the line for .gitignore when it does not ignore .ratchet. It reads no instruction file."""
+    stands_in, version = files[0], ratchet["version"]
+    adopted = adopted_keys(standing) or [ADOPT_COPIED]
+    keys = [key for key in ratchet["start"] if key not in adopted]
+    by_key = registry.rules_by_key(ratchet)
+    lines = []
+    if keys:
+        lines += ["", "init: the rules to start with, as rows by reference, the weaker mode. For each rule that %s states in "
+                      "the project's own words, put its marker line in %s, alone on a line, by that wording, and paste its "
+                      "row into adopted in register.json. Leave out a rule the file does not state, or state it there first. "
+                      "The sha256 binds the row to the rule and its ratchet in Ratchet %s, in %s: the check sees the marker, "
+                      "not the words" % (stands_in, stands_in, version, typed(os.path.join(RATCHET, "ratchet.json")))]
+        for key in keys:
+            lines += ["", "%s: %s" % (key, by_key[key]["rule"]),
+                      "  " + check_register.MARKER % key,
+                      "  " + json.dumps(reference_row(key, stands_in, ratchet))]
+    if files[1:]:
+        lines += ["", "init: the project also has %s. A row may name one of them in stands_in in place of %s"
+                  % (" and ".join(files[1:]), stands_in)]
+    step = ("git clone --quiet --no-checkout %s .ratchet && git -C .ratchet checkout --quiet %s && "
+            "python3 .ratchet/checks/check_register.py register.json" % (REPOSITORY, commit))
+    lines += ["", "init: add this one step to a job that the protection of main already requires. No workflow and no "
+                  "required job are added, so no admin is needed. In GitHub Actions, after the checkout:",
+              "  - name: Ratchet's register check",
+              "    run: " + step]
+    action = gitignore_plan(os.path.join(root, ".gitignore"))[0]
+    if action != "unchanged":
+        lines += ["", "init: .gitignore does not ignore .ratchet. Add the line %s to it, so the clone is not committed" % IGNORE]
     return lines
 
 
