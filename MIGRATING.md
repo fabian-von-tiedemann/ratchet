@@ -16,7 +16,16 @@ A register takes Ratchet's wording at the version it states, so these change whe
 
 - `ratchet.work-in-issues`: the handover may be a file in the repo.
 - `ratchet.lesson-names-check`: the rule no longer holds a link.
-- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. Nine more are no longer in Ratchet from 0.11: two merged into `ratchet.owner-paths`, which keeps the owner's required review through code ownership, three merged into `ratchet.ask-the-owner`, a fourth left and gave it its spending clause, two moved into Ratchet's own register, and one became a line of the control room's handbook template. The entry for 0.11 in the changelog names them. `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
+- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. Seventeen more are no longer in Ratchet from 0.11, and the entry for 0.11 in the changelog says where each went. They are named here without the prefix `ratchet.`:
+  - into `ratchet.owner-paths`, which keeps the owner's required review through code ownership: `one-approver` and `checks-owner-read`
+  - into `ratchet.ask-the-owner`: `one-channel`, `five-choices` and `look-up-facts`, and the spending clause of `experiment-plan`, which left
+  - into another rule that stays: `cr-next-task` into `ratchet.cr-wake`, and `si-repeat-is-signal` into `ratchet.si-harden`
+  - into Ratchet's own register: `glossary`, `kinds-apart` and `si-subtract`
+  - into `CONTRIBUTING.md`, as an invitation: `si-promote`
+  - into a line of the control room's handbook template: `cr-does-not-build`, `cr-analysis-model`, two of whose clauses went into `ratchet.review-by-risk`, `cr-quiet-hours` and `grill-first`
+  - removed as a duplicate of `ratchet.evidence-before-done`: `cr-verify-reports`
+
+  `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
 
 ## Steps
 

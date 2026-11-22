@@ -341,7 +341,10 @@ class Init(unittest.TestCase):
         self.assertEqual(init.team_parts("a\n<!-- team -->\nb\n<!-- /team -->\nc\n", True), "a\nc\n")
 
     def test_without_a_remote_it_names_the_rules_that_wait_for_one(self):
-        waiting = ("ratchet.register-on-top", "ratchet.protected-main", "ratchet.no-secrets", "ratchet.lesson-names-check")
+        # ratchet.owner-paths, like ratchet.protected-main, is checked by a setting of the host (the review of step 8).
+        waiting = ("ratchet.register-on-top", "ratchet.protected-main", "ratchet.owner-paths", "ratchet.no-secrets",
+                   "ratchet.lesson-names-check")
+        self.assertEqual(list(init.WAIT_FOR_REMOTE), list(waiting))
         for args in ((), ("--check",)):
             with self.subTest(args=args):
                 code, output = self.init(*args)
