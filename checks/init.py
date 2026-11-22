@@ -25,13 +25,18 @@ It writes what README's "Start here" sets up:
 A repo that already has an instruction file of its own, a plain file at one of INSTRUCTION_FILES, such as AGENTS.md or
 CLAUDE.md, is adopted, in adopt mode (step 9b of D-2026-11-22-second-redraw), unless .github/workflows/ratchet.yml
 exists, which init.py writes first in a start, or a register.json names an instruction file in instructions. It says
-so, and suggests running inventory.py first. In adopt mode it never writes, reads or compares the instruction file, and
-writes only register.json, the template's with one copied row, ratchet.register-on-top, the floor that makes
-check_register.py pass. No REGISTER.md, no workflow and no line in .gitignore. It prints, for each other rule to start
-with that the register does not adopt yet, the rule, its marker line and its row by reference, pointing at the first
-instruction file, and says where to put the marker. It prints the one step to add to a job that the protection of main
-already requires, pinned to the commit: it adds no workflow and no required job, so no admin is needed. Its check at the
-end, and the verdict of --check, is check_register.py register.json, without REGISTER.md.
+so, and suggests running inventory.py first. In adopt mode it never writes or changes the instruction file, and does
+not read it to choose adopt mode or the rules and rows it prints. It reads AGENTS.md once, as bytes, only to say when it
+is, below its title, the file init.py writes: a start before 0.11 wrote AGENTS.md first, and one that stopped before
+the workflow is taken for adopt mode now. The register check at the end reads the files that rows by reference name, for
+their marker lines. It writes only register.json, the template's with one copied row, ratchet.register-on-top, the
+floor that makes check_register.py pass. No REGISTER.md, which it does not read either, no workflow and no line in
+.gitignore. It prints, for each rule to start with that the register does not adopt yet, the rule, its marker line and
+its row by reference, pointing at the first instruction file, each line as it is pasted, from column zero, and says
+where to put the marker and that a marker counts only in a file in UTF-8 with LF line endings. It prints the one step
+to add to a job that the protection of main already requires, pinned to the commit: it adds no workflow and no required
+job, so no admin is needed. Its check at the end, and the verdict of --check, is check_register.py register.json,
+without REGISTER.md.
 
 The name is the folder's name unless --name gives one. It is ASCII letters and digits, in words joined by one
 space, "-", "." or "_", at most 100 characters.
@@ -297,16 +302,19 @@ def adopt_register_text(name, ratchet):
     """register.json for adopt mode: the template's, with the project's name and its one copied row, ADOPT_COPIED."""
     register = json.loads(register_text(name, ratchet))
     register["adopted"] = [rule for rule in register["adopted"] if rule["key"] == ADOPT_COPIED]
+    if len(register["adopted"]) != 1:
+        raise InitError("the register for adopt mode needs %s once, and templates/register.json does not adopt it"
+                        % ADOPT_COPIED)
     problems, _ = check_register.check(register, ratchet)
-    if len(register["adopted"]) != 1 or problems:
-        raise InitError("the register for adopt mode, with %s alone, does not pass: %s" % (ADOPT_COPIED, "; ".join(problems)
-                                                                                           or "templates/register.json does not adopt it"))
+    if problems:
+        raise InitError("the register for adopt mode, with %s alone, does not pass: %s" % (ADOPT_COPIED, "; ".join(problems)))
     return json.dumps(register, indent=2, ensure_ascii=True) + "\n"
 
 
 def own_instructions(root):
     """The instruction files of the project's own that stand under root, from INSTRUCTION_FILES and in that order: each a
-    plain file with no link on its path from root. Only whether each is there is looked at, never what it holds."""
+    plain file with no link on its path from root. Only whether each is there is looked at, never what it holds, so adopt
+    mode is chosen without reading one."""
     found = []
     for name in INSTRUCTION_FILES:
         path = os.path.join(root, *name.split("/"))
@@ -338,6 +346,23 @@ def adopt_mode(root):
     if os.path.lexists(os.path.join(root, WORKFLOW)) or names_instructions(root):
         return []
     return own_instructions(root)
+
+
+def written_by_init(root, name):
+    """Whether the instruction file name is, below its title line, byte for byte the AGENTS.md that init.py writes, with
+    or without --solo: what a start before 0.11, which wrote AGENTS.md first, left when it stopped before the workflow.
+    The one read of an instruction file in adopt mode, as bytes, and only for this note: it chooses nothing else."""
+    if name != "AGENTS.md":
+        return False
+    bodies = [agents_text("x", solo).split("\n", 1)[1].encode("utf-8") for solo in (False, True)]
+    title = (AGENTS_TITLE % "").encode("utf-8")
+    try:
+        with open(os.path.join(root, name), "rb") as handle:
+            data = handle.read(len(title) + NAME_LENGTH + max(len(body) for body in bodies) + 2)
+    except OSError:
+        return False
+    first, _, rest = data.partition(b"\n")
+    return first.startswith(title) and rest in bodies
 
 
 def workflow_text_from(text, commit):
@@ -573,9 +598,9 @@ def main(argv=None, out=None):
     state, current, text = states["register.json"]
     standing = text if state == "missing" else current
     markdown, reason = register_md_text(state, standing, ratchet)
-    markdown_state, current = existing(os.path.join(root, "REGISTER.md"))
     # Adopt mode writes register.json alone: no REGISTER.md, which a register with rows by reference may leave out and
-    # its check is not given, and no line in .gitignore.
+    # its check is not given, so it is not read either, and no line in .gitignore (review of 58ca014).
+    markdown_state, current = ("not read", None) if adopting else existing(os.path.join(root, "REGISTER.md"))
     if adopting:
         pass
     elif markdown is None:
@@ -675,7 +700,7 @@ def main(argv=None, out=None):
     if check.returncode != 0:
         say("init: the register check failed, with exit code %d" % check.returncode)
         return 1
-    say("init: done. %s" % closing(skipped, changed))
+    say("init: done. %s" % closing(0 if adopting else skipped, changed))
     return 0
 
 
@@ -696,7 +721,8 @@ def verdict(plan, markdown, reason, markdown_state, standing, markdown_path="REG
 
 def closing(skipped, changed):
     """The last line of a run that passed, saying only what applies: compare what was left as it is, fill in AGENTS.md when
-    it was written, and commit what was written or changed."""
+    it was written, and commit what was written or changed. Adopt mode gives no files skipped: the one file it writes,
+    register.json, when it is left as it is, is the project's and is checked as it stands, with nothing to compare."""
     parts = []
     if skipped:
         parts.append("compare each file left as it is with what init.py would write, by hand")
@@ -759,9 +785,10 @@ def reference_row(key, stands_in, ratchet):
 def adopt_notes(root, files, standing, ratchet, commit):
     """What adopt mode prints for the project to do: for each rule to start with that the register does not adopt yet,
     its marker line and its row by reference, pointing at the first instruction file; the one step to add to a job that
-    is already required; and the line for .gitignore when it does not ignore .ratchet. It reads no instruction file."""
+    is already required; and the line for .gitignore when it does not ignore .ratchet. It reads no instruction file for
+    any of it: only written_by_init reads AGENTS.md, for its own note (review of 58ca014)."""
     stands_in, version = files[0], ratchet["version"]
-    adopted = adopted_keys(standing) or [ADOPT_COPIED]
+    adopted = adopted_keys(standing) or []
     keys = [key for key in ratchet["start"] if key not in adopted]
     by_key = registry.rules_by_key(ratchet)
     lines = []
@@ -770,11 +797,14 @@ def adopt_notes(root, files, standing, ratchet, commit):
                       "the project's own words, put its marker line in %s, alone on a line, by that wording, and paste its "
                       "row into adopted in register.json. Leave out a rule the file does not state, or state it there first. "
                       "The sha256 binds the row to the rule and its ratchet in Ratchet %s, in %s: the check sees the marker, "
-                      "not the words" % (stands_in, stands_in, version, typed(os.path.join(RATCHET, "ratchet.json")))]
+                      "not the words" % (stands_in, stands_in, version, typed(os.path.join(RATCHET, "ratchet.json"))),
+                  "init: paste each line as it stands, from its first character. A marker line counts only in a file in "
+                  "UTF-8 with LF line endings: the check fails on a file in another encoding, or on a marker line that "
+                  "ends in CRLF"]
         for key in keys:
             lines += ["", "%s: %s" % (key, by_key[key]["rule"]),
-                      "  " + check_register.MARKER % key,
-                      "  " + json.dumps(reference_row(key, stands_in, ratchet))]
+                      check_register.MARKER % key,
+                      json.dumps(reference_row(key, stands_in, ratchet))]
     if files[1:]:
         lines += ["", "init: the project also has %s. A row may name one of them in stands_in in place of %s"
                   % (" and ".join(files[1:]), stands_in)]
@@ -783,7 +813,17 @@ def adopt_notes(root, files, standing, ratchet, commit):
     lines += ["", "init: add this one step to a job that the protection of main already requires. No workflow and no "
                   "required job are added, so no admin is needed. In GitHub Actions, after the checkout:",
               "  - name: Ratchet's register check",
-              "    run: " + step]
+              "    run: " + step,
+              "init: to see which jobs main requires, export its ruleset or branch protection from the host and give it "
+              "to the inventory, which marks each job required or not: python3 %s --ruleset <file>"
+              % typed(os.path.join(RATCHET, "checks", "inventory.py"))]
+    if os.path.lexists(os.path.join(root, "REGISTER.md")):
+        lines += ["", "init: REGISTER.md is left as it is and not checked in adopt mode: the check the step runs, "
+                      "check_register.py register.json, does not read it"]
+    if written_by_init(root, stands_in):
+        lines += ["", "init: AGENTS.md is, below its title, the file init.py writes. A start before Ratchet 0.11 wrote it "
+                      "first, and one that stopped before the workflow is taken for adopt mode now. If that is how it "
+                      "came, delete AGENTS.md and register.json and run init.py again for the start"]
     action = gitignore_plan(os.path.join(root, ".gitignore"))[0]
     if action != "unchanged":
         lines += ["", "init: .gitignore does not ignore .ratchet. Add the line %s to it, so the clone is not committed" % IGNORE]
