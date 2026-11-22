@@ -519,6 +519,23 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertIn("whether a lesson was proposed", rule["ratchet"])
         self.assertIn("ratchet.lesson-names-check", self.data["start"])
 
+    def test_register_on_top_holds_the_clause_l1_word_for_word(self):
+        # D-2026-11-22-second-redraw, L1 (review of step 9a): register-on-top as it stood at v0.9, then the clause on
+        # adoption by reference word for word as the table of losses in the decision has it. Its ratchet names both modes.
+        rule = self.by_key["ratchet.register-on-top"]
+        self.assertEqual((rule["status"], rule["enforcement"], rule["reference_check"]), ("core", "enforced", "checks/check_register.py"))
+        clause = "A Ratchet row may point at the project's own wording, and the check then sees a marker, not the rule's text."
+        self.assertIn("\n| L1 | %s | register-on-top |" % clause, read(os.path.join("decisions", "D-2026-11-22-second-redraw.md")))
+        old = registry.rules_by_key(registry.parse_json(self.released("0.9")))["ratchet.register-on-top"]
+        self.assertEqual(rule["rule"], old["rule"] + " " + clause)
+        self.assertEqual(rule["rule"],
+                         "One file, the register, lists every rule in force and takes precedence over all other text in the repo. "
+                         "Where a text and the register differ, the register wins. A Ratchet row may point at the project's own "
+                         "wording, and the check then sees a marker, not the rule's text.")
+        self.assertEqual(rule["ratchet"],
+                         old["ratchet"] + ": a copied row character for character, and a row by reference by the sha256 of the "
+                         "rule and its ratchet and by one marker line in the file it names, not by the words there")
+
     def test_owner_paths_holds_one_approver_and_checks_owner_read_and_names_the_register_and_every_file_it_names(self):
         # D-2026-11-22-second-redraw: ratchet.owner-paths as decided, word for word, with T4: the owner's paths include the
         # register and every file it names, the review is dismissed on a new push, and the agents cannot bypass it.

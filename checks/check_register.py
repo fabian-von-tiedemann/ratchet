@@ -15,7 +15,8 @@ version, the hash is that rule's and its ratchet's, and the file holds the line
 "<!-- ratchet:rule <key> -->" exactly once. It reads nothing else in the file, and
 labels each such row, as REGISTER.md does: the check sees a marker, not the words.
 The label says the protection against a softened wording is built only when the
-register itself adopts ratchet.owner-paths with the status "built". stands_in has the
+register itself copies the row of ratchet.owner-paths, not by reference, with the
+status "built". stands_in has the
 path form of "instructions", is checked on its path the same way, and is never the
 instruction file. A row by reference has no translation, and an own rule is never
 one. REGISTER.md may be left out by a register with rows by reference: with
@@ -106,7 +107,7 @@ TRANSLATION_FIELDS = ("language", "text", "sha256")
 # A language code: two or three lowercase letters, and a region of two capitals after a hyphen if needed, such as sv or pt-BR.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?\Z")
 SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
-# One part of the path of the instruction file: letters, digits, ".", "_" and "-". The whole path ends in ".md".
+# One part of the path of the instruction file: ASCII letters, digits, ".", "_" and "-". The whole path ends in ".md".
 PATH_PART = re.compile(r"^[A-Za-z0-9._-]+\Z")
 PATH_LENGTH = 200
 BEGIN = "<!-- ratchet:begin -->"
@@ -116,8 +117,10 @@ END = "<!-- ratchet:end -->"
 # #100), may stand in place of each character of the word, and any number of them
 # between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
 # not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
-# of the word must be the word's own, so text in another script is not taken for it. No table of Unicode is asked, so
-# the answer is the same on every version of Python (round 2 of #100).
+# of the word must be the word's own, so text in another script is not taken for it, and at least one of the letters
+# after its colon, so prose that names Ratchet in a script with no spaces between words, such as Japanese or Chinese,
+# is not taken for it either: "ratchet" is SHARE characters (review of step 9a). No table of Unicode is asked, so the
+# answer is the same on every version of Python (round 2 of #100).
 MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
 SHARE = 7
 # The full-width forms of ASCII, U+FF01 to U+FF5E, each U+FEE0 above its ASCII character.
@@ -137,8 +140,9 @@ MARKER = "<!-- ratchet:rule %s -->"
 MARKER_LINE = re.compile(r"\A<!-- ratchet:rule (ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*) -->\Z")
 RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
 # The label of every row by reference, in the check's output and in REGISTER.md, word for word as the decision has
-# it. The last word is "built" only when the register itself adopts OWNER_PATHS with the status "built": the check
-# reads the register's own claim, not the host.
+# it. The last word is "built" only when the register itself copies the row of OWNER_PATHS with the status "built": the
+# check reads the register's own claim, not the host. A row of OWNER_PATHS by reference does not count, since the check
+# does not see its wording, which is the one that protects the others (review of step 9a).
 LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
          "sees a marker, not the words. Protection against a softened wording: %s.")
 OWNER_PATHS = "ratchet.owner-paths"
@@ -375,13 +379,13 @@ def instructions_problem(value, field=INSTRUCTIONS):
     """Why the path of the instruction file, or of the file a row by reference names in stands_in, breaks its form, or
     None.
 
-    A path inside the repo, relative to the register: parts of letters, digits, ".", "_" and "-", joined by single "/",
+    A path inside the repo, relative to the register: parts of ASCII letters, digits, ".", "_" and "-", joined by single "/",
     none of them "." or "..", none starting with "-", ending in ".md", at most PATH_LENGTH characters. So the block is
     put into a Markdown file of the project's own and nowhere else, and no part of the path reads as an option to the
     rm and mv of the printed commands (review of ef5cbaa).
     """
     form = ("%s must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
-            "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
+            "parts of ASCII letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
             "ending in .md" % field)
     if not isinstance(value, str) or len(value) > PATH_LENGTH or not value.endswith(".md"):
         return form
@@ -401,9 +405,11 @@ def references(register):
 
 
 def protection(register):
-    """The last word of the label of a row by reference: "built" when the register adopts ratchet.owner-paths with the
-    status "built", else "not built". It reads the register's own claim, not the host (D-2026-11-22-second-redraw)."""
-    built = any(entry.get("key") == OWNER_PATHS and entry.get("status") == "built" for entry in register["adopted"])
+    """The last word of the label of a row by reference: "built" when the register copies the row of ratchet.owner-paths,
+    not by reference, with the status "built", else "not built". It reads the register's own claim, not the host
+    (D-2026-11-22-second-redraw)."""
+    built = any(entry.get("key") == OWNER_PATHS and entry.get("status") == "built" and not is_reference(entry)
+                for entry in register["adopted"])
     return "built" if built else "not built"
 
 
@@ -541,29 +547,39 @@ def disguised(line, word):
     """The places in a line that holds characters outside printable ASCII where the word stands in disguise, read in one
     pass. A control character of ASCII counts as one outside it.
 
-    best[j] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
-    them that are the word's own, and where that part starts. A word found starts the search again after it.
+    best[j][h] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
+    them that are the word's own, and where that part starts: h is 1 when one of them is a letter after the colon, and
+    0 when none is. The word is found when it has SHARE of its own characters and one of them is such a letter. A word
+    found starts the search again after it.
     """
+    after = word.index(":") + 1
     none = (-1, 0)
-    best, places = [(0, 0)] + [none] * len(word), []
+
+    def fresh(start):
+        return [[(0, start), none]] + [[none, none] for _ in word]
+
+    best, places = fresh(0), []
     for at, char in enumerate(line):
         # A control character of ASCII, such as NUL or DEL, shows as nothing, and counts as a character outside ASCII.
         other = char >= "\x80" or char < "\x20" or char == "\x7f"
-        step = [(0, at + 1)] + [none] * len(word)
+        step = fresh(at + 1)
         for j in range(len(word)):
-            count, start = best[j] if j else (0, at)
-            if count < 0:
-                continue
-            if not other and char.lower() == word[j] and count + 1 > step[j + 1][0]:
-                step[j + 1] = (count + 1, start)
-            elif other and count > step[j + 1][0]:
-                step[j + 1] = (count, start)
-            if other and 0 < j and count > step[j][0]:
-                step[j] = (count, start)
+            for h in (0, 1):
+                count, start = best[j][h] if j else ((0, at) if h == 0 else none)
+                if count < 0:
+                    continue
+                if not other and char.lower() == word[j]:
+                    k = 1 if h or j >= after else 0
+                    if count + 1 > step[j + 1][k][0]:
+                        step[j + 1][k] = (count + 1, start)
+                elif other and count > step[j + 1][h][0]:
+                    step[j + 1][h] = (count, start)
+                if other and 0 < j and count > step[j][h][0]:
+                    step[j][h] = (count, start)
         best = step
-        if best[len(word)][0] >= SHARE:
-            places.append(best[len(word)][1])
-            best = [(0, at + 1)] + [none] * len(word)
+        if best[len(word)][1][0] >= SHARE:
+            places.append(best[len(word)][1][1])
+            best = fresh(at + 1)
     return places
 
 
