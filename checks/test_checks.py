@@ -48,7 +48,13 @@ LABEL = ("Adopted by reference, the weaker mode. The wording in force is the pro
 # words, with and without a full-width colon. None of it is a marker word in disguise (review of step 9a).
 CJK_PROSE = ("ratchet\u306e\u30eb\u30fc\u30eb\u3092\u5b88\u308b\u3002", "Ratchet\uff1a\u898f\u5247\u306f\u3053\u3053\u306b\u3042\u308b\u3002",
              "ratchet\u7684\u89c4\u5219\u5728\u8fd9\u91cc\u5b9a\u4e49\u3002", "RATCHET\u7684\u7ed3\u675f\u548c\u5f00\u59cb",
-             "ratchet\uc758\uaddc\uce59\uc744\uc9c0\ud0a8\ub2e4")
+             "ratchet\uc758\uaddc\uce59\uc744\uc9c0\ud0a8\ub2e4", "\u0e01\u0e0e\u0e02\u0e2d\u0e07ratchet\u0e2d\u0e22\u0e39\u0e48",
+             "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 ratchet\u0430 \u0437\u0434\u0435\u0441\u044c",
+             "ratchet\u043e\u043c \u043c\u044b \u0436\u0438\u0432\u0451\u043c", "ratchet:\u0433\u0435\u0433\u0438\u043d\u044b")
+# Decoys whose letters after the colon are all in disguise. On a line shaped like an HTML comment they are found, as on
+# main before the review of step 9a; the same words in prose are not (review of d3f25aa).
+BOLD = lambda word: "".join(chr(0x1D41A + ord(char) - 97) for char in word)
+MONO = lambda word: "".join(chr(0x1D68A + ord(char) - 97) for char in word)
 
 
 def outside(field, code):
@@ -265,6 +271,13 @@ FAILING_BLOCK = {
     "block-marker-zero-width": MARKER_LINE,
     # A marker in disguise among prose in Japanese and Chinese that names Ratchet is still found.
     "block-lookalike-in-cjk": MARKERS,
+    # Review of d3f25aa: on a line shaped like a comment, letters after the colon that are all in disguise still count.
+    "block-lookalike-math-bold": MARKERS,
+    "block-lookalike-monospace": MARKERS,
+    "block-lookalike-accented": MARKERS,
+    "block-lookalike-mixed-script": MARKERS,
+    "block-lookalike-comment-lines": MARKERS,
+    "block-lookalike-dashes": MARKERS,
 }
 # Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates. In block-cjk-prose
 # the project's own text names Ratchet in Japanese and Chinese, which is not taken for a marker in disguise.
@@ -294,6 +307,11 @@ FAILING_REFERENCE = {
     "ref-lookalike-fullwidth": RULE_MARKER_LINE,
     "ref-lookalike-control": RULE_MARKER_LINE,
     "ref-lookalike-in-cjk": RULE_MARKER_LINE,
+    "ref-lookalike-math-bold": RULE_MARKER_LINE,
+    "ref-lookalike-monospace": RULE_MARKER_LINE,
+    "ref-lookalike-accented": RULE_MARKER_LINE,
+    "ref-lookalike-mixed-script": RULE_MARKER_LINE,
+    "ref-lookalike-comment-lines": RULE_MARKER_LINE,
     "ref-not-utf8": "RULES.md: " + NOT_UTF8,
     "ref-file-missing": "RULES.md: the file is missing. register.json names it in stands_in for ratchet.fresh-context, ratchet.evidence-before-done",
     "ref-md-edited": NOT_GENERATED,
@@ -686,6 +704,16 @@ class RegisterBlock(FixtureTest):
                      "ratchet\u306e:begin", "\u898f\u5247ratchet:end\u3067\u3059", "ratchet\uff1ab\u0435g\u0456n"):
             with self.subTest(line=line):
                 self.assertTrue(check_register.holds_marker_word(line), line)
+        for word in ("begin", "end"):
+            for disguise in (BOLD(word), MONO(word), "\u00e9\u0148\u010f", "\u0185\u0435\u0261\u0456\u0578"):
+                for line in ("<!-- ratchet:%s -->" % disguise, "\u3053\u306e<!-- ratchet:%s -->\u306f" % disguise,
+                             "ratchet:%s -->" % disguise, "<!\u2212\u2212 ratchet:%s \u2212\u2212>" % disguise,
+                             "<!--\nratchet:%s\n-->" % disguise):
+                    with self.subTest(line=line):
+                        self.assertTrue(check_register.holds_marker_word(line), line)
+                with self.subTest(prose=disguise):
+                    self.assertFalse(check_register.holds_marker_word("ratchet:%s in prose" % disguise))
+                    self.assertFalse(check_register.holds_marker_word("<!-- a comment -->\nratchet:%s" % disguise))
         for line in ("Ratchet: begin with the register.", "\u67d0" * 30 + ":" + "\u67d0" * 30,
                      "ratchet-begin", "the ratchet ends here", "x" * 200) + CJK_PROSE:
             with self.subTest(line=line):
@@ -944,13 +972,23 @@ class RegisterByReference(FixtureTest):
         rules = json.loads(read("ratchet.json"))["rules"]
         hard = [rule for rule in rules if any(mark in rule["rule"] + rule["ratchet"] for mark in "`'\"$")]
         self.assertTrue(hard, "some rules hold a backtick or a quote")
-        for rule in hard + [rules[0]]:
+        # Review of d3f25aa: no rule of Ratchet holds "$" today, so a rule made up here holds each mark a shell reads.
+        made_up = {"key": "ratchet.made-up", "rule": "Run `echo $HOME` and $(touch made-up) and ${PATH} \"in quotes\" and 'single'.",
+                   "ratchet": "Check: `$(rm -f x)` and $1, \\n, %s and %% with \"it's\"."}
+        for mark in ("`", "'", '"', "$", "$(", "\\", "%"):
+            self.assertIn(mark, made_up["rule"] + made_up["ratchet"])
+        made_up_path = os.path.join(scratch(self), "ratchet.json")
+        with open(made_up_path, "w", encoding="utf-8") as handle:
+            json.dump({"rules": [made_up]}, handle)
+        for rule, path in [(rule, os.path.join(ROOT, "ratchet.json")) for rule in hard + [rules[0]]] + [(made_up, made_up_path)]:
             with self.subTest(key=rule["key"]):
                 result = subprocess.run(["/bin/sh", "-c", "%s %s %s" % (command.replace("python3 ", shlex.quote(sys.executable) + " ", 1),
-                                                                         shlex.quote(os.path.join(ROOT, "ratchet.json")), rule["key"])],
-                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                                                                         shlex.quote(path), rule["key"])],
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
+                                        cwd=os.path.dirname(made_up_path))
                 self.assertEqual(result.returncode, 0, result.stdout)
                 self.assertEqual(result.stdout, check_register.reference_sha256(rule) + "\n")
+        self.assertEqual(os.listdir(os.path.dirname(made_up_path)), ["ratchet.json"], "nothing in the rule was run")
         # A wrong sha256 fails, and the check prints the right one.
         directory, (code, output) = self.check("ref-wrong-hash")
         rule = next(rule for rule in rules if rule["key"] == "ratchet.fresh-context")
@@ -1050,6 +1088,12 @@ class RegisterByReference(FixtureTest):
                      "ratchet:\u0433ul\u0435"):
             with self.subTest(line=line):
                 self.assertEqual(len(check_register.marker_words(line, check_register.RULE_WORD)[0]), 1, line)
+        for disguise in (BOLD("rule"), MONO("rule"), "\u0155\u00fa\u013a\u00e9", "\u0433\u057d\u04cf\u0435"):
+            for line in ("<!-- ratchet:%s ratchet.fresh-context -->" % disguise, "<!--\nratchet:%s ratchet.x\n-->" % disguise):
+                with self.subTest(line=line):
+                    self.assertEqual(len(check_register.marker_words(line, check_register.RULE_WORD)[0]), 1, line)
+            with self.subTest(prose=disguise):
+                self.assertEqual(check_register.marker_words("ratchet:%s in prose" % disguise, check_register.RULE_WORD)[0], [])
         for line in ("Ratchet: rule of the register.", "ratchet-rule", "the ratchet rules here") + CJK_PROSE:
             with self.subTest(line=line):
                 self.assertEqual(check_register.marker_words(line, check_register.RULE_WORD)[0], [], line)

@@ -18,4 +18,10 @@ ratchetのルールを守る。Ratchet：規則はここにある。
 
 ratchet的规则在这里定义。RATCHET的结束和开始。
 
+ratchet의규칙을지킨다.
+
+กฎของratchetอยู่ที่นี่
+
+Правила ratchetа здесь, ratchetом мы живём.
+
 この<!-- rаtchet:rule ratchet.fresh-context -->は停止中

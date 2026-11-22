@@ -117,10 +117,12 @@ END = "<!-- ratchet:end -->"
 # #100), may stand in place of each character of the word, and any number of them
 # between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
 # not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
-# of the word must be the word's own, so text in another script is not taken for it, and at least one of the letters
-# after its colon, so prose that names Ratchet in a script with no spaces between words, such as Japanese or Chinese,
-# is not taken for it either: "ratchet" is SHARE characters (review of step 9a). No table of Unicode is asked, so the
-# answer is the same on every version of Python (round 2 of #100).
+# of the word must be the word's own, so text in another script is not taken for it. On a line that is not shaped like
+# an HTML comment (see comment_shaped), one of them must also be a letter after its colon, so prose that names Ratchet
+# in a script with no spaces between words, such as Japanese or Chinese, is not taken for it: "ratchet" is SHARE
+# characters (review of step 9a). On a line shaped like a comment that letter is not asked, so a decoy whose letters
+# after the colon are all in disguise, such as math-bold ones, is found there as before (review of d3f25aa). No table of
+# Unicode is asked, so the answer is the same on every version of Python (round 2 of #100).
 MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
 SHARE = 7
 # The full-width forms of ASCII, U+FF01 to U+FF5E, each U+FEE0 above its ASCII character.
@@ -543,14 +545,15 @@ def render_block(register):
     return "\n".join(lines) + "\n"
 
 
-def disguised(line, word):
+def disguised(line, word, letter_after=True):
     """The places in a line that holds characters outside printable ASCII where the word stands in disguise, read in one
     pass. A control character of ASCII counts as one outside it.
 
     best[j][h] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
     them that are the word's own, and where that part starts: h is 1 when one of them is a letter after the colon, and
-    0 when none is. The word is found when it has SHARE of its own characters and one of them is such a letter. A word
-    found starts the search again after it.
+    0 when none is. The word is found when it has SHARE of its own characters and, if letter_after, one of them is such
+    a letter. Without letter_after it is found as it was before the review of step 9a, on SHARE alone. A word found
+    starts the search again after it.
     """
     after = word.index(":") + 1
     none = (-1, 0)
@@ -577,10 +580,23 @@ def disguised(line, word):
                 if other and 0 < j and count > step[j][h][0]:
                     step[j][h] = (count, start)
         best = step
-        if best[len(word)][1][0] >= SHARE:
-            places.append(best[len(word)][1][1])
+        found = best[len(word)][1] if letter_after else max(best[len(word)], key=lambda part: part[0])
+        if found[0] >= SHARE:
+            places.append(found[1])
             best = fresh(at + 1)
     return places
+
+
+def comment_shaped(lines):
+    """For each line, already read with FULL_WIDTH, whether it is shaped like an HTML comment: it holds "<" or ">", or it
+    stands after a line that opens a comment with "<!--" and before the "-->" that closes it. No Markdown is read, so a
+    "<!--" in code opens one too, and the lines after it are read the stricter way (review of d3f25aa)."""
+    shaped, open_ = [], False
+    for line in lines:
+        shaped.append(open_ or "<" in line or ">" in line)
+        for mark in re.findall("<!--|-->", line):
+            open_ = mark == "<!--"
+    return shaped
 
 
 def marker_words(text, words=MARKER_WORDS):
@@ -588,17 +604,18 @@ def marker_words(text, words=MARKER_WORDS):
     disguise (see MARKER_WORDS).
 
     A line of printable ASCII alone is searched for the word as it is. A line with any other character, a control
-    character of ASCII among them, is read by disguised().
+    character of ASCII among them, is read by disguised(): on a line shaped like an HTML comment (comment_shaped) as
+    strictly as before the review of step 9a, and on any other line with a letter after the colon asked of the word.
     """
-    folded = text.translate(FULL_WIDTH)
+    lines = text.translate(FULL_WIDTH).split("\n")
     found = [[] for _ in words]
     offset = 0
-    for line in folded.split("\n"):
+    for line, shaped in zip(lines, comment_shaped(lines)):
         for places, (word, pattern) in zip(found, words):
             if all("\x20" <= char < "\x7f" for char in line):
                 places += [offset + match.start() for match in pattern.finditer(line)]
             else:
-                places += [offset + start for start in disguised(line, word)]
+                places += [offset + start for start in disguised(line, word, letter_after=not shaped)]
         offset += len(line) + 1
     return found
 
