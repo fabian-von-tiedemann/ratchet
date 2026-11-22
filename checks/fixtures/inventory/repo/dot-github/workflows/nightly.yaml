@@ -1,0 +1,7 @@
+on: [schedule, workflow_dispatch]  # a comment
+jobs:
+  "sweep":
+    name: ${{ github.workflow }} sweep
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo sweep
