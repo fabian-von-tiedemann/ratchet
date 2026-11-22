@@ -1246,7 +1246,7 @@ class PageFigures(RepoCopy, unittest.TestCase):
 
 
 # The dial of the principles: the <svg> of this class, and in it one label per notch, a <text> of the class "lab" and of
-# the class n0 to n10 for its notch. A long label is wrapped over several <text> elements of the same notch. The dial
+# the class n0 to n6 for its notch. A long label is wrapped over several <text> elements of the same notch. The dial
 # holds no other <text>. Beside it, the same titles stand as a list for a narrow screen, <ol class="principle-list">.
 DIAL = "fig-dial"
 DIAL_LIST = "principle-list"
@@ -1338,7 +1338,7 @@ def dial_problems(root):
     groups = []
     for notch, text in reader.labels:
         if notch is None:
-            return ["a label of the dial, %r, has no one class n0 to n10 for its notch" % text]
+            return ["a label of the dial, %r, has no one class n0 to n6 for its notch" % text]
         if groups and groups[-1][0] == notch:
             groups[-1][1].append(text)
         else:
@@ -1370,13 +1370,13 @@ class PageDial(RepoCopy, unittest.TestCase):
         problems = dial_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_dial_and_its_list_name_the_eleven_principles_in_order(self):
+    def test_the_dial_and_its_list_name_the_seven_principles_in_order(self):
         self.assertEqual(dial_problems(ROOT), [])
         self.assertEqual(dial_problems(self.copy), [])
         reader = DialReader()
         reader.feed(self.page())
-        self.assertEqual(len(set(notch for notch, _ in reader.labels)), 11)
-        self.assertEqual(len(reader.items), 11)
+        self.assertEqual(len(set(notch for notch, _ in reader.labels)), 7)
+        self.assertEqual(len(reader.items), 7)
 
     def test_a_principle_renamed_in_ratchet_json_fails_until_the_dial_and_the_list_follow(self):
         self.edit("ratchet.json", '"title": "Subtract first"', '"title": "Subtract before you add"')
@@ -1423,11 +1423,11 @@ class PageDial(RepoCopy, unittest.TestCase):
         self.assert_dial_fails("the list of the principles is")
 
     def test_a_label_edited_moved_or_left_out_fails(self):
-        for old, new in (('text-anchor="end">11 Subtract first</text>', 'text-anchor="end">11 Add more</text>'),
-                         ('text-anchor="middle">01 One register</text>', 'text-anchor="middle">01 One register, mostly</text>'),
-                         ('text-anchor="end">08 Keep secrets out</text>', 'text-anchor="end">08 Keep secrets out</text>\n'
-                          '<text class="lab n7" x="0" y="0" text-anchor="end">if you can</text>'),
-                         ('<text class="lab n10" x="306.5" y="139.6" text-anchor="end">11 Subtract first</text>', ""),
+        for old, new in (('text-anchor="end">07 Subtract first</text>', 'text-anchor="end">07 Add more</text>'),
+                         ('text-anchor="middle">01 Keep one place</text>', 'text-anchor="middle">01 Keep one place, mostly</text>'),
+                         ('text-anchor="end">06 Guard the boundaries</text>', 'text-anchor="end">06 Guard the boundaries</text>\n'
+                          '<text class="lab n5" x="0" y="0" text-anchor="end">if you can</text>'),
+                         ('<text class="lab n6" x="273.7" y="169.2" text-anchor="end">07 Subtract first</text>', ""),
                          ('<text class="lab n0"', '<text class="lab n1"'),
                          ('<text class="lab n0"', '<text class="lab"')):
             with self.subTest(new=new):
@@ -1446,8 +1446,8 @@ class PageDial(RepoCopy, unittest.TestCase):
 
     def test_an_item_of_the_list_edited_moved_or_left_out_fails(self):
         for old, new in (("<li>Subtract first</li>", "<li>Add more</li>"), ("<li>Subtract first</li>", ""),
-                         ("<li>One register</li>", "<li>One register</li>\n<li>One register</li>"),
-                         ("<li>Keep secrets out</li>", "<li>Keep <em>secrets</em> out, mostly</li>")):
+                         ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep one place</li>"),
+                         ("<li>Guard the boundaries</li>", "<li>Guard <em>the</em> boundaries, mostly</li>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -1455,7 +1455,7 @@ class PageDial(RepoCopy, unittest.TestCase):
 
     def test_a_list_of_another_form_fails(self):
         for old, new, message in (('<ol class="principle-list">', '<ol class="other">', "lists of the principles"),
-                                  ("<li>One register</li>", "<li>One register</li>\n<p>x</p>", "holds only <li>")):
+                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<p>x</p>", "holds only <li>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -1463,7 +1463,7 @@ class PageDial(RepoCopy, unittest.TestCase):
 
     def test_text_in_the_list_outside_an_item_fails(self):
         # Words straight in the <ol> show on the page as part of the list, and are not an item the test compares.
-        for old, new in (("<li>One register</li>", "<li>One register</li>\nand one more"),
+        for old, new in (("<li>Keep one place</li>", "<li>Keep one place</li>\nand one more"),
                          ('<ol class="principle-list">', '<ol class="principle-list">Ship it'),
                          ("<li>Subtract first</li>\n</ol>", "<li>Subtract first</li>\n&#83;hip it</ol>")):
             with self.subTest(new=new):
@@ -1474,22 +1474,22 @@ class PageDial(RepoCopy, unittest.TestCase):
     def test_a_void_element_in_the_list_fails_and_leaves_the_count_right(self):
         # A <br> has no end tag. Counted as opened, it would leave the reader one level deep, so that the next <li> was
         # read as nested and a later <p> as inside an item. The reader names the void element and does not count it.
-        for old, new in (("<li>Keep secrets out</li>", "<li>Keep secrets<br>out</li>"),
-                         ("<li>Keep secrets out</li>", "<li>Keep secrets<br/>out</li>"),
-                         ("<li>Keep secrets out</li>", "<li>Keep secrets out</li><hr>"),
-                         ("<li>Keep secrets out</li>", "<li>Keep secrets out</br></li>")):
+        for old, new in (("<li>Guard the boundaries</li>", "<li>Guard the<br>boundaries</li>"),
+                         ("<li>Guard the boundaries</li>", "<li>Guard the<br/>boundaries</li>"),
+                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries</li><hr>"),
+                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries</br></li>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
                 self.assert_dial_fails("void element", "and its items hold only text")
         self.setUp()
-        self.change("<li>Keep secrets out</li>", "<li>Keep secrets<br>out</li>")
+        self.change("<li>Guard the boundaries</li>", "<li>Guard the<br>boundaries</li>")
         self.change("<li>Subtract first</li>", "<li>Subtract first</li>\n<p>x</p>")
         self.assert_dial_fails("holds a <p>, and holds only <li>")
         reader = DialReader()
         reader.feed(self.page())
         self.assertEqual(reader.in_list, 0)
-        self.assertEqual(len(reader.items), 11)
+        self.assertEqual(len(reader.items), 7)
 
     def test_a_second_dial_or_none_fails(self):
         for old, new in (('<svg class="fig fig-dial"', '<svg class="fig"'),

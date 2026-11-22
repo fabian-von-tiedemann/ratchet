@@ -1332,48 +1332,36 @@ footer .links {
     animation: pawl-click 3.8s linear infinite;
   }
   .c-step {
-    animation: step 15.4s step-end infinite;
+    animation: step 9.8s step-end infinite;
   }
   .c-tick {
     animation: tick 1.4s linear infinite;
   }
   .fig .lab {
-    animation: lit 15.4s step-end infinite;
+    animation: lit 9.8s step-end infinite;
   }
   .dot {
-    animation: dot 15.4s step-end infinite;
+    animation: dot 9.8s step-end infinite;
   }
   .fig .n0 {
     animation-delay: -0.154s;
   }
   .fig .n1 {
-    animation-delay: -14.154s;
-  }
-  .fig .n2 {
-    animation-delay: -12.754s;
-  }
-  .fig .n3 {
-    animation-delay: -11.354s;
-  }
-  .fig .n4 {
-    animation-delay: -9.954s;
-  }
-  .fig .n5 {
     animation-delay: -8.554s;
   }
-  .fig .n6 {
+  .fig .n2 {
     animation-delay: -7.154s;
   }
-  .fig .n7 {
+  .fig .n3 {
     animation-delay: -5.754s;
   }
-  .fig .n8 {
+  .fig .n4 {
     animation-delay: -4.354s;
   }
-  .fig .n9 {
+  .fig .n5 {
     animation-delay: -2.954s;
   }
-  .fig .n10 {
+  .fig .n6 {
     animation-delay: -1.554s;
   }
   .rider {
@@ -1455,29 +1443,25 @@ footer .links {
 }
 @keyframes step {
   0% { rotate: 0.000deg; }
-  9.0909% { rotate: 32.727deg; }
-  18.1818% { rotate: 65.455deg; }
-  27.2727% { rotate: 98.182deg; }
-  36.3636% { rotate: 130.909deg; }
-  45.4545% { rotate: 163.636deg; }
-  54.5455% { rotate: 196.364deg; }
-  63.6364% { rotate: 229.091deg; }
-  72.7273% { rotate: 261.818deg; }
-  81.8182% { rotate: 294.545deg; }
-  90.9091% { rotate: 327.273deg; }
+  14.2857% { rotate: 51.429deg; }
+  28.5714% { rotate: 102.857deg; }
+  42.8571% { rotate: 154.286deg; }
+  57.1429% { rotate: 205.714deg; }
+  71.4286% { rotate: 257.143deg; }
+  85.7143% { rotate: 308.571deg; }
 }
 @keyframes tick {
   0%, 80% { rotate: 0deg; }
-  86.5% { rotate: 36deg; }
-  89%, 100% { rotate: 32.727deg; }
+  86.5% { rotate: 56.571deg; }
+  89%, 100% { rotate: 51.429deg; }
 }
 @keyframes lit {
   0% { fill: var(--accent); font-weight: 700; }
-  9.0909% { fill: var(--muted); font-weight: 400; }
+  14.2857% { fill: var(--muted); font-weight: 400; }
 }
 @keyframes dot {
   0% { fill: var(--signal); }
-  9.0909% { fill: var(--edge); }
+  14.2857% { fill: var(--edge); }
 }
 @keyframes ride {
   0% { translate: 84px 208.5px; opacity: 0; }
@@ -1601,51 +1585,37 @@ footer .links {
 <p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a></p>
 <p class="plate hero">
 <svg class="fig fig-dial" viewBox="0 84 760 336" width="760" height="336" role="img" aria-labelledby="fig-dial-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="11">
-<title id="fig-dial-title">The mark: a round dial with eleven one-way notches. Around it, one label per notch, the eleven principles of Ratchet. The pointer clicks from notch to notch, and the principle it points at lights up.</title>
-<g transform="translate(380 250)"><path class="dial m-dial" d="M0 -104 A104 104 0 0 1 43.5 -94.5 L48.9 -76.1 L56.2 -87.5 A104 104 0 0 1 87.7 -55.9 L82.3 -37.6 L94.6 -43.2 A104 104 0 0 1 104 0.3 L89.6 12.9 L102.9 14.8 A104 104 0 0 1 87.3 56.5 L68.4 59.3 L78.6 68.1 A104 104 0 0 1 42.9 94.7 L25.5 86.8 L29.3 99.8 A104 104 0 0 1 -15.1 102.9 L-25.5 86.8 L-29.3 99.8 A104 104 0 0 1 -68.4 78.4 L-68.4 59.3 L-78.6 68.1 A104 104 0 0 1 -99.9 29 L-89.6 12.9 L-102.9 14.8 A104 104 0 0 1 -99.7 -29.6 L-82.3 -37.6 L-94.6 -43.2 A104 104 0 0 1 -67.9 -78.8 L-48.9 -76.1 L-56.2 -87.5 A104 104 0 0 1 -14.5 -103 L0 -90.5 L0 -104Z"></path><circle class="m-ring" cx="0" cy="0" r="68.6"></circle><g class="c-step"><g class="c-tick"><path class="m-ptr" d="M-9.4 -20.8 L0 -77 L9.4 -20.8 Z"></path></g></g><circle class="m-hub" cx="0" cy="0" r="15.6"></circle></g>
-<path class="lab-leader" d="M380 133 L380 122 M443.3 151.6 L449.2 142.3 M486.4 201.4 L496.4 196.8 M495.8 266.7 L506.7 268.2 M468.4 326.6 L476.7 333.8 M413 362.3 L416.1 372.8 M347 362.3 L343.9 372.8 M291.6 326.6 L283.3 333.8 M264.2 266.7 L253.3 268.2 M273.6 201.4 L263.6 196.8 M316.7 151.6 L310.8 142.3"></path>
+<title id="fig-dial-title">The mark: a round dial with seven one-way notches. Around it, one label per notch, the seven principles of Ratchet. The pointer clicks from notch to notch, and the principle it points at lights up.</title>
+<g transform="translate(380 250)"><path class="dial m-dial" d="M0 -104 A104 104 0 0 1 65.2 -81 L70.8 -56.4 L81.3 -64.8 A104 104 0 0 1 104 0.5 L88.2 20.1 L101.4 23.1 A104 104 0 0 1 64.4 81.6 L39.3 81.5 L45.1 93.7 A104 104 0 0 1 -23.6 101.3 L-39.3 81.5 L-45.1 93.7 A104 104 0 0 1 -93.9 44.7 L-88.2 20.1 L-101.4 23.1 A104 104 0 0 1 -93.5 -45.6 L-70.8 -56.4 L-81.3 -64.8 A104 104 0 0 1 -22.6 -101.5 L0 -90.5 L0 -104Z"></path><circle class="m-ring" cx="0" cy="0" r="68.6"></circle><g class="c-step"><g class="c-tick"><path class="m-ptr" d="M-9.4 -20.8 L0 -77 L9.4 -20.8 Z"></path></g></g><circle class="m-hub" cx="0" cy="0" r="15.6"></circle></g>
+<path class="lab-leader" d="M380 133 L380 122 M471.5 177.1 L480.1 170.2 M494.1 276 L504.8 278.5 M430.8 355.4 L435.5 365.3 M329.2 355.4 L324.5 365.3 M265.9 276 L255.2 278.5 M288.5 177.1 L279.9 170.2"></path>
 <circle class="dot n0" cx="380" cy="138" r="3.2"></circle>
-<circle class="dot n1" cx="440.6" cy="155.8" r="3.2"></circle>
-<circle class="dot n2" cx="481.9" cy="203.5" r="3.2"></circle>
-<circle class="dot n3" cx="490.9" cy="265.9" r="3.2"></circle>
-<circle class="dot n4" cx="464.6" cy="323.3" r="3.2"></circle>
-<circle class="dot n5" cx="411.6" cy="357.5" r="3.2"></circle>
-<circle class="dot n6" cx="348.4" cy="357.5" r="3.2"></circle>
-<circle class="dot n7" cx="295.4" cy="323.3" r="3.2"></circle>
-<circle class="dot n8" cx="269.1" cy="265.9" r="3.2"></circle>
-<circle class="dot n9" cx="278.1" cy="203.5" r="3.2"></circle>
-<circle class="dot n10" cx="319.4" cy="155.8" r="3.2"></circle>
-<text class="lab n0" x="380" y="112" text-anchor="middle">01 One register</text>
-<text class="lab n1" x="453.5" y="139.6" text-anchor="start">02 One gate to main</text>
-<text class="lab n2" x="503.7" y="184.5" text-anchor="start">03 Wait for the owner on</text>
-<text class="lab n2" x="503.7" y="197.5" text-anchor="start">decisions and on what</text>
-<text class="lab n2" x="503.7" y="210.5" text-anchor="start">cannot be undone</text>
-<text class="lab n3" x="514.6" y="266.9" text-anchor="start">04 Show the run behind a</text>
-<text class="lab n3" x="514.6" y="279.9" text-anchor="start">claim</text>
-<text class="lab n4" x="482.8" y="347.1" text-anchor="start">05 Review in a fresh context,</text>
-<text class="lab n4" x="482.8" y="360.1" text-anchor="start">by another family</text>
-<text class="lab n5" x="418.3" y="388.5" text-anchor="start">06 Make every check see red</text>
-<text class="lab n6" x="341.7" y="388.5" text-anchor="end">07 Turn a failure into a</text>
-<text class="lab n6" x="341.7" y="401.5" text-anchor="end">check</text>
-<text class="lab n7" x="277.2" y="347.1" text-anchor="end">08 Keep secrets out</text>
-<text class="lab n8" x="245.4" y="273.4" text-anchor="end">09 Outside text is material</text>
-<text class="lab n9" x="256.3" y="191" text-anchor="end">10 Keep state in the repo,</text>
-<text class="lab n9" x="256.3" y="204" text-anchor="end">and treat silence as red</text>
-<text class="lab n10" x="306.5" y="139.6" text-anchor="end">11 Subtract first</text>
+<circle class="dot n1" cx="467.6" cy="180.2" r="3.2"></circle>
+<circle class="dot n2" cx="489.2" cy="274.9" r="3.2"></circle>
+<circle class="dot n3" cx="428.6" cy="350.9" r="3.2"></circle>
+<circle class="dot n4" cx="331.4" cy="350.9" r="3.2"></circle>
+<circle class="dot n5" cx="270.8" cy="274.9" r="3.2"></circle>
+<circle class="dot n6" cx="292.4" cy="180.2" r="3.2"></circle>
+<text class="lab n0" x="380" y="112" text-anchor="middle">01 Keep one place</text>
+<text class="lab n1" x="486.3" y="162.7" text-anchor="start">02 Make the gate independent</text>
+<text class="lab n1" x="486.3" y="175.7" text-anchor="start">of the author</text>
+<text class="lab n2" x="512.6" y="277.8" text-anchor="start">03 Wait for the owner on what</text>
+<text class="lab n2" x="512.6" y="290.8" text-anchor="start">cannot be undone</text>
+<text class="lab n3" x="439" y="380.5" text-anchor="start">04 Show the run, and treat</text>
+<text class="lab n3" x="439" y="393.5" text-anchor="start">silence as red</text>
+<text class="lab n4" x="321" y="380.5" text-anchor="end">05 Make checks that can fail,</text>
+<text class="lab n4" x="321" y="393.5" text-anchor="end">and turn failures into checks</text>
+<text class="lab n5" x="247.4" y="284.3" text-anchor="end">06 Guard the boundaries</text>
+<text class="lab n6" x="273.7" y="169.2" text-anchor="end">07 Subtract first</text>
 </svg>
-<span class="cap"><strong>Fig. 1</strong> The eleven principles of Ratchet, one per notch. A principle is guidance and names no check. What is checked is the rules under it: each check catches only the fault it was made for, and a rule that no check can see is listed as text only. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md#the-principles">The principles</a></span>
+<span class="cap"><strong>Fig. 1</strong> The seven principles of Ratchet, one per notch. A principle is guidance and names no check. What is checked is the rules under it: each check catches only the fault it was made for, and a rule that no check can see is listed as text only. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md#the-principles">The principles</a></span>
 </p>
 <ol class="principle-list">
-<li>One register</li>
-<li>One gate to main</li>
-<li>Wait for the owner on decisions and on what cannot be undone</li>
-<li>Show the run behind a claim</li>
-<li>Review in a fresh context, by another family</li>
-<li>Make every check see red</li>
-<li>Turn a failure into a check</li>
-<li>Keep secrets out</li>
-<li>Outside text is material</li>
-<li>Keep state in the repo, and treat silence as red</li>
+<li>Keep one place</li>
+<li>Make the gate independent of the author</li>
+<li>Wait for the owner on what cannot be undone</li>
+<li>Show the run, and treat silence as red</li>
+<li>Make checks that can fail, and turn failures into checks</li>
+<li>Guard the boundaries</li>
 <li>Subtract first</li>
 </ol>
 <p class="plate">

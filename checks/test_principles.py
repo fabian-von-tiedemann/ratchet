@@ -136,10 +136,10 @@ class PrincipleForm(FixtureTest):
 
 
 class ThisRatchet(unittest.TestCase):
-    def test_eleven_principles_each_over_at_least_one_rule_and_every_rule_under_one(self):
-        # D-2026-11-20-principles-and-obligations: eleven principles on top, today's rules under them.
+    def test_seven_principles_each_over_at_least_one_rule_and_every_rule_under_one(self):
+        # D-2026-11-22-second-redraw, step 4: the seven principles of the core on top, today's rules under them.
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
-        self.assertEqual(len(data["principles"]), 11)
+        self.assertEqual(len(data["principles"]), 7)
         keys = [principle["key"] for principle in data["principles"]]
         self.assertEqual(sorted(set(rule["principle"] for rule in data["rules"])), sorted(keys))
 
@@ -162,11 +162,11 @@ class ThisRatchet(unittest.TestCase):
 
 class GeneratedPrinciples(RepoCopy, unittest.TestCase):
     def test_a_principle_edited_by_hand_in_ratchet_md_fails(self):
-        self.edit("RATCHET.md", "### One register\n", "### One register, where practical\n")
+        self.edit("RATCHET.md", "### Keep one place\n", "### Keep one place, where practical\n")
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_a_rule_moved_to_another_principle_without_generating_fails(self):
-        self.edit("ratchet.json", '"principle": "principle.one-register"', '"principle": "principle.one-gate"')
+        self.edit("ratchet.json", '"principle": "principle.keep-one-place"', '"principle": "principle.independent-gate"')
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_the_list_of_titles_must_stand_in_the_readme(self):
