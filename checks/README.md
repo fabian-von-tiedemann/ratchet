@@ -316,6 +316,45 @@ The reference check for `ratchet.expected-tests-ran`. It runs in a step of its o
 - It reads how unittest reports the set-up and tear-down of a class or a module: as an outcome of an object that is not a test, the same in 3.9 and 3.12. Every such outcome fails the run.
 - `python3 -m unittest discover -s checks` still runs the suite on its own, and records nothing. Only `checks/expected_tests.py` checks that every expected test ran.
 
+## from_base.py
+
+```sh
+git show "HEAD^1:checks/from_base.py" > "$dir/from_base.py"
+python3 -I "$dir/from_base.py" --base-sha BASE --head-sha HEAD
+```
+
+The base branch's checks judge a pull request. The job `base` of [checks.yml](../.github/workflows/checks.yml) runs on `pull_request`, checks out the merge commit that GitHub makes, takes this script from the base commit, `HEAD^1`, never from the pull request, and runs it from a directory of its own. The job `own` runs the pull request's own checks, as the job `checks` did before. The job `checks`, the status that the ruleset on `main` requires, waits for both, runs whatever they did, and passes only when `own` passed and, on a pull request, `base` passed too. On a push to `main`, `base` does not run, and `checks` passes when `own` does. This is how six entries of [REGISTER.md](../REGISTER.md) are "built" by where they are enforced ([D-2026-11-22-second-redraw](../decisions/D-2026-11-22-second-redraw.md)): `ratchet.register-on-top`, `ratchet.expected-tests-ran`, `repo.rules-as-data`, `repo.checks-fail-on-fixtures`, `repo.version` and `repo.new-rule-used`.
+
+**What is the rule, and what is the data under test.** For Ratchet a pull request changes `ratchet.json`, `register.json` and the generated text as a matter of course: they are what it is judged on, not what it is judged by. The code of the checks is what it is judged by: every file directly under `checks/` whose name ends in `.py`, and every file in a directory under `checks/` other than `fixtures/`. Everything else, `checks/fixtures/` and `checks/README.md` among it, is data, since `generate.py` writes part of it. So the script makes two work trees, beside the checkout, sharing its history and tags:
+
+- **The tree of the data**: the merge commit, with the code of the checks taken from the base, and none of the pull request's. The base's `generate.py --check`, `check_register.py register.json --markdown REGISTER.md` and `released_text.py` run there, on the pull request's data. A module the pull request adds beside the checks, such as a `json.py` that the base's scripts would import, is not there.
+- **The tree of the code**: the base commit, with the pull request's code of the checks, but the base's tests, `checks/test_*.py`, and the base's runner, `expected_tests.py` and `suite_runner.py`. The base's `expected_tests.py` runs the base's suite there, with the base's fixtures and data. So every fault the base's fixtures show must still be caught by the pull request's checks, under the base's runner.
+
+**What it claims.** On a pull request, the job `checks` is red unless the base branch's scripts pass the pull request's data and the base branch's tests, under its runner, pass the pull request's checks. It is red when the pull request changes `.github/workflows/checks.yml`, since the base cannot judge the job that judges it, and when the checkout is not the merge of the pull request's head into the base or a later commit of it. When it fails, it names each command that failed, in which tree, and the paths the pull request changes that the base judges by.
+
+**Against which threat.** The shared one: a pull request that softens a check, its test or its runner together with what the check judges, by mistake, so that its own checks pass it. A change of form is the same case seen from the other side: the base cannot judge it, and says so.
+
+**A change the base cannot judge fails closed.** A pull request that changes a check so that the base's tests no longer pass it, renames a field of a data file, changes what `generate.py` writes, or changes the workflow, fails `base`, and never passes silently. Its job `checks` stays red, so the agents' account cannot merge it. The maintainer reads the change and merges it as an administrator, who is exempt from the protection ([D-2026-11-16-code-owner](../decisions/D-2026-11-16-code-owner.md)). So it is for the pull request that adds this job: its base has no `checks/from_base.py`, and the step says so. A check tightened so that the base's data and fixtures still pass, a new test, a new fixture and a new check pass `base`.
+
+**What it does not claim.** GitHub runs the workflow of the pull request's merge commit on `pull_request`, so a pull request can change the workflow so that `base` does not run, or does not run this script. Such a change fails `base` as long as `base` still runs this script from the base, and nothing in the repo stands against a change that removes it: the owner's review of `.github/` does (`ratchet.checks-owner-read`). It does not use `pull_request_target`, which would run the base's workflow with the base's rights on the pull request's code. It does not see what the host requires: that the ruleset on `main` requires the job `checks` was read back on 2026-11-22, and the register says so. The ruleset does not require a branch to be up to date before the merge, so the base it judges by is the one GitHub merged the pull request into when the job ran, and a later commit on `main` is not judged with it. The data it reads is the pull request's: a rule's `since` or text changed on purpose in `ratchet.json` is read by the owner, as before. The tests that run in the tree of the code run with the same rights as the checks, as `expected_tests.py` says. `templates/ratchet-checks.yml`, the workflow a project adopts, is not changed: it runs a tagged copy of Ratchet's checks, not the project's own.
+
+| Case | Result |
+|---|---|
+| The data changes within the base's rules | Passes, and the two work trees are gone after the run |
+| A check softened together with the data it judges, by less than the base's fixtures catch. The pull request's own checks pass it | Fails in the tree of the data |
+| A check softened together with the test that would catch it | Fails in the tree of the code |
+| A check softened together with its runner, which passes whatever happens | Fails in the tree of the code: the base's runner runs |
+| A check and its test removed | Fails in the tree of the code |
+| A `json.py` added beside the checks, which the base's script would import in place of the standard library's | Fails on the data, which the base's script reads with the standard library |
+| A check tightened | Passes |
+| A new test and a new fixture | Passes |
+| A field renamed in the data, the check and its fixtures together, a change of form | Fails in both trees, names the paths and says why |
+| A change to `.github/workflows/checks.yml` | Fails, and names it |
+| The base moved on after the pull request branched, with a stricter limit | Fails: the merge is judged by the newer base |
+| A checkout that is not the merge: the head is not its second parent, the base is not an ancestor of its first parent, a commit id of another form, a commit with one parent | Fails, and says which |
+
+The cases are in [test_from_base.py](test_from_base.py), each a dry run of the job: a small repo of its own with a base commit, a pull request's commit and their merge, judged by this script as the workflow runs it, with `python3 -I`. The checks of the small repo stand in for Ratchet's under the same names, so no case runs this repo's suite. `test_budget.py` checks that every entry of the register marked "built" is in its table of enforcement points, that its `where` names the point and the command the base runs, that the workflow shows the job `base` and a job `checks` that waits for it, and that a claim the repo does not show fails.
+
 ## watch_sources.py
 
 ```sh
@@ -572,7 +611,7 @@ It also fails when a tag has no entry in the changelog (`repo.version`, this rep
 
 **Against which threat.** Released text rewritten after its tag, as the count under the released heading of 0.3 was, by the generator, in the first round of PR #12. A record of the release kept in the repo does not protect it, because the same PR can change the record. The tag is published, and is never moved (`repo.tags-stay`).
 
-**In CI.** The checkout of the job `checks` fetches the tags, with `fetch-depth: 0`, and a step runs this check. Without the tags it fails, and says so: it is never skipped. The tests in [test_released_text.py](test_released_text.py) make a git repo of their own, with tags of their own, so they need none of this repo's tags.
+**In CI.** The checkouts of the jobs `own` and `base` fetch the tags, with `fetch-depth: 0`. A step of `own` runs this check, and on a pull request `base` runs the base branch's copy on the pull request's changelog ([from_base.py](#from_basepy)). Without the tags it fails, and says so: it is never skipped. The tests in [test_released_text.py](test_released_text.py) make a git repo of their own, with tags of their own, so they need none of this repo's tags.
 
 | Case | Result |
 |---|---|
@@ -609,7 +648,7 @@ python3 checks/release.py notes --repo OWNER/NAME   # print the release text, wi
 python3 checks/release.py publish                   # tag and release, in the release workflow; only report, on a schedule
 ```
 
-This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `checks` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-links](../decisions/D-2026-11-17-release-links.md), [D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after the three commands of the job `own` ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-links](../decisions/D-2026-11-17-release-links.md), [D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
 
 The script reads no Markdown and copies nothing from the changelog. The versions that must already be released come from the history of `main`, read with git, and not from the changelog. It does not try to finish an older version. When anything older is unfinished, the run is red, nothing is written, and the message names the commit whose run the maintainer reruns.
 
