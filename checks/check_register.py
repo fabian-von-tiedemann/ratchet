@@ -576,6 +576,43 @@ def instruction_text(path, register):
     return new, []
 
 
+def generated_problems(register_path, register, markdown=None, planned=None):
+    """(every problem with the files a register that passes check() generates, the path of the instruction file or None).
+
+    The files are REGISTER.md at the path markdown, when it is given, and the instruction file that the register names in
+    instructions. planned maps a path, relative as the paths given here are, to the bytes that a run would write there
+    and that are not there yet: init.py --check passes what it would write, so that it reaches the same verdict as this
+    check at the end of a real run (review of d86ff3e). Every other file is read from the disk.
+    """
+    planned = {os.path.normpath(path): data for path, data in (planned or {}).items()}
+    problems = []
+    if markdown:
+        try:
+            if os.path.normpath(markdown) in planned:
+                current = planned[os.path.normpath(markdown)].decode("utf-8", errors="strict").replace("\r\n", "\n")
+            else:
+                current = registry.read(markdown)
+            problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
+        except registry.RegistryError as error:
+            problems.append(str(error))
+    block, found = instruction_place(register_path, register) if INSTRUCTIONS in register else (None, [])
+    problems += found
+    if block is None:
+        return problems, None
+    if os.path.normpath(block) in planned:
+        return problems + block_problems(block, planned[os.path.normpath(block)], register), block
+    if not os.path.isfile(block):
+        problems.append("%s: the file is missing. register.json names it in instructions. Print it with the block with "
+                        "check_register.py register.json --print-instructions and put it in place" % block)
+        return problems, block
+    try:
+        data = registry.read_plain(block)
+    except OSError as error:
+        problems.append("%s: cannot be read as a plain file: %s" % (block, error.strerror))
+        return problems, block
+    return problems + block_problems(block, data, register), block
+
+
 def printed(args, register, problems):
     """Print the one file a print mode asks for to standard output, and nothing else, or, if there is a problem, nothing
     there and the problems to standard error. The exit code."""
@@ -637,25 +674,8 @@ def main(argv=None):
         return printed(args, register, problems)
     block = None
     if not problems:
-        expected = render(register)
-        if args.markdown:
-            try:
-                problems += registry.compare(args.markdown, registry.read(args.markdown), expected, os.path.basename(args.register))
-            except registry.RegistryError as error:
-                problems.append(str(error))
-        block, found = instruction_place(args.register, register) if INSTRUCTIONS in register else (None, [])
+        found, block = generated_problems(args.register, register, args.markdown)
         problems += found
-        if block is not None:
-            if not os.path.isfile(block):
-                problems.append("%s: the file is missing. register.json names it in instructions. Print it with the block with "
-                                "check_register.py register.json --print-instructions and put it in place" % block)
-            else:
-                try:
-                    data = registry.read_plain(block)
-                except OSError as error:
-                    problems.append("%s: cannot be read as a plain file: %s" % (block, error.strerror))
-                else:
-                    problems += block_problems(block, data, register)
     if args.agents:
         try:
             text = registry.read(args.agents)
