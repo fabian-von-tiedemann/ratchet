@@ -83,11 +83,11 @@ class Inventory(FixtureTest):
         self.home = self.fixture_directory("inventory/home")
         undot(self.home)
 
-    def run_inventory(self, *args, home=None, timeout=120):
+    def run_inventory(self, *args, home=None, timeout=120, cwd=None):
         environment = dict(os.environ)
         environment["HOME"] = home or self.home
         result = subprocess.run([sys.executable, SCRIPT] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                universal_newlines=True, env=environment, timeout=timeout)
+                                universal_newlines=True, env=environment, timeout=timeout, cwd=cwd)
         return result.returncode, result.stdout, result.stderr
 
     def facts(self, *args):
@@ -105,7 +105,9 @@ class Inventory(FixtureTest):
         return out
 
     def ruleset(self, name):
-        return self.fixture_file("inventory/ruleset/%s.json" % name)
+        # An export is read through no link on its whole path, and a scratch folder may lie under one, such as /tmp on
+        # macOS: the tests give the path without it.
+        return os.path.realpath(self.fixture_file("inventory/ruleset/%s.json" % name))
 
     def write(self, rel, data, top=None):
         """Write a file into the copy of the repo, or under top, making its folders."""
@@ -117,7 +119,7 @@ class Inventory(FixtureTest):
 
     def export(self, value, name="export.json"):
         """An export written as JSON into a scratch folder of its own."""
-        return self.write(name, json.dumps(value), top=self.scratch())
+        return self.write(name, json.dumps(value), top=os.path.realpath(self.scratch()))
 
     def files(self, facts):
         return {entry["path"]: entry for entry in facts["files"]}
@@ -333,7 +335,8 @@ class Inventory(FixtureTest):
         self.assertEqual(sorted(FAULTS), sorted(name[:-len(".json")] for name in os.listdir(os.path.join(self.fixtures, "inventory", "faults"))))
         for name, message in FAULTS.items():
             with self.subTest(fault=name):
-                code, out, err = self.run_inventory(self.repo, "--ruleset", self.fixture_file("inventory/faults/%s.json" % name))
+                path = os.path.realpath(self.fixture_file("inventory/faults/%s.json" % name))
+                code, out, err = self.run_inventory(self.repo, "--ruleset", path)
                 self.assertEqual(code, 2)
                 self.assertIn(message, out + err)
                 self.assertEqual(out, "")
@@ -441,7 +444,7 @@ class Inventory(FixtureTest):
 
     def test_an_export_is_read_through_the_guarded_reader(self):
         data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
-        folder = self.scratch()
+        folder = os.path.realpath(self.scratch())
         secret = self.write("secret-token.json", data, top=folder)
         plain = self.write("plain.json", data, top=folder)
         link = os.path.join(folder, "linked.json")
@@ -507,8 +510,11 @@ class Inventory(FixtureTest):
         workflows = {entry["path"]: entry for entry in facts["workflows"]}
         self.assertEqual(workflows[".github/workflows/listed.yml"]["on"], ["pull_request", "push"])
         self.assertIn({"path": ".github/workflows/listed.yml", "job": "extra", "name": None}, facts["not_required"])
-        self.assertEqual(workflows[".github/workflows/odd.yml"]["unread"], "its triggers are in a form this reader does not read")
-        self.assertIn("its triggers are in a form this reader does not read", self.text())
+        # A list over two lines leaves a bracket open: the workflow is not read, and its jobs are listed as such.
+        self.assertEqual(workflows[".github/workflows/odd.yml"]["unread"],
+                         "line 2 leaves a quote or a bracket open, a value over more than one line, which this reader does not read")
+        self.assertIn({"path": ".github/workflows/odd.yml", "job": None, "name": None, "required": None}, facts["not_known"])
+        self.assertIn("not read: line 2 leaves a quote or a bracket open", self.text())
 
     def test_ratchets_own_copy_is_not_walked(self):
         self.write(".ratchet/AGENTS.md", "Ratchet.\n")
@@ -574,6 +580,188 @@ class Inventory(FixtureTest):
         code, out, err = self.run_inventory(only)
         self.assertEqual(code, 0, out + err)
         self.assertIn("The agent layer: 1 file\n", out)
+
+    # --- The review of #119 at d2d3677: one guarded reader for every file, and a workflow reader that fails closed. ---
+
+    def test_an_export_through_a_linked_folder_is_refused(self):
+        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
+        outside = os.path.realpath(self.scratch())
+        self.write("export.json", data, top=outside)
+        here = os.path.realpath(self.scratch())
+        os.symlink(outside, os.path.join(here, "linked-directory"))
+        os.makedirs(os.path.join(here, "real"))
+        os.symlink(outside, os.path.join(here, "real", "deeper"))
+        for path, cwd, part in (("linked-directory/export.json", here, "linked-directory"),
+                                (os.path.join(here, "linked-directory", "export.json"), None, "linked-directory"),
+                                ("./real/deeper/export.json", here, "real/deeper"),
+                                ("real/../linked-directory/export.json", here, "linked-directory")):
+            with self.subTest(path=path):
+                code, out, err = self.run_inventory(self.repo, "--ruleset", path, cwd=cwd)
+                self.assertEqual(code, 2, out + err)
+                self.assertEqual(out, "")
+                self.assertIn("%s on its path is a link, not followed" % part, err)
+                self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+        # The same file, given without a link on its path, is read.
+        code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", "export.json", cwd=outside)
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(json.loads(out)["rulesets"][0]["name"], "FIXTURE-SECRET-OUTSIDE")
+
+    def test_a_path_named_through_a_link_is_not_looked_at(self):
+        outside = self.scratch()
+        self.write("present.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        os.symlink(outside, os.path.join(self.repo, "linked"))
+        self.write("CLAUDE.md", "See `linked/present.md`, `linked/absent.md` and [x](linked/also.md).\n")
+        self.write("register.json", json.dumps({"instructions": "linked/present.md", "adopted": [], "own": []}))
+        facts = self.facts()
+        self.assertFalse([entry for entry in facts["missing_paths"] if entry["path"].startswith("linked/")])
+        self.assertEqual(facts["code_owners"]["register_names"], [["linked/present.md", None]])
+        self.assertIn("linked/present.md (through a link, not looked at)", self.text())
+
+    def test_every_open_walk_and_listing_goes_through_the_guarded_reader(self):
+        with open(SCRIPT, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        forbidden_os = {"open", "fdopen", "walk", "fwalk", "listdir", "scandir", "readlink", "stat", "lstat", "access",
+                        "chdir"}
+        forbidden_path = {"exists", "lexists", "isdir", "isfile", "islink", "realpath", "getsize", "samefile", "getmtime"}
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported |= {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom):
+                imported.add((node.module or "").split(".")[0])
+                # A name imported from a module could be called without "os." in front: none is.
+                self.assertNotIn(node.module, ("os", "os.path", "io", "builtins"))
+        self.assertFalse(imported & {"glob", "pathlib", "shutil", "io", "codecs", "fileinput", "tempfile", "mmap"})
+
+        def offending(node):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in ("open", "exec", "eval", "compile", "__import__"):
+                return func.id
+            if isinstance(func, ast.Attribute):
+                if isinstance(func.value, ast.Name) and func.value.id == "os" and func.attr in forbidden_os:
+                    return "os." + func.attr
+                if (isinstance(func.value, ast.Attribute) and func.value.attr == "path" and isinstance(func.value.value, ast.Name)
+                        and func.value.value.id == "os" and func.attr in forbidden_path):
+                    return "os.path." + func.attr
+            return None
+
+        found = []
+
+        def visit(node, function):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                function = node.name
+            if isinstance(node, ast.Call):
+                name = offending(node)
+                if name is not None and not (function or "").startswith("guarded_"):
+                    found.append("%s at line %d in %s" % (name, node.lineno, function or "the module"))
+            for child in ast.iter_child_nodes(node):
+                visit(child, function)
+
+        visit(tree, None)
+        self.assertEqual(found, [])
+        # The guarded helpers exist and use what they guard: the sweep is not empty by accident.
+        helpers = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name.startswith("guarded_")}
+        self.assertTrue({"guarded_read", "guarded_walk", "guarded_entries", "guarded_look", "guarded_read_link"} <= helpers, helpers)
+
+    def workflow(self, text, name="odd.yml", *args):
+        self.write(".github/workflows/" + name, text)
+        facts = self.facts(*args)
+        return {entry["path"]: entry for entry in facts["workflows"]}[".github/workflows/" + name], facts
+
+    def test_a_trigger_list_at_column_zero_is_read(self):
+        text = "on:\n- pull_request\n- push\njobs:\n  extra:\n    runs-on: x\n"
+        workflow, facts = self.workflow(text, "listed.yml", "--ruleset", self.ruleset("ruleset"))
+        self.assertEqual((workflow["on"], workflow["unread"]), (["pull_request", "push"], None))
+        self.assertIn({"path": ".github/workflows/listed.yml", "job": "extra", "name": None}, facts["not_required"])
+        # As PyYAML writes it, with the key quoted.
+        workflow, _ = self.workflow("'on':\n- pull_request\njobs:\n  extra:\n    runs-on: x\n", "dumped.yml")
+        self.assertEqual((workflow["on"], workflow["unread"]), (["pull_request"], None))
+
+    def test_odd_but_valid_trigger_forms_are_read_or_named_as_not_read(self):
+        jobs = "jobs:\n  extra:\n    runs-on: x\n"
+        read = {
+            "on:  # the events\n  pull_request:\n  push:\n": ["pull_request", "push"],
+            "on:\n  - pull_request  # one\n  # a comment between items\n\n  - push\n": ["pull_request", "push"],
+            "on:\n- pull_request\n# a comment\n- 'push'\n": ["pull_request", "push"],
+            "---\non: [pull_request, push]  # trailing\n": ["pull_request", "push"],
+            "on: \"pull_request\"\n": ["pull_request"],
+            "on:\n  pull_request:\n    branches: [main]\n  workflow_dispatch:\n": ["pull_request", "workflow_dispatch"],
+        }
+        not_read = (
+            "on: &triggers\n  pull_request:\n",
+            "on:\n  - &event pull_request\n",
+            "on: *triggers\n",
+            "on:\n  <<: *triggers\n",
+            "on:\n",
+            "on: {pull_request: {}}\n",
+            "on: [pull_request, {push: {}}]\n",
+            "on:\n  - pull_request:\n      branches: [main]\n",
+            "on:\n  - pull_request\n  push:\n",
+            "on:\n    pull_request:\n  push:\n",
+            "on:\n  - pull\n    request\n",
+            "on: !!str pull_request\n",
+            "on: pull request\n",
+            "? on\n: pull_request\n",
+            "on: pull_request\non: push\n",
+            "on: pull_request\n  stray: line\n",
+            "{\"on\": \"pull_request\"}\n",
+        )
+        for number, (text, events) in enumerate(sorted(read.items())):
+            with self.subTest(text=text):
+                workflow, _ = self.workflow(text + jobs, "read-%d.yml" % number)
+                self.assertEqual((workflow["on"], workflow["unread"]), (events, None))
+        for number, text in enumerate(not_read):
+            with self.subTest(text=text):
+                workflow, facts = self.workflow(text + jobs, "unread-%d.yml" % number, "--ruleset", self.ruleset("ruleset"))
+                self.assertTrue(workflow["unread"], workflow)
+                path = ".github/workflows/unread-%d.yml" % number
+                self.assertFalse([entry for entry in facts["not_required"] if entry["path"] == path])
+                # Its jobs are listed under their own heading, or, when the whole file was not read, the file is.
+                known = [entry for entry in facts["not_known"] if entry["path"] == path]
+                self.assertIn(known, ([{"path": path, "job": "extra", "name": None, "required": False}],
+                                      [{"path": path, "job": None, "name": None, "required": None}]))
+
+    def test_jobs_in_a_form_it_does_not_read_are_named_as_not_read(self):
+        cases = (
+            "on: pull_request\njobs:\n- extra\n",
+            "on: pull_request\njobs:\n  extra:\n    <<: *base\n    runs-on: x\n",
+            "on: pull_request\njobs:\n  extra: {runs-on: x}\n",
+            "on: pull_request\njobs:\n  extra:\n    name: >-\n      Run checks\n    runs-on: x\n",
+            "on: pull_request\njobs:\n  extra:\n    name: Run\n      checks\n    runs-on: x\n",
+            "on: pull_request\njobs:\n    extra:\n      runs-on: x\n  other:\n    runs-on: x\n",
+            "on: pull_request\njobs:\n",
+            "on: pull_request\n",
+        )
+        for number, text in enumerate(cases):
+            with self.subTest(text=text):
+                workflow, facts = self.workflow(text, "jobs-%d.yml" % number, "--ruleset", self.ruleset("ruleset"))
+                self.assertTrue(workflow["unread"], workflow)
+                path = ".github/workflows/jobs-%d.yml" % number
+                self.assertFalse([entry for entry in facts["not_required"] if entry["path"] == path])
+                self.assertTrue([entry for entry in facts["not_known"] if entry["path"] == path], facts["not_known"])
+
+    def test_a_workflow_not_read_lists_its_jobs_under_their_own_heading(self):
+        self.write(".github/workflows/anchored.yml", "on: &t\n  pull_request:\njobs:\n  gate:\n    name: Gate\n    runs-on: x\n")
+        self.write(".github/workflows/latin.yml", b"on: pull_request\nname: caf\xe9\njobs:\n  gate:\n    runs-on: x\n")
+        self.write(".github/workflows/big.yml", "on: pull_request\n" + "#" * 1000001 + "\n")
+        facts = self.facts("--ruleset", self.ruleset("ruleset"))
+        known = sorted((entry["path"], entry["job"]) for entry in facts["not_known"])
+        self.assertEqual(known, [(".github/workflows/anchored.yml", "gate"), (".github/workflows/big.yml", None),
+                                 (".github/workflows/latin.yml", None)])
+        workflows = {entry["path"]: entry for entry in facts["workflows"]}
+        self.assertEqual(workflows[".github/workflows/big.yml"]["unread"], "larger than 1000000 bytes, not read")
+        out = self.text("--ruleset", self.ruleset("ruleset"))
+        self.assertIn("Jobs of workflows this reader could not read: it cannot tell whether they run on a pull request", out)
+        self.assertIn('.github/workflows/anchored.yml: gate ("Gate"), not required', out)
+        self.assertIn(".github/workflows/big.yml: its jobs were not read", out)
+        # Without an export, the heading is there too.
+        self.assertIn('.github/workflows/anchored.yml: gate ("Gate")\n', self.text())
+
+    def test_settings_not_utf8_is_named_and_not_read_for_hooks(self):
+        self.write(".claude/settings.local.json", b'{"note": "caf\xe9 .claude/hooks/old.sh"}\n')
+        unused = {entry["path"]: entry["why"] for entry in self.facts()["look_unused"]}
+        self.assertEqual(unused[".claude/hooks/old.sh"],
+                         "a hook that no settings file names; .claude/settings.local.json is not UTF-8 at byte 13 and was not read for hooks")
 
     def test_this_repo(self):
         code, out, err = self.run_inventory(ROOT, "--json", "--uses", "claude,codex", home=self.scratch())

@@ -18,8 +18,10 @@ it names the kind and the harnesses that load it, from the table KINDS below. It
   review and bypass
 - the lines of the code owners file beside the files the register names, for the owner to compare
 
-It writes nothing, reaches no network and runs no program. It reads only under the paths it is given, follows no
-link and reports each one, and does not read a file whose name looks like a credential: it names it as skipped. It
+It writes nothing, reaches no network and runs no program. It reads only under the paths it is given, through one
+guarded reader that refuses a link at any part of a path below its starting point, follows no link and reports each
+one, and does not read a file whose name looks like a credential: it names it as skipped. Its workflow reader reads a
+subset of YAML and names a workflow outside it as not read, with its jobs under a heading of their own. It
 prints names and short facts, never what a file holds: from settings and MCP config only the names of hook events
 and servers. Judging what each part means is the agent's job, on this output, and its result is a proposal to the
 owner (D-2026-11-21-inventory-and-easy-upgrade, D-2026-11-22-second-redraw).
@@ -33,6 +35,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import errno
 import fnmatch
 import hashlib
 import json
@@ -232,16 +235,81 @@ def looks_like_credential(name, kind=None):
     return bool(hits)
 
 
-def read_file(path):
-    """The bytes of a regular file, never through a link: (data, None), or (None, why it was not read)."""
+# --- The guarded reader: the only place that opens, lists or looks at a file. ---
+#
+# Every path is read from a starting point, the root, the home folder, or for --ruleset the current folder or / , one
+# part at a time: each part is looked at without following it, refused when it is a link, and opened under the folder
+# before it with O_NOFOLLOW. A file is opened with O_NOFOLLOW and O_NONBLOCK and read only when it is a regular file.
+# The starting point itself is the one path that may pass through a link, as /tmp does on macOS. test_inventory.py
+# fails on any open, walk, listing or look at a path outside the functions named guarded_.
+
+NOT_REGULAR = "not a regular file, not read"
+
+
+class Refused(Exception):
+    """A path the guarded reader does not go through: why, the part that is a link if one is, and whether it is gone."""
+
+    def __init__(self, why, linked=None, missing=False):
+        Exception.__init__(self, why)
+        self.why = why
+        self.linked = linked
+        self.missing = missing
+
+
+def guarded_start(start):
+    """A descriptor of the folder a path starts from. It may itself be reached through a link."""
     try:
-        handle = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        return os.open(start, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError as error:
-        return None, "could not be read: %s" % (error.strerror or error)
+        raise Refused("could not be read: %s" % (error.strerror or error), missing=True)
+
+
+def guarded_step(folder, part, shown_part, last, directory):
+    """A descriptor of one part under the descriptor of its folder, refused when the part is a link."""
+    try:
+        status = os.stat(part, dir_fd=folder, follow_symlinks=False)
+    except OSError as error:
+        raise Refused("could not be read: %s" % (error.strerror or error), missing=True)
+    if stat.S_ISLNK(status.st_mode):
+        raise Refused("a link, not followed" if last else "%s on its path is a link, not followed" % shown_part,
+                      linked=shown_part)
+    if directory and not stat.S_ISDIR(status.st_mode):
+        raise Refused("could not be read: %s is not a folder" % shown_part, missing=True)
+    try:
+        if directory:
+            return os.open(part, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0), dir_fd=folder)
+        return os.open(part, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0), dir_fd=folder)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.EMLINK):
+            raise Refused("%s on its path is a link, not followed" % shown_part, linked=shown_part)
+        raise Refused("could not be read: %s" % (error.strerror or error))
+
+
+def guarded_open(start, parts, directory, prefix=""):
+    """A descriptor of start/parts, each part opened under the one before it, never through a link."""
+    handle = guarded_start(start)
+    try:
+        for index, part in enumerate(parts):
+            last = index == len(parts) - 1
+            following = guarded_step(handle, part, prefix + "/".join(parts[:index + 1]), last, directory or not last)
+            os.close(handle)
+            handle = following
+    except BaseException:
+        os.close(handle)
+        raise
+    return handle
+
+
+def guarded_read(start, parts, prefix=""):
+    """The bytes of the regular file at start/parts: (data, None), or (None, why it was not read)."""
+    try:
+        handle = guarded_open(start, parts, directory=False, prefix=prefix)
+    except Refused as refused:
+        return None, refused.why
     try:
         status = os.fstat(handle)
         if not stat.S_ISREG(status.st_mode):
-            return None, "not a regular file, not read"
+            return None, NOT_REGULAR
         if status.st_size > MAX_BYTES:
             return None, "larger than %d bytes, not read" % MAX_BYTES
         chunks, total = [], 0
@@ -254,8 +322,114 @@ def read_file(path):
                 return None, "larger than %d bytes, not read" % MAX_BYTES
             chunks.append(chunk)
         return b"".join(chunks), None
+    except OSError as error:
+        return None, "could not be read: %s" % (error.strerror or error)
     finally:
         os.close(handle)
+
+
+def guarded_look(start, parts):
+    """What stands at start/parts, without following a link: ("missing" | "dir" | "file" | "other", None), or
+    ("link", the part from start that is a link), whether that is the last part or one above it."""
+    try:
+        handle = guarded_open(start, parts[:-1], directory=True)
+    except Refused as refused:
+        return ("link", refused.linked) if refused.linked else ("missing", None)
+    try:
+        if not parts:
+            return "dir", None
+        status = os.stat(parts[-1], dir_fd=handle, follow_symlinks=False)
+    except OSError:
+        return "missing", None
+    finally:
+        os.close(handle)
+    if stat.S_ISLNK(status.st_mode):
+        return "link", "/".join(parts)
+    if stat.S_ISDIR(status.st_mode):
+        return "dir", None
+    return ("file" if stat.S_ISREG(status.st_mode) else "other"), None
+
+
+def guarded_read_link(start, parts):
+    """The target of the link at start/parts, read from its folder, reached through no link: (target, None) or (None, why)."""
+    try:
+        handle = guarded_open(start, parts[:-1], directory=True)
+    except Refused as refused:
+        return None, refused.why
+    try:
+        return os.readlink(parts[-1], dir_fd=handle), None
+    except OSError as error:
+        return None, "a link that could not be read: %s" % (error.strerror or error)
+    finally:
+        os.close(handle)
+
+
+def guarded_list(handle):
+    """The entries of an open folder, sorted, each (name, "link" | "dir" | "file" | "other"), none followed."""
+    entries = []
+    with os.scandir(handle) as listing:
+        for entry in listing:
+            if entry.is_symlink():
+                kind = "link"
+            elif entry.is_dir(follow_symlinks=False):
+                kind = "dir"
+            elif entry.is_file(follow_symlinks=False):
+                kind = "file"
+            else:
+                kind = "other"
+            entries.append((entry.name, kind))
+    return sorted(entries)
+
+
+def guarded_entries(start, parts):
+    """The entries of the folder start/parts, reached through no link: (entries, None) or ([], why)."""
+    try:
+        handle = guarded_open(start, parts, directory=True)
+    except Refused as refused:
+        return [], refused.why
+    try:
+        return guarded_list(handle), None
+    except OSError as error:
+        return [], "could not be read: %s" % (error.strerror or error)
+    finally:
+        os.close(handle)
+
+
+def guarded_walk(start, parts, on_error):
+    """Each folder under start/parts, from the top down: (its parts, its entries, a list the caller fills with the
+    names of the folders to enter). A folder is entered only by its descriptor, never through a link."""
+    try:
+        handle = guarded_open(start, parts, directory=True)
+    except Refused as refused:
+        on_error(list(parts), refused.why)
+        return
+    for found in guarded_walk_under(handle, list(parts), on_error):
+        yield found
+
+
+def guarded_walk_under(handle, parts, on_error):
+    try:
+        try:
+            entries = guarded_list(handle)
+        except OSError as error:
+            on_error(parts, "could not be read: %s" % (error.strerror or error))
+            return
+        enter = []
+        yield parts, entries, enter
+        for name in enter:
+            try:
+                inner = guarded_step(handle, name, "/".join(parts + [name]), True, True)
+            except Refused as refused:
+                on_error(parts + [name], refused.why)
+                continue
+            for found in guarded_walk_under(inner, parts + [name], on_error):
+                yield found
+    finally:
+        os.close(handle)
+
+
+def parts_of(rel):
+    return [part for part in rel.split("/") if part]
 
 
 class Layer:
@@ -277,30 +451,31 @@ class Inventory:
         self.links = []
         self.data = {}
 
-    def add_link(self, layer, rel, full):
+    def add_link(self, layer, rel):
         if any(link["path"] == layer.shown_path(rel) for link in self.links):
             return
-        try:
-            target = os.readlink(full)
-        except OSError as error:
-            self.skipped.append({"path": layer.shown_path(rel), "why": "a link that could not be read: %s" % error})
+        target, why = guarded_read_link(layer.top, parts_of(rel))
+        if why is not None:
+            self.skipped.append({"path": layer.shown_path(rel), "why": why})
             return
+        full = os.path.join(layer.top, *parts_of(rel))
         resolved = os.path.normpath(os.path.join(os.path.dirname(full), target))
         inside = resolved == layer.top or resolved.startswith(layer.top.rstrip(os.sep) + os.sep)
         self.links.append({"path": layer.shown_path(rel), "target": target, "inside": inside})
 
-    def add_file(self, layer, rel, full, kind, harnesses):
+    def add_file(self, layer, rel, kind, harnesses):
         name = rel.rsplit("/", 1)[-1]
         path = layer.shown_path(rel)
         if looks_like_credential(name, kind):
             self.skipped.append({"path": path, "why": "looks like a credential, not read"})
             return
         entry = {"path": path, "layer": layer.name, "kind": kind, "harnesses": list(harnesses), "rel": rel, "facts": []}
-        data, why = read_file(full)
+        data, why = guarded_read(layer.top, parts_of(rel))
+        entry["why"] = why
         if why is not None:
             # A file too large or that could not be read stays in the layer, unread. Anything else is not a file.
             self.skipped.append({"path": path, "why": why})
-            if why == "not a regular file, not read":
+            if why == NOT_REGULAR:
                 return
             entry["bytes"] = None
             entry["sha256"] = None
@@ -310,113 +485,90 @@ class Inventory:
             self.data[path] = data
         self.files.append(entry)
 
+    def folder_not_read(self, layer):
+        def note(parts, why):
+            self.skipped.append({"path": layer.shown_path("/".join(parts)) or layer.prefix + ".", "why": why})
+        return note
+
     def walk_repo(self, layer):
-        for folder, folders, names in os.walk(layer.top, topdown=True, followlinks=False):
-            rel_folder = os.path.relpath(folder, layer.top).replace(os.sep, "/")
-            rel_folder = "" if rel_folder == "." else rel_folder + "/"
-            kept = []
-            for name in sorted(folders):
+        for parts, entries, enter in guarded_walk(layer.top, [], self.folder_not_read(layer)):
+            rel_folder = "".join(part + "/" for part in parts)
+            for name, kind in entries:
                 rel = rel_folder + name
-                full = os.path.join(folder, name)
-                if os.path.islink(full):
+                if kind == "link":
                     if self.in_layer(rel):
-                        self.add_link(layer, rel, full)
+                        self.add_link(layer, rel)
                     continue
-                if name in NOT_ENTERED or rel in NOT_ENTERED_PATHS:
+                if kind == "dir":
                     if rel in NOT_ENTERED_PATHS:
                         self.skipped.append({"path": layer.shown_path(rel), "why": NOT_ENTERED_PATHS[rel]})
-                    continue
-                kept.append(name)
-            folders[:] = kept
-            for name in sorted(names):
-                rel = rel_folder + name
-                full = os.path.join(folder, name)
-                if os.path.islink(full):
-                    if self.in_layer(rel):
-                        self.add_link(layer, rel, full)
+                    elif name not in NOT_ENTERED:
+                        enter.append(name)
                     continue
                 found = classify(rel, KINDS, by_name=True)
                 harness_folder = HARNESS_FOLDERS.get(rel.split("/", 1)[0]) if "/" in rel else None
                 if found is None and harness_folder is None:
                     continue
-                kind, harnesses = found if found is not None else ("unknown", (harness_folder,))
-                self.add_file(layer, rel, full, kind, harnesses)
+                kind_found, harnesses = found if found is not None else ("unknown", (harness_folder,))
+                self.add_file(layer, rel, kind_found, harnesses)
 
     def in_layer(self, rel):
         """Whether a link at rel stands where the repo's layer is: in a harness's folder, or where a kind is."""
         first = rel.split("/", 1)[0]
         return first in HARNESS_FOLDERS or first == ".github" or classify(rel, KINDS, by_name=True) is not None
 
-    def linked_part(self, layer, rel):
-        """The first part of rel, from the top down, that is a link, as a path from the top, or None."""
-        parts = rel.split("/")
-        for count in range(1, len(parts) + 1):
-            if os.path.islink(os.path.join(layer.top, *parts[:count])):
-                return "/".join(parts[:count])
-        return None
-
     def walk_global(self, layer):
         for rel in GLOBAL_FILES:
-            full = os.path.join(layer.top, rel)
-            if os.path.lexists(full):
+            if guarded_look(layer.top, parts_of(rel))[0] != "missing":
                 self.skipped.append({"path": layer.shown_path(rel), "why": "looks like a credential, not read"})
         for top in GLOBAL_LOOKED_AT:
-            full_top = os.path.join(layer.top, top)
-            if os.path.islink(full_top):
-                self.add_link(layer, top, full_top)
+            kind, linked = guarded_look(layer.top, parts_of(top))
+            if kind == "link":
+                self.add_link(layer, linked)
                 continue
-            if not os.path.isdir(full_top):
+            if kind != "dir":
                 continue
-            try:
-                names = sorted(os.listdir(full_top))
-            except OSError:
-                continue
-            for name in names:
+            entries, why = guarded_entries(layer.top, parts_of(top))
+            if why is not None:
+                self.skipped.append({"path": layer.shown_path(top), "why": why})
+            for name, kind in entries:
                 rel = top + "/" + name
-                full = os.path.join(full_top, name)
-                if os.path.islink(full):
+                if kind == "link":
                     if classify(rel, GLOBAL_KINDS, by_name=False) is not None or rel in GLOBAL_WALKED:
-                        self.add_link(layer, rel, full)
+                        self.add_link(layer, rel)
                     continue
-                if os.path.isdir(full):
+                if kind == "dir":
                     continue
                 found = classify(rel, GLOBAL_KINDS, by_name=False)
                 if found is not None:
-                    self.add_file(layer, rel, full, *found)
+                    self.add_file(layer, rel, *found)
                 elif looks_like_credential(name):
                     self.skipped.append({"path": layer.shown_path(rel), "why": "looks like a credential, not read"})
         for top in GLOBAL_WALKED:
-            full_top = os.path.join(layer.top, *top.split("/"))
             # Every part from the home folder down is looked at before anything under it is walked: a link at
             # ~/.claude is named there, and ~/.claude/skills behind it is not read.
-            linked = self.linked_part(layer, top)
-            if linked is not None:
-                self.add_link(layer, linked, os.path.join(layer.top, *linked.split("/")))
+            kind, linked = guarded_look(layer.top, parts_of(top))
+            if kind == "link":
+                self.add_link(layer, linked)
                 continue
-            if not os.path.isdir(full_top):
+            if kind != "dir":
                 continue
-            for folder, folders, names in os.walk(full_top, topdown=True, followlinks=False):
-                rel_folder = os.path.relpath(folder, layer.top).replace(os.sep, "/") + "/"
-                kept = []
-                for name in sorted(folders):
-                    full = os.path.join(folder, name)
-                    if os.path.islink(full):
-                        self.add_link(layer, rel_folder + name, full)
-                    else:
-                        kept.append(name)
-                folders[:] = kept
-                for name in sorted(names):
+            for parts, entries, enter in guarded_walk(layer.top, parts_of(top), self.folder_not_read(layer)):
+                rel_folder = "/".join(parts) + "/"
+                for name, kind in entries:
                     rel = rel_folder + name
-                    full = os.path.join(folder, name)
-                    if os.path.islink(full):
-                        self.add_link(layer, rel, full)
+                    if kind == "link":
+                        self.add_link(layer, rel)
+                        continue
+                    if kind == "dir":
+                        enter.append(name)
                         continue
                     found = classify(rel, GLOBAL_KINDS, by_name=False)
                     if found is None:
                         if looks_like_credential(name):
                             self.skipped.append({"path": layer.shown_path(rel), "why": "looks like a credential, not read"})
                         continue
-                    self.add_file(layer, rel, full, *found)
+                    self.add_file(layer, rel, *found)
 
 
 def json_facts(data, kind):
@@ -506,12 +658,30 @@ def resolve_named(layer, rel, kind, value):
     if tentative:
         # A word with a / and no extension, such as owner/repo, counts as a path only when its first part exists.
         first = value.split("/", 1)[0]
-        bases = [base for base in bases if os.path.lexists(os.path.join(base, first))]
+        bases = [base for base in bases if within(layer.top, os.path.join(base, first))
+                 and exists_in(layer, os.path.join(base, first)) is True]
     places = [os.path.normpath(os.path.join(base, *value.split("/"))) for base in bases]
     places = [place for place in places if within(layer.top, place)]
     if not places:
         return None
-    return any(os.path.lexists(place) for place in places), places
+    found = [exists_in(layer, place) for place in places]
+    if True in found:
+        return True, places
+    if None in found:
+        # Through a link: what is behind it is not looked at, so whether the path exists is not said.
+        return None
+    return False, places
+
+
+def exists_in(layer, place):
+    """Whether a path under the top of a layer exists, looked at through no link: True, False, or None when a part
+    above it is a link. A link that is the last part exists."""
+    rel = os.path.relpath(os.path.normpath(place), layer.top)
+    parts = [] if rel == "." else rel.split(os.sep)
+    kind, linked = guarded_look(layer.top, parts)
+    if kind == "link":
+        return True if linked == "/".join(parts) else None
+    return kind != "missing"
 
 
 def inspect(inventory, layers):
@@ -595,17 +765,24 @@ def same_name(inventory):
 
 def look_unused(inventory):
     unused = []
-    settings_text = {}
+    settings_text, settings_unread = {}, {}
     for entry in inventory.files:
         if entry["kind"] == "settings" and entry["path"] in inventory.data:
-            settings_text.setdefault(entry["layer"], []).append(inventory.data[entry["path"]].decode("utf-8", errors="replace"))
+            try:
+                text = inventory.data[entry["path"]].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as error:
+                settings_unread.setdefault(entry["layer"], []).append(
+                    "%s is not UTF-8 at byte %d and was not read for hooks" % (shown(entry["path"]), error.start))
+                continue
+            settings_text.setdefault(entry["layer"], []).append(text)
     skill_folders = {}
     for entry in inventory.files:
         rel = entry["rel"]
         if entry["kind"] == "hook" and rel.startswith(".claude/hooks/"):
             texts = settings_text.get(entry["layer"], [])
             if not any(rel in text for text in texts):
-                unused.append({"path": entry["path"], "why": "a hook that no settings file names"})
+                why = "; ".join(["a hook that no settings file names"] + settings_unread.get(entry["layer"], []))
+                unused.append({"path": entry["path"], "why": why})
         if entry["kind"] in ("skill", "skill file"):
             parts = rel.split("/")
             folder = entry["path"][:len(entry["path"]) - len(rel)] + "/".join(parts[:3])
@@ -634,17 +811,37 @@ def not_loaded(inventory, uses, named_by, layers):
     return sorted(result, key=lambda item: item["path"])
 
 
-# --- Workflows, read as far as their top-level keys, their jobs and each job's name. ---
+# --- Workflows, read as far as their top-level keys, their events, their jobs and each job's name. ---
+#
+# The reader reads a subset of YAML and fails closed: what it does not place is "not read", never left out. It reads
+# block mappings indented with spaces, keys that are plain, or quoted without an escape; comments; a block scalar,
+# whose text it skips; and under on: one event name, a list of names on one line, a block sequence of names at any
+# indent, or a block mapping of names. A line that leaves a quote or a flow collection open, an anchor, alias, tag or
+# merge key where it reads, a key given twice, a second document, a tab in the indent, or any line it cannot place
+# makes the workflow, or the part of it, not read.
 
-KEY = re.compile(r"^( *)(\"[^\"]*\"|'[^']*'|[A-Za-z0-9_-]+)\s*:(.*)\Z")
+KEY = re.compile(r"^( *)(\"[^\"\\]*\"|'(?:[^']|'')*'|[A-Za-z0-9_-]+) *:(?: +(.*))?\Z")
+EVENT = re.compile(r"^[a-z][a-z_]*\Z")
+ITEM = re.compile(r"^-(?: +(.*))?\Z")
+# The rest of a line that starts a block scalar: "|" or ">", with its indicators.
+BLOCK_SCALAR = re.compile(r"(?:^|[:-] +)[|>][0-9+-]*\Z")
+# The characters a plain scalar cannot start with.
+INDICATORS = "-?:,[]{}#&*!|>'\"%@`"
+
+
+class Unread(Exception):
+    """A workflow, or a part of it, in a form this reader does not read."""
 
 
 def without_comment(line):
-    """A line without a comment that starts at the line or after a space, outside quotes.
+    """(the line without a comment that starts at the line or after a space, outside quotes; whether it leaves a quote
+    or a flow collection open).
 
-    A quote opens a quoted scalar only where a scalar starts: at the start of the line, or after ":", "-", "[", "{"
-    or "," and spaces. An apostrophe inside a plain value, as in Project's Gate, is a character of the value."""
+    A quote or a bracket opens only where a scalar starts: at the start of the line, or after ":", "-", "[", "{" or ","
+    and spaces, or anywhere inside a flow collection. An apostrophe inside a plain value, as in Project's Gate, and the
+    braces of ${{ }}, are characters of the value."""
     quote = None
+    depth = 0
     index = 0
     while index < len(line):
         char = line[index]
@@ -659,113 +856,199 @@ def without_comment(line):
                 index += 1
             elif char == '"':
                 quote = None
-        elif char in "\"'":
-            before = line[:index].rstrip(" ")
-            if not before or before[-1] in ":-[{,":
-                quote = char
         elif char == "#" and (index == 0 or line[index - 1] in " \t"):
-            return line[:index].rstrip()
+            return line[:index].rstrip(), depth > 0
+        else:
+            before = line[:index].rstrip(" ")
+            starts = not before or before[-1] in ":-[{,"
+            if char in "\"'" and (starts or depth > 0):
+                quote = char
+            elif char in "[{" and (starts or depth > 0):
+                depth += 1
+            elif char in "]}" and depth > 0:
+                depth -= 1
         index += 1
-    return line.rstrip()
+    return line.rstrip(), quote is not None or depth > 0
 
 
-def unquote(value):
-    value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] == "'":
-        return value[1:-1].replace("''", "'")
-    if len(value) >= 2 and value[0] == value[-1] == '"':
-        return value[1:-1]
+def key_name(raw):
+    """The key a KEY match names, unquoted."""
+    if raw[0] == "'":
+        return raw[1:-1].replace("''", "'")
+    if raw[0] == '"':
+        return raw[1:-1]
+    return raw
+
+
+def scalar(value):
+    """The text of a scalar on one line, plain or quoted without an escape, or None for anything else."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    if value[0] == "'":
+        inner = value[1:-1]
+        if len(value) < 2 or value[-1] != "'" or "'" in inner.replace("''", ""):
+            return None
+        return inner.replace("''", "'")
+    if value[0] == '"':
+        inner = value[1:-1]
+        if len(value) < 2 or value[-1] != '"' or '"' in inner or "\\" in inner:
+            return None
+        return inner
+    if value[0] in INDICATORS or ": " in value or value.endswith(":"):
+        return None
     return value
 
 
-# The start of a value in YAML that this reader does not read on one line: a mapping or a list in flow form that is
-# not closed on the line, an anchor, an alias, a tag or a block of text.
-FLOW_OR_BLOCK = re.compile(r"^(?:\{|\[(?!.*\]\Z)|[&*!|>])")
-ITEM = re.compile(r"^- +(\"[^\"]*\"|'[^']*'|[A-Za-z0-9_-]+)\Z")
-
-
-def workflow_facts(text):
-    """{"on": [...], "jobs": [{"id", "name", "pull_request"}], "unread": why or None} for a workflow's text."""
-    lines = [without_comment(line) for line in text.split("\n")]
-    if any(line.startswith("\t") or "\t" in line[:len(line) - len(line.lstrip())] for line in lines):
-        return {"on": [], "jobs": [], "unread": "indented with tabs, which this reader does not read"}
-    triggers, jobs, unread = [], [], []
-    index = 0
-    while index < len(lines):
-        match = KEY.match(lines[index])
-        if not match or match.group(1):
-            index += 1
-            continue
-        key, rest = unquote(match.group(2)), match.group(3).strip()
-        children, index = block(lines, index + 1)
-        if key == "on":
-            # The events, in each form GitHub reads: one name, a list on one line, a list of "- name" items, or a
-            # mapping of names. Lines under it in any other form name the workflow as not read.
-            lines_under = direct(children)
-            if rest and (FLOW_OR_BLOCK.match(rest) or lines_under):
-                unread.append("its triggers are in a form this reader does not read")
-            elif rest.startswith("["):
-                triggers = [unquote(item) for item in rest[1:-1].split(",") if item.strip()]
-            elif rest:
-                triggers = [unquote(rest)]
-            elif lines_under and all(ITEM.match(line) for line in lines_under):
-                triggers = [unquote(ITEM.match(line).group(1)) for line in lines_under]
-            elif all(KEY.match(line) for line in lines_under):
-                triggers = [unquote(KEY.match(line).group(2)) for line in lines_under]
-            else:
-                unread.append("its triggers are in a form this reader does not read")
-        elif key == "jobs":
-            if rest:
-                unread.append("its jobs are in a form this reader does not read")
-                continue
-            for job_line, job_block in entries(children):
-                job = {"id": unquote(KEY.match(job_line).group(2)), "name": None, "calls": False}
-                for line in direct(job_block):
-                    inner = KEY.match(line)
-                    if inner and unquote(inner.group(2)) == "name":
-                        job["name"] = unquote(inner.group(3))
-                    if inner and unquote(inner.group(2)) == "uses":
-                        job["calls"] = True
-                jobs.append(job)
-    return {"on": triggers, "jobs": jobs, "unread": "; ".join(unread) or None}
+def event(value):
+    name = scalar(value)
+    if name is None or not EVENT.match(name):
+        raise Unread()
+    return name
 
 
 def indent(line):
     return len(line) - len(line.lstrip(" "))
 
 
-def block(lines, start):
-    """The lines indented under the key before start, and the index after them."""
-    end = start
-    while end < len(lines) and (not lines[end].strip() or indent(lines[end]) > 0):
-        end += 1
-    return lines[start:end], end
-
-
-def direct(lines):
-    """The lines of a block at its first indent: the keys directly under its parent."""
-    filled = [line for line in lines if line.strip()]
-    if not filled:
-        return []
-    first = indent(filled[0])
-    return [line[first:] for line in filled if indent(line) == first]
-
-
-def entries(lines):
-    """Each key directly under a block, with the lines under it, each moved left to the key's indent."""
-    filled = [line for line in lines if line.strip()]
-    if not filled:
-        return []
-    first = indent(filled[0])
-    result = []
-    for line in lines:
+def structure(text):
+    """The lines that carry structure, without comments and blank lines, and without the text of block scalars."""
+    lines = []
+    block_indent = None
+    for number, raw in enumerate(text.split("\n"), 1):
+        if block_indent is not None:
+            if not raw.strip() or indent(raw) > block_indent:
+                continue
+            block_indent = None
+        line, still_open = without_comment(raw)
         if not line.strip():
             continue
-        if indent(line) == first and KEY.match(line[first:]):
-            result.append((line[first:], []))
-        elif result and indent(line) > first:
-            result[-1][1].append(line[first:])
+        if "\t" in line[:len(line) - len(line.lstrip(" \t"))]:
+            raise Unread("indented with tabs, which this reader does not read")
+        if still_open:
+            raise Unread("line %d leaves a quote or a bracket open, a value over more than one line, which this reader "
+                         "does not read" % number)
+        if BLOCK_SCALAR.search(line.strip()):
+            block_indent = indent(line)
+        lines.append((number, line))
+    return lines
+
+
+def mapping(lines):
+    """[(key, rest, [lines under it])] of a block mapping whose keys stand at the indent of its first line, which is
+    more than 0. A block sequence may stand at the indent of a key with nothing after it, as YAML allows."""
+    if not lines or indent(lines[0]) == 0:
+        raise Unread()
+    first = indent(lines[0])
+    result, seen = [], set()
+    for line in lines:
+        here = indent(line)
+        if here > first and result:
+            result[-1][2].append(line)
+        elif here == first and ITEM.match(line[first:]) and result and not result[-1][1]:
+            result[-1][2].append(line)
+        elif here == first:
+            match = KEY.match(line[first:])
+            if not match:
+                raise Unread()
+            key = key_name(match.group(2))
+            if key in seen:
+                raise Unread()
+            seen.add(key)
+            result.append((key, match.group(3) or "", []))
+        else:
+            raise Unread()
     return result
+
+
+def read_on(rest, under):
+    """The events a workflow runs on, from the rest of its on: line and the lines under it."""
+    if rest:
+        if under:
+            raise Unread()
+        if rest.startswith("["):
+            if not rest.endswith("]"):
+                raise Unread()
+            return [event(item) for item in rest[1:-1].split(",")]
+        return [event(rest)]
+    if not under:
+        raise Unread()
+    first = indent(under[0])
+    if ITEM.match(under[0][first:]):
+        events = []
+        for line in under:
+            item = ITEM.match(line[first:]) if indent(line) == first else None
+            if item is None:
+                raise Unread()
+            events.append(event(item.group(1)))
+        return events
+    events = []
+    for key, _, _ in mapping(under):
+        if not EVENT.match(key):
+            raise Unread()
+        events.append(key)
+    return events
+
+
+def read_jobs(rest, under):
+    """Each job, with its id, its name and whether it calls a reusable workflow."""
+    if rest or not under:
+        raise Unread()
+    jobs = []
+    for job_id, job_rest, body in mapping(under):
+        if job_rest or not body:
+            raise Unread()
+        job = {"id": job_id, "name": None, "calls": False}
+        for key, value, deeper in mapping(body):
+            if key == "name":
+                job["name"] = scalar(value)
+                if job["name"] is None or deeper:
+                    raise Unread()
+            elif key == "uses":
+                job["calls"] = True
+        jobs.append(job)
+    return jobs
+
+
+def workflow_facts(text):
+    """{"on": [...] or None, "jobs": [...] or None, "unread": why or None} for a workflow's text. None is not read."""
+    try:
+        lines = structure(text)
+        top, current = {}, None
+        for number, line in lines:
+            if indent(line) > 0 or (ITEM.match(line) and current is not None and not current[0]):
+                if current is None:
+                    raise Unread("line %d is indented before the first key, which this reader does not read" % number)
+                current[1].append(line)
+                continue
+            if line == "---" and not top:
+                continue
+            match = KEY.match(line)
+            if not match:
+                raise Unread("line %d is in a form this reader does not read" % number)
+            key = key_name(match.group(2))
+            if key in top:
+                raise Unread("the key %s is given twice" % shown(key))
+            current = (match.group(3) or "", [])
+            top[key] = current
+    except Unread as error:
+        return {"on": None, "jobs": None, "unread": str(error)}
+    triggers, jobs, unread = None, None, []
+    if "on" not in top:
+        unread.append("it has no on: that this reader found")
+    else:
+        try:
+            triggers = read_on(*top["on"])
+        except Unread:
+            unread.append("its triggers are in a form this reader does not read")
+    if "jobs" not in top:
+        unread.append("it has no jobs: that this reader found")
+    else:
+        try:
+            jobs = read_jobs(*top["jobs"])
+        except Unread:
+            unread.append("its jobs are in a form this reader does not read")
+    return {"on": triggers, "jobs": jobs, "unread": "; ".join(unread) or None}
 
 
 # --- The exported ruleset or branch protection. ---
@@ -796,11 +1079,15 @@ def needed(item, key, kinds, form, what=None):
 
 def read_ruleset(path):
     """The facts of each ruleset or branch protection in an exported file, read as every other file is."""
-    if os.path.islink(path):
-        raise Fault("%s: a link, not followed" % path)
     if looks_like_credential(os.path.basename(path)):
         raise Fault("%s: looks like a credential, not read" % path)
-    data, why = read_file(path)
+    # Read from the current folder, or from / for an absolute path, one part at a time, refused at any part that is a
+    # link: a folder given through a link is refused as a file that is one.
+    absolute = path.startswith("/")
+    parts = [part for part in path.split("/") if part not in ("", ".")]
+    if not parts:
+        raise Fault("%s: not a file" % path)
+    data, why = guarded_read("/" if absolute else ".", parts, prefix="/" if absolute else "")
     if why is not None:
         raise Fault("%s: %s" % (path, why))
     try:
@@ -1008,13 +1295,13 @@ def code_owners(inventory, layer):
                             # A word such as owner/repo is a path only when its first part exists, as in a file.
                             if value.startswith("?"):
                                 value = value[1:]
-                                if not os.path.lexists(os.path.join(layer.top, value.split("/", 1)[0])):
+                                if exists_in(layer, os.path.join(layer.top, value.split("/", 1)[0])) is not True:
                                     continue
                             values.append(value)
             for value in values:
                 full = os.path.join(layer.top, *value.split("/"))
                 if within(layer.top, full) and value not in [name for name, _ in names]:
-                    names.append([value, os.path.lexists(full)])
+                    names.append([value, exists_in(layer, full)])
     if owners_file is None and data is None:
         return None
     return {"file": owners_file, "lines": lines, "register_names": names, "note": "; ".join(notes) or None}
@@ -1022,7 +1309,7 @@ def code_owners(inventory, layer):
 
 def build(args):
     root = args.root
-    if not os.path.isdir(root):
+    if guarded_look(root, [])[0] != "dir":
         raise Fault("%s is not a directory" % root)
     uses = None
     if args.uses is not None:
@@ -1044,7 +1331,7 @@ def build(args):
     inventory.walk_repo(layers["repo"])
     if args.use_global:
         home = args.home or os.path.expanduser("~")
-        if not os.path.isdir(home):
+        if guarded_look(home, [])[0] != "dir":
             raise Fault("%s is not a directory" % home)
         layers["global"] = Layer("global", home, "~/")
         inventory.walk_global(layers["global"])
@@ -1054,27 +1341,36 @@ def build(args):
     workflows = []
     required = required_names(rulesets)
     not_required = [] if rulesets else None
+    # The jobs of a workflow whose events or jobs were not read: whether they run on a pull request is not known, and
+    # they are listed under a heading of their own, never left out.
+    not_known = []
     produced = set()
     for entry in inventory.files:
-        if entry["kind"] != "workflow" or entry["path"] not in inventory.data:
+        if entry["kind"] != "workflow":
             continue
-        try:
-            text = inventory.data[entry["path"]].decode("utf-8", errors="strict")
-        except UnicodeDecodeError as error:
-            workflows.append({"path": entry["path"], "on": [], "jobs": [], "unread": "not UTF-8 at byte %d" % error.start})
-            continue
-        facts = workflow_facts(text)
-        on_pull_request = bool(set(facts["on"]) & PULL_REQUEST_EVENTS)
-        jobs = []
-        for job in facts["jobs"]:
+        data = inventory.data.get(entry["path"])
+        if data is None:
+            facts = {"on": None, "jobs": None, "unread": entry.get("why") or "not read"}
+        else:
+            try:
+                facts = workflow_facts(data.decode("utf-8", errors="strict"))
+            except UnicodeDecodeError as error:
+                facts = {"on": None, "jobs": None, "unread": "not UTF-8 at byte %d" % error.start}
+        on_pull_request = facts["on"] is not None and bool(set(facts["on"]) & PULL_REQUEST_EVENTS)
+        jobs = None if facts["jobs"] is None else []
+        for job in facts["jobs"] or []:
             state = None
             if rulesets:
                 matched = contexts_of(job, required)
                 produced.update(matched)
                 state = bool(matched)
-                if not state and on_pull_request:
-                    not_required.append({"path": entry["path"], "job": job["id"], "name": job["name"]})
+            if facts["on"] is None:
+                not_known.append({"path": entry["path"], "job": job["id"], "name": job["name"], "required": state})
+            elif rulesets and not state and on_pull_request:
+                not_required.append({"path": entry["path"], "job": job["id"], "name": job["name"]})
             jobs.append({"id": job["id"], "name": job["name"], "required": state, "calls": job["calls"]})
+        if facts["jobs"] is None:
+            not_known.append({"path": entry["path"], "job": None, "name": None, "required": None})
         workflows.append({"path": entry["path"], "on": facts["on"], "jobs": jobs, "unread": facts["unread"]})
 
     harnesses_here = sorted({name for entry in inventory.files for name in entry["harnesses"] if name not in HOSTS})
@@ -1095,6 +1391,7 @@ def build(args):
         "workflows": workflows,
         "rulesets": rulesets,
         "not_required": not_required,
+        "not_known": not_known,
         "required_without_job": None if not rulesets else [name for name in required if name not in produced],
         "code_owners": code_owners(inventory, layers["repo"]),
     }
@@ -1165,13 +1462,22 @@ def text_report(facts):
     if not facts["workflows"]:
         add("  none")
     for workflow in facts["workflows"]:
-        add("  %s, on %s" % (shown(workflow["path"]), ", ".join(shown(name) for name in workflow["on"]) or "nothing this reader found"))
+        events = "events not read" if workflow["on"] is None else ", ".join(shown(name) for name in workflow["on"])
+        add("  %s, on %s" % (shown(workflow["path"]), events))
         if workflow["unread"]:
-            add("    %s" % workflow["unread"])
-        for job in workflow["jobs"]:
+            add("    not read: %s" % shown(workflow["unread"]))
+        if workflow["jobs"] is None:
+            add("    jobs not read")
+        for job in workflow["jobs"] or []:
             label = shown(job["id"]) + (' ("%s")' % shown(job["name"]) if job["name"] else "")
             state = {None: "", True: ": required", False: ": not required"}[job["required"]]
             add("    %s%s%s" % (label, state, ", calls a reusable workflow" if job["calls"] else ""))
+    known = {None: "", True: ", required", False: ", not required"}
+    section("Jobs of workflows this reader could not read: it cannot tell whether they run on a pull request",
+            ["%s: its jobs were not read" % shown(item["path"]) if item["job"] is None else
+             "%s: %s%s%s" % (shown(item["path"]), shown(item["job"]), ' ("%s")' % shown(item["name"]) if item["name"] else "",
+                             known[item["required"]])
+             for item in facts["not_known"]])
     if facts["not_required"] is None:
         add("")
         add("Required checks: give --ruleset with the exported ruleset or branch protection of the default branch to see which jobs are required")
@@ -1219,7 +1525,7 @@ def text_report(facts):
             add("  %s" % shown(owners["note"]))
         add("  register.json names" if owners["register_names"] else "  register.json names no file")
         for name, exists in owners["register_names"]:
-            add("    %s%s" % (shown(name), "" if exists else " (does not exist)"))
+            add("    %s%s" % (shown(name), {True: "", False: " (does not exist)", None: " (through a link, not looked at)"}[exists]))
     return "\n".join(out) + "\n"
 
 
