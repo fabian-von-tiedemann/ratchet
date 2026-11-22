@@ -35,6 +35,17 @@ FAULTS = {
     "rule-without-type": "a rule without a type",
     "not-an-object": "neither a ruleset nor a branch protection",
     "neither-form": "neither a ruleset nor a branch protection",
+    "empty-list": "holds no ruleset and no branch protection",
+    "no-enforcement": "a ruleset without enforcement",
+    "no-target": "a ruleset without target",
+    "count-is-bool": "required_approving_review_count must be a number",
+    "actor-id-text": "actor_id must be a number",
+    "conditions-false": "conditions must be an object",
+    "conditions-list": "conditions must be an object",
+    "bypass-text": "bypass_actors must be a list",
+    "parameters-list": "parameters of pull_request must be an object",
+    "allowances-false": "bypass_pull_request_allowances must be an object",
+    "toggle-text": "allow_force_pushes must be an object",
 }
 
 # The modules through which a script could reach the network or run another program.
@@ -72,11 +83,11 @@ class Inventory(FixtureTest):
         self.home = self.fixture_directory("inventory/home")
         undot(self.home)
 
-    def run_inventory(self, *args, home=None):
+    def run_inventory(self, *args, home=None, timeout=120):
         environment = dict(os.environ)
         environment["HOME"] = home or self.home
         result = subprocess.run([sys.executable, SCRIPT] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                universal_newlines=True, env=environment)
+                                universal_newlines=True, env=environment, timeout=timeout)
         return result.returncode, result.stdout, result.stderr
 
     def facts(self, *args):
@@ -95,6 +106,18 @@ class Inventory(FixtureTest):
 
     def ruleset(self, name):
         return self.fixture_file("inventory/ruleset/%s.json" % name)
+
+    def write(self, rel, data, top=None):
+        """Write a file into the copy of the repo, or under top, making its folders."""
+        path = os.path.join(top or self.repo, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(data.encode("utf-8") if isinstance(data, str) else data)
+        return path
+
+    def export(self, value, name="export.json"):
+        """An export written as JSON into a scratch folder of its own."""
+        return self.write(name, json.dumps(value), top=self.scratch())
 
     def files(self, facts):
         return {entry["path"]: entry for entry in facts["files"]}
@@ -277,7 +300,8 @@ class Inventory(FixtureTest):
         self.assertEqual(ruleset["enforcement"], "active")
         self.assertEqual(ruleset["include"], ["~DEFAULT_BRANCH"])
         self.assertEqual(ruleset["required_checks"], ["checks", "test (3.9)", "deploy/preview"])
-        self.assertEqual(ruleset["review"], {"approvals": 1, "code_owner": True, "dismiss_stale": True, "last_push": False})
+        self.assertEqual(ruleset["review"], {"approvals": 1, "code_owner": True, "dismiss_stale": True, "last_push": False,
+                                             "thread_resolution": False})
         self.assertEqual(ruleset["bypass"], ["RepositoryRole 5 (always)"])
         self.assertEqual(ruleset["other_rules"], ["deletion", "non_fast_forward"])
         self.assertEqual(ruleset["not_read"], ["code_scanning"])
@@ -292,7 +316,8 @@ class Inventory(FixtureTest):
         protection = facts["rulesets"][0]
         self.assertEqual(protection["form"], "branch protection")
         self.assertEqual(protection["required_checks"], ["checks"])
-        self.assertEqual(protection["review"], {"approvals": 2, "code_owner": False, "dismiss_stale": True, "last_push": False})
+        self.assertEqual(protection["review"], {"approvals": 2, "code_owner": False, "dismiss_stale": True, "last_push": False,
+                                                "thread_resolution": None})
         self.assertEqual(protection["bypass"], ["user fixture-admin (pull requests)", "administrators (enforce_admins is off)"])
 
     def test_a_ruleset_that_is_not_enforced_requires_nothing(self):
@@ -386,6 +411,169 @@ class Inventory(FixtureTest):
         code, out, err = self.run_inventory(os.path.join(self.repo, "no-such-folder"))
         self.assertEqual(code, 2)
         self.assertIn("not a directory", err)
+
+    # --- Each finding of the review of #119 at 237bb13, one test each. ---
+
+    def test_global_a_linked_harness_folder_is_named_and_nothing_under_it_is_read(self):
+        home = self.scratch()
+        outside = self.scratch()
+        self.write("claude/skills/hidden/SKILL.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        self.write("claude/CLAUDE.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        self.write("claude/rules/rule.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        self.write("agents/skills/shared/SKILL.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        self.write(".codex/AGENTS.md", "Codex.\n", top=home)
+        os.symlink(os.path.join(outside, "claude"), os.path.join(home, ".claude"))
+        os.symlink(os.path.join(outside, "agents"), os.path.join(home, ".agents"))
+        code, out, err = self.run_inventory(self.repo, "--json", "--global", home=home)
+        self.assertEqual(code, 0, out + err)
+        self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+        facts = json.loads(out)
+        self.assertEqual([(link["path"], link["inside"]) for link in facts["links"]], [("~/.agents", False), ("~/.claude", False)])
+        self.assertEqual(sorted(path for path in self.files(facts) if path.startswith("~")), ["~/.codex/AGENTS.md"])
+        # A link deeper down, at ~/.codex/prompts/team, is named at that place, once.
+        self.write("prompts/review.md", "FIXTURE-SECRET-OUTSIDE\n", top=outside)
+        os.makedirs(os.path.join(home, ".codex", "prompts"))
+        os.symlink(os.path.join(outside, "prompts"), os.path.join(home, ".codex", "prompts", "team"))
+        code, out, err = self.run_inventory(self.repo, "--json", "--global", home=home)
+        self.assertEqual(code, 0, out + err)
+        self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+        self.assertEqual([link["path"] for link in json.loads(out)["links"]], ["~/.agents", "~/.claude", "~/.codex/prompts/team"])
+
+    def test_an_export_is_read_through_the_guarded_reader(self):
+        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
+        folder = self.scratch()
+        secret = self.write("secret-token.json", data, top=folder)
+        plain = self.write("plain.json", data, top=folder)
+        link = os.path.join(folder, "linked.json")
+        os.symlink(plain, link)
+        fifo = os.path.join(folder, "pipe.json")
+        os.mkfifo(fifo)
+        for path, message in ((secret, "looks like a credential, not read"), (link, "a link, not followed"),
+                              (fifo, "not a regular file, not read")):
+            with self.subTest(path=os.path.basename(path)):
+                code, out, err = self.run_inventory(self.repo, "--ruleset", path, timeout=20)
+                self.assertEqual(code, 2, out + err)
+                self.assertIn(message, err)
+                self.assertEqual(out, "")
+                self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+
+    def test_a_job_with_a_name_is_required_by_its_name_only(self):
+        self.write(".github/workflows/gate.yml", "on: pull_request\njobs:\n  checks:\n    name: Run Checks\n    runs-on: x\n"
+                   "  build:\n    name: ${{ matrix.os }} build\n    runs-on: x\n")
+        export = self.export({"name": "main", "target": "branch", "enforcement": "active", "rules": [
+            {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "checks"}, {"context": "build"}]}}]})
+        facts = self.facts("--ruleset", export)
+        gate = {entry["path"]: entry for entry in facts["workflows"]}[".github/workflows/gate.yml"]
+        self.assertEqual([(job["id"], job["required"]) for job in gate["jobs"]], [("checks", False), ("build", True)])
+        self.assertIn({"path": ".github/workflows/gate.yml", "job": "checks", "name": "Run Checks"}, facts["not_required"])
+        # The job checks in checks.yml has no name, so it still reports as checks.
+        checks = {entry["path"]: entry for entry in facts["workflows"]}[".github/workflows/checks.yml"]
+        self.assertEqual(checks["jobs"][0]["required"], True)
+
+    def test_bypass_actors_left_out_of_an_export_are_not_shown_as_none(self):
+        base = {"name": "main", "target": "branch", "enforcement": "active", "rules": []}
+        for value, expected, line in ((None, None, "bypass: not shown in the export"), ([], [], "bypass: none")):
+            with self.subTest(value=value):
+                item = dict(base)
+                if value is not None:
+                    item["bypass_actors"] = value
+                facts = self.facts("--ruleset", self.export(item))
+                self.assertEqual(facts["rulesets"][0]["bypass"], expected)
+                self.assertIn(line, self.text("--ruleset", self.export(item)))
+        item = dict(base, bypass_actors=None)
+        self.assertIsNone(self.facts("--ruleset", self.export(item))["rulesets"][0]["bypass"])
+        # An actor_id that is null, as for a deploy key, is shown as "-".
+        item = dict(base, bypass_actors=[{"actor_id": None, "actor_type": "DeployKey", "bypass_mode": "always"}])
+        self.assertEqual(self.facts("--ruleset", self.export(item))["rulesets"][0]["bypass"], ["DeployKey - (always)"])
+
+    def test_review_parameters_it_does_not_know_or_that_are_left_out(self):
+        facts = self.facts("--ruleset", self.ruleset("ruleset"))
+        ruleset = facts["rulesets"][0]
+        self.assertEqual(ruleset["review"]["thread_resolution"], False)
+        export = self.export({"name": "main", "target": "branch", "enforcement": "active", "rules": [
+            {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "automatic_copilot_code_review_enabled": True}}]})
+        ruleset = self.facts("--ruleset", export)["rulesets"][0]
+        self.assertEqual(ruleset["review"]["approvals"], 1)
+        self.assertIsNone(ruleset["review"]["code_owner"])
+        self.assertIn("pull_request.automatic_copilot_code_review_enabled", ruleset["not_read"])
+        out = self.text("--ruleset", export)
+        self.assertIn("code owner review not in the export", out)
+        self.assertIn("rules not read: pull_request.automatic_copilot_code_review_enabled", out)
+
+    def test_a_trigger_list_in_block_form_is_read(self):
+        self.write(".github/workflows/listed.yml", "on:\n  - pull_request\n  - push\njobs:\n  extra:\n    runs-on: x\n")
+        self.write(".github/workflows/odd.yml", "on:\n  [pull_request,\n   push]\njobs:\n  other:\n    runs-on: x\n")
+        facts = self.facts("--ruleset", self.ruleset("ruleset"))
+        workflows = {entry["path"]: entry for entry in facts["workflows"]}
+        self.assertEqual(workflows[".github/workflows/listed.yml"]["on"], ["pull_request", "push"])
+        self.assertIn({"path": ".github/workflows/listed.yml", "job": "extra", "name": None}, facts["not_required"])
+        self.assertEqual(workflows[".github/workflows/odd.yml"]["unread"], "its triggers are in a form this reader does not read")
+        self.assertIn("its triggers are in a form this reader does not read", self.text())
+
+    def test_ratchets_own_copy_is_not_walked(self):
+        self.write(".ratchet/AGENTS.md", "Ratchet.\n")
+        self.write(".ratchet/checks/fixtures/inventory/repo/CLAUDE.md", "A fixture.\n")
+        self.write("sub/.ratchet/AGENTS.md", "Not the root.\n")
+        facts = self.facts()
+        self.assertFalse([path for path in self.files(facts) if path.startswith(".ratchet")])
+        self.assertIn("sub/.ratchet/AGENTS.md", self.files(facts))
+        self.assertIn({"path": ".ratchet", "why": "Ratchet's own copy, not walked"}, facts["skipped"])
+
+    def test_a_register_whose_parts_are_not_lists(self):
+        self.write("register.json", '{"instructions": "AGENTS.md", "adopted": "all", "own": {"key": "x"}}\n')
+        owners = self.facts()["code_owners"]
+        self.assertEqual(owners["register_names"], [["AGENTS.md", True]])
+        self.assertEqual(owners["note"], "register.json: adopted is not a list, not read; register.json: own is not a list, not read")
+        self.assertIn("register.json: adopted is not a list, not read", self.text())
+
+    def test_a_word_after_an_at_sign_is_not_an_import(self):
+        self.write("CLAUDE.md", "Ask @alice, or see @pytest.mark.skip and email@example.com.\n"
+                   "Read @AGENTS.md. Then @docs/gone.md, and @notes.md!\n")
+        missing = [(entry["file"], entry["path"]) for entry in self.facts()["missing_paths"]]
+        self.assertIn(("CLAUDE.md", "docs/gone.md"), missing)
+        self.assertIn(("CLAUDE.md", "notes.md"), missing)
+        self.assertFalse([path for file, path in missing if file == "CLAUDE.md" and path not in ("docs/gone.md", "notes.md")])
+
+    def test_an_apostrophe_inside_a_plain_value(self):
+        self.write(".github/workflows/gate.yml", "on: pull_request  # comment\njobs:\n  gate:\n    name: Project's Gate  # comment\n"
+                   "    runs-on: x\n  quoted:\n    name: 'it''s # here'  # comment\n    runs-on: x\n")
+        gate = {entry["path"]: entry for entry in self.facts()["workflows"]}[".github/workflows/gate.yml"]
+        self.assertEqual(gate["on"], ["pull_request"])
+        self.assertEqual([(job["id"], job["name"]) for job in gate["jobs"]], [("gate", "Project's Gate"), ("quoted", "it's # here")])
+
+    def test_a_markdown_rule_named_after_secrets_is_read(self):
+        self.write(".claude/rules/no-secrets.md", "Keep `docs/none.md` out.\n")
+        self.write(".claude/commands/rotate-token.md", "Rotate.\n")
+        self.write(".claude/rules/secret-token.json", "FIXTURE-SECRET-OUTSIDE\n")
+        self.write(".claude/rules/.env.md", "FIXTURE-SECRET-OUTSIDE\n")
+        facts = self.facts()
+        files = self.files(facts)
+        self.assertEqual(files[".claude/rules/no-secrets.md"]["kind"], "instructions")
+        self.assertEqual(files[".claude/commands/rotate-token.md"]["kind"], "command")
+        skipped = {entry["path"]: entry["why"] for entry in facts["skipped"]}
+        self.assertEqual(skipped[".claude/rules/secret-token.json"], "looks like a credential, not read")
+        self.assertEqual(skipped[".claude/rules/.env.md"], "looks like a credential, not read")
+
+    def test_code_owners_not_utf8_and_names_in_where_that_are_not_paths(self):
+        self.write(".github/CODEOWNERS", b"* @fixture-owner\n/caf\xe9/ @fixture-owner\n")
+        self.write("register.json", json.dumps({"instructions": "AGENTS.md", "adopted": [
+            {"key": "a", "where": "`python3 checks/generate.py --check`, run in `owner/repo`, and `checks/gone.py`"}], "own": []}))
+        owners = self.facts()["code_owners"]
+        self.assertEqual(owners["lines"], [])
+        self.assertEqual(owners["note"], ".github/CODEOWNERS: not UTF-8 at byte 21, its lines are not read")
+        self.assertEqual(owners["register_names"], [["AGENTS.md", True], ["checks/gone.py", False]])
+
+    def test_options_that_say_nothing(self):
+        for args in (["--uses", ""], ["--uses", " , "], ["--home", self.home]):
+            with self.subTest(args=args):
+                code, out, err = self.run_inventory(self.repo, *args)
+                self.assertEqual(code, 2, out + err)
+                self.assertEqual(out, "")
+        only = self.scratch()
+        self.write("CLAUDE.md", "One.\n", top=only)
+        code, out, err = self.run_inventory(only)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("The agent layer: 1 file\n", out)
 
     def test_this_repo(self):
         code, out, err = self.run_inventory(ROOT, "--json", "--uses", "claude,codex", home=self.scratch())

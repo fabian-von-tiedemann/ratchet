@@ -1,1 +1,1 @@
-{"name": "x", "enforcement": "active", "rules": [{"parameters": {}}]}
+{"name": "x", "target": "branch", "enforcement": "active", "rules": [{"parameters": {}}]}

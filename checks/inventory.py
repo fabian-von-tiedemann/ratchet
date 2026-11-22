@@ -141,11 +141,12 @@ HARNESS_FOLDERS = {".claude": "claude", ".agents": "codex", ".codex": "codex", "
 # at, for the files of a kind above and the names that look like a credential. Nothing else under home is read.
 GLOBAL_WALKED = (".claude/rules", ".claude/skills", ".claude/commands", ".claude/agents", ".claude/hooks",
                  ".claude/output-styles", ".codex/prompts", ".codex/skills", ".agents/skills", ".gemini/commands")
-GLOBAL_LOOKED_AT = (".claude", ".codex", ".gemini")
+GLOBAL_LOOKED_AT = (".claude", ".codex", ".gemini", ".agents")
 GLOBAL_FILES = (".claude.json",)
 # Folders the walk of the repo does not enter.
 NOT_ENTERED = {".git", "node_modules"}
-NOT_ENTERED_PATHS = {".claude/worktrees"}
+# The folders not entered at the root, each with why: worktrees, and Ratchet's own copy in a repo that adopted it.
+NOT_ENTERED_PATHS = {".claude/worktrees": "a folder of worktrees, not walked", ".ratchet": "Ratchet's own copy, not walked"}
 
 # A name that looks like a credential. Such a file is named and never read.
 CREDENTIAL_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "*.jks", ".env", ".env.*", "*.env", ".netrc",
@@ -156,8 +157,11 @@ MAX_BYTES = 1000000
 
 # A path named in an instruction file: the target of a Markdown link, a span in backticks, or an import @path.
 LINK = re.compile(r"\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
-SPAN = re.compile(r"`([^`\s]+)`")
-IMPORT = re.compile(r"(?:^|\s)@([A-Za-z0-9_.~/-]+)")
+# A span is the text between two backticks, paired from the left. One with a space in it is a command, not a path.
+SPAN = re.compile(r"`([^`]*)`")
+# An import is a word of its own that starts with @. Punctuation at its end, as at the end of a sentence, is not part.
+IMPORT = re.compile(r"(?:^|(?<=\s))@(\S+)")
+TRAILING = ".,;:!?)]}\"'"
 EXTENSIONS = {"md", "mdc", "json", "py", "sh", "yml", "yaml", "toml", "txt", "js", "mjs", "ts", "html", "cfg", "ini",
               "lock", "xml", "csv", "sql", "rb", "go", "rs", "java"}
 PATH_CHARACTERS = re.compile(r"^[A-Za-z0-9_.~/@+-]+\Z")
@@ -214,9 +218,18 @@ def classify(rel, kinds, by_name):
     return None
 
 
-def looks_like_credential(name):
+# The patterns that are a word in a name, such as no-secrets.md. A Markdown file of a kind a harness loads as text
+# into the session, under such a name, names a rule and is read; any other file under it is not.
+CREDENTIAL_WORDS = ("*credential*", "*secret*", "*token*")
+MARKDOWN_KINDS = ("instructions", "skill", "skill file", "command", "agent", "output style")
+
+
+def looks_like_credential(name, kind=None):
     lowered = name.lower()
-    return any(fnmatch.fnmatchcase(lowered, pattern) for pattern in CREDENTIAL_NAMES)
+    hits = [pattern for pattern in CREDENTIAL_NAMES if fnmatch.fnmatchcase(lowered, pattern)]
+    if hits and kind in MARKDOWN_KINDS and lowered.endswith((".md", ".mdc")) and set(hits) <= set(CREDENTIAL_WORDS):
+        return False
+    return bool(hits)
 
 
 def read_file(path):
@@ -279,7 +292,7 @@ class Inventory:
     def add_file(self, layer, rel, full, kind, harnesses):
         name = rel.rsplit("/", 1)[-1]
         path = layer.shown_path(rel)
-        if looks_like_credential(name):
+        if looks_like_credential(name, kind):
             self.skipped.append({"path": path, "why": "looks like a credential, not read"})
             return
         entry = {"path": path, "layer": layer.name, "kind": kind, "harnesses": list(harnesses), "rel": rel, "facts": []}
@@ -311,7 +324,7 @@ class Inventory:
                     continue
                 if name in NOT_ENTERED or rel in NOT_ENTERED_PATHS:
                     if rel in NOT_ENTERED_PATHS:
-                        self.skipped.append({"path": layer.shown_path(rel), "why": "a folder of worktrees, not walked"})
+                        self.skipped.append({"path": layer.shown_path(rel), "why": NOT_ENTERED_PATHS[rel]})
                     continue
                 kept.append(name)
             folders[:] = kept
@@ -334,6 +347,14 @@ class Inventory:
         first = rel.split("/", 1)[0]
         return first in HARNESS_FOLDERS or first == ".github" or classify(rel, KINDS, by_name=True) is not None
 
+    def linked_part(self, layer, rel):
+        """The first part of rel, from the top down, that is a link, as a path from the top, or None."""
+        parts = rel.split("/")
+        for count in range(1, len(parts) + 1):
+            if os.path.islink(os.path.join(layer.top, *parts[:count])):
+                return "/".join(parts[:count])
+        return None
+
     def walk_global(self, layer):
         for rel in GLOBAL_FILES:
             full = os.path.join(layer.top, rel)
@@ -343,6 +364,8 @@ class Inventory:
             full_top = os.path.join(layer.top, top)
             if os.path.islink(full_top):
                 self.add_link(layer, top, full_top)
+                continue
+            if not os.path.isdir(full_top):
                 continue
             try:
                 names = sorted(os.listdir(full_top))
@@ -364,8 +387,11 @@ class Inventory:
                     self.skipped.append({"path": layer.shown_path(rel), "why": "looks like a credential, not read"})
         for top in GLOBAL_WALKED:
             full_top = os.path.join(layer.top, *top.split("/"))
-            if os.path.islink(full_top):
-                self.add_link(layer, top, full_top)
+            # Every part from the home folder down is looked at before anything under it is walked: a link at
+            # ~/.claude is named there, and ~/.claude/skills behind it is not read.
+            linked = self.linked_part(layer, top)
+            if linked is not None:
+                self.add_link(layer, linked, os.path.join(layer.top, *linked.split("/")))
                 continue
             if not os.path.isdir(full_top):
                 continue
@@ -427,7 +453,11 @@ def json_facts(data, kind):
 
 def candidate(raw, kind):
     """The path a token names, or None when it does not look like a path of the repo."""
+    if kind == "span" and any(char.isspace() for char in raw.strip()):
+        return None
     value = raw.strip()
+    if kind == "import":
+        value = value.rstrip(TRAILING)
     if not value or URL.match(value) or value.startswith(("#", "<", "$", "/", "~", "-")):
         return None
     value = value.split("#", 1)[0].split("?", 1)[0]
@@ -438,9 +468,12 @@ def candidate(raw, kind):
     extension = last.rsplit(".", 1)[-1].lower() if "." in last.strip(".") else ""
     if kind == "link":
         return value
+    if kind == "import":
+        # @alice or @pytest.mark.skip is a word: an import has a / or an extension this inventory knows.
+        return value if "/" in value or extension in EXTENSIONS else None
     if "/" not in value:
         # A bare name in backticks, such as `generate.py`, is a name: a path only in a link or an import.
-        return value if kind == "import" else None
+        return None
     if extension in EXTENSIONS or value.endswith("/"):
         return value
     return "?" + value
@@ -607,24 +640,48 @@ KEY = re.compile(r"^( *)(\"[^\"]*\"|'[^']*'|[A-Za-z0-9_-]+)\s*:(.*)\Z")
 
 
 def without_comment(line):
-    """A line without a comment that starts at the line or after a space, outside quotes."""
+    """A line without a comment that starts at the line or after a space, outside quotes.
+
+    A quote opens a quoted scalar only where a scalar starts: at the start of the line, or after ":", "-", "[", "{"
+    or "," and spaces. An apostrophe inside a plain value, as in Project's Gate, is a character of the value."""
     quote = None
-    for index, char in enumerate(line):
-        if quote:
-            if char == quote:
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if quote == "'":
+            if char == "'":
+                if line[index + 1:index + 2] == "'":
+                    index += 1
+                else:
+                    quote = None
+        elif quote == '"':
+            if char == "\\":
+                index += 1
+            elif char == '"':
                 quote = None
         elif char in "\"'":
-            quote = char
+            before = line[:index].rstrip(" ")
+            if not before or before[-1] in ":-[{,":
+                quote = char
         elif char == "#" and (index == 0 or line[index - 1] in " \t"):
             return line[:index].rstrip()
+        index += 1
     return line.rstrip()
 
 
 def unquote(value):
     value = value.strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        return value[1:-1].replace("''", "'")
+    if len(value) >= 2 and value[0] == value[-1] == '"':
         return value[1:-1]
     return value
+
+
+# The start of a value in YAML that this reader does not read on one line: a mapping or a list in flow form that is
+# not closed on the line, an anchor, an alias, a tag or a block of text.
+FLOW_OR_BLOCK = re.compile(r"^(?:\{|\[(?!.*\]\Z)|[&*!|>])")
+ITEM = re.compile(r"^- +(\"[^\"]*\"|'[^']*'|[A-Za-z0-9_-]+)\Z")
 
 
 def workflow_facts(text):
@@ -632,7 +689,7 @@ def workflow_facts(text):
     lines = [without_comment(line) for line in text.split("\n")]
     if any(line.startswith("\t") or "\t" in line[:len(line) - len(line.lstrip())] for line in lines):
         return {"on": [], "jobs": [], "unread": "indented with tabs, which this reader does not read"}
-    triggers, jobs, unread = [], [], None
+    triggers, jobs, unread = [], [], []
     index = 0
     while index < len(lines):
         match = KEY.match(lines[index])
@@ -642,15 +699,24 @@ def workflow_facts(text):
         key, rest = unquote(match.group(2)), match.group(3).strip()
         children, index = block(lines, index + 1)
         if key == "on":
-            if rest.startswith("["):
-                triggers = [unquote(item) for item in rest.strip("[]").split(",") if item.strip()]
+            # The events, in each form GitHub reads: one name, a list on one line, a list of "- name" items, or a
+            # mapping of names. Lines under it in any other form name the workflow as not read.
+            lines_under = direct(children)
+            if rest and (FLOW_OR_BLOCK.match(rest) or lines_under):
+                unread.append("its triggers are in a form this reader does not read")
+            elif rest.startswith("["):
+                triggers = [unquote(item) for item in rest[1:-1].split(",") if item.strip()]
             elif rest:
                 triggers = [unquote(rest)]
+            elif lines_under and all(ITEM.match(line) for line in lines_under):
+                triggers = [unquote(ITEM.match(line).group(1)) for line in lines_under]
+            elif all(KEY.match(line) for line in lines_under):
+                triggers = [unquote(KEY.match(line).group(2)) for line in lines_under]
             else:
-                triggers = [unquote(KEY.match(line).group(2)) for line in direct(children) if KEY.match(line)]
+                unread.append("its triggers are in a form this reader does not read")
         elif key == "jobs":
             if rest:
-                unread = "its jobs are in a form this reader does not read"
+                unread.append("its jobs are in a form this reader does not read")
                 continue
             for job_line, job_block in entries(children):
                 job = {"id": unquote(KEY.match(job_line).group(2)), "name": None, "calls": False}
@@ -661,7 +727,7 @@ def workflow_facts(text):
                     if inner and unquote(inner.group(2)) == "uses":
                         job["calls"] = True
                 jobs.append(job)
-    return {"on": triggers, "jobs": jobs, "unread": unread}
+    return {"on": triggers, "jobs": jobs, "unread": "; ".join(unread) or None}
 
 
 def indent(line):
@@ -704,28 +770,46 @@ def entries(lines):
 
 # --- The exported ruleset or branch protection. ---
 
+KIND_NAMES = {list: "a list", dict: "an object", str: "text", bool: "true or false", int: "a number"}
+
+
 def expect(value, kinds, what):
-    if not isinstance(value, kinds):
-        names = {list: "a list", dict: "an object", str: "text", bool: "true or false", int: "a number"}
-        kind = kinds[0] if isinstance(kinds, tuple) else kinds
-        raise Fault("%s must be %s" % (what, names.get(kind, kind.__name__)))
+    """The value, when it is of its kind. true and false are not numbers, though Python counts them as such."""
+    kinds = kinds if isinstance(kinds, tuple) else (kinds,)
+    if not isinstance(value, kinds) or (isinstance(value, bool) and bool not in kinds):
+        raise Fault("%s must be %s" % (what, KIND_NAMES.get(kinds[0], kinds[0].__name__)))
     return value
 
 
+def optional(item, key, kinds, what=None):
+    """A field that may be left out: None when it is absent or null, else the value, of its kind."""
+    value = item.get(key)
+    return None if value is None else expect(value, kinds, what or key)
+
+
+def needed(item, key, kinds, form, what=None):
+    """A field the export always holds: a fault when it is absent or null."""
+    if item.get(key) is None:
+        raise Fault("a %s without %s" % (form, what or key))
+    return expect(item[key], kinds, what or key)
+
+
 def read_ruleset(path):
-    """The facts of each ruleset or branch protection in an exported file."""
-    try:
-        with open(path, "rb") as handle:
-            data = handle.read(MAX_BYTES + 1)
-    except OSError as error:
-        raise Fault("%s: cannot read: %s" % (path, error.strerror or error))
-    if len(data) > MAX_BYTES:
-        raise Fault("%s: larger than %d bytes" % (path, MAX_BYTES))
+    """The facts of each ruleset or branch protection in an exported file, read as every other file is."""
+    if os.path.islink(path):
+        raise Fault("%s: a link, not followed" % path)
+    if looks_like_credential(os.path.basename(path)):
+        raise Fault("%s: looks like a credential, not read" % path)
+    data, why = read_file(path)
+    if why is not None:
+        raise Fault("%s: %s" % (path, why))
     try:
         value = registry.parse_json(data)
     except registry.RegistryError as error:
         raise Fault("%s: %s" % (path, error))
     items = value if isinstance(value, list) else [value]
+    if not items:
+        raise Fault("%s: the export holds no ruleset and no branch protection" % path)
     result = []
     for item in items:
         try:
@@ -740,84 +824,115 @@ def read_ruleset(path):
     return result
 
 
+def empty_facts(form):
+    return {"form": form, "name": "", "target": "branch", "enforcement": "active", "include": [], "exclude": [],
+            "required_checks": [], "up_to_date": None, "review": None, "bypass": [], "other_rules": [], "not_read": []}
+
+
+# The parameters of a rule, or fields of a branch protection's review, that are read: field -> (fact, kind).
+RULESET_REVIEW = {"required_approving_review_count": ("approvals", int), "require_code_owner_review": ("code_owner", bool),
+                  "dismiss_stale_reviews_on_push": ("dismiss_stale", bool), "require_last_push_approval": ("last_push", bool),
+                  "required_review_thread_resolution": ("thread_resolution", bool)}
+PROTECTION_REVIEW = {"required_approving_review_count": ("approvals", int), "require_code_owner_reviews": ("code_owner", bool),
+                     "dismiss_stale_reviews": ("dismiss_stale", bool), "require_last_push_approval": ("last_push", bool)}
+REVIEW_FACTS = ("approvals", "code_owner", "dismiss_stale", "last_push", "thread_resolution")
+OTHER_RULES = ("deletion", "non_fast_forward", "creation", "update", "required_linear_history", "required_signatures")
+PROTECTION_TOGGLES = ("allow_force_pushes", "allow_deletions", "required_linear_history", "required_signatures",
+                      "lock_branch", "block_creations", "required_conversation_resolution", "allow_fork_syncing")
+
+
+def review_facts(values, known, prefix, facts):
+    """Each review fact a field gives, None where the export leaves it out; a field it does not know is named."""
+    review = dict.fromkeys(REVIEW_FACTS)
+    for field in sorted(values):
+        if field in known:
+            fact, kind = known[field]
+            review[fact] = optional(values, field, kind)
+        elif field not in ("url", "bypass_pull_request_allowances"):
+            facts["not_read"].append("%s.%s" % (prefix, field))
+    return review
+
+
 def ruleset_facts(item):
-    facts = {"form": "ruleset", "name": expect(item.get("name", ""), str, "name"),
-             "target": expect(item.get("target", "branch"), str, "target"),
-             "enforcement": expect(item.get("enforcement", "active"), str, "enforcement"),
-             "include": [], "exclude": [], "required_checks": [], "up_to_date": None, "review": None,
-             "bypass": [], "other_rules": [], "not_read": []}
-    conditions = expect(item.get("conditions") or {}, dict, "conditions")
-    ref_name = expect(conditions.get("ref_name") or {}, dict, "conditions.ref_name")
+    facts = empty_facts("ruleset")
+    facts["name"] = optional(item, "name", str) or ""
+    facts["target"] = needed(item, "target", str, "ruleset")
+    facts["enforcement"] = needed(item, "enforcement", str, "ruleset")
+    conditions = optional(item, "conditions", dict)
+    ref_name = None if conditions is None else optional(conditions, "ref_name", dict, "conditions.ref_name")
     for field in ("include", "exclude"):
-        facts[field] = [expect(name, str, "conditions.ref_name.%s" % field) for name in expect(ref_name.get(field, []), list, "conditions.ref_name.%s" % field)]
+        if ref_name is None:
+            facts[field] = None
+        else:
+            names = optional(ref_name, field, list, "conditions.ref_name.%s" % field) or []
+            facts[field] = [expect(name, str, "conditions.ref_name.%s" % field) for name in names]
     for rule in expect(item["rules"], list, "rules"):
         rule = expect(rule, dict, "a rule")
-        if "type" not in rule:
+        if rule.get("type") is None:
             raise Fault("a rule without a type")
         kind = expect(rule["type"], str, "type")
-        parameters = expect(rule.get("parameters") or {}, dict, "parameters of %s" % kind)
+        parameters = optional(rule, "parameters", dict, "parameters of %s" % kind) or {}
         if kind == "required_status_checks":
-            for check in expect(parameters.get("required_status_checks", []), list, "required_status_checks"):
-                facts["required_checks"].append(expect(expect(check, dict, "a required status check").get("context"), str, "context"))
-            if "strict_required_status_checks_policy" in parameters:
-                facts["up_to_date"] = expect(parameters["strict_required_status_checks_policy"], bool, "strict_required_status_checks_policy")
+            if parameters.get("required_status_checks") is None:
+                raise Fault("a rule required_status_checks without required_status_checks")
+            for check in expect(parameters["required_status_checks"], list, "required_status_checks"):
+                facts["required_checks"].append(needed(expect(check, dict, "a required status check"), "context", str,
+                                                       "required status check"))
+            facts["up_to_date"] = optional(parameters, "strict_required_status_checks_policy", bool)
+            for field in sorted(set(parameters) - {"required_status_checks", "strict_required_status_checks_policy"}):
+                facts["not_read"].append("required_status_checks.%s" % field)
         elif kind == "pull_request":
-            facts["review"] = {
-                "approvals": expect(parameters.get("required_approving_review_count", 0), int, "required_approving_review_count"),
-                "code_owner": expect(parameters.get("require_code_owner_review", False), bool, "require_code_owner_review"),
-                "dismiss_stale": expect(parameters.get("dismiss_stale_reviews_on_push", False), bool, "dismiss_stale_reviews_on_push"),
-                "last_push": expect(parameters.get("require_last_push_approval", False), bool, "require_last_push_approval"),
-            }
-        elif kind in ("deletion", "non_fast_forward", "creation", "update", "required_linear_history", "required_signatures"):
+            facts["review"] = review_facts(parameters, RULESET_REVIEW, "pull_request", facts)
+        elif kind in OTHER_RULES:
             facts["other_rules"].append(kind)
         else:
             facts["not_read"].append(kind)
-    for actor in expect(item.get("bypass_actors") or [], list, "bypass_actors"):
+    actors = optional(item, "bypass_actors", list)
+    # GitHub leaves bypass_actors out of what it shows an account without admin rights: then it is not known.
+    facts["bypass"] = None if actors is None else []
+    for actor in actors or []:
         actor = expect(actor, dict, "a bypass actor")
-        facts["bypass"].append("%s %s (%s)" % (expect(actor.get("actor_type", "?"), str, "actor_type"),
-                                               actor.get("actor_id") if isinstance(actor.get("actor_id"), int) else "-",
-                                               expect(actor.get("bypass_mode", "always"), str, "bypass_mode")))
+        actor_id = optional(actor, "actor_id", int)
+        facts["bypass"].append("%s %s (%s)" % (needed(actor, "actor_type", str, "bypass actor"),
+                                               "-" if actor_id is None else actor_id,
+                                               needed(actor, "bypass_mode", str, "bypass actor")))
     return facts
 
 
 def protection_facts(item):
-    facts = {"form": "branch protection", "name": "", "target": "branch", "enforcement": "active", "include": [],
-             "exclude": [], "required_checks": [], "up_to_date": None, "review": None, "bypass": [], "other_rules": [],
-             "not_read": []}
-    checks = item.get("required_status_checks")
+    facts = empty_facts("branch protection")
+    checks = optional(item, "required_status_checks", dict)
     if checks is not None:
-        checks = expect(checks, dict, "required_status_checks")
-        names = [expect(name, str, "contexts") for name in expect(checks.get("contexts", []), list, "contexts")]
-        for check in expect(checks.get("checks", []), list, "checks"):
-            name = expect(expect(check, dict, "a check").get("context"), str, "context")
+        if checks.get("contexts") is None and checks.get("checks") is None:
+            raise Fault("required_status_checks without contexts or checks")
+        names = [expect(name, str, "contexts") for name in optional(checks, "contexts", list) or []]
+        for check in optional(checks, "checks", list) or []:
+            name = needed(expect(check, dict, "a check"), "context", str, "check")
             if name not in names:
                 names.append(name)
         facts["required_checks"] = names
-        if "strict" in checks:
-            facts["up_to_date"] = expect(checks["strict"], bool, "strict")
-    reviews = item.get("required_pull_request_reviews")
+        facts["up_to_date"] = optional(checks, "strict", bool)
+    reviews = optional(item, "required_pull_request_reviews", dict)
     if reviews is not None:
-        reviews = expect(reviews, dict, "required_pull_request_reviews")
-        facts["review"] = {
-            "approvals": expect(reviews.get("required_approving_review_count", 0), int, "required_approving_review_count"),
-            "code_owner": expect(reviews.get("require_code_owner_reviews", False), bool, "require_code_owner_reviews"),
-            "dismiss_stale": expect(reviews.get("dismiss_stale_reviews", False), bool, "dismiss_stale_reviews"),
-            "last_push": expect(reviews.get("require_last_push_approval", False), bool, "require_last_push_approval"),
-        }
-        allowances = expect(reviews.get("bypass_pull_request_allowances") or {}, dict, "bypass_pull_request_allowances")
+        facts["review"] = review_facts(reviews, PROTECTION_REVIEW, "required_pull_request_reviews", facts)
+        allowances = optional(reviews, "bypass_pull_request_allowances", dict) or {}
         for field, key, label in (("users", "login", "user"), ("teams", "slug", "team"), ("apps", "slug", "app")):
-            for actor in expect(allowances.get(field, []), list, field):
-                name = expect(expect(actor, dict, "an allowance").get(key), str, key)
+            for actor in optional(allowances, field, list, "bypass_pull_request_allowances.%s" % field) or []:
+                name = needed(expect(actor, dict, "an allowance"), key, str, "allowance")
                 facts["bypass"].append("%s %s (pull requests)" % (label, name))
-    admins = item.get("enforce_admins")
-    if admins is not None:
-        enabled = expect(expect(admins, dict, "enforce_admins").get("enabled"), bool, "enforce_admins.enabled")
-        if not enabled:
-            facts["bypass"].append("administrators (enforce_admins is off)")
-    for field in ("allow_force_pushes", "allow_deletions", "required_linear_history", "required_signatures", "lock_branch"):
-        value = item.get(field)
-        if isinstance(value, dict) and isinstance(value.get("enabled"), bool):
-            facts["other_rules"].append("%s %s" % (field, "on" if value["enabled"] else "off"))
+    admins = optional(item, "enforce_admins", dict)
+    if admins is None:
+        facts["bypass"].append("administrators: enforce_admins not in the export")
+    elif not needed(admins, "enabled", bool, "enforce_admins", "enabled"):
+        facts["bypass"].append("administrators (enforce_admins is off)")
+    for field in PROTECTION_TOGGLES:
+        toggle = optional(item, field, dict)
+        if toggle is not None:
+            enabled = needed(toggle, "enabled", bool, field, "enabled")
+            facts["other_rules"].append("%s %s" % (field, "on" if enabled else "off"))
+    for field in sorted(set(item) - set(PROTECTION_TOGGLES) - {"url", "required_status_checks", "required_pull_request_reviews",
+                                                               "enforce_admins"}):
+        facts["not_read"].append(field)
     return facts
 
 
@@ -833,22 +948,27 @@ def required_names(rulesets):
 
 
 def contexts_of(job, required):
-    """The required checks a job reports as: its id or its name, alone, with a matrix "(...)" or a called " / job".
+    """The required checks a job reports as: its name, alone, with a matrix "(...)" or a called " / job".
 
-    A name that is an expression is known only when the job runs, so only the id is compared."""
-    names = [job["id"]] + ([job["name"]] if job["name"] and "${{" not in job["name"] else [])
+    GitHub reports a job by its literal name when it has one, and by its id only when it has none. A name that is an
+    expression is known only when the job runs, so the id is compared in its place."""
+    name = job["name"] if job["name"] and "${{" not in job["name"] else job["id"]
     return [context for context in required
-            if any(context == name or context.startswith(name + " (") or context.startswith(name + " / ") for name in names)]
+            if context == name or context.startswith(name + " (") or context.startswith(name + " / ")]
 
 
 def code_owners(inventory, layer):
     """The lines of the code owners file GitHub reads, and the files the register names."""
-    owners_file, lines = None, []
+    owners_file, lines, notes = None, [], []
     for rel in (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"):
         path = rel
         if path in inventory.data:
             owners_file = path
-            text = inventory.data[path].decode("utf-8", errors="replace")
+            try:
+                text = inventory.data[path].decode("utf-8", errors="strict")
+            except UnicodeDecodeError as error:
+                notes.append("%s: not UTF-8 at byte %d, its lines are not read" % (path, error.start))
+                break
             for number, line in enumerate(text.split("\n"), 1):
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -856,18 +976,26 @@ def code_owners(inventory, layer):
             break
     names = []
     data = inventory.data.get("register.json")
-    note = None
     if data is not None:
         try:
             register = registry.parse_json(data)
         except registry.RegistryError as error:
-            register, note = None, "register.json: %s" % error
+            register = None
+            notes.append("register.json: %s" % error)
+        if register is not None and not isinstance(register, dict):
+            notes.append("register.json: not a JSON object, not read")
         if isinstance(register, dict):
             values = []
             if isinstance(register.get("instructions"), str):
                 values.append(register["instructions"])
             for part in ("adopted", "own"):
-                for row in register.get(part) or []:
+                rows = register.get(part)
+                if rows is None:
+                    continue
+                if not isinstance(rows, list):
+                    notes.append("register.json: %s is not a list, not read" % part)
+                    continue
+                for row in rows:
                     if not isinstance(row, dict):
                         continue
                     if isinstance(row.get("stands_in"), str):
@@ -875,15 +1003,21 @@ def code_owners(inventory, layer):
                     if isinstance(row.get("where"), str):
                         for match in SPAN.finditer(row["where"]):
                             value = candidate(match.group(1), "span")
-                            if value is not None:
-                                values.append(value.lstrip("?"))
+                            if value is None:
+                                continue
+                            # A word such as owner/repo is a path only when its first part exists, as in a file.
+                            if value.startswith("?"):
+                                value = value[1:]
+                                if not os.path.lexists(os.path.join(layer.top, value.split("/", 1)[0])):
+                                    continue
+                            values.append(value)
             for value in values:
                 full = os.path.join(layer.top, *value.split("/"))
                 if within(layer.top, full) and value not in [name for name, _ in names]:
                     names.append([value, os.path.lexists(full)])
     if owners_file is None and data is None:
         return None
-    return {"file": owners_file, "lines": lines, "register_names": names, "note": note}
+    return {"file": owners_file, "lines": lines, "register_names": names, "note": "; ".join(notes) or None}
 
 
 def build(args):
@@ -893,10 +1027,14 @@ def build(args):
     uses = None
     if args.uses is not None:
         uses = [name.strip() for name in args.uses.split(",") if name.strip()]
+        if not uses:
+            raise Fault("--uses names no harness: give the harnesses the project uses, such as --uses claude,codex")
         for name in uses:
             if name not in HARNESSES:
                 raise Fault("unknown harness %r: the harnesses this inventory knows are %s" % (name, ", ".join(HARNESSES)))
         uses = sorted(set(uses))
+    if args.home is not None and not args.use_global:
+        raise Fault("--home names the home folder for --global, and --global was not given")
     rulesets = []
     for path in args.ruleset or []:
         rulesets += read_ruleset(path)
@@ -966,12 +1104,28 @@ def yes(value):
     return "yes" if value else "no"
 
 
+def review_line(review):
+    """The facts of a required review, each "not in the export" where the export leaves it out."""
+    parts = []
+    if review["approvals"] is None:
+        parts.append("approvals not in the export")
+    else:
+        parts.append("%d approval%s" % (review["approvals"], "" if review["approvals"] == 1 else "s"))
+    for fact, label in (("code_owner", "code owner review"), ("dismiss_stale", "stale reviews dismissed on push"),
+                        ("last_push", "last push approval"), ("thread_resolution", "conversations resolved")):
+        if review[fact] is not None:
+            parts.append("%s %s" % (label, yes(review[fact])))
+        elif fact != "thread_resolution":
+            parts.append("%s not in the export" % label)
+    return ", ".join(parts)
+
+
 def text_report(facts):
     out = []
     add = out.append
     add("inventory of %s" % shown(facts["root"]) + (", with the global layer" if facts["global"] else ""))
     add("")
-    add("The agent layer: %d files" % len(facts["files"]))
+    add("The agent layer: %d file%s" % (len(facts["files"]), "" if len(facts["files"]) == 1 else "s"))
     for entry in facts["files"]:
         line = "  %s  %s  %s" % (shown(entry["path"]), entry["kind"], ", ".join(entry["harnesses"]))
         if entry["facts"]:
@@ -1031,7 +1185,9 @@ def text_report(facts):
         for item in facts["rulesets"]:
             title = "  %s%s, target %s, enforcement %s" % (item["form"], " " + shown(item["name"]) if item["name"] else "",
                                                           shown(item["target"]), shown(item["enforcement"]))
-            if item["include"]:
+            if item["include"] is None:
+                title += ", branches not in the export"
+            elif item["include"]:
                 title += ", on " + ", ".join(shown(name) for name in item["include"])
             if item["exclude"]:
                 title += ", not on " + ", ".join(shown(name) for name in item["exclude"])
@@ -1039,15 +1195,13 @@ def text_report(facts):
             if item["enforcement"] != "active":
                 add("    enforcement %s: GitHub does not enforce it" % shown(item["enforcement"]))
             review = item["review"]
-            if review is None:
-                add("    required review: none")
-            else:
-                add("    required review: %d approval%s, code owner review %s, stale reviews dismissed on push %s, last push approval %s"
-                    % (review["approvals"], "" if review["approvals"] == 1 else "s", yes(review["code_owner"]),
-                       yes(review["dismiss_stale"]), yes(review["last_push"])))
+            add("    required review: %s" % ("none" if review is None else review_line(review)))
             add("    required checks: %s%s" % (", ".join(shown(name) for name in item["required_checks"]) or "none",
                                                "" if item["up_to_date"] is None else "; branch up to date: %s" % yes(item["up_to_date"])))
-            add("    bypass: %s" % (", ".join(shown(name) for name in item["bypass"]) or "none"))
+            if item["bypass"] is None:
+                add("    bypass: not shown in the export (GitHub shows it only to an account with admin rights)")
+            else:
+                add("    bypass: %s" % (", ".join(shown(name) for name in item["bypass"]) or "none"))
             if item["other_rules"]:
                 add("    other rules: %s" % ", ".join(shown(name) for name in item["other_rules"]))
             if item["not_read"]:
