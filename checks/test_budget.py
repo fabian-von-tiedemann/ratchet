@@ -31,8 +31,9 @@ import registry  # noqa: E402
 CAP = 17
 # The experimental rules after D-2026-11-20-proposal-triage: 24, one added, one merged into another, three removed and
 # two moved into this repo's own rules. Step 2 of D-2026-11-22-second-redraw takes out six more: one merged into
-# ratchet.cr-wake, and five that leave as a handbook line, as a sentence of another rule, or as a duplicate.
-EXPERIMENTAL = 24 + 1 - 1 - 3 - 2 - 6
+# ratchet.cr-wake, and five that leave as a handbook line, as a sentence of another rule, or as a duplicate. Step 3 takes
+# out three: one merged into ratchet.si-harden, one moved to CONTRIBUTING.md and one moved into this repo's own rules.
+EXPERIMENTAL = 24 + 1 - 1 - 3 - 2 - 6 - 3
 # The rules that D-2026-11-20-proposal-triage, choice 5, takes out of ratchet.json, and where each went.
 GONE = {
     "ratchet.cr-background-wait": "merged into ratchet.cr-wake",
@@ -50,6 +51,12 @@ CLEANED_OUT = {
     "ratchet.cr-quiet-hours": "R7, a line of the handbook template",
     "ratchet.cr-verify-reports": "R11, a duplicate of ratchet.evidence-before-done",
     "ratchet.phases": "R8, one sentence into ratchet.cr-workspace and a section of the handbook template",
+}
+# The rules that step 3 of D-2026-11-22-second-redraw takes out of ratchet.json, and where each went.
+LOOP_CLEANED_OUT = {
+    "ratchet.si-repeat-is-signal": "merged into ratchet.si-harden, the rule and its count together",
+    "ratchet.si-promote": "M1, the same text in CONTRIBUTING.md",
+    "ratchet.si-subtract": "M2, the own rule repo.subtract with the same text",
 }
 NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
@@ -198,6 +205,51 @@ class Triage(RepoCopy, unittest.TestCase):
             self.assertIn(words, classes)
         for path in ("`docs/`", "`CHANGELOG.md`", "`decisions/`", "`templates/`"):
             self.assertNotIn(path, self.by_key["ratchet.review-by-risk"]["rule"])
+
+    def test_the_loops_cleaned_out_rules_are_gone_and_stand_where_the_decision_put_them(self):
+        # D-2026-11-22-second-redraw, step 3 of the migration, and the rows M1 and M2 of its table of losses.
+        for key in LOOP_CLEANED_OUT:
+            with self.subTest(key=key):
+                self.assertNotIn(key, self.by_key)
+                self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
+                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "REGISTER.md", "AGENTS.md",
+                             "CONTRIBUTING.md", os.path.join("templates", "LESSON.md")):
+                    self.assertNotIn(key, read(name), name)
+        old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
+        # M1: the text of ratchet.si-promote, unchanged since 0.9, stands in CONTRIBUTING.md.
+        self.assertIn("> " + old["ratchet.si-promote"]["rule"] + "\n", read("CONTRIBUTING.md"))
+        # M2: the own rule has the rule and the ratchet of ratchet.si-subtract as 0.10 left it.
+        own = dict((item["key"], item) for item in self.register["own"])
+        self.assertEqual(own["repo.subtract"]["rule"],
+                         "A core rule may be removed only when a check covers it completely, or when a stronger or simpler rule "
+                         "replaces it. A core rule that has never been triggered is a candidate for review, not for removal. An "
+                         "experimental rule may also be removed in the clean-out at a release, once it has stood through three "
+                         "releases and 60 days with no decision to keep it.")
+        self.assertEqual(own["repo.subtract"]["ratchet"], "Text only: a check cannot judge whether a check covers a rule completely")
+
+    def test_si_harden_holds_the_repeat_and_its_count_and_says_what_makes_a_check_built(self):
+        # D-2026-11-22-second-redraw: si-harden takes ratchet.si-repeat-is-signal, the rule and its count together, and the
+        # definition of "built" by enforcement point (T6), which is a convention, text only for the enforcement half.
+        harden = self.by_key["ratchet.si-harden"]
+        self.assertEqual((harden["status"], harden["enforcement"], harden["since"], harden["part"]),
+                         ("experimental", "enforced", "0.2", "tightening"))
+        for words in ('A rule whose ratchet is "text only" is turned into a check as soon as a check can see it.',
+                      "failed at least once on a real or seeded violation", "only where it can refuse",
+                      "a merge check is required for the merge and reads its rules from the base branch",
+                      "a hook runs in every harness the project uses",
+                      "a scheduled check posts its result and is red when the post is late",
+                      "no deploy can run without a deploy check",
+                      "When a failure class comes back after a lesson, the lesson's ratchet was too weak.",
+                      "The response is a stronger ratchet.", "Rewording the rule is not a response."):
+            self.assertIn(words, harden["rule"])
+        for words in ("Check: the periodic count of rules by kind of ratchet", "and of repeated failure classes", "a convention"):
+            self.assertIn(words, harden["ratchet"])
+        self.assertEqual(harden["source"], "pstack `principle-encode-lessons-in-structure`")
+        glossary = read("GLOSSARY.md")
+        self.assertIn("| built | ", glossary)
+        for words in ("required for the merge and reads its rules from the base branch", "runs in every harness the project uses",
+                      "is red when the post is late", "no deploy can run without it", "This is a convention, not something a check verifies"):
+            self.assertIn(words, glossary)
 
     def test_background_wait_is_merged_into_wake_which_keeps_its_key_and_since(self):
         wake = self.by_key["ratchet.cr-wake"]

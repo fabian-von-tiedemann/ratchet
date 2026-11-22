@@ -536,31 +536,9 @@
       "status": "experimental",
       "since": "0.2",
       "enforcement": "enforced",
-      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. The share of rules enforced by a check is the measure of how tight a project is. A check counts only if it has failed at least once on a real or seeded violation.",
-      "ratchet": "Check: the periodic count of rules by kind of ratchet",
-      "source": ""
-    },
-    {
-      "key": "ratchet.si-repeat-is-signal",
-      "part": "tightening",
-      "principle": "principle.failure-becomes-check",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "enforced",
-      "rule": "When a failure class comes back after a lesson, the lesson's ratchet was too weak. The response is a stronger ratchet, moving from text to a check where possible. Rewording the rule is not a response.",
-      "ratchet": "Check: the periodic count of repeated failure classes",
+      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. A check counts as built only after it has failed at least once on a real or seeded violation, and only where it can refuse: a merge check is required for the merge and reads its rules from the base branch, a hook runs in every harness the project uses, a scheduled check posts its result and is red when the post is late, and no deploy can run without a deploy check. When a failure class comes back after a lesson, the lesson's ratchet was too weak. The response is a stronger ratchet. Rewording the rule is not a response.",
+      "ratchet": "Check: the periodic count of rules by kind of ratchet, and of repeated failure classes. It does not see where a check runs or whether it has failed, so what makes a check built is a convention, and the register says where each check is enforced",
       "source": "pstack `principle-encode-lessons-in-structure`"
-    },
-    {
-      "key": "ratchet.si-promote",
-      "part": "tightening",
-      "principle": "principle.failure-becomes-check",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "A lesson that would have applied in another project becomes a PR to Ratchet within a week, with what happened, the ratchet and the result in the project. Everything that identifies the project is removed first.",
-      "ratchet": "Text only: Ratchet cannot see a lesson that was never sent",
-      "source": ""
     },
     {
       "key": "ratchet.si-pull",
@@ -582,17 +560,6 @@
       "enforcement": "enforced",
       "rule": "Every two weeks, the project reports four numbers: review rounds before approval, decisions that came up after work started, repeated failure classes, and the share of rules enforced by a check. The trend goes in the status issue.",
       "ratchet": "Check: the report is a scheduled job, and the status issue shows the date of the last one",
-      "source": ""
-    },
-    {
-      "key": "ratchet.si-subtract",
-      "part": "tightening",
-      "principle": "principle.subtract-first",
-      "status": "experimental",
-      "since": "0.2",
-      "enforcement": "text-only",
-      "rule": "A core rule may be removed only when a check covers it completely, or when a stronger or simpler rule replaces it. A core rule that has never been triggered is a candidate for review, not for removal. An experimental rule may also be removed in the clean-out at a release, once it has stood through three releases and 60 days with no decision to keep it.",
-      "ratchet": "Text only: a check cannot judge whether a check covers a rule completely",
       "source": ""
     },
     {

@@ -62,7 +62,7 @@ Guidance, text only. Rules under it: `ratchet.test-first` (names a check), `ratc
 
 What caused this failure\, and which test goes red on it and stays\? Does the fix close the class or only this case\, and which check will hold the lesson\, or why does it stay text only\? If the failure has come back\, reach for a stronger ratchet rather than new words\, and ask whether the project is getting tighter or only heavier\.
 
-Guidance, text only. Rules under it: `ratchet.root-cause` (names a check), `ratchet.lesson-names-check` (names a check), `ratchet.lesson-loop` (text only), `ratchet.si-harden` (experimental, names a check), `ratchet.si-repeat-is-signal` (experimental, names a check), `ratchet.si-promote` (experimental, text only), `ratchet.si-measure` (experimental, names a check)
+Guidance, text only. Rules under it: `ratchet.root-cause` (names a check), `ratchet.lesson-names-check` (names a check), `ratchet.lesson-loop` (text only), `ratchet.si-harden` (experimental, names a check), `ratchet.si-measure` (experimental, names a check)
 
 ### Keep secrets out
 
@@ -86,7 +86,7 @@ Guidance, text only. Rules under it: `ratchet.work-in-issues` (text only), `ratc
 
 What is the simplest thing that meets the requirement\, is there a proven one\, and could something be removed instead of added\? Does each slice fit a fresh context\, and does each experiment say beforehand what would prove it wrong\? Before you remove a rule\, a guard or a test\, ask what it caught and what will catch it after\, and if nothing will\, ask the owner\.
 
-Guidance, text only. Rules under it: `ratchet.reuse-first` (text only), `ratchet.simplest` (text only), `ratchet.slices` (text only), `ratchet.experiment-plan` (text only), `ratchet.si-subtract` (experimental, text only)
+Guidance, text only. Rules under it: `ratchet.reuse-first` (text only), `ratchet.simplest` (text only), `ratchet.slices` (text only), `ratchet.experiment-plan` (text only)
 <!-- /generated -->
 
 ## The core is frozen
@@ -96,7 +96,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions

@@ -1895,7 +1895,7 @@ footer .links {
 <li>
 <h3><a href="https://github.com/cursor/plugins/tree/HEAD/pstack">pstack</a></h3>
 <p>By Lauren Tan. Ratchet takes the idea that a lesson belongs in structure and not in words, which is what each ratchet does. Also: question the premise after failures in a row, fix the root cause, subtract before you add, and ask whether a finding is proven.</p>
-<p class="meta">License <span class="license">MIT</span><br>Cited by <code>ratchet.two-rounds</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.simplest</code>, <code>ratchet.lesson-names-check</code>, <code>ratchet.si-repeat-is-signal</code></p>
+<p class="meta">License <span class="license">MIT</span><br>Cited by <code>ratchet.two-rounds</code>, <code>ratchet.findings-marked</code>, <code>ratchet.root-cause</code>, <code>ratchet.simplest</code>, <code>ratchet.lesson-names-check</code>, <code>ratchet.si-harden</code></p>
 </li>
 <li>
 <h3><a href="https://github.com/obra/superpowers">obra/superpowers</a></h3>
@@ -1908,7 +1908,7 @@ footer .links {
 <p class="kicker"><span>06</span> Tighter, not heavier</p>
 <h2 id="stays-tight">How it stays tight</h2>
 <p class="intro">Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
-<p id="budget" class="stat"><strong>13 experimental rules, with a cap of 17.</strong> The core holds 35 rules and is frozen: 17 name a check and 18 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
+<p id="budget" class="stat"><strong>10 experimental rules, with a cap of 17.</strong> The core holds 35 rules and is frozen: 17 name a check and 18 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
 <ul class="points">
 <li><strong>The core is frozen.</strong> No rule is added to it or removed from it without the maintainer's decision. A new rule starts as experimental, outside the core. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></span></li>
 <li><strong>The experimental rules have a cap.</strong> A new one replaces, merges or removes one, or a decision raises the cap, and Ratchet uses it itself or says why it cannot. Over the cap, <code>generate.py --check</code> is red and nothing is generated. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md#the-budget">The budget</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-pull-and-budget.md">the decision</a></span></li>

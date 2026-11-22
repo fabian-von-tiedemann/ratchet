@@ -994,7 +994,7 @@ class PageSources(RepoCopy, unittest.TestCase):
               "ratchet.test-first", "ratchet.slices")),
             ("https://github.com/cursor/plugins/tree/HEAD/pstack", "pstack", "MIT",
              ("ratchet.two-rounds", "ratchet.findings-marked", "ratchet.root-cause", "ratchet.simplest",
-              "ratchet.lesson-names-check", "ratchet.si-repeat-is-signal")),
+              "ratchet.lesson-names-check", "ratchet.si-harden")),
             ("https://github.com/obra/superpowers", "obra/superpowers", "MIT",
              ("ratchet.verify-findings", "ratchet.evidence-before-done")),
         )

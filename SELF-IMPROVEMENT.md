@@ -11,7 +11,7 @@ Two owners appear below. The **project's owner** approves lessons in the project
 1. **Something fails.** A review rejects a change, an experiment fails, or a bug reaches the main branch.
 2. **Capture the lesson.** The project writes it down with [templates/LESSON.md](templates/LESSON.md): what happened, the failure class, the ratchet, and whether it would apply elsewhere (`ratchet.lesson-names-check`).
 3. **Tighten locally.** The project's owner approves the lesson (`ratchet.lesson-loop`). The project adds the ratchet, as a check if a check can see it.
-4. **Promote.** If the lesson would have applied in another project, it becomes a PR to Ratchet, with the evidence.
+4. **Promote.** If the lesson would have applied in another project, it becomes a PR to Ratchet, with the evidence. Ratchet invites this in [CONTRIBUTING.md](CONTRIBUTING.md#a-lesson-from-a-project). It is not a rule, since Ratchet cannot see a lesson that was never sent.
 5. **Release.** Ratchet gets a new version, a tag and a changelog entry. Changes are collected under the first entry of the changelog, headed `(unreleased)`, and released together when the entry gets its date.
 6. **Pull.** Projects see that they are behind and upgrade in a PR of its own.
 7. **Measure.** At a fixed interval, each project counts how tight it has become and whether any failure class came back.
@@ -21,12 +21,9 @@ Two owners appear below. The **project's owner** approves lessons in the project
 <!-- generated:table tightening -->
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
-| ratchet.si-harden | A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it\. The share of rules enforced by a check is the measure of how tight a project is\. A check counts only if it has failed at least once on a real or seeded violation\. | Check\: the periodic count of rules by kind of ratchet | — |
-| ratchet.si-repeat-is-signal | When a failure class comes back after a lesson\, the lesson\'s ratchet was too weak\. The response is a stronger ratchet\, moving from text to a check where possible\. Rewording the rule is not a response\. | Check\: the periodic count of repeated failure classes | pstack `principle-encode-lessons-in-structure` |
-| ratchet.si-promote | A lesson that would have applied in another project becomes a PR to Ratchet within a week\, with what happened\, the ratchet and the result in the project\. Everything that identifies the project is removed first\. | Text only\: Ratchet cannot see a lesson that was never sent | — |
+| ratchet.si-harden | A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it\. A check counts as built only after it has failed at least once on a real or seeded violation\, and only where it can refuse\: a merge check is required for the merge and reads its rules from the base branch\, a hook runs in every harness the project uses\, a scheduled check posts its result and is red when the post is late\, and no deploy can run without a deploy check\. When a failure class comes back after a lesson\, the lesson\'s ratchet was too weak\. The response is a stronger ratchet\. Rewording the rule is not a response\. | Check\: the periodic count of rules by kind of ratchet\, and of repeated failure classes\. It does not see where a check runs or whether it has failed\, so what makes a check built is a convention\, and the register says where each check is enforced | pstack `principle-encode-lessons-in-structure` |
 | ratchet.si-pull | Each project states which version of Ratchet it follows\. A check warns when the project is behind the latest tag\. The upgrade is made in a PR of its own\. | Check\: compare the stated version with Ratchet\'s latest tag | — |
 | ratchet.si-measure | Every two weeks\, the project reports four numbers\: review rounds before approval\, decisions that came up after work started\, repeated failure classes\, and the share of rules enforced by a check\. The trend goes in the status issue\. | Check\: the report is a scheduled job\, and the status issue shows the date of the last one | — |
-| ratchet.si-subtract | A core rule may be removed only when a check covers it completely\, or when a stronger or simpler rule replaces it\. A core rule that has never been triggered is a candidate for review\, not for removal\. An experimental rule may also be removed in the clean\-out at a release\, once it has stood through three releases and 60 days with no decision to keep it\. | Text only\: a check cannot judge whether a check covers a rule completely | — |
 <!-- /generated -->
 
 ## What 1.0 promises
@@ -95,5 +92,5 @@ If the number of rules grows while these numbers stand still, Ratchet is getting
 The count is computed from `ratchet.json` by `checks/generate.py --count` and stated with every version in the [changelog](CHANGELOG.md). The share covers the core. A rule counts as shipped with a reference check only if that check has a fixture it fails on.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->

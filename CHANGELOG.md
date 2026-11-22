@@ -3,7 +3,7 @@
 ## 0.11 (unreleased)
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 13 experimental rules, under a cap of 17: 8 name a check and 5 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.11, computed from `ratchet.json`: the core has 35 rules. 17 name a check and 18 are text only (51%). Ratchet ships a reference check for 1 of the 17. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 Step 2 of the migration in the decision `D-2026-11-22-second-redraw`: the clean-out of the control room's experimental rules. Six experimental rules leave, three are changed, and the cap goes from 23 to 17. No core rule changes. What each rule that leaves loses is a row of the table "What is lost, and what is authorized" in that decision, R4 to R8 and R11, and Ratchet's own path list moves out by row M3. Nothing else is lost.
@@ -31,6 +31,22 @@ Changed:
 - This repo's register takes `ratchet.cr-does-not-build` and `ratchet.cr-verify-reports` out of `adopted`, and the new entry of `ratchet.review-by-risk` in. Ratchet's own light and full classes are its own rule `repo.review-classes`, word for word as `D-2026-11-19-review-by-risk` has them.
 - `CONTROL-ROOM.md` points to the handbook template for the ways of working that are not rules. `UPGRADING.md` says what a register does from 0.10 to 0.11. `README.md`, `checks/README.md` and `docs/index.html` no longer cite the rules that left or the cap of 23.
 - The tests that pinned the cap, the count of experimental rules or a rule that left count again: `checks/test_budget.py`, `test_age.py`, `test_tripwire.py`, `test_upgrade.py`, `test_pages.py` and `test_checks.py`. `test_budget.py` checks that each rule that left is gone and that its handbook line stands, and that Ratchet's own classes are an own rule. No rule enters in 0.11, so the tests of a rule that enters make `ratchet.review-by-risk` enter in a copy.
+
+Step 3 of the migration in `D-2026-11-22-second-redraw`: the clean-out of the loop, and the definition of "built". Three experimental rules leave and one is changed. No core rule changes, and the cap stays 17. What the two rules that move out lose is the rows M1 and M2 of the decision's table of losses, and `ratchet.si-harden` is tightened by row T6. Nothing else is lost.
+
+Removed and moved:
+
+- `ratchet.si-repeat-is-signal` is merged into `ratchet.si-harden`, the rule and its count together.
+- `ratchet.si-promote` leaves. Its text stands, the same, in `CONTRIBUTING.md`, "A lesson from a project", as an invitation (M1). `SELF-IMPROVEMENT.md`, step 4 of the loop, and `templates/LESSON.md` point there.
+- `ratchet.si-subtract` leaves, and is this repo's own rule `repo.subtract`, with the same rule and ratchet (M2). `CONTRIBUTING.md` cites it.
+- The count: 13 experimental rules before this, less the three, is 10, under a cap of 17.
+
+Changed:
+
+- `ratchet.si-harden` says when a check counts as built: after it has failed at least once on a real or seeded violation, as before, and only where it can refuse, by the kind of check, as the decision's table has it (T6). It holds what was `ratchet.si-repeat-is-signal`. Its ratchet counts repeated failure classes as well as rules by kind of ratchet, and says that what makes a check built is a convention. Two pieces of prose that repeat themselves leave it, as the decision asks: "moving from text to a check where possible", which the first sentence says, and "The share of rules enforced by a check is the measure of how tight a project is", which `ratchet.si-measure` reports as one of its numbers and the section of `SELF-IMPROVEMENT.md` on what "tighter" means says. Its source is the source of `ratchet.si-repeat-is-signal`.
+- `GLOSSARY.md` defines "built", by where a check is enforced, as a convention that no check verifies: `check_register.py` reads the status `built` as a register states it.
+- This repo's register takes the new entry of `ratchet.si-harden`, still "text only for now", and its `where` adds that nothing counts repeated failure classes. `UPGRADING.md` says what a register does with the three rules. `README.md` and `docs/index.html` no longer cite the rules that left.
+- The tests that pinned the count of experimental rules or a rule that left count again: `checks/test_budget.py`, `test_age.py`, `test_tripwire.py`, `test_upgrade.py` and `test_pages.py`. `test_budget.py` checks that the three rules are gone, that the text of `ratchet.si-promote` stands in `CONTRIBUTING.md` and that of `ratchet.si-subtract` in `repo.subtract`, and what `ratchet.si-harden` and the glossary say of "built".
 
 ## 0.10 (2026-11-21)
 
