@@ -1585,7 +1585,7 @@ footer .links {
 <p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a></p>
 <p class="plate hero">
 <svg class="fig fig-dial" viewBox="0 84 760 336" width="760" height="336" role="img" aria-labelledby="fig-dial-title" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" font-family="monospace" font-size="11">
-<title id="fig-dial-title">The mark: a round dial with seven one-way notches. Around it, one label per notch, the seven principles of Ratchet. The pointer clicks from notch to notch, and the principle it points at lights up.</title>
+<title id="fig-dial-title">The mark: a round dial with seven one-way notches. Around it, one label per notch, the seven principles of Ratchet for every project. The pointer clicks from notch to notch, and the principle it points at lights up.</title>
 <g transform="translate(380 250)"><path class="dial m-dial" d="M0 -104 A104 104 0 0 1 65.2 -81 L70.8 -56.4 L81.3 -64.8 A104 104 0 0 1 104 0.5 L88.2 20.1 L101.4 23.1 A104 104 0 0 1 64.4 81.6 L39.3 81.5 L45.1 93.7 A104 104 0 0 1 -23.6 101.3 L-39.3 81.5 L-45.1 93.7 A104 104 0 0 1 -93.9 44.7 L-88.2 20.1 L-101.4 23.1 A104 104 0 0 1 -93.5 -45.6 L-70.8 -56.4 L-81.3 -64.8 A104 104 0 0 1 -22.6 -101.5 L0 -90.5 L0 -104Z"></path><circle class="m-ring" cx="0" cy="0" r="68.6"></circle><g class="c-step"><g class="c-tick"><path class="m-ptr" d="M-9.4 -20.8 L0 -77 L9.4 -20.8 Z"></path></g></g><circle class="m-hub" cx="0" cy="0" r="15.6"></circle></g>
 <path class="lab-leader" d="M380 133 L380 122 M471.5 177.1 L480.1 170.2 M494.1 276 L504.8 278.5 M430.8 355.4 L435.5 365.3 M329.2 355.4 L324.5 365.3 M265.9 276 L255.2 278.5 M288.5 177.1 L279.9 170.2"></path>
 <circle class="dot n0" cx="380" cy="138" r="3.2"></circle>
@@ -1607,7 +1607,7 @@ footer .links {
 <text class="lab n5" x="247.4" y="284.3" text-anchor="end">06 Guard the boundaries</text>
 <text class="lab n6" x="273.7" y="169.2" text-anchor="end">07 Subtract first</text>
 </svg>
-<span class="cap"><strong>Fig. 1</strong> The seven principles of Ratchet, one per notch. A principle is guidance and names no check. What is checked is the rules under it: each check catches only the fault it was made for, and a rule that no check can see is listed as text only. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md#the-principles">The principles</a></span>
+<span class="cap"><strong>Fig. 1</strong> The seven principles of Ratchet for every project, one per notch. Three more, for an application in production, stand over the opt-in rules of the product module and are not on the dial. A principle is guidance and names no check. What is checked is the rules under it: each check catches only the fault it was made for, and a rule that no check can see is listed as text only. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md#the-principles">The principles</a></span>
 </p>
 <ol class="principle-list">
 <li>Keep one place</li>
@@ -1878,7 +1878,7 @@ footer .links {
 <p class="kicker"><span>06</span> Tighter, not heavier</p>
 <h2 id="stays-tight">How it stays tight</h2>
 <p class="intro">Tighter does not mean more rules. It means more of the rules are enforced by a check, and fewer failure classes come back (<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#what-tighter-means">what tighter means</a>).</p>
-<p id="budget" class="stat"><strong>10 experimental rules, with a cap of 17.</strong> The core holds 19 rules and is frozen: 13 name a check and 6 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
+<p id="budget" class="stat"><strong>17 experimental rules, with a cap of 17.</strong> The core holds 19 rules and is frozen: 13 name a check and 6 are text only. Counted by <code>checks/generate.py</code> from <code>ratchet.json</code>.</p>
 <ul class="points">
 <li><strong>The core is frozen.</strong> No rule is added to it or removed from it without the maintainer's decision. A new rule starts as experimental, outside the core. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-core-is-frozen">The core is frozen</a></span></li>
 <li><strong>The experimental rules have a cap.</strong> A new one replaces, merges or removes one, or a decision raises the cap, and Ratchet uses it itself or says why it cannot. Over the cap, <code>generate.py --check</code> is red and nothing is generated. <span class="refs"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md#the-budget">The budget</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/decisions/D-2026-11-17-pull-and-budget.md">the decision</a></span></li>

@@ -38,10 +38,12 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   item starts with a link to the source, named by its name, gives its license once in an element of the class
   "license", and names in <code>, in the order of ratchet.json, exactly the rules whose source cites it
 - each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it
-- the dial of the principles, <svg class="fig-dial">, labels its notches with the titles of the principles in
-  ratchet.json, "01 " and the first, and so on, in order, and holds no other <text>. The list <ol
-  class="principle-list">, for a narrow screen, holds the same titles in the same order. A principle added, removed,
-  moved or renamed fails until the dial is drawn again and the list follows. generate.py writes neither, since the
+- the dial of the principles, <svg class="fig-dial">, labels its notches with the titles of the principles of the
+  core in ratchet.json, "01 " and the first, and so on, in order, and holds no other <text>. A principle of the core
+  is one with a core rule under it: principles 8 to 10, for an application in production, have only the experimental
+  rules of the product module under them, and stay off the dial (D-2026-11-22-second-redraw). The list <ol
+  class="principle-list">, for a narrow screen, holds the same titles in the same order. A principle of the core
+  added, removed, moved or renamed fails until the dial is drawn again and the list follows. generate.py writes neither, since the
   place and wrapping of each label are part of the drawing.
 
 The line that fetches Ratchet is checked by generate.py, which writes it: it names the newest version with a date
@@ -1317,8 +1319,14 @@ class DialReader(html.parser.HTMLParser):
             self.text[1].append(data)
 
 
+def core_principles(data):
+    """The principles with at least one core rule under them, in the order of ratchet.json: the ones the dial shows."""
+    return [principle for principle in data["principles"]
+            if any(rule["status"] == "core" for rule in registry.rules_under(data, principle["key"]))]
+
+
 def dial_problems(root):
-    """Why the dial on the page, or its list, does not name the principles in ratchet.json, in order.
+    """Why the dial on the page, or its list, does not name the principles of the core in ratchet.json, in order.
 
     The page holds one dial. Its labels stand by notch, n0 first, and notch k is labelled by one or more <text>
     elements in a row. Joined with a space, they read "01 " and the title of the first principle, "02 " and the title
@@ -1342,7 +1350,7 @@ def dial_problems(root):
             groups[-1][1].append(text)
         else:
             groups.append((notch, [text]))
-    titles = [principle["title"] for principle in registry.load(os.path.join(root, "ratchet.json"))["principles"]]
+    titles = [principle["title"] for principle in core_principles(registry.load(os.path.join(root, "ratchet.json")))]
     problems = []
     expected = [(at, "%02d %s" % (at + 1, title)) for at, title in enumerate(titles)]
     found = [(notch, " ".join(parts)) for notch, parts in groups]
@@ -1369,8 +1377,10 @@ class PageDial(RepoCopy, unittest.TestCase):
         problems = dial_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_dial_and_its_list_name_the_seven_principles_in_order(self):
+    def test_the_dial_and_its_list_name_the_seven_principles_of_the_core_in_order(self):
         self.assertEqual(dial_problems(ROOT), [])
+        data = registry.load(os.path.join(ROOT, "ratchet.json"))
+        self.assertEqual(core_principles(data), data["principles"][:7])
         self.assertEqual(dial_problems(self.copy), [])
         reader = DialReader()
         reader.feed(self.page())
@@ -1405,14 +1415,33 @@ class PageDial(RepoCopy, unittest.TestCase):
 
     def test_a_principle_removed_from_ratchet_json_fails(self):
         def remove(data):
-            # Every rule names a principle, so the rules under the last one move under the first.
-            gone = data["principles"].pop()
+            # Every rule names a principle, so the rules under the last principle of the core move under the first.
+            gone = core_principles(data)[-1]
+            data["principles"].remove(gone)
             for rule in data["rules"]:
                 if rule["principle"] == gone["key"]:
                     rule["principle"] = data["principles"][0]["key"]
         self.rewrite_principles(remove)
         self.assert_dial_fails("the labels of the dial")
         self.assert_dial_fails("the list of the principles is")
+
+    def test_a_principle_of_the_product_module_that_gets_a_core_rule_fails(self):
+        def move(data):
+            # A core rule of a principle that keeps another moves under principle 10, which then belongs on the dial.
+            keys = [rule["principle"] for rule in data["rules"]]
+            rule = next(rule for rule in data["rules"] if rule["status"] == "core" and keys.count(rule["principle"]) > 1)
+            rule["principle"] = data["principles"][-1]["key"]
+        self.rewrite_principles(move)
+        self.assert_dial_fails("the labels of the dial")
+        self.assert_dial_fails("the list of the principles is")
+
+    def test_a_principle_with_only_experimental_rules_is_not_on_the_dial(self):
+        def add(data):
+            rule = next(rule for rule in data["rules"] if rule["key"] == "ratchet.measure-real-use")
+            rule["principle"] = "principle.example"
+            data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
+        self.rewrite_principles(add)
+        self.assertEqual(dial_problems(self.copy), [])
 
     def test_two_principles_swapped_in_ratchet_json_fail(self):
         def swap(data):
