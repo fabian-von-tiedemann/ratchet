@@ -1,6 +1,6 @@
 {
   "project": "the example project",
-  "ratchet_version": "0.12",
+  "ratchet_version": "0.13",
   "instructions": "AGENTS.md",
   "adopted": [
     {
