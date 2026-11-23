@@ -1077,18 +1077,29 @@ def needed(item, key, kinds, form, what=None):
     return expect(item[key], kinds, what or key)
 
 
+# What a refusal for a link on the path of an export adds: how to give it without one (review of #119).
+NO_LINK = ("Give the path with no link on it: as realpath prints it, or relative from a folder below the link, such as "
+           "/private/tmp on macOS in place of /tmp")
+
+
 def read_ruleset(path):
     """The facts of each ruleset or branch protection in an exported file, read as every other file is."""
-    if looks_like_credential(os.path.basename(path)):
-        raise Fault("%s: looks like a credential, not read" % path)
     # Read from the current folder, or from / for an absolute path, one part at a time, refused at any part that is a
     # link: a folder given through a link is refused as a file that is one.
     absolute = path.startswith("/")
     parts = [part for part in path.split("/") if part not in ("", ".")]
-    if not parts:
-        raise Fault("%s: not a file" % path)
+    # The name is the last part that names something, so secret-token.json/ or secret-token.json/. is a credential too,
+    # and the name after normalizing, so x/secret-token.json/.. is (review of #119).
+    names = [name for name in (parts[-1] if parts else "", os.path.basename(os.path.normpath(path))) if name not in ("", ".", "..")]
+    if any(looks_like_credential(name) for name in names):
+        raise Fault("%s: looks like a credential, not read" % path)
+    # A path that ends in "/", "/." or "/.." names a folder.
+    if not parts or path.split("/")[-1] in ("", ".", ".."):
+        raise Fault("%s: names a folder, not a file" % path)
     data, why = guarded_read("/" if absolute else ".", parts, prefix="/" if absolute else "")
     if why is not None:
+        if "is a link, not followed" in why or why == "a link, not followed":
+            why += ". " + NO_LINK
         raise Fault("%s: %s" % (path, why))
     try:
         value = registry.parse_json(data)
@@ -1295,7 +1306,9 @@ def code_owners(inventory, layer):
                             # A word such as owner/repo is a path only when its first part exists, as in a file.
                             if value.startswith("?"):
                                 value = value[1:]
-                                if exists_in(layer, os.path.join(layer.top, value.split("/", 1)[0])) is not True:
+                                # Its first part is looked at only inside the root, as resolve_named does (review of #119).
+                                first = os.path.join(layer.top, value.split("/", 1)[0])
+                                if not within(layer.top, first) or exists_in(layer, first) is not True:
                                     continue
                             values.append(value)
             for value in values:
@@ -1322,6 +1335,8 @@ def build(args):
         uses = sorted(set(uses))
     if args.home is not None and not args.use_global:
         raise Fault("--home names the home folder for --global, and --global was not given")
+    if args.home == "":
+        raise Fault("--home is empty: give the home folder for --global, or leave --home out to use HOME")
     rulesets = []
     for path in args.ruleset or []:
         rulesets += read_ruleset(path)
