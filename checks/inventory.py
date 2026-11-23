@@ -206,9 +206,6 @@ def matches(pattern, path):
 def _match(pattern, parts):
     if not pattern:
         return not parts
-    if pattern == ["**"]:
-        # A ** at the end matches what is inside a folder, one part or more, and not the folder itself, as in git.
-        return bool(parts)
     if pattern[0] == "**":
         return any(_match(pattern[1:], parts[skip:]) for skip in range(len(parts) + 1))
     return bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0]) and _match(pattern[1:], parts[1:])
@@ -674,75 +671,44 @@ def branch_like(value, kind, in_table):
     return kind == "span" and in_table and (value.startswith("?") or value.endswith("/"))
 
 
+# The one form of a line of .gitignore this reader reads: a plain path of letters, digits, ".", "-" and "_", its parts
+# separated by single slashes, with at most one / before it and one after it. Every other line is not read and is
+# counted, so a path under it is named as missing: a guess at git's patterns never hides one (review of c56df58).
+GITIGNORE_LINE = re.compile(rb"(/?)([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)(/?)")
+
+
 def gitignore_rules(layer):
-    """The patterns of the .gitignore at the root, read through the guarded reader: ([(negated, folder only, parts)],
-    the number of lines not read). Simple patterns only: a line with a backslash, a [ that is not closed or a class
-    such as [[:digit:]] is not read, and is counted."""
+    """The lines of the .gitignore at the root that this reader reads, through the guarded reader: ([(from the root,
+    folder only, parts)], the number of lines not read). A blank line and one that starts with # are no pattern, as in
+    git. A line read is a plain path, GITIGNORE_LINE, with no part . or ..; any other line is counted as not read."""
     data, why = guarded_read(layer.top, [".gitignore"])
     if why is not None:
         return [], 0
     rules, not_read = [], 0
-    try:
-        lines = data.decode("utf-8", errors="strict").split("\n")
-    except UnicodeDecodeError:
-        return [], len([line for line in data.split(b"\n") if line.strip() and not line.startswith(b"#")])
-    for line in lines:
-        line = line.rstrip("\r").rstrip(" ")
-        if not line or line.startswith("#"):
+    for line in data.split(b"\n"):
+        if not line or line.startswith(b"#"):
             continue
-        line = "\\" not in line and brackets(line)
-        if not line:
+        match = GITIGNORE_LINE.fullmatch(line)
+        parts = match.group(2).decode("ascii").split("/") if match else []
+        if not match or "." in parts or ".." in parts:
             not_read += 1
             continue
-        negated = line.startswith("!")
-        line = line[1:] if negated else line
-        folder_only = line.endswith("/")
-        line = line.rstrip("/")
-        if not line:
-            continue
-        # A pattern with a / before its end is read from the root; one without matches a name at any depth.
-        parts = parts_of(line) if "/" in line else ["**", line]
-        rules.append((negated, folder_only, parts))
+        # A path with a / at its start or before its end is read from the root; a name alone matches at any depth.
+        rules.append((bool(match.group(1)) or len(parts) > 1, bool(match.group(3)), parts))
     return rules, not_read
 
 
-def brackets(line):
-    """A line of .gitignore with each [^...] written as [!...], the form fnmatch reads, or None for a line with a [
-    that is not closed, or a [ or a / inside [...], such as a class [[:digit:]], which fnmatch does not read as git
-    does."""
-    out, at = [], 0
-    while True:
-        start = line.find("[", at)
-        if start < 0:
-            return "".join(out) + line[at:]
-        end = start + 1
-        negated = line[end:end + 1] in ("!", "^")
-        end += 1 if negated else 0
-        end += 1 if line[end:end + 1] == "]" else 0
-        end = line.find("]", end)
-        if end < 0 or "[" in line[start + 1:end] or "/" in line[start + 1:end]:
-            return None
-        body = line[start + 1 + (1 if negated else 0):end]
-        out.append(line[at:start] + ("[!" if negated else "[") + body + "]")
-        at = end + 1
-
-
 def ignored(rules, rel):
-    """Whether a path from the root is ignored by the patterns: when it or a folder above it is, the last pattern
-    that matches deciding, as git does. A folder that is ignored cannot be taken back by a pattern below it."""
-    # A path that ends in / is matched by git as a folder and then as itself, with an empty last part: docs/ is
-    # ignored by docs/**, which does not ignore the folder docs.
-    parts = parts_of(rel) + ([""] if rel.endswith("/") else [])
+    """Whether a path from the root is ignored by the lines read: when it, or a folder above it, matches one. Every
+    part but the last is a folder, and the last one is when the path ends in /. With no ! read, any match decides."""
+    parts = parts_of(rel)
     for end in range(1, len(parts) + 1):
-        folder = end < len(parts)
-        state = False
-        for negated, folder_only, pattern in rules:
+        folder = end < len(parts) or rel.endswith("/")
+        for from_root, folder_only, pattern in rules:
             if folder_only and not folder:
                 continue
-            if _match(pattern, parts[:end]):
-                state = not negated
-        if state:
-            return True
+            if (parts[:end] == pattern) if from_root else (parts[end - 1] == pattern[0]):
+                return True
     return False
 
 
@@ -1655,7 +1621,8 @@ def text_report(facts):
     section("Paths named and not looked for: " + ", ".join("%d %s" % (len(others[key]), label) for key, label, _ in reasons),
             ["%s:%d names %s: %s" % (shown(item["file"]), item["line"], shown(item["path"]), why)
              for key, _, why in reasons for item in others[key]] +
-            (["%d line%s of .gitignore not read: this reader reads simple patterns only, none with a backslash or a class such as [[:digit:]]" %
+            (["%d line%s of .gitignore not read: this reader reads only a plain path, with no wildcard, ! or backslash, "
+              "so a path under such a line is named as missing" %
               (others["gitignore_lines_not_read"], "" if others["gitignore_lines_not_read"] == 1 else "s")]
              if others["gitignore_lines_not_read"] else []))
     add("")

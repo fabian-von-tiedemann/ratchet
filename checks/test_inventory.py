@@ -718,9 +718,10 @@ class Inventory(FixtureTest):
     def test_paths_named_that_are_ignored_branch_names_or_outside_the_root(self):
         # An adoption report on 0.11 listed as missing: branch prefixes and example branch names in a table of
         # conventions, generated files that are not committed, a git-ignored folder, and a file in another repo by an
-        # absolute path (fix 3 of the inventory's friction). A path missing in any other way is still named.
+        # absolute path (fix 3 of the inventory's friction). A path missing in any other way is still named, and so is
+        # one that only a line this reader does not read would ignore.
         top = os.path.abspath(self.repo)
-        self.write(".gitignore", "# generated\nbuild/\n*.txt\n/dist\n*.gen.md\n!keep.gen.md\n\\#odd\n\n")
+        self.write(".gitignore", "# generated\nbuild/\nlogs\n/dist\n*.gen.md\n!keep.gen.md\n\\#odd\n\n")
         self.write("CLAUDE.md", "\n".join([
             "| Kind | Branch |",
             "|---|---|",
@@ -734,94 +735,139 @@ class Inventory(FixtureTest):
             ""]))
         facts = self.facts()
         missing = [(entry["line"], entry["path"]) for entry in facts["missing_paths"] if entry["file"] == "CLAUDE.md"]
-        self.assertEqual(missing, [(5, "docs/absent.md"), (7, "notes/keep.gen.md"), (7, "nested/dist/a.json"), (7, "fix/"),
-                                   (9, "%s/docs/gone-too.md" % top)])
+        self.assertEqual(missing, [(5, "docs/absent.md"), (6, "notes/a.gen.md"), (7, "notes/keep.gen.md"),
+                                   (7, "nested/dist/a.json"), (7, "fix/"), (9, "%s/docs/gone-too.md" % top)])
         others = facts["paths_not_checked"]
         mine = lambda kind: [(entry["line"], entry["path"]) for entry in others[kind] if entry["file"] == "CLAUDE.md"]
-        self.assertEqual(mine("ignored"), [(6, "build/out.json"), (6, "logs/app.txt"), (6, "dist/site.json"), (6, "notes/a.gen.md")])
+        self.assertEqual(mine("ignored"), [(6, "build/out.json"), (6, "logs/app.txt"), (6, "dist/site.json")])
         self.assertEqual(mine("branch_names"), [(3, "feature/"), (4, "docs/new-guide")])
         # Each line is read for links first, then spans, then imports.
         self.assertEqual(mine("outside"), [(8, "/srv/x.md"), (8, "/opt/other/AGENTS.md"), (8, "~/Developer/other/CLAUDE.md"),
                                            (8, "~/.claude/x.md")])
         self.assertIn(("AGENTS.md", 8, "../outside.md"), [(entry["file"], entry["line"], entry["path"]) for entry in others["outside"]])
-        self.assertEqual(others["gitignore_lines_not_read"], 1)
+        self.assertEqual(others["gitignore_lines_not_read"], 3)
         out = self.text()
-        self.assertIn("Paths named and not looked for: 4 ignored by .gitignore, 2 that look like branch names in a table, "
+        self.assertIn("Paths named and not looked for: 3 ignored by .gitignore, 2 that look like branch names in a table, "
                       "5 outside the root", out)
         self.assertIn("  CLAUDE.md:8 names /opt/other/AGENTS.md: outside the root, not checked\n", out)
-        self.assertIn("1 line of .gitignore not read", out)
+        self.assertIn("3 lines of .gitignore not read: this reader reads only a plain path, with no wildcard, ! or "
+                      "backslash, so a path under such a line is named as missing", out)
 
-    # (.gitignore, folders that exist, [(path, whether git ignores it)]): what `git check-ignore --no-index` says of
-    # each path, which does not exist unless it is under a folder named. A path that ends in / is a folder.
-    GITIGNORE_CASES = [
-        # Codex on edfa236: a trailing /** matches what is inside a folder, not the folder, so the ! below still counts.
-        ("docs/**\n!docs/keep.md\n", ["docs"], [("docs/keep.md", False), ("docs/other.md", True), ("docs", False),
-                                                ("docs/", True), ("docs/sub/keep.md", True), ("other/docs/x.md", False)]),
-        ("docs/\n!docs/keep.md\n", [], [("docs/keep.md", True), ("docs", False), ("docs/", True)]),
-        ("a/**\n", [], [("a", False), ("a/", True), ("a/b", True), ("a/b/c", True)]),
-        ("foo/**/\n", [], [("foo", False), ("foo/", False), ("foo/a", False), ("foo/a/", True), ("foo/a/b", True)]),
-        ("**/a/**\n", [], [("a", False), ("a/x", True), ("q/a/x", True)]),
-        ("**/build\n", [], [("build", True), ("a/build", True), ("a/b/build/x.js", True), ("builds", False)]),
-        ("a/**/b\n", [], [("a/b", True), ("a/x/b", True), ("a/x/y/b", True), ("a/b/c", True), ("b", False),
-                          ("x/a/b", False)]),
-        ("a/**/b/\n", [], [("a/b", False), ("a/b/", True), ("a/x/b/c", True)]),
-        ("**/\n", [], [("a", False), ("a/", True), ("a/b", True)]),
-        ("**\n!*.md\n", [], [("a.md", False), ("a/b.md", True)]),
-        ("/**\n", [], [("a", True), ("a/b", True)]),
-        ("/dist\n", [], [("dist", True), ("dist/x", True), ("nested/dist", False)]),
-        ("/a/b\n", [], [("a/b", True), ("a/b/c", True), ("x/a/b", False)]),
-        ("build/\n", [], [("build", False), ("build/", True), ("build/x", True), ("a/build/x", True)]),
-        ("*.log\n!keep.log\n", [], [("x.log", True), ("a/b.log", True), ("keep.log", False), ("a/keep.log", False)]),
-        ("logs/*\n!logs/keep/\n", [], [("logs", False), ("logs/a", True), ("logs/keep/", False), ("logs/keep/x", False)]),
-        ("*\n!*/\n!*.md\n", [], [("a.md", False), ("a/b.md", False), ("a.txt", True), ("a/b.txt", True)]),
-        ("*.md\n!/docs/*.md\n", [], [("a.md", True), ("docs/a.md", False), ("docs/b/a.md", True)]),
-        ("x/\n!x/\n", [], [("x/y", False)]),
-        ("doc[s]/\n", [], [("docs/x", True), ("doc/x", False)]),
-        ("[!a].txt\n", [], [("b.txt", True), ("a.txt", False)]),
-        ("[^a].txt\n", [], [("b.txt", True), ("a.txt", False), ("^.txt", True)]),
-        ("?.txt\n", [], [("a.txt", True), ("ab.txt", False)]),
-        ("a**b\n", [], [("axxb", True), ("ax/yb", False)]),
+    # The lines of .gitignore the reader reads, each with paths and whether git ignores them, as `git check-ignore
+    # --no-index` says of a path that does not exist. A path that ends in / is a folder.
+    GITIGNORE_HONORED = [
+        ("build/", [("build", False), ("build/", True), ("build/x", True), ("a/build/x", True), ("a/build/", True),
+                    ("builds/x", False), ("Build/x", False)]),
+        ("build", [("build", True), ("build/", True), ("a/build", True), ("a/b/build/x.js", True), ("builds", False)]),
+        ("/dist", [("dist", True), ("dist/", True), ("dist/x", True), ("nested/dist", False), ("nested/dist/x", False)]),
+        ("/logs/", [("logs", False), ("logs/", True), ("logs/x", True), ("x/logs/y", False)]),
+        ("/a/b", [("a/b", True), ("a/b/c", True), ("a", False), ("a/", False), ("x/a/b", False), ("a/bc", False)]),
+        ("a/b", [("a/b", True), ("a/b/c", True), ("x/a/b", False), ("b", False)]),
+        ("a/b/", [("a/b", False), ("a/b/", True), ("a/b/c", True), ("x/a/b/", False)]),
+        ("docs/keep.md", [("docs/keep.md", True), ("docs/keep.md/x", True), ("docs/other.md", False),
+                          ("x/docs/keep.md", False)]),
+        (".env", [(".env", True), ("a/.env", True), (".envrc", False)]),
+        ("node_modules", [("node_modules/x/y.js", True), ("a/node_modules/", True)]),
+        ("my-notes.v2_1.md", [("my-notes.v2_1.md", True), ("a/my-notes.v2_1.md", True), ("my-notes.v2_1.mdx", False)]),
+        ("...", [("...", True), ("a/.../b", True), ("....", False)]),
     ]
 
-    def gitignore_top(self, text, folders):
+    # Lines the reader does not read and counts. Both reviewers' cases are here: docs/** with !docs/keep.md (Codex on
+    # edfa236), and docs// and docs//keep.md, which git does not match and an earlier reader did (Codex on c56df58).
+    GITIGNORE_UNREAD = [
+        "docs/**", "!docs/keep.md", "docs//", "docs//keep.md", "//docs", "/", "*.txt", "*", "?.txt", "[ab].txt",
+        "doc]s", "**/build", "/**", "a/**/b", "a**b", "\\#odd", "\\!x", "a\\ ", "build/ ", " build", "\tbuild", "a b",
+        "./docs", "../docs", "a/./b", "a/../b", ".", "..", "café.md", "build\r", "a//b", "  ",
+    ]
+
+    def gitignore_top(self, text):
         top = os.path.realpath(self.scratch())
         self.write(".gitignore", text, top=top)
-        for folder in folders:
-            os.makedirs(os.path.join(top, folder))
         return top
 
-    def test_the_gitignore_reader_agrees_with_git(self):
+    def gitignore_read(self, text):
         sys.path.insert(0, HERE)
         import inventory
-        for text, folders, paths in self.GITIGNORE_CASES:
-            rules, not_read = inventory.gitignore_rules(inventory.Layer("repo", self.gitignore_top(text, folders), ""))
-            self.assertEqual(not_read, 0, text)
-            for path, expected in paths:
-                with self.subTest(gitignore=text, path=path):
-                    self.assertEqual(inventory.ignored(rules, path), expected)
-        # A class such as [[:digit:]], a [ that is not closed and a / inside [...] are not read, and are counted.
-        rules, not_read = inventory.gitignore_rules(inventory.Layer(
-            "repo", self.gitignore_top("[[:digit:]].txt\na[b\na[/]b\n*.log\n", []), ""))
-        self.assertEqual(not_read, 3)
-        self.assertEqual(len(rules), 1)
+        return inventory, inventory.gitignore_rules(inventory.Layer("repo", self.gitignore_top(text), ""))
 
-    def test_the_table_of_gitignore_cases_is_what_git_says(self):
-        # The table above is git's own answer: git check-ignore, with no index, in a repo with no config of the user's.
+    def test_each_line_of_gitignore_is_read_as_git_reads_it_or_counted_as_not_read(self):
+        for line, paths in self.GITIGNORE_HONORED:
+            inventory, (rules, not_read) = self.gitignore_read(line + "\n")
+            self.assertEqual((len(rules), not_read), (1, 0), line)
+            for path, expected in paths:
+                with self.subTest(gitignore=line, path=path):
+                    self.assertEqual(inventory.ignored(rules, path), expected)
+        for line in self.GITIGNORE_UNREAD:
+            with self.subTest(gitignore=line):
+                inventory, (rules, not_read) = self.gitignore_read(line + "\n")
+                self.assertEqual((rules, not_read), ([], 1))
+        # A blank line and a comment are no pattern, as in git, and are not counted. A file that is not UTF-8 is read
+        # line by line, and a line with a byte outside the form is counted.
+        inventory, (rules, not_read) = self.gitignore_read("\n# *.txt\n#!x\nbuild/\n\xff\n")
+        self.assertEqual((len(rules), not_read), (1, 1))
+        inventory, (rules, not_read) = self.gitignore_read(b"build/\n\xff\xfe\n/dist\n")
+        self.assertEqual((len(rules), not_read), (2, 1))
+
+    def test_a_path_under_a_line_not_read_is_named_as_missing(self):
+        # Both reviewers' cases: git ignores docs/other.md and not docs/keep.md under docs/** and !docs/keep.md, and
+        # ignores neither under docs// or docs//keep.md. The reader reads none of those lines, so a missing path
+        # under them is named as missing, as it was before the reader of .gitignore.
+        for text, count in (("docs/**\n!docs/keep.md\n", 2), ("docs//\n", 1), ("docs//keep.md\n", 1),
+                            ("docs//\ndocs//keep.md\n!docs/keep.md\n", 3)):
+            with self.subTest(gitignore=text):
+                self.write(".gitignore", text)
+                self.write("CLAUDE.md", "See `docs/keep.md` and `docs/other.md`.\n")
+                facts = self.facts()
+                missing = [entry["path"] for entry in facts["missing_paths"] if entry["file"] == "CLAUDE.md"]
+                self.assertEqual(missing, ["docs/keep.md", "docs/other.md"])
+                self.assertEqual(facts["paths_not_checked"]["ignored"], [])
+                self.assertEqual(facts["paths_not_checked"]["gitignore_lines_not_read"], count)
+
+    def git_environment(self, base):
+        """An environment for git with no configuration of the user's or the system's: every GIT_ variable of base
+        removed, among them GIT_CONFIG_COUNT and its GIT_CONFIG_KEY_ and GIT_CONFIG_VALUE_ pairs, HOME and
+        XDG_CONFIG_HOME an empty folder, and the global and GIT_CONFIG files an empty file."""
+        empty = os.path.realpath(self.scratch())
+        config = os.path.join(os.path.realpath(self.scratch()), "config")
+        with open(config, "wb"):
+            pass
+        environment = {name: value for name, value in base.items() if not name.startswith("GIT_")}
+        environment.update(HOME=empty, XDG_CONFIG_HOME=empty, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=config,
+                           GIT_CONFIG=config, LC_ALL="C")
+        return environment, empty
+
+    def git_ignores(self, environment, template, line, path):
+        top = self.gitignore_top(line + "\n")
+        subprocess.run(["git", "init", "-q", "--template=%s" % template, top], check=True, env=environment)
+        result = subprocess.run(["git", "-c", "core.fsmonitor=false", "-c", "core.ignorecase=false", "check-ignore", "-q",
+                                 "--no-index", path], cwd=top, env=environment)
+        self.assertIn(result.returncode, (0, 1))
+        return result.returncode == 0
+
+    def test_the_lines_the_reader_reads_are_what_git_says(self):
+        # The table of lines read is git's own answer: git check-ignore, with no index, in a repo with no config of
+        # the user's or the system's. Only the lines read are compared; a line not read is counted, never matched.
         if not shutil.which("git"):
             self.skipTest("git is not installed")
-        environment = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", XDG_CONFIG_HOME=os.devnull,
-                           LC_ALL="C")
-        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-            environment.pop(name, None)
-        for text, folders, paths in self.GITIGNORE_CASES:
-            top = self.gitignore_top(text, folders)
-            subprocess.run(["git", "init", "-q", top], check=True, env=environment)
+        environment, template = self.git_environment(os.environ)
+        for line, paths in self.GITIGNORE_HONORED:
             for path, expected in paths:
-                with self.subTest(gitignore=text, path=path):
-                    result = subprocess.run(["git", "-c", "core.fsmonitor=false", "check-ignore", "-q", "--no-index", path],
-                                            cwd=top, env=environment)
-                    self.assertIn(result.returncode, (0, 1))
-                    self.assertEqual(result.returncode == 0, expected)
+                with self.subTest(gitignore=line, path=path):
+                    self.assertEqual(self.git_ignores(environment, template, line, path), expected)
+
+    def test_the_environment_for_git_drops_the_config_it_inherits(self):
+        # A reviewer on c56df58: GIT_CONFIG_COUNT in the environment named a core.excludesFile that ignored every path,
+        # and the comparison with git failed. The environment for git drops it, and every other GIT_ variable.
+        if not shutil.which("git"):
+            self.skipTest("git is not installed")
+        everything = self.write("everything", "*\n", top=os.path.realpath(self.scratch()))
+        hostile = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.excludesFile", GIT_CONFIG_VALUE_0=everything,
+                       GIT_CONFIG_PARAMETERS="'core.excludesfile'='%s'" % everything, GIT_DIR=os.devnull)
+        environment, template = self.git_environment(hostile)
+        self.assertFalse([name for name in environment if name.startswith("GIT_") and
+                          name not in ("GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG")])
+        self.assertFalse(self.git_ignores(environment, template, "build/", "docs/keep.md"))
+        self.assertTrue(self.git_ignores(environment, template, "build/", "build/x"))
 
     def test_a_path_named_through_a_link_is_not_looked_at(self):
         outside = self.scratch()
