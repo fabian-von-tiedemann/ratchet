@@ -709,13 +709,19 @@ def one_command(args, out):
     code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"))
     if code == 0 and behind:
         print("", file=out)
-        # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run: the
-        # register and the store are named from there, so a register in a folder keeps its folder (round 2 of #140).
+        # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
         project = os.getcwd()
         if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
-            for line in pinned_run(root, shown, project, known[target], commit,
-                                   os.path.relpath(os.path.abspath(args.register), project)):
-                print(line, file=out)
+            if os.path.dirname(args.register) not in ("", "."):
+                # The commands are printed only for a register named alone, in the folder this runs in, as the docs
+                # show it: there the register, REGISTER.md beside it and the store are named the same way by every
+                # command. A path in another folder is left out rather than rewritten (rounds 2 and 3 of #140).
+                print("The commands that run the check are printed for a register named alone, in the folder upgrade.py "
+                      "runs in. Run it again from the folder that holds %s, naming the register alone, to get them."
+                      % args.register, file=out)
+            else:
+                for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
+                    print(line, file=out)
         else:
             print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
     return code
