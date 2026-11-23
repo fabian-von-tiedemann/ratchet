@@ -12,6 +12,7 @@ what it uses through FixtureTest. Standard library only.
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -749,6 +750,78 @@ class Inventory(FixtureTest):
                       "5 outside the root", out)
         self.assertIn("  CLAUDE.md:8 names /opt/other/AGENTS.md: outside the root, not checked\n", out)
         self.assertIn("1 line of .gitignore not read", out)
+
+    # (.gitignore, folders that exist, [(path, whether git ignores it)]): what `git check-ignore --no-index` says of
+    # each path, which does not exist unless it is under a folder named. A path that ends in / is a folder.
+    GITIGNORE_CASES = [
+        # Codex on edfa236: a trailing /** matches what is inside a folder, not the folder, so the ! below still counts.
+        ("docs/**\n!docs/keep.md\n", ["docs"], [("docs/keep.md", False), ("docs/other.md", True), ("docs", False),
+                                                ("docs/", True), ("docs/sub/keep.md", True), ("other/docs/x.md", False)]),
+        ("docs/\n!docs/keep.md\n", [], [("docs/keep.md", True), ("docs", False), ("docs/", True)]),
+        ("a/**\n", [], [("a", False), ("a/", True), ("a/b", True), ("a/b/c", True)]),
+        ("foo/**/\n", [], [("foo", False), ("foo/", False), ("foo/a", False), ("foo/a/", True), ("foo/a/b", True)]),
+        ("**/a/**\n", [], [("a", False), ("a/x", True), ("q/a/x", True)]),
+        ("**/build\n", [], [("build", True), ("a/build", True), ("a/b/build/x.js", True), ("builds", False)]),
+        ("a/**/b\n", [], [("a/b", True), ("a/x/b", True), ("a/x/y/b", True), ("a/b/c", True), ("b", False),
+                          ("x/a/b", False)]),
+        ("a/**/b/\n", [], [("a/b", False), ("a/b/", True), ("a/x/b/c", True)]),
+        ("**/\n", [], [("a", False), ("a/", True), ("a/b", True)]),
+        ("**\n!*.md\n", [], [("a.md", False), ("a/b.md", True)]),
+        ("/**\n", [], [("a", True), ("a/b", True)]),
+        ("/dist\n", [], [("dist", True), ("dist/x", True), ("nested/dist", False)]),
+        ("/a/b\n", [], [("a/b", True), ("a/b/c", True), ("x/a/b", False)]),
+        ("build/\n", [], [("build", False), ("build/", True), ("build/x", True), ("a/build/x", True)]),
+        ("*.log\n!keep.log\n", [], [("x.log", True), ("a/b.log", True), ("keep.log", False), ("a/keep.log", False)]),
+        ("logs/*\n!logs/keep/\n", [], [("logs", False), ("logs/a", True), ("logs/keep/", False), ("logs/keep/x", False)]),
+        ("*\n!*/\n!*.md\n", [], [("a.md", False), ("a/b.md", False), ("a.txt", True), ("a/b.txt", True)]),
+        ("*.md\n!/docs/*.md\n", [], [("a.md", True), ("docs/a.md", False), ("docs/b/a.md", True)]),
+        ("x/\n!x/\n", [], [("x/y", False)]),
+        ("doc[s]/\n", [], [("docs/x", True), ("doc/x", False)]),
+        ("[!a].txt\n", [], [("b.txt", True), ("a.txt", False)]),
+        ("[^a].txt\n", [], [("b.txt", True), ("a.txt", False), ("^.txt", True)]),
+        ("?.txt\n", [], [("a.txt", True), ("ab.txt", False)]),
+        ("a**b\n", [], [("axxb", True), ("ax/yb", False)]),
+    ]
+
+    def gitignore_top(self, text, folders):
+        top = os.path.realpath(self.scratch())
+        self.write(".gitignore", text, top=top)
+        for folder in folders:
+            os.makedirs(os.path.join(top, folder))
+        return top
+
+    def test_the_gitignore_reader_agrees_with_git(self):
+        sys.path.insert(0, HERE)
+        import inventory
+        for text, folders, paths in self.GITIGNORE_CASES:
+            rules, not_read = inventory.gitignore_rules(inventory.Layer("repo", self.gitignore_top(text, folders), ""))
+            self.assertEqual(not_read, 0, text)
+            for path, expected in paths:
+                with self.subTest(gitignore=text, path=path):
+                    self.assertEqual(inventory.ignored(rules, path), expected)
+        # A class such as [[:digit:]], a [ that is not closed and a / inside [...] are not read, and are counted.
+        rules, not_read = inventory.gitignore_rules(inventory.Layer(
+            "repo", self.gitignore_top("[[:digit:]].txt\na[b\na[/]b\n*.log\n", []), ""))
+        self.assertEqual(not_read, 3)
+        self.assertEqual(len(rules), 1)
+
+    def test_the_table_of_gitignore_cases_is_what_git_says(self):
+        # The table above is git's own answer: git check-ignore, with no index, in a repo with no config of the user's.
+        if not shutil.which("git"):
+            self.skipTest("git is not installed")
+        environment = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", XDG_CONFIG_HOME=os.devnull,
+                           LC_ALL="C")
+        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+            environment.pop(name, None)
+        for text, folders, paths in self.GITIGNORE_CASES:
+            top = self.gitignore_top(text, folders)
+            subprocess.run(["git", "init", "-q", top], check=True, env=environment)
+            for path, expected in paths:
+                with self.subTest(gitignore=text, path=path):
+                    result = subprocess.run(["git", "-c", "core.fsmonitor=false", "check-ignore", "-q", "--no-index", path],
+                                            cwd=top, env=environment)
+                    self.assertIn(result.returncode, (0, 1))
+                    self.assertEqual(result.returncode == 0, expected)
 
     def test_a_path_named_through_a_link_is_not_looked_at(self):
         outside = self.scratch()

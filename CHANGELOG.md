@@ -12,7 +12,7 @@ Fixed:
 
 - `--ruleset` follows links above the file it is given. A file under a folder from `mktemp -d` on macOS was refused, since `/var` is a link. The folder of the path the user typed is resolved once. The file itself is still refused when it is a link, a FIFO or not a regular file, or when its name looks like a credential. The walks of the repo and of the home folder are as strict as before.
 - `--ruleset` reads the rules for a branch, `GET /repos/{owner}/{repo}/rules/branches/{branch}`, the export an account without admin rights can get. It reads them strictly, one entry for each ruleset the rules come from, and refuses a malformed one. `checks/README.md` says which exports are read and which needs admin rights.
-- "Paths named that do not exist" lists fewer paths that are not missing. A path that the `.gitignore` at the root ignores (simple patterns only), a span in a table row that looks like a branch name, such as `feature/`, and a path outside the root, absolute or not, are now listed under "Paths named and not looked for", each with a count. Every other missing path is still named.
+- "Paths named that do not exist" lists fewer paths that are not missing. A path that the `.gitignore` at the root ignores (simple patterns only, read as git reads them, which a test compares with `git check-ignore`), a span in a table row that looks like a branch name, such as `feature/`, and a path outside the root, absolute or not, are now listed under "Paths named and not looked for", each with a count. Every other missing path is still named.
 
 ## 0.11 (2026-11-23)
 

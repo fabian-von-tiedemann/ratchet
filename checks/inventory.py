@@ -206,6 +206,9 @@ def matches(pattern, path):
 def _match(pattern, parts):
     if not pattern:
         return not parts
+    if pattern == ["**"]:
+        # A ** at the end matches what is inside a folder, one part or more, and not the folder itself, as in git.
+        return bool(parts)
     if pattern[0] == "**":
         return any(_match(pattern[1:], parts[skip:]) for skip in range(len(parts) + 1))
     return bool(parts) and fnmatch.fnmatchcase(parts[0], pattern[0]) and _match(pattern[1:], parts[1:])
@@ -673,7 +676,8 @@ def branch_like(value, kind, in_table):
 
 def gitignore_rules(layer):
     """The patterns of the .gitignore at the root, read through the guarded reader: ([(negated, folder only, parts)],
-    the number of lines not read). Simple patterns only: a line with a backslash is not read, and is counted."""
+    the number of lines not read). Simple patterns only: a line with a backslash, a [ that is not closed or a class
+    such as [[:digit:]] is not read, and is counted."""
     data, why = guarded_read(layer.top, [".gitignore"])
     if why is not None:
         return [], 0
@@ -686,7 +690,8 @@ def gitignore_rules(layer):
         line = line.rstrip("\r").rstrip(" ")
         if not line or line.startswith("#"):
             continue
-        if "\\" in line:
+        line = "\\" not in line and brackets(line)
+        if not line:
             not_read += 1
             continue
         negated = line.startswith("!")
@@ -701,12 +706,35 @@ def gitignore_rules(layer):
     return rules, not_read
 
 
+def brackets(line):
+    """A line of .gitignore with each [^...] written as [!...], the form fnmatch reads, or None for a line with a [
+    that is not closed, or a [ or a / inside [...], such as a class [[:digit:]], which fnmatch does not read as git
+    does."""
+    out, at = [], 0
+    while True:
+        start = line.find("[", at)
+        if start < 0:
+            return "".join(out) + line[at:]
+        end = start + 1
+        negated = line[end:end + 1] in ("!", "^")
+        end += 1 if negated else 0
+        end += 1 if line[end:end + 1] == "]" else 0
+        end = line.find("]", end)
+        if end < 0 or "[" in line[start + 1:end] or "/" in line[start + 1:end]:
+            return None
+        body = line[start + 1 + (1 if negated else 0):end]
+        out.append(line[at:start] + ("[!" if negated else "[") + body + "]")
+        at = end + 1
+
+
 def ignored(rules, rel):
     """Whether a path from the root is ignored by the patterns: when it or a folder above it is, the last pattern
     that matches deciding, as git does. A folder that is ignored cannot be taken back by a pattern below it."""
-    parts = parts_of(rel)
+    # A path that ends in / is matched by git as a folder and then as itself, with an empty last part: docs/ is
+    # ignored by docs/**, which does not ignore the folder docs.
+    parts = parts_of(rel) + ([""] if rel.endswith("/") else [])
     for end in range(1, len(parts) + 1):
-        folder = end < len(parts) or rel.endswith("/")
+        folder = end < len(parts)
         state = False
         for negated, folder_only, pattern in rules:
             if folder_only and not folder:
@@ -1627,7 +1655,7 @@ def text_report(facts):
     section("Paths named and not looked for: " + ", ".join("%d %s" % (len(others[key]), label) for key, label, _ in reasons),
             ["%s:%d names %s: %s" % (shown(item["file"]), item["line"], shown(item["path"]), why)
              for key, _, why in reasons for item in others[key]] +
-            (["%d line%s of .gitignore not read: this reader reads simple patterns only, and none with a backslash" %
+            (["%d line%s of .gitignore not read: this reader reads simple patterns only, none with a backslash or a class such as [[:digit:]]" %
               (others["gitignore_lines_not_read"], "" if others["gitignore_lines_not_read"] == 1 else "s")]
              if others["gitignore_lines_not_read"] else []))
     add("")
