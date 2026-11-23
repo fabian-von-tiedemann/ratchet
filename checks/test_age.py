@@ -202,7 +202,12 @@ class RepoAge(RepoCopy, unittest.TestCase):
         # In 0.11 five rules since 0.2 and ratchet.phases left (D-2026-11-22-second-redraw, step 2), and three more
         # rules since 0.2 left (step 3).
         later["ratchet.one-exact-form"] = "0.10"
-        self.assertEqual(len(since), 10)
+        # The seven rules of the product module enter in 0.12, which has no tag yet (D-2026-11-22-second-redraw, step 12).
+        for key in ("ratchet.release-what-was-tested", "ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests",
+                    "ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle",
+                    "ratchet.dependencies-pinned"):
+            later[key] = "0.12"
+        self.assertEqual(len(since), 17)
         for key, version in sorted(since.items()):
             with self.subTest(rule=key):
                 self.assertEqual(version, later.get(key, "0.2"))

@@ -35,7 +35,8 @@ CAP = 17
 # two moved into this repo's own rules. Step 2 of D-2026-11-22-second-redraw takes out six more: one merged into
 # ratchet.cr-wake, and five that leave as a handbook line, as a sentence of another rule, or as a duplicate. Step 3 takes
 # out three: one merged into ratchet.si-harden, one moved to CONTRIBUTING.md and one moved into this repo's own rules.
-EXPERIMENTAL = 24 + 1 - 1 - 3 - 2 - 6 - 3
+# Step 12 adds the seven rules of the product module, which brings the count to the cap.
+EXPERIMENTAL = 24 + 1 - 1 - 3 - 2 - 6 - 3 + 7
 # The rules that D-2026-11-20-proposal-triage, choice 5, takes out of ratchet.json, and where each went.
 GONE = {
     "ratchet.cr-background-wait": "merged into ratchet.cr-wake",
@@ -89,8 +90,8 @@ CORE_BATCH_C_OUT = {
     "ratchet.nightly-visible": "renamed ratchet.silence-is-red and widened (T1)",
 }
 # Where a rule of core batch A, B or C could still be cited. The changelog and the decisions keep the old keys as history.
-CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "MIGRATING.md", "RATCHET.md",
-          "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "UPGRADING.md", os.path.join("checks", "README.md"),
+CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "MIGRATING.md", "PRODUCT.md",
+          "RATCHET.md", "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "UPGRADING.md", os.path.join("checks", "README.md"),
           os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
           os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
 # The sentence D-2026-11-22-owner-reads-outside-gates puts back into ratchet.owner-paths, as the maintainer's second answer
