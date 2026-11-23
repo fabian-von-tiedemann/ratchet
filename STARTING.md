@@ -1,6 +1,6 @@
 # Starting with Ratchet
 
-Every step after the three commands under [Start here](README.md#start-here) in the README. Run everything in the root of your own git repo. If you followed 0.2, read [MIGRATING.md](MIGRATING.md) first. If your register follows 0.3 or later, [UPGRADING.md](UPGRADING.md) moves it to this version.
+Every step after the three commands under [Start here](README.md#start-here) in the README. Run everything in the root of your own git repo. If your `register.json` follows an earlier version, [UPGRADING.md](UPGRADING.md) moves it to this version.
 
 `init.py` takes one of two paths, and says which:
 
