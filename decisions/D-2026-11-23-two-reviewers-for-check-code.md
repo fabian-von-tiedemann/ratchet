@@ -22,13 +22,13 @@ Translation:
 
 Original, in Swedish:
 
-> ja på dina råd
+> Ja på dina råd
 
 Translation:
 
 > yes to your recommendations
 
-After 0.12 was released, the maintainer said yes to doing it now rather than waiting longer. That word is not quoted here.
+Later, before 0.12 was released, the maintainer said yes again, to doing the work after 0.12. That word is not quoted here.
 
 ## What follows
 
