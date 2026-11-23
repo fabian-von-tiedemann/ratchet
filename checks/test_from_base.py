@@ -245,6 +245,12 @@ class DryRun(unittest.TestCase):
         self.assertFails(head, "changes .github/workflows/checks.yml, the job that runs these checks",
                          "the base judges by: .github/workflows/checks.yml")
 
+    def test_a_change_to_the_runner_fails_and_names_it(self):
+        # A softened runner is never judged by the base, which runs its own, and would be the base's runner once merged.
+        head = self.pull_request({"checks/expected_tests.py": RUNNER + "# skip nothing\n"})
+        self.assertFails(head, "changes checks/expected_tests.py, the runner of the suite",
+                         "the base judges by: checks/expected_tests.py")
+
     def test_a_base_that_moved_on_is_judged_by_its_newest_commit(self):
         # The base gains a stricter limit after the pull request branched. The merge is judged by the newer base.
         head = self.pull_request({"data.json": '{"value": 3}\n'}, base_moves={"checks/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 2"),
@@ -281,7 +287,8 @@ class Paths(unittest.TestCase):
         self.assertTrue(from_base.judged_by(".github/workflows/checks.yml"))
 
     def test_the_commands_are_the_ones_the_job_own_runs(self):
-        workflow = open(os.path.join(os.path.dirname(HERE), ".github", "workflows", "checks.yml"), encoding="utf-8").read()
+        with open(os.path.join(os.path.dirname(HERE), ".github", "workflows", "checks.yml"), encoding="utf-8") as handle:
+            workflow = handle.read()
         for command in from_base.DATA_COMMANDS + from_base.CODE_COMMANDS:
             self.assertIn("run: python3 %s\n" % " ".join(command), workflow)
 

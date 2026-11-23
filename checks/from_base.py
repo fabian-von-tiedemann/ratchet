@@ -10,8 +10,8 @@ directory of its own. It then:
 
 - checks that HEAD is a merge commit whose second parent is the pull request's head, --head-sha, and whose first
   parent is the base, --base-sha, or a later commit of the base branch. The first parent is the base it judges by.
-- fails when the pull request changes .github/workflows/checks.yml, the job that runs this: the base branch cannot
-  judge the job that judges it.
+- fails when the pull request changes .github/workflows/checks.yml, the job that runs this, or the runner of the
+  suite, checks/expected_tests.py or checks/suite_runner.py: the base branch cannot judge what judges it.
 - makes the tree of the data: the merge commit, with the code of the checks taken from the base, and each file of
   code that only the pull request has left empty, so that a link to it leads somewhere. It runs the base's
   generate.py --check, check_register.py on register.json and REGISTER.md, and released_text.py there. So the base's
@@ -168,6 +168,12 @@ def judge(repo, base, head="HEAD", data_commands=DATA_COMMANDS, code_commands=CO
     if WORKFLOW in changed:
         problems.append("the pull request changes %s, the job that runs these checks. The base branch cannot judge the "
                         "job that judges it" % WORKFLOW)
+    # The base's runner judges in both trees, so a runner that the pull request softens would never be judged here, and
+    # once merged it would be the base's runner for the next pull request (round 1 of #121).
+    for path in RUNNER:
+        if path in changed:
+            problems.append("the pull request changes %s, the runner of the suite. The base branch cannot judge the runner "
+                            "that judges it" % path)
     scratch = os.path.realpath(tempfile.mkdtemp(prefix="ratchet-from-base-"))
     works = []
     try:
