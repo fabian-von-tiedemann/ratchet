@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.12, 2026-11-23. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.13, not yet released. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 Each rule has a **key**, a **ratchet** and a **source**.
@@ -90,7 +90,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md), [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) and [PRODUCT.md](PRODUCT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.13, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions

@@ -28,6 +28,7 @@ sys.path.insert(0, HERE)
 
 import check_register  # noqa: E402
 import registry  # noqa: E402
+import run_pinned  # noqa: E402
 import upgrade  # noqa: E402
 
 # Fixture under upgrade/faults/ -> what the upgrade must say when it is given that file as a Ratchet data file.
@@ -334,7 +335,9 @@ class Upgrade(FixtureTest):
                 self.assertNotIn("print REGISTER.md", output)
                 self.assertIn("REGISTER.md is not there, which a register with rows adopted by reference may leave out, so it "
                               "is not printed.", output)
-                self.assertIn("    python3 check_register.py --markdown REGISTER.md -- %s\n" % shlex.quote(path), output)
+                # An adoption report on 0.12: the check command named a REGISTER.md that is not there.
+                self.assertIn("    python3 check_register.py -- %s\n" % shlex.quote(path), output)
+                self.assertNotIn("--markdown", output)
                 self.assertEqual("--print-instructions" in output, bool(instructions))
                 if instructions:
                     self.assertIn("Then print %s again, put it in place, and check it:" % os.path.join(project, "AGENTS.md"), output)
@@ -346,6 +349,7 @@ class Upgrade(FixtureTest):
         self.assertEqual(upgrade.report(path, register, old, new, out, "check_register.py"), 0, out.getvalue())
         self.assertIn("Then print REGISTER.md again, put it in place, and check it:", out.getvalue())
         self.assertIn("--print-markdown", out.getvalue())
+        self.assertIn("    python3 check_register.py --markdown REGISTER.md -- %s\n" % shlex.quote(path), out.getvalue())
         # A register with no row by reference is told to print it, there or not.
         out = io.StringIO()
         self.assertEqual(upgrade.report(os.path.join(self.scratch(), "register.json"), self.loaded("register.json"), old, new, out,
@@ -741,6 +745,63 @@ class OneCommand(FixtureTest):
                 self.assertIn(self.offline(), output)
                 self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of v9.9: %s." % self.tag("v9.9"), output)
                 self.assertNotIn(MARKER, output)
+
+    def by_reference(self, project):
+        """Make one row of the project's register a row by reference, with its marker in RULES.md, as adopt mode leaves
+        it: no workflow of Ratchet's."""
+        path = os.path.join(project, "register.json")
+        register = registry.load_json(path)
+        old_by = registry.rules_by_key(registry.parse_json(self.fixture_bytes("upgrade/old/ratchet.json")))
+        item = next(item for item in register["adopted"] if item["key"] == "ratchet.keep")
+        for field in ("rule", "ratchet", "source"):
+            del item[field]
+        item.update(stands_in="RULES.md", sha256=check_register.reference_sha256(old_by["ratchet.keep"]))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(register, indent=2) + "\n")
+        with open(os.path.join(project, "RULES.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Rules\n\nKeep it.\n\n%s\n" % check_register.MARKER % "ratchet.keep")
+
+    def test_a_register_by_reference_with_no_workflow_is_told_how_to_run_the_new_commit(self):
+        # An adoption report on 0.12: the one command ended with "Then pin .github/workflows/ratchet.yml", a file adopt
+        # mode never writes, and the copy command and the line for the check script came only from init.py --check.
+        project = self.project()
+        self.by_reference(project)
+        code, output = self.upgrade(project, "--to", "9.9")
+        self.assertEqual(code, 0, output)
+        commit = self.tag("v9.9")
+        blob = git(self.origin, "rev-parse", "v9.9:checks/run_pinned.py")
+        self.assertNotIn("Then pin", output)
+        self.assertNotIn("--markdown", output)
+        self.assertIn("The check runs from the pinned commit with .github/ratchet/run_pinned.py. To move it to the commit "
+                      "of v9.9, %s, run these from the project's root." % commit, output)
+        copy = run_pinned.copy_command(os.path.join(".ratchet", ".git", "objects"), commit, blob, run_pinned.COPY)
+        local = run_pinned.local_line(commit, blob, run_pinned.COPY)
+        step = run_pinned.run_command(commit, blob, run_pinned.COPY)
+        for line in (copy, local, step):
+            self.assertIn("\n    %s\n" % line, output + "\n")
+        # The printed copy command copies the runner of v9.9, and the printed line runs it: on the register as it is,
+        # still on 9.8, the check of 9.9 fails, and a script without set -e stops there.
+        result = subprocess.run(["sh", "-c", copy], cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        with open(os.path.join(project, run_pinned.COPY), "rb") as handle:
+            self.assertEqual(run_pinned.blob_hash(handle.read()), blob)
+        result = subprocess.run(["sh", "-c", local + "\necho ALL GREEN\n"], cwd=project, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("run_pinned: Ratchet at %s" % commit, result.stdout)
+        self.assertNotIn("ALL GREEN", result.stdout)
+
+    def test_a_register_by_reference_with_the_workflow_is_told_to_pin_it(self):
+        project = self.project()
+        self.by_reference(project)
+        os.makedirs(os.path.join(project, ".github", "workflows"))
+        with open(os.path.join(project, ".github", "workflows", "ratchet.yml"), "w", encoding="utf-8") as handle:
+            handle.write("name: ratchet\n")
+        code, output = self.upgrade(project, "--to", "9.9")
+        self.assertEqual(code, 0, output)
+        self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of v9.9: %s." % self.tag("v9.9"), output)
+        self.assertNotIn("run_pinned", output)
 
     def test_a_clone_already_at_the_release_is_not_moved(self):
         project = self.project(at="v9.10")

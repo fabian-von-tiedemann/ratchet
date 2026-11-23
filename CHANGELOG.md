@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13 (unreleased)
+
+In short: five frictions from an adoption report on 0.12 are fixed, for a project that adopted by reference. `upgrade.py` prints the new runner commands in place of a workflow pin, the line for a local check script stops the script without `set -e`, and `run_pinned.py` runs in well under a second where it took seven to nine. If you keep `REGISTER.md` with rows by reference, print it again: the label of those rows changed one word.
+
+- `upgrade.py`, for a register with rows by reference in a project with no `.github/workflows/ratchet.yml`, which adopt mode never writes, no longer ends with "Then pin .github/workflows/ratchet.yml". It prints what `init.py` prints for such a project, with the new commit: the command that copies `checks/run_pinned.py` again, the line for the local check script and the line for the CI step ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- To do, if your local check script runs the line adopt mode printed in 0.12: replace it with the one `init.py` or `upgrade.py` prints now, `( ... ) || exit 1`. The old line went on after a failing check in a script without `set -e` ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- `upgrade.py` no longer prints `--markdown REGISTER.md` in the command that checks a register that has rows by reference and no `REGISTER.md` ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- The label of a row by reference says "The wording is not guarded against softening", or "guarded", where it said "Protection against a softened wording: not built". "built" now means only a rule's enforcement (`D-2026-11-23-new-rules-first`, [#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- `run_pinned.py` fetches only the pinned commit when it has to make the store, shallow and by its id, and clones the whole repository only when the host does not give a commit by its id. It reads the tree one level at a time, so a run takes about 0.5 seconds in place of 7 to 9. It still hashes every object it uses, and never passes when Ratchet cannot be reached ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- [STARTING.md](STARTING.md) says that the pinned step may run in a job that is not required, and that it fails, never passes, when Ratchet cannot be reached ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+- For a rule adopted in part, list the whole sentence when any part of it is not stated, and put a marker line outside a Markdown list, since one between list items ends the list. The form of `register.json` does not change ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
+
+<!-- generated:count -->
+Ratchet 0.13, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.12 (2026-11-23)
 
 In short: Ratchet gets an opt-in product module for an application with users in production, a rule may be adopted by reference in part, and the README and the landing page are much shorter. Adopting in part is a change of form of `register.json`, so the count toward 1.0 starts again, but a register of 0.11 stays valid and no core rule changes. If adopt mode wrote your register in 0.11, replace the CI step and take out one copied row, as the two bullets that start "To do" say.

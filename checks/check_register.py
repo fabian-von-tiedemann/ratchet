@@ -14,9 +14,9 @@ version the register states. The check fails unless the key is a rule at that
 version, the hash is that rule's and its ratchet's, and the file holds the line
 "<!-- ratchet:rule <key> -->" exactly once. It reads nothing else in the file, and
 labels each such row, as REGISTER.md does: the check sees a marker, not the words.
-The label says the protection against a softened wording is built only when the
-register itself copies the row of ratchet.owner-paths, not by reference, with the
-status "built". stands_in has the
+The label says the wording is guarded against softening only when the register
+itself copies the row of ratchet.owner-paths, not by reference, with the status
+"built". stands_in has the
 path form of "instructions", is checked on its path the same way, and is never the
 instruction file. A row by reference has no translation, and an own rule is never
 one. From 0.12 a row by reference may be adopted in part: its "where" is then
@@ -155,12 +155,14 @@ TEXT_FIELDS = ("rule", "ratchet", "source")
 MARKER = "<!-- ratchet:rule %s -->"
 MARKER_LINE = re.compile(r"\A<!-- ratchet:rule (ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*) -->\Z")
 RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
-# The label of every row by reference, in the check's output and in REGISTER.md, word for word as the decision has
-# it. The last word is "built" only when the register itself copies the row of OWNER_PATHS with the status "built": the
-# check reads the register's own claim, not the host. A row of OWNER_PATHS by reference does not count, since the check
-# does not see its wording, which is the one that protects the others (review of step 9a).
+# The label of every row by reference, in the check's output and in REGISTER.md, as the decision has it but for one
+# word: it says "guarded" where the decision says "built", so that "built" means only a rule's enforcement on the same
+# screen (D-2026-11-23-new-rules-first). It says "guarded" only when the register itself copies the row of OWNER_PATHS
+# with the status "built": the check reads the register's own claim, not the host. A row of OWNER_PATHS by reference
+# does not count, since the check does not see its wording, which is the one that protects the others (review of step
+# 9a).
 LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
-         "sees a marker, not the words. Protection against a softened wording: %s.")
+         "sees a marker, not the words. The wording is %s against softening.")
 OWNER_PATHS = "ratchet.owner-paths"
 # A row by reference adopted in part, from 0.12: the project's wording states the rule's core but not every clause. Its
 # "where" is then exactly PART, the clauses the wording does not state joined by "; ", and one ".". No field is added,
@@ -543,16 +545,16 @@ def references(register):
 
 
 def protection(register):
-    """The last word of the label of a row by reference: "built" when the register copies the row of ratchet.owner-paths,
-    not by reference, with the status "built", else "not built". It reads the register's own claim, not the host
+    """The word in the label of a row by reference: "guarded" when the register copies the row of ratchet.owner-paths,
+    not by reference, with the status "built", else "not guarded". It reads the register's own claim, not the host
     (D-2026-11-22-second-redraw)."""
     built = any(entry.get("key") == OWNER_PATHS and entry.get("status") == "built" and not is_reference(entry)
                 for entry in register["adopted"])
-    return "built" if built else "not built"
+    return "guarded" if built else "not guarded"
 
 
 def label(register):
-    """The label of every row by reference in this register, word for word as the decision has it."""
+    """The label of every row by reference in this register."""
     return LABEL % protection(register)
 
 

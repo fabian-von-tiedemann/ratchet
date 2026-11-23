@@ -5,7 +5,7 @@ Generated from `register.json` by Ratchet's `check_register.py`. Never edit this
 
 ### Rules from Ratchet
 
-Ratchet version: 0.12. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.13. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
@@ -20,12 +20,12 @@ Ratchet version: 0.12. The rows below are copied verbatim from Ratchet at that v
 
 ### Rules adopted by reference
 
-Ratchet version: 0.12. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
+Ratchet version: 0.13. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
 
 | Key | Stands in | Mode |
 |---|---|---|
-| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.evidence-before-done | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
+| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.evidence-before-done | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
 
 ### Where each check stands
 
