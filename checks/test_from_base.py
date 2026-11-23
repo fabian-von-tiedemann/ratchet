@@ -210,6 +210,15 @@ class DryRun(unittest.TestCase):
         head = self.pull_request({"checks/new.py": "print('new')\n", "checks/README.md": "checks/new.py\n"})
         self.assertPasses(head)
 
+    def test_a_script_the_base_lacks_fails_even_when_the_pull_request_adds_it(self):
+        # Without the check, the pull request's released_text.py would run, or the empty file in its place, and pass.
+        self.write({"checks/released_text.py": None})
+        self.base = self.commit("the base without released_text.py")
+        head = self.pull_request({"checks/released_text.py": PASS})
+        output = self.assertFails(head, "the base has no checks/released_text.py, so its `python3 checks/released_text.py` "
+                                  "cannot judge the tree of the data", "the base judges by: checks/released_text.py")
+        self.assertNotIn("in the tree of the data: python3 checks/released_text.py", output)
+
     def test_a_tightened_check_passes(self):
         tighter = GENERATE.replace("if value > LIMIT:", "if not isinstance(value, int) or value > LIMIT:")
         head = self.pull_request({"checks/generate.py": tighter, "data.json": '{"value": 1}\n'})

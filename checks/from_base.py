@@ -187,6 +187,11 @@ def judge(repo, base, head="HEAD", data_commands=DATA_COMMANDS, code_commands=CO
         for name, work, commands in (("data", data, data_commands), ("code", code, code_commands)):
             for command in commands:
                 shown = "python3 " + " ".join(command)
+                # Every script it runs is the base's. One that the base does not have would be the pull request's file,
+                # or the empty one in its place, which passes: the base cannot judge by a check it does not have.
+                if command[0] not in base_files:
+                    problems.append("the base has no %s, so its `%s` cannot judge the tree of the %s" % (command[0], shown, name))
+                    continue
                 print("from_base: in the tree of the %s: %s" % (name, shown))
                 status = run(work, command)
                 if status != 0:
