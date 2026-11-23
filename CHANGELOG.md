@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.12 (unreleased)
+## 0.12 (2026-11-23)
 
 In short: Ratchet gets an opt-in product module for an application with users in production, a rule may be adopted by reference in part, and the README and the landing page are much shorter. Adopting in part is a change of form of `register.json`, so the count toward 1.0 starts again, but a register of 0.11 stays valid and no core rule changes. If adopt mode wrote your register in 0.11, replace the CI step and take out one copied row, as the two bullets that start "To do" say.
 
