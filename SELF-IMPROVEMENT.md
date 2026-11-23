@@ -16,6 +16,18 @@ Two owners appear below. The **project's owner** approves lessons in the project
 6. **Pull.** Projects see that they are behind and upgrade in a PR of its own.
 7. **Measure.** At a fixed interval, each project counts how tight it has become and whether any failure class came back.
 
+One turn, as an illustration, not a report from a real project: an agent writes "all tests pass" on a PR, the tests were never run, and the bug reaches the main branch. The failure class is a claim of completion without a run. The ratchet is a required check that runs the tests on the PR head, so the claim no longer matters. It would apply in other projects, so it is sent to Ratchet as a lesson, written with [templates/LESSON.md](templates/LESSON.md).
+
+## Evidence from this repo
+
+Ratchet follows its own rules, and this repo is where they are tried first. Its [AGENTS.md](AGENTS.md), [register.json](register.json), [HANDOVER.md](HANDOVER.md) and [decisions/](decisions/) are Ratchet's own. What the repo shows:
+
+- **A hook that could not be a lock was replaced by locks.** A hook was meant to read shell commands and stop the steps that cannot be undone. A review from another model family rejected it twice, finding ways past it each time, and it was closed unmerged ([PR #42](https://github.com/fabian-von-tiedemann/ratchet/pull/42)). It came back as a tripwire that says it does not catch every spelling, and the locks moved to where they cannot be got around: a ruleset at GitHub and the role of the agents' account ([D-2026-11-19-locks-not-parsing](decisions/D-2026-11-19-locks-not-parsing.md)).
+- **Tags are locked by a ruleset.** No one but a repository admin can move or delete a tag. The ruleset is [templates/tag-ruleset.json](templates/tag-ruleset.json), applied on 2026-11-19 and read back ([D-2026-11-19-tag-ruleset-scope](decisions/D-2026-11-19-tag-ruleset-scope.md), [D-2026-11-19-tripwire-and-settings](decisions/D-2026-11-19-tripwire-and-settings.md)).
+- **A release is published by the merge that dates it.** Changes are collected under an entry headed `(unreleased)`, and the pull request that gives it its date is the release. The [release workflow](.github/workflows/release.yml) tags it after the merge ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)). Every PR compares released text with its tag ([checks/released_text.py](checks/released_text.py)), because the generator once rewrote a released entry, in a round of [PR #12](https://github.com/fabian-von-tiedemann/ratchet/pull/12).
+- **A change to a rule or a check is merged only after a model from another family has passed its exact head** ([D-2026-11-17-agent-merges-after-approval](decisions/D-2026-11-17-agent-merges-after-approval.md)). The reviews are comments on the PRs, such as the two rounds on [PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50). This is an instruction the agents follow, not a lock, and AGENTS.md says so.
+- **The register says honestly which checks are built.** Every rule this repo adopts that names a check stands as "text only for now", and `ratchet.protected-main` says "Not met in this repo" ([REGISTER.md](REGISTER.md)).
+
 ## Rules
 
 <!-- generated:table tightening -->
@@ -92,5 +104,5 @@ If the number of rules grows while these numbers stand still, Ratchet is getting
 The count is computed from `ratchet.json` by `checks/generate.py --count` and stated with every version in the [changelog](CHANGELOG.md). The share covers the core. A rule counts as shipped with a reference check only if that check has a fixture it fails on.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->

@@ -67,7 +67,7 @@ def without_markers(text):
 
 
 def filled_in(text):
-    """AGENTS.md with every placeholder of the template filled in, as step 4 of "Start here" asks."""
+    """AGENTS.md with every placeholder of the template filled in, as step 1 of "A new repo" in STARTING.md asks."""
     import check_register
     for placeholder in check_register.PLACEHOLDERS:
         text = text.replace(placeholder, "Filled in.")

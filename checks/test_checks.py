@@ -1326,8 +1326,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_a_count_edited_by_hand_fails(self):
-        self.edit("README.md", "are text only (", "are text only, down to (")
-        self.assert_check_fails("README.md: generated text is out of date or was edited by hand")
+        self.edit("RATCHET.md", "are text only (", "are text only, down to (")
+        self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_a_fixture_edited_by_hand_fails(self):
         self.edit(os.path.join("checks", "fixtures", "register", "changed-row", "register.json"), ", where practical.", ".")
@@ -1395,14 +1395,21 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("CONTROL-ROOM.md: the markers of the generated blocks are broken")
 
     def test_a_count_block_replaced_by_plain_text_fails(self):
-        path = os.path.join(self.copy, "README.md")
+        # The count stands in RATCHET.md, among its other generated blocks. The README holds only the list of the principles.
+        path = os.path.join(self.copy, "RATCHET.md")
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
         changed, found = re.subn(r"<!-- generated:count -->.*?<!-- /generated -->", "There are zero text-only rules (0%).", text, flags=re.S)
         self.assertEqual(found, 1)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(changed)
-        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: count, principle-list, reference-checks, start. Missing: count")
+        self.assert_check_fails("RATCHET.md: must hold exactly these generated blocks, once each: count, principles, sources, table ")
+        self.assert_check_fails(", version. Missing: count. Not expected: none")
+
+    def test_a_block_that_the_readme_no_longer_holds_fails_there(self):
+        self.append("README.md", "\n<!-- generated:count -->\n<!-- /generated -->\n")
+        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: principle-list. Missing: none. "
+                                "Not expected: count")
 
     def test_a_block_added_twice_fails(self):
         self.edit("SELF-IMPROVEMENT.md", "## Ratchet's own count", "<!-- generated:count -->\n<!-- /generated -->\n\n## Ratchet's own count")
@@ -1705,7 +1712,8 @@ class StartPath(unittest.TestCase):
                 for setting in (["gc.auto", "0"], ["maintenance.auto", "false"]):
                     subprocess.run(["git", "config"] + setting, cwd=directory, check=True, stdout=subprocess.DEVNULL,
                                    env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
-        self.readme = read("README.md")
+        # The start: the three commands in the README, and every step after them in STARTING.md.
+        self.readme = read("README.md") + read("STARTING.md")
 
     def run_in_project(self, command):
         if command.startswith("rm -f "):
@@ -1720,7 +1728,7 @@ class StartPath(unittest.TestCase):
 
     def run_the_readme(self):
         commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", self.readme)
-        self.assertGreaterEqual(len(commands), 3)
+        self.assertEqual(len(commands), 4)
         for command in commands:
             with self.subTest(command=command):
                 code, output = self.run_in_project(command)
@@ -1743,7 +1751,7 @@ class StartPath(unittest.TestCase):
         self.run_the_readme()
 
     def test_every_step_in_the_workflow_template_runs_after_the_readme(self):
-        # Step 4 of "Start here" fills in AGENTS.md. Until it does, the workflow's register check fails.
+        # Step 1 of "A new repo" in STARTING.md fills in AGENTS.md. Until it does, the workflow's register check fails.
         import check_register
         self.run_the_readme()
         path = os.path.join(self.project, "AGENTS.md")
@@ -1810,7 +1818,7 @@ class StartPath(unittest.TestCase):
                 self.assertEqual(code, 0, output)
 
     def test_no_instruction_tells_the_reader_to_leave_the_root(self):
-        for name in ("README.md", "MIGRATING.md", "UPGRADING.md"):
+        for name in ("README.md", "STARTING.md", "MIGRATING.md", "UPGRADING.md"):
             with self.subTest(document=name):
                 text = read(name)
                 self.assertIsNone(re.search(r"(?m)^\s*cd ", text))

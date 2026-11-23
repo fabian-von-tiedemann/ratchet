@@ -5,7 +5,7 @@ Generated from `register.json` by Ratchet's `check_register.py`. Never edit this
 
 ### Rules from Ratchet
 
-Ratchet version: 0.11. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.12. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
@@ -94,12 +94,24 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 1. Edit [ratchet.json](ratchet.json). The rule tables are generated from it.
 2. Run `python3 checks/generate.py`. It rewrites the tables, the count, `templates/register.json`, `REGISTER.md`, the block at the start of this file and the registers under `checks/fixtures/register/`.
 3. If a rule that [register.json](register.json) adopts changed, paste the new entry. `python3 checks/generate.py --entries` followed by the key prints it.
-4. Add the change to the first entry of [CHANGELOG.md](CHANGELOG.md), headed `## <version> (unreleased)`. If the first entry has a date, it is released: raise the version in `ratchet.json` and start a new first entry headed `(unreleased)`, before you run `generate.py`. Changes are collected there and released together ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)).
+4. Add the change to the first entry of [CHANGELOG.md](CHANGELOG.md), headed `## <version> (unreleased)`, as [How to write the changelog](#how-to-write-the-changelog) says. If the first entry has a date, it is released: raise the version in `ratchet.json` and start a new first entry headed `(unreleased)`, before you run `generate.py`. Changes are collected there and released together ([D-2026-11-19-batched-releases](decisions/D-2026-11-19-batched-releases.md)).
 5. Run the commands under "Before you say it is done".
+
+## How to write the changelog
+
+An entry is read by a person who decides whether to upgrade, and by an agent that does the upgrade. One form serves both:
+
+1. **"In short" first.** The entry opens with a paragraph that starts "In short:". Two or three plain sentences: what changes for a project that uses Ratchet, and whether it must do anything.
+2. **One bullet for each change.** What changed and for whom, in plain words, with its pull request linked at the end. A rule is named by its key.
+3. **Changes of form in a list of their own,** under the line "Changes of form:". A change of form is anything a register or a data file must follow to keep passing. Each bullet says what to do.
+4. **The detail stays in the pull request:** the reasons, the cases and the review. A bullet that needs a second sentence to explain itself links to the decision instead.
+5. **The generated count stands last.**
+
+The entries up to 0.11 were written before this form and stay as they were released. The form is text only: no check reads the words of an entry.
 
 ## How to release a version
 
-A release is a pull request of its own, merged only on the maintainer's word. It replaces `(unreleased)` in the first heading of [CHANGELOG.md](CHANGELOG.md) with the date, records in the new version's entry of the changelog the steps and minutes to adopt Ratchet in an empty repo and to upgrade by one version (`ratchet.si-measure`, [D-2026-11-21-inventory-and-easy-upgrade](decisions/D-2026-11-21-inventory-and-easy-upgrade.md)), and moves the tag that the command in [README.md](README.md) fetches to the new version. Then run `python3 checks/generate.py`, which writes the rest, among it the same command on the landing page, [docs/index.html](docs/index.html). `generate.py --check` fails until it has. The release workflow tags and releases the version when the pull request is merged. The control room proposes a release at most once a week, or when the maintainer asks, and a fix for a security fault is released at once. That pace is text only: no check counts releases.
+A release is a pull request of its own, merged only on the maintainer's word. It reads the first entry of the changelog once more as an adopter would, so that "In short" is true of the whole entry and no change stands twice. It replaces `(unreleased)` in the first heading of [CHANGELOG.md](CHANGELOG.md) with the date, records in the new version's entry of the changelog the steps and minutes to adopt Ratchet in an empty repo and to upgrade by one version (`ratchet.si-measure`, [D-2026-11-21-inventory-and-easy-upgrade](decisions/D-2026-11-21-inventory-and-easy-upgrade.md)), and moves the tag that the command in [README.md](README.md) fetches to the new version. Then run `python3 checks/generate.py`, which writes the rest, among it the same command on the landing page, [docs/index.html](docs/index.html). `generate.py --check` fails until it has. The release workflow tags and releases the version when the pull request is merged. The control room proposes a release at most once a week, or when the maintainer asks, and a fix for a security fault is released at once. That pace is text only: no check counts releases.
 
 ## How to move a source's pin
 

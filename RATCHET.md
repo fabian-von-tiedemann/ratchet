@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.11, 2026-11-23. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.12, not yet released. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 Each rule has a **key**, a **ratchet** and a **source**.
@@ -11,7 +11,7 @@ Each rule has a **key**, a **ratchet** and a **source**.
 
 The rules live in [ratchet.json](ratchet.json). The tables in this file are generated from it, and a check fails if a table is edited by hand. The words this file uses are defined in [GLOSSARY.md](GLOSSARY.md).
 
-A project's register is a data file, `register.json`. It holds the rules the project adopts and states which version of Ratchet they come from. A rule is copied verbatim, or, in a weaker mode, adopted by reference: the row names the rule, the file where the project's own wording of it stands, and the sha256 of the rule and its ratchet, and the check sees a marker line in that file, not the words. The project chooses which rules it takes. It never rewrites a copied one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. The [README](README.md#start-here) names ten rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
+A project's register is a data file, `register.json`. It holds the rules the project adopts and states which version of Ratchet they come from. A rule is copied verbatim, or, in a weaker mode, adopted by reference: the row names the rule, the file where the project's own wording of it stands, and the sha256 of the rule and its ratchet, and the check sees a marker line in that file, not the words. The project chooses which rules it takes. It never rewrites a copied one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. [STARTING.md](STARTING.md#the-rules-to-start-with) names ten rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
 
 Ratchet ships a reference check for some of the rules, listed in [checks/README.md](checks/README.md). For every other rule, "Check:" says what the project's check must do.
 
@@ -72,7 +72,7 @@ The six parts below are the core. From version 0.3 the core is frozen: no rule i
 [CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -162,6 +162,7 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 - **The project's phase, approvals, cost caps and gates.** The form can be reused, but the content is the project's.
 - **The project's checks and tools.** Ratchet says what a check must do. Its reference checks show one way to write one, and a project may replace them with its own.
 - **Which models and accounts.** Ratchet says only that author and reviewer come from different model families.
+- **Skills.** Ratchet cites its sources and does not ship or install any skill from them. A project that wants one copies it at a pinned commit, tied to a named situation (`ratchet.skills-pinned`).
 
 ## Sources
 
@@ -174,4 +175,11 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
 <!-- /generated -->
 
-The table is generated from [sources.json](sources.json), and a rule cites a source by its name there. Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. A project that wants a skill copies it from the source itself, together with its license.
+The table is generated from [sources.json](sources.json), and a rule cites a source by its name there. Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. A project that wants a skill copies it from the source itself, together with its license. What Ratchet takes from each:
+
+- **google/elephant-goldfish-model**: the fresh context. A reviewer starts in a new thread, without the author's account of what was fixed.
+- **mattpocock/skills**: looking facts up instead of asking, a run that reproduces a bug before any guess, red before green, work cut into vertical slices, and a way to mark review findings.
+- **pstack**, by Lauren Tan: the idea that a lesson belongs in structure and not in words, which is what each ratchet does. Also: question the premise after failures in a row, fix the root cause, subtract before you add, and ask whether a finding is proven.
+- **obra/superpowers**: evidence before "done", and checking each review finding against the code before acting on it.
+
+The field is followed once, here, instead of once per repo. Each source is pinned at a commit in [sources.json](sources.json). A scheduled workflow compares each pin with the head of its source every day and opens an issue when one has moved, and the maintainer judges each move before the pin follows ([checks/README.md](checks/README.md#watch_sourcespy)). The maintainer also reads more widely, and what holds up comes in as a proposal.

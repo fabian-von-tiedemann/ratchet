@@ -2,6 +2,8 @@
 
 Ratchet takes proposals from people and from agents, in the same steps. The words are defined in [GLOSSARY.md](GLOSSARY.md).
 
+A project that tries Ratchet and meets a rule that does not fit is the input Ratchet improves from. Feedback from one project, [issue #89](https://github.com/fabian-von-tiedemann/ratchet/issues/89), led to a change of form in 0.10: a project may keep the rules it adopts in a block generated into its own instruction file ([D-2026-11-20-generated-block](decisions/D-2026-11-20-generated-block.md)). A proposal takes the same way in as any rule, and nothing is promised in advance.
+
 ## Propose
 
 1. Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml), [.github/ISSUE_TEMPLATE/proposal.yml](.github/ISSUE_TEMPLATE/proposal.yml). It asks for five things, each required: what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source ([D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md)). An issue opened with the form gets the label `proposal`. A lesson from a project comes the same way: see [A lesson from a project](#a-lesson-from-a-project).

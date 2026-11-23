@@ -90,7 +90,7 @@ CORE_BATCH_C_OUT = {
 }
 # Where a rule of core batch A, B or C could still be cited. The changelog and the decisions keep the old keys as history.
 CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "MIGRATING.md", "RATCHET.md",
-          "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "UPGRADING.md", os.path.join("checks", "README.md"),
+          "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "STARTING.md", "UPGRADING.md", os.path.join("checks", "README.md"),
           os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
           os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
 # The sentence D-2026-11-22-owner-reads-outside-gates puts back into ratchet.owner-paths, as the maintainer's second answer
@@ -268,7 +268,7 @@ class RepoBudget(RepoCopy, unittest.TestCase):
     def test_the_count_text_states_the_cap(self):
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
         count = registry.counts(data)["experimental"]["rules"]
-        for name in ("README.md", "RATCHET.md", "SELF-IMPROVEMENT.md", "CHANGELOG.md"):
+        for name in ("RATCHET.md", "SELF-IMPROVEMENT.md", "CHANGELOG.md"):
             with self.subTest(file=name):
                 self.assertIn("Outside the core there are %d experimental rules, under a cap of %d" % (count, CAP), read(name))
 
@@ -287,7 +287,7 @@ class Triage(RepoCopy, unittest.TestCase):
             with self.subTest(key=key):
                 self.assertNotIn(key, self.by_key)
                 self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
-                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "REGISTER.md", "UPGRADING.md"):
+                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "STARTING.md", "REGISTER.md", "UPGRADING.md"):
                     self.assertNotIn(key, read(name), name)
 
     def test_the_rules_moved_out_stand_in_this_repos_own_rules_with_their_text(self):
@@ -314,7 +314,7 @@ class Triage(RepoCopy, unittest.TestCase):
             with self.subTest(key=key):
                 self.assertNotIn(key, self.by_key)
                 self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
-                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "REGISTER.md", "AGENTS.md"):
+                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "STARTING.md", "REGISTER.md", "AGENTS.md"):
                     self.assertNotIn(key, read(name), name)
         handbook = read(os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"))
         for words in ("The control room does not build the product.",
@@ -347,7 +347,7 @@ class Triage(RepoCopy, unittest.TestCase):
             with self.subTest(key=key):
                 self.assertNotIn(key, self.by_key)
                 self.assertNotIn(key, [item["key"] for item in self.register["adopted"]])
-                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "REGISTER.md", "AGENTS.md",
+                for name in ("CONTROL-ROOM.md", "SELF-IMPROVEMENT.md", "RATCHET.md", "README.md", "STARTING.md", "REGISTER.md", "AGENTS.md",
                              "CONTRIBUTING.md", os.path.join("templates", "LESSON.md")):
                     self.assertNotIn(key, read(name), name)
         old = registry.rules_by_key(registry.parse_json(self.released("0.9")))
@@ -836,7 +836,7 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertEqual(sum(self.by_key[key]["enforcement"] == "enforced" for key in start), 8)
         template = registry.load_json(os.path.join(ROOT, "templates", "register.json"))
         self.assertEqual([item["key"] for item in template["adopted"]], start)
-        self.assertIn("The ten rules to start with:", read("README.md"))
+        self.assertIn("The ten rules to start with:", read("STARTING.md"))
         self.assertIn("| Ratchet uses all ten of its start rules. |", read("SELF-IMPROVEMENT.md"))
 
     def test_ask_the_owner_holds_the_three_rules_and_the_spending_clause_word_for_word(self):
