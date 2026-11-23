@@ -19,6 +19,14 @@ Changed:
 - `RATCHET.md`, `README.md` and the landing page say that the principles are seven for every project and three for an application in production. The dial on the landing page stays at the seven of the core, which `checks/test_pages.py` reads as the principles with a core rule under them.
 - The tests that pinned the count of principles, of experimental rules or of the product rules count again: `checks/test_principles.py`, `checks/test_budget.py` and `checks/test_pages.py`.
 
+Fixes to `checks/inventory.py` from an adoption report on 0.11. No rule changes.
+
+Fixed:
+
+- `--ruleset` follows links above the file it is given. A file under a folder from `mktemp -d` on macOS was refused, since `/var` is a link. The folder of the path the user typed is resolved once. The file itself is still refused when it is a link, a FIFO or not a regular file, or when its name looks like a credential. The walks of the repo and of the home folder are as strict as before.
+- `--ruleset` reads the rules for a branch, `GET /repos/{owner}/{repo}/rules/branches/{branch}`, the export an account without admin rights can get. It reads them strictly, one entry for each ruleset the rules come from, and refuses a malformed one. `checks/README.md` says which exports are read and which needs admin rights.
+- "Paths named that do not exist" lists fewer paths that are not missing. A path that the `.gitignore` at the root ignores (only a line that is a plain path, such as `build/`, `/dist` or `logs`, read as git reads it, which a test compares with `git check-ignore`; every line with a wildcard, `!`, a backslash or `//` is counted as not read, and a path under it is still named as missing), a span in a table row that looks like a branch name, such as `feature/`, and a path outside the root, absolute or not, are now listed under "Paths named and not looked for", each with a count. Every other missing path is still named.
+
 ## 0.11 (2026-11-23)
 
 <!-- generated:count -->
