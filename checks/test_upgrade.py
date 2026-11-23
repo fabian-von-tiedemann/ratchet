@@ -746,20 +746,20 @@ class OneCommand(FixtureTest):
                 self.assertIn("Then pin .github/workflows/ratchet.yml to the commit of v9.9: %s." % self.tag("v9.9"), output)
                 self.assertNotIn(MARKER, output)
 
-    def by_reference(self, project):
+    def by_reference(self, project, key="ratchet.keep"):
         """Make one row of the project's register a row by reference, with its marker in RULES.md, as adopt mode leaves
         it: no workflow of Ratchet's."""
         path = os.path.join(project, "register.json")
         register = registry.load_json(path)
         old_by = registry.rules_by_key(registry.parse_json(self.fixture_bytes("upgrade/old/ratchet.json")))
-        item = next(item for item in register["adopted"] if item["key"] == "ratchet.keep")
+        item = next(item for item in register["adopted"] if item["key"] == key)
         for field in ("rule", "ratchet", "source"):
             del item[field]
-        item.update(stands_in="RULES.md", sha256=check_register.reference_sha256(old_by["ratchet.keep"]))
+        item.update(stands_in="RULES.md", sha256=check_register.reference_sha256(old_by[key]))
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(register, indent=2) + "\n")
         with open(os.path.join(project, "RULES.md"), "w", encoding="utf-8") as handle:
-            handle.write("# Rules\n\nKeep it.\n\n%s\n" % check_register.MARKER % "ratchet.keep")
+            handle.write("# Rules\n\nKeep it.\n\n%s\n" % check_register.MARKER % key)
 
     def test_a_register_by_reference_with_no_workflow_is_told_how_to_run_the_new_commit(self):
         # An adoption report on 0.12: the one command ended with "Then pin .github/workflows/ratchet.yml", a file adopt
@@ -841,6 +841,18 @@ class OneCommand(FixtureTest):
                      run_pinned.run_command(commit, blob, run_pinned.COPY, "register.json", True)):
             self.assertIn("\n    %s\n" % line, output + "\n")
             self.assertTrue(line.replace(" ) || exit 1", "").endswith("-- register.json --markdown REGISTER.md"), line)
+
+    def test_a_register_whose_last_row_by_reference_is_removed_has_register_md_checked(self):
+        # Round 5 of #140: once the upgrade removes the last row by reference, REGISTER.md is required, as the report
+        # says, but the pinned commands left it out.
+        project = self.project()
+        self.by_reference(project, "ratchet.dropped")
+        code, output = self.upgrade(project, "--to", "9.9")
+        self.assertEqual(code, 0, output)
+        commit = self.tag("v9.9")
+        blob = git(self.origin, "rev-parse", "v9.9:checks/run_pinned.py")
+        self.assertIn("\n    %s\n" % run_pinned.run_command(commit, blob, run_pinned.COPY, "register.json", True),
+                      output + "\n")
 
     def test_a_register_whose_name_starts_with_a_dash_is_not_read_as_an_option(self):
         step = run_pinned.run_command("0" * 40, "1" * 40, run_pinned.COPY, "-register.json")

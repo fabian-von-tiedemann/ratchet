@@ -712,14 +712,20 @@ def one_command(args, out):
         # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
         project = os.getcwd()
         if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
-            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
+            # REGISTER.md as the report decided it, on the register with the steps done: there, or required once no
+            # row by reference is left (round 5 of #140).
+            _, after = plan(register, old, new)
+            markdown = (not check_register.references(after)
+                        or os.path.lexists(os.path.join(project, "REGISTER.md")))
+            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register),
+                                   markdown):
                 print(line, file=out)
         else:
             print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
     return code
 
 
-def pinned_run(root, shown, project, tag, commit, register="register.json"):
+def pinned_run(root, shown, project, tag, commit, register="register.json", markdown=False):
     """What a register with rows by reference, in a project with no workflow of Ratchet's, is told to do with the commit:
     adopt mode wrote no workflow, and its check runs from checks/run_pinned.py, copied from the pinned commit. The same
     copy command and lines that init.py prints, with the new commit: the copy, the line of the local check script, and
@@ -732,8 +738,6 @@ def pinned_run(root, shown, project, tag, commit, register="register.json"):
     if not os.path.isabs(shown):
         objects = os.path.relpath(os.path.abspath(objects), project)
     # The register by its own name, as the project's root sees it: the commands run from there.
-    # A REGISTER.md beside the register is checked too, as the check command above does (round 4 of #140).
-    markdown = os.path.lexists(os.path.join(project, "REGISTER.md"))
     run = run_pinned.run_command(commit, blob, run_pinned.COPY, register, markdown)
     return ["The check runs from the pinned commit with %s. To move it to the commit of %s, %s, run these from the "
             "project's root. Copy the runner again from that commit:" % (run_pinned.COPY, tag, commit),
