@@ -1,0 +1,49 @@
+name: Trial report
+description: Tell us how trying Ratchet on your repo went, as TRYING.md describes. This repo is public.
+title: "Trial report: "
+body:
+  - type: dropdown
+    id: path
+    attributes:
+      label: Path taken
+      options:
+        - New repo
+        - Repo with its own rules
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ratchet version
+      placeholder: "0.12"
+    validations:
+      required: true
+  - type: input
+    id: time
+    attributes:
+      label: Time spent
+      description: For the agent and for the person, in minutes.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: Rules that fit
+      description: The keys, such as ratchet.no-secrets.
+  - type: textarea
+    id: gap
+    attributes:
+      label: Rules that found a gap
+      description: The keys, and in one line each what was missing. No code from your repo.
+  - type: textarea
+    id: friction
+    attributes:
+      label: What got in the way
+      description: Verbatim, in your words or the agent's.
+  - type: checkboxes
+    id: public
+    attributes:
+      label: Public repo
+      options:
+        - label: This report names no project, customer, company or person, and holds no code or secrets from my repo.
+          required: true
