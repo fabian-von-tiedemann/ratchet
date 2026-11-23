@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import init  # noqa: E402
+import run_pinned  # noqa: E402
 
 WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore")
 PLACEHOLDER = "<40-character commit sha>"
@@ -156,6 +157,7 @@ class Init(unittest.TestCase):
         git(cls.source, "add", "-A")
         git(cls.source, "commit", "-q", "-m", "Ratchet as it stands")
         cls.commit = git(cls.source, "rev-parse", "HEAD")
+        cls.runner = git(cls.source, "rev-parse", "HEAD:checks/run_pinned.py")
         with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
             cls.version = json.load(handle)["version"]
 
@@ -178,9 +180,11 @@ class Init(unittest.TestCase):
     def init(self, *args, project=None):
         project = project or self.project
         script = os.path.join(self.project if project == self.path(".ratchet") else project, ".ratchet", "checks", "init.py")
+        # PWD as a shell gives it after cd into the project, so the paths init.py prints are the ones the test spelled,
+        # whether or not the temporary directory is reached through a link, such as /var to /private/var on macOS.
         result = subprocess.run([sys.executable, script] + list(args),
                                 cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
-                                env=environment())
+                                env=dict(environment(), PWD=project))
         return result.returncode, result.stdout
 
     def path(self, *parts):
@@ -1043,9 +1047,12 @@ os.link = link
                     self.assertEqual(entry["sha256"], check_register.reference_sha256(by_key[key]))
                     self.assertIn("\n<!-- ratchet:rule %s -->\n" % key, output)
                 # The copy of run_pinned.py and the one step that runs it, pinned to the commit, and no workflow or admin.
-                self.assertIn("  mkdir -p .github/ratchet && git -C .ratchet --no-replace-objects show %s:checks/run_pinned.py "
-                              "> .github/ratchet/run_pinned.py\n" % self.commit, output)
-                self.assertIn("    run: python3 -I .github/ratchet/run_pinned.py %s -- register.json\n" % self.commit, output)
+                # The copy is kept only when it hashes to the blob the pinned tree names, and the step hashes it again.
+                self.assertIn("\n  %s\n" % run_pinned.copy_command(".ratchet/.git/objects", self.commit, self.runner,
+                                                                     ".github/ratchet/run_pinned.py"), output)
+                self.assertIn("it keeps the copy only when its bytes are blob %s" % self.runner, output)
+                self.assertIn("\n    run: %s\n" % run_pinned.run_command(self.commit, self.runner,
+                                                                       ".github/ratchet/run_pinned.py"), output)
                 self.assertIn("No workflow and no required job are added", output)
                 self.assertIn("python3 .ratchet/checks/inventory.py", output)
                 self.assertNotIn("..", output.replace("...", ""))
@@ -1322,7 +1329,7 @@ os.link = link
         self.assertIn("init: the repo's git config names no remote, so these adopted rules wait for one:\n"
                       "  ratchet.protected-main: the protection of main is a setting of the host\n", output)
         # The job's token only reads, the checkout leaves no token, each with why; the line for a local check script.
-        run = "python3 -I .github/ratchet/run_pinned.py %s -- register.json" % self.commit
+        run = run_pinned.run_command(self.commit, self.runner, ".github/ratchet/run_pinned.py")
         self.assertIn("init: and give that job these, if it does not have them:\n  permissions:\n    contents: read\n"
                       "init:   the job's token can then only read the repo, so no step in the job can push or approve "
                       "with it\n", output)

@@ -113,6 +113,7 @@ import subprocess
 
 import check_register
 import registry
+import run_pinned
 
 RATCHET = registry.ROOT
 AGENTS_TITLE = "# Working rules for %s"
@@ -628,6 +629,7 @@ def main(argv=None, out=None):
             # No register.json until the project names the rules its file states: an empty one does not pass, and a
             # copied row of its own would claim what is not true (finding from a real adoption).
             texts = [("register.json", adopt_register_text(name, ratchet, args.adopt, adopting[0]))] if args.adopt else []
+            runner = runner_blob(commit)
         else:
             # The workflow first: a start that stops halfway has it, so the next run is not taken for adopt mode.
             texts = [(WORKFLOW, workflow_text(commit)), ("AGENTS.md", agents_text(name, args.solo)),
@@ -777,7 +779,7 @@ def main(argv=None, out=None):
 
     # A file skipped is reported, not a failure: only the register decides (step 5 of D-2026-11-22-second-redraw).
     result = 0
-    lines = (adopt_notes(root, adopting, standing, ratchet, commit, register_state == "missing") if adopting
+    lines = (adopt_notes(root, adopting, standing, ratchet, commit, register_state == "missing", runner) if adopting
              else notes(root, states, standing, args.check))
     for line in lines + waiting(root, standing):
         say(line)
@@ -897,10 +899,21 @@ def reference_row(key, stands_in, ratchet):
     return row
 
 
-def adopt_notes(root, files, standing, ratchet, commit, missing):
+def runner_blob(commit):
+    """(the object directory of the Ratchet checkout, as typed, the name of the blob of checks/run_pinned.py in the
+    commit), read with run_pinned's reader: no git config, every object on the way from the commit hashed."""
+    try:
+        return typed(run_pinned.objects_of(RATCHET)), run_pinned.stored_blob(RATCHET, commit, run_pinned.SELF)
+    except (run_pinned.Refused, OSError) as error:
+        raise InitError("cannot read %s of commit %s from %s, every object hashed: %s"
+                        % (run_pinned.SELF, commit, typed(RATCHET), error))
+
+
+def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
     """What adopt mode prints for the project to do: for each rule to start with that the register does not adopt yet,
     its marker line and its row by reference, pointing at the first instruction file; when register.json is missing, how
-    --adopt writes it; how to record a rule as built; the copy of checks/run_pinned.py and the one step that runs it, with
+    --adopt writes it; how to record a rule as built; the copy of checks/run_pinned.py, which keeps the copy only when it
+    is the blob runner names, and the one step that runs it after hashing it the same way, with
     the job's permissions and the checkout's credentials, or the line for a local check script; and the line for
     .gitignore when it does not ignore .ratchet. It reads no instruction file for any of it: only written_by_init reads
     AGENTS.md, for its own note (review of 58ca014)."""
@@ -944,13 +957,15 @@ def adopt_notes(root, files, standing, ratchet, commit, missing):
     if files[1:]:
         lines += ["", "init: the project also has %s. A row may name one of them in stands_in in place of %s"
                   % (" and ".join(files[1:]), stands_in)]
-    run = "python3 -I %s %s -- register.json" % (RUNNER, commit)
+    objects, blob = runner
+    run = run_pinned.run_command(commit, blob, RUNNER)
     lines += ["", "init: the check runs from the pinned commit with checks/run_pinned.py. It reads .ratchet only as a store "
-                  "of git objects, cloning it when it is missing, hashes every object it uses, and runs the check from a new "
-                  "directory, so an edit in .ratchet, or a file planted beside the check, never runs. Copy it into the repo "
-                  "once, from the pinned commit, and commit it: a change to it is then a change in the repo, for review",
-              "  mkdir -p %s && git -C %s --no-replace-objects show %s:checks/run_pinned.py > %s"
-              % (RUNNER.rsplit("/", 1)[0], typed(RATCHET), commit, RUNNER),
+                  "of git objects, cloning it when it is missing, with no git config of the store's, the user's or the "
+                  "system's, hashes every object it uses, and runs the check from a new directory, so an edit in .ratchet, "
+                  "or a file planted beside the check, never runs. Copy it into the repo once, from the pinned commit, with "
+                  "this command, run from the root: it keeps the copy only when its bytes are blob %s, the one the pinned "
+                  "commit names. Commit the copy: a change to it is then a change in the repo, for review" % blob,
+              "  " + run_pinned.copy_command(objects, commit, blob, RUNNER),
               "init: add this one step to a job that the protection of main already requires. No workflow and no "
               "required job are added, so no admin is needed. In GitHub Actions, after the checkout:",
               "  - name: Ratchet's register check",

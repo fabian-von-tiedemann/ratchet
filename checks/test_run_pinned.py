@@ -73,12 +73,12 @@ class RunPinned(unittest.TestCase):
         register["adopted"] = []
         self.register(register)
 
-    def run_copy(self, *args, commit=None):
+    def run_copy(self, *args, commit=None, env=None):
         command = [sys.executable, "-I", COPY, commit or self.commit, "--repository", self.source] + list(args)
         if "--" not in args:
             command += ["--", "register.json"]
         result = subprocess.run(command, cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                universal_newlines=True)
+                                universal_newlines=True, env=env)
         return result.returncode, result.stdout
 
     def clone_store(self):
@@ -184,12 +184,14 @@ class RunPinned(unittest.TestCase):
 
     def test_a_copy_that_is_not_the_pinned_commits_is_refused(self):
         self.clone_store()
-        with open(self.path(COPY), "a", encoding="utf-8") as handle:
-            handle.write("# a line of the project's own\n")
+        with open(self.path(COPY), "rb") as handle:
+            whole = handle.read()
+        with open(self.path(COPY), "wb") as handle:
+            handle.write(whole.replace(b"\nimport sys\n", b"\n# a line of the project's own\nimport sys\n", 1))
         code, output = self.run_copy()
         self.assertEqual(code, 2, output)
         self.assertIn("is not checks/run_pinned.py of commit %s" % self.commit, output)
-        self.assertIn("--no-replace-objects show %s:checks/run_pinned.py >" % self.commit, output)
+        self.assertIn("Copy it again, from the project's root: " + self.commands()[0], output)
 
     def test_a_store_that_is_not_a_repo_of_its_own_is_refused(self):
         # A plain folder at .ratchet inside the project's repo: never taken for the project's repo.
@@ -197,6 +199,161 @@ class RunPinned(unittest.TestCase):
         code, output = self.run_copy()
         self.assertEqual(code, 2, output)
         self.assertIn(".ratchet exists and is not a git repo of its own", output)
+
+    def marker_program(self):
+        """A program that writes a line to a marker file each time it runs, and fails. Returns (program, marker)."""
+        marker = os.path.join(self.project, "MARKER")
+        program = os.path.join(os.path.dirname(self.project), "marker.sh")
+        with open(program, "w", encoding="utf-8") as handle:
+            handle.write('#!/bin/sh\necho "ran: $0 $*" >> %s\nexit 1\n' % marker)
+        os.chmod(program, 0o755)
+        return program, marker
+
+    def hostile(self, git_config, program, url):
+        """Config in the file git_config that runs program at every point git offers one, and sends url elsewhere."""
+        hooks = os.path.join(os.path.dirname(git_config), "hooks-of-" + os.path.basename(git_config))
+        os.makedirs(hooks)
+        for hook in ("reference-transaction", "post-checkout", "post-merge", "pre-auto-gc", "post-index-change"):
+            os.symlink(program, os.path.join(hooks, hook))
+        for key, value in (("core.sshCommand", program), ("core.fsmonitor", program), ("core.hooksPath", hooks),
+                           ("credential.helper", program), ("core.askPass", program), ("core.pager", program),
+                           ("core.alternateRefsCommand", program), ("protocol.allow", "always"),
+                           ("remote.origin.uploadpack", program), ("uploadpack.packObjectsHook", program),
+                           ("url.ext::%s %%S.insteadOf" % program, url), ("gc.auto", "1"),
+                           ("filter.evil.smudge", program), ("filter.evil.process", program)):
+            subprocess.run(["git", "config", "--file", git_config, "--add", key, value], check=True)
+
+    def test_the_store_config_never_runs_a_program_even_when_an_object_is_missing_from_a_promisor_store(self):
+        # Codex's case: the commit is in the store, a blob is not, and the store is a partial clone. Before, git cat-file
+        # started a lazy fetch, and the store's core.sshCommand ran before the verification refused.
+        program, marker = self.marker_program()
+        self.clone_store()
+        store = self.path(".ratchet")
+        blob = git(store, "rev-parse", "%s:checks/check_register.py" % self.commit)
+        os.remove(os.path.join(store, ".git", "objects", blob[:2], blob[2:]))
+        config = os.path.join(store, ".git", "config")
+        for key, value in (("core.repositoryformatversion", "1"), ("extensions.partialClone", "origin"),
+                           ("remote.origin.url", "ssh://git@example.invalid/ratchet"), ("remote.origin.promisor", "true"),
+                           ("remote.origin.partialclonefilter", "blob:none")):
+            subprocess.run(["git", "config", "--file", config, key, value], check=True)
+        self.hostile(config, program, self.source)
+        code, output = self.run_copy()
+        self.assertEqual(code, 2, output)
+        self.assertIn("object %s is missing from the store" % blob, output)
+        self.assertFalse(os.path.exists(marker), open(marker).read() if os.path.exists(marker) else "")
+
+    def test_no_config_of_the_store_the_user_or_the_system_runs_a_program_on_read_or_fetch(self):
+        # A store without the commit, so that it is fetched, and every place git takes a program from, set in the
+        # store's config, in the user's, through HOME, XDG_CONFIG_HOME, GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM, and
+        # through GIT_CONFIG_PARAMETERS: none runs, and the fetch is from the repository named, not a rewritten url.
+        program, marker = self.marker_program()
+        store = self.path("empty-store")
+        os.mkdir(store)
+        git(store, "init", "-q")
+        self.hostile(os.path.join(store, ".git", "config"), program, self.source)
+        home = os.path.join(os.path.dirname(self.project), "home")
+        os.makedirs(os.path.join(home, "git"))
+        for name in (".gitconfig", os.path.join("git", "config"), "global", "system"):
+            self.hostile(os.path.join(home, name), program, self.source)
+        env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=home, GIT_CONFIG_GLOBAL=os.path.join(home, "global"),
+                   GIT_CONFIG_SYSTEM=os.path.join(home, "system"), GIT_CONFIG_NOSYSTEM="0",
+                   GIT_CONFIG_PARAMETERS="'core.sshcommand'='%s'" % program)
+        self.failing()
+        code, output = self.run_copy("--store", "empty-store", env=env)
+        self.assertEqual(code, 1, output)
+        self.assertIn("no rules from Ratchet", output)
+        self.assertFalse(os.path.exists(marker), open(marker).read() if os.path.exists(marker) else "")
+        # The commit is now in the store, so a second run reads it without a fetch, with the same config in place.
+        code, output = self.run_copy("--store", "empty-store", env=env)
+        self.assertEqual(code, 1, output)
+        self.assertFalse(os.path.exists(marker))
+        self.assertEqual(git(store, "cat-file", "-t", self.commit), "commit")
+
+    def test_a_missing_store_is_cloned_with_no_config_of_the_users(self):
+        program, marker = self.marker_program()
+        home = os.path.join(os.path.dirname(self.project), "home")
+        os.mkdir(home)
+        self.hostile(os.path.join(home, ".gitconfig"), program, self.source)
+        code, output = self.run_copy(env=dict(os.environ, HOME=home))
+        self.assertEqual(code, 0, output)
+        self.assertFalse(os.path.exists(marker), open(marker).read() if os.path.exists(marker) else "")
+
+    def commands(self, store=".ratchet"):
+        """(the copy command and the run command adopt mode prints), for the blob of run_pinned.py in the commit."""
+        blob = git(self.source, "rev-parse", "%s:checks/run_pinned.py" % self.commit)
+        objects = os.path.join(store, ".git", "objects")
+        return (run_pinned.copy_command(objects, self.commit, blob, COPY.replace(os.sep, "/")),
+                run_pinned.run_command(self.commit, blob, COPY.replace(os.sep, "/")))
+
+    def shell(self, command):
+        result = subprocess.run(["sh", "-c", command], cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True)
+        return result.returncode, result.stdout
+
+    def test_the_printed_copy_command_copies_the_pinned_runner_and_the_printed_step_runs_it(self):
+        self.clone_store()
+        os.remove(self.path(COPY))
+        copy, run = self.commands()
+        code, output = self.shell(copy)
+        self.assertEqual(code, 0, output)
+        with open(self.path(COPY), "rb") as handle:
+            copied = handle.read()
+        self.assertEqual(copied, subprocess.run(["git", "-C", self.source, "show", "%s:checks/run_pinned.py" % self.commit],
+                                                stdout=subprocess.PIPE, check=True).stdout)
+        self.assertEqual(os.listdir(self.path(".github", "ratchet")), ["run_pinned.py"])
+        code, output = self.shell(run)
+        self.assertEqual(code, 0, output)
+        self.assertIn("run_pinned: Ratchet at %s, every object hashed" % self.commit, output)
+        self.failing()
+        code, output = self.shell(run)
+        self.assertEqual(code, 1, output)
+
+    def test_the_copy_command_refuses_a_runner_swapped_in_the_store_for_an_empty_blob(self):
+        # Astra's case: the runner's loose object replaced by a validly compressed empty blob. Before, the copy made an
+        # empty runner, and running it exited 0 for an invalid register.
+        shutil.copytree(self.source, self.path(".ratchet"))
+        self.failing()
+        os.remove(self.path(COPY))
+        blob = git(self.source, "rev-parse", "%s:checks/run_pinned.py" % self.commit)
+        loose = self.path(".ratchet", ".git", "objects", blob[:2], blob[2:])
+        os.chmod(loose, 0o644)
+        with open(loose, "wb") as handle:
+            handle.write(zlib.compress(b"blob 0\0"))
+        copy, run = self.commands()
+        code, output = self.shell(copy)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("run_pinned.py was not copied", output)
+        self.assertFalse(os.path.lexists(self.path(COPY)))
+        self.assertEqual(os.listdir(self.path(".github", "ratchet")), [])
+        # And a runner that is missing, empty, or cut short, fails the step: it never passes a register that fails.
+        code, output = self.shell(run)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("is not checks/run_pinned.py of commit %s" % self.commit, output)
+        with open(self.path(COPY), "wb"):
+            pass
+        code, output = self.shell(run)
+        self.assertNotEqual(code, 0, output)
+        self.assertIn("is not checks/run_pinned.py of commit %s" % self.commit, output)
+
+    def test_a_runner_cut_short_refuses_and_the_step_refuses_it(self):
+        self.clone_store()
+        self.failing()
+        with open(self.path(COPY), "rb") as handle:
+            whole = handle.read()
+        _, run = self.commands()
+        # Cut after its own guard and before main runs, and cut before the guard: only the step catches the second.
+        guard = whole.index(b"\ndef parse(")
+        for cut, direct in ((guard, 2), (whole.index(b"\nimport sys\n"), 0)):
+            with self.subTest(cut=cut):
+                with open(self.path(COPY), "wb") as handle:
+                    handle.write(whole[:cut + 1])
+                code, output = self.run_copy()
+                self.assertEqual(code, direct, output)
+                if direct:
+                    self.assertIn("is cut short", output)
+                code, output = self.shell(run)
+                self.assertNotEqual(code, 0, output)
+                self.assertNotIn("no rules from Ratchet", output)
 
     def test_the_command_line(self):
         for argv in ([], [self.commit], ["--", "register.json"], [self.commit, "--store", "--"],
@@ -234,8 +391,9 @@ class Isolated(unittest.TestCase):
                 if imports:
                     self.assertIn(self.INSERT, text)
                     self.assertLess(text.index(self.INSERT), imports[0])
-        self.assertNotIn(self.INSERT, open(os.path.join(HERE, "run_pinned.py"), encoding="utf-8").read(),
-                         "run_pinned.py imports nothing from beside it, so -I keeps a planted module out")
+        with open(os.path.join(HERE, "run_pinned.py"), encoding="utf-8") as handle:
+            self.assertNotIn(self.INSERT, handle.read(),
+                             "run_pinned.py imports nothing from beside it, so -I keeps a planted module out")
 
     def test_every_script_with_a_command_line_starts_under_python_minus_i(self):
         directory = tempfile.mkdtemp(prefix="ratchet-test-")
