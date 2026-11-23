@@ -8,8 +8,8 @@
       "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins. A Ratchet row may point at the project's own wording, and the check then sees a marker, not the rule's text.",
       "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version: a copied row character for character, and a row by reference by the sha256 of the rule and its ratchet and by one marker line in the file it names, not by the words there",
       "source": "",
-      "status": "text only for now",
-      "where": "Not built. `checks/check_register.py` runs on `register.json` in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/check_register.py` on the pull request's `register.json` and `REGISTER.md`. It fails on the seeded registers under `checks/fixtures/register/` (`checks/test_checks.py`), and the base's run on a softened check in `checks/test_from_base.py`"
     },
     {
       "key": "ratchet.protected-main",
@@ -95,8 +95,8 @@
       "rule": "A suite of tests made from a source, such as a table, a spec or a directory of fixtures, fails when a test it expects did not run and pass. The expected tests are read from that same source. The run fails when one of them is missing, skipped, errored or could not be prepared, when the suite exits before it is done, and when two tests run under one id. Every row of the source has a test that goes red when that row's own check is removed.",
       "ratchet": "Check: a step of its own runs the suite in a child process, whose runner writes a record of every outcome and, at the end, a completion record, and the step fails on each expected test that did not pass exactly once. It catches tests dropped by mistake. It does not stop test code written to defeat it, which runs with the same rights, so a change to the checks is read by the owner (`ratchet.owner-paths`). It does not see whether a test uses what it reads: a mutation per row does, as in `ratchet.test-can-fail`",
       "source": "",
-      "status": "text only for now",
-      "where": "Not built. `checks/expected_tests.py` runs the suite in a child process through `checks/suite_runner.py`, in a step of its own in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/expected_tests.py` and `checks/suite_runner.py`, with the base branch's tests and fixtures, on the pull request's checks. It fails on the seeded suites of `checks/test_expected_tests.py`, and the base's runner on a softened runner in `checks/test_from_base.py`"
     },
     {
       "key": "ratchet.one-exact-form",
@@ -119,16 +119,16 @@
       "rule": "A rule is written in `ratchet.json` and nowhere else. The rule tables, the count of rules, `templates/register.json` and the registers under `checks/fixtures/register/` are generated from it and never edited by hand.",
       "ratchet": "Check: `checks/generate.py --check`, run by `.github/workflows/checks.yml`",
       "source": "D-2026-11-16-scope",
-      "status": "text only for now",
-      "where": "Not built. `checks/generate.py --check` runs in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/generate.py --check` on the pull request's data files and generated text. It fails on the edited copies in `checks/test_checks.py` and `checks/test_writes.py`, and the base's run on a softened check in `checks/test_from_base.py`"
     },
     {
       "key": "repo.checks-fail-on-fixtures",
       "rule": "A reference check has a fixture for every fault it claims to catch, and for every way that has been found to hide a fault from it, and a test that it fails on that fixture for that reason.",
       "ratchet": "Check: `checks/test_checks.py`, run by `.github/workflows/checks.yml`",
       "source": "",
-      "status": "text only for now",
-      "where": "Not built. `checks/test_checks.py` runs in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's tests and fixtures, `checks/test_checks.py` among them, on the pull request's checks, through the base branch's `checks/expected_tests.py`. It fails when a check is softened together with its test, in `checks/test_from_base.py`"
     },
     {
       "key": "repo.strict-forms",
@@ -167,8 +167,8 @@
       "rule": "Ratchet is versioned `MAJOR.MINOR`, with a git tag `vMAJOR.MINOR` and a changelog entry for each version. A minor version adds or tightens rules, and may change, rename or remove an experimental rule. Only a major version changes the form of `ratchet.json` or `register.json`, renames the key of a core rule, or adds a rule to the core or removes one from it. Before 1.0, a minor version may do these too, and the changelog lists every rename, every change of form and every rule that enters or leaves the core.",
       "ratchet": "Check: `checks/released_text.py`, run by `.github/workflows/checks.yml` on a checkout that holds the tags: the changelog has an entry for every tag, and a released changelog entry, or the `ratchet.json` of a released version, is as it stood at its tag",
       "source": "D-2026-11-20-proposal-triage",
-      "status": "text only for now",
-      "where": "Not built. `checks/released_text.py` runs in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/released_text.py` on the pull request's `CHANGELOG.md` and `ratchet.json`, with the tags. It fails on the seeded repos of `checks/test_released_text.py`"
     },
     {
       "key": "repo.maintainer-approves",
@@ -181,8 +181,8 @@
       "rule": "An experimental rule that enters Ratchet is already used by Ratchet itself, adopted in this register, or says in `not_used_because` in `ratchet.json` why Ratchet cannot use it.",
       "ratchet": "Check: `checks/generate.py --check`, run by `.github/workflows/checks.yml`, fails on an experimental rule whose `since` is the version of `ratchet.json` that this register does not adopt and that gives no reason, and on a rule that this register adopts and that gives one. It does not see whether Ratchet follows a rule it adopts",
       "source": "D-2026-11-20-proposal-triage",
-      "status": "text only for now",
-      "where": "Not built. `checks/generate.py --check` runs in the job `checks` of `.github/workflows/checks.yml`, which is required for the merge, but the job runs the PR's own checks and rule data, not the base branch's, so the check is not built by where it is enforced (D-2026-11-22-second-redraw)"
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/generate.py --check` on the pull request's `ratchet.json` and `register.json`. It fails on the seeded copies in `checks/test_budget.py`"
     },
     {
       "key": "repo.agents-own-account",
