@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  # The pull request's own checks, on its own data. On a push to main, the only checks that run.
+  own:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -30,3 +31,57 @@ jobs:
         run: python3 checks/released_text.py
       - name: Every expected test ran and passed, in a process of its own
         run: python3 checks/expected_tests.py
+
+  # The base branch's checks judge the pull request: checks/from_base.py, taken from the base commit, never from the
+  # pull request. See checks/README.md, "from_base.py".
+  base:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The base branch's checks pass the pull request's data and its checks
+        run: |
+          judge="$(mktemp -d "$RUNNER_TEMP/from-base.XXXXXX")"
+          if ! git cat-file -e "HEAD^1:checks/from_base.py"; then
+            echo "The base, HEAD^1, has no checks/from_base.py, so the base branch's checks cannot judge this pull request."
+            echo "So it is for the pull request that adds it. The maintainer reads it and merges it as an administrator."
+            exit 1
+          fi
+          git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"
+          python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
+
+  # The status that the ruleset on main requires. It passes only when the pull request's own checks passed and, on a
+  # pull request, the base branch's too. It runs whatever they did, so that it is never skipped.
+  checks:
+    needs: [own, base]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      OWN: ${{ needs.own.result }}
+      BASE: ${{ needs.base.result }}
+      EVENT: ${{ github.event_name }}
+    steps:
+      - name: The pull request's own checks and the base branch's passed
+        run: |
+          echo "own: $OWN, base: $BASE, event: $EVENT"
+          if [ "$OWN" != success ]; then
+            echo "The pull request's own checks, the job own, did not pass."
+            exit 1
+          fi
+          if [ "$EVENT" = pull_request ] && [ "$BASE" != success ]; then
+            echo "The base branch's checks, the job base, did not pass this pull request. Its log says why."
+            exit 1
+          fi
+          if [ "$EVENT" != pull_request ] && [ "$BASE" != skipped ]; then
+            echo "The job base ran on a $EVENT, where it is not to run."
+            exit 1
+          fi
