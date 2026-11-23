@@ -103,6 +103,14 @@
       "rule": "A check that must refuse what it does not know accepts one exact form of the whole input and refuses everything else. It does not interpret free text, a command line or an address to decide what it means. Where the input cannot be given one form, the check is a tripwire and says so, and a lock elsewhere carries the rule.",
       "ratchet": "Text only: a check cannot tell how another check reads its input. Every form that once got past a check is a fixture it must fail, and every form it accepts has a fixture it passes, so the forms it accepts are a finite list",
       "source": ""
+    },
+    {
+      "key": "ratchet.platform-lifecycle",
+      "rule": "The project keeps one list of what outside the repo changes state on a date: the end of support of the operating system, the runtime and the frameworks it runs on, and certificates, domains, keys and plans that expire. Each entry has its date and a warning time. A scheduled job reads the list and is red when a date is within its warning time.",
+      "ratchet": "Check: a scheduled job reads the dates in the one list against each warning time, posts its result, and is red when a date is within it, as in `ratchet.silence-is-red`. It does not see whether the dates are right, or whether the list is complete",
+      "source": "",
+      "status": "text only for now",
+      "where": "Not built. This repo keeps no list of what its jobs run on that changes state on a date, such as the end of support of the Python of the runner image `ubuntu-24.04` that `.github/workflows/checks.yml` and `.github/workflows/release.yml` use, and no scheduled job reads such a list, posts its result or is red when a date is within its warning time"
     }
   ],
   "own": [

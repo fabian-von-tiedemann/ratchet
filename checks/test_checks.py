@@ -50,6 +50,8 @@ PART = "Not stated here: %s."
 PART_LABEL = "Adopted in part. Not stated in the project's wording: %s. " + LABEL
 PART_FORM = ('%s: where holds the words "not stated here", so the row is adopted in part, and then where must be exactly '
              '"Not stated here: <clause>; <clause>."')
+PART_CODE = ("%s: where splits code: a clause holds a backtick without its pair. A clause holds no semicolon, in code or out "
+             "of it, so a pair of backticks stands in one clause")
 # The clauses of the passing fixtures adopted in part.
 PART_ONE = ("a change to the register is reviewed before it is merged",)
 PART_SEVERAL = ("a subagent's done is checked independently", "every finding is marked proven by a run or unproven",
@@ -249,6 +251,40 @@ FAILING_DATA = {
     "ref-part-where-on-text-only": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status or a place where its check lives",
     "ref-part-copied": "ratchet.root-cause: only a row adopted by reference is adopted in part",
     "ref-part-own": "example.changelog: an own rule is not adopted in part",
+    # Look-alikes of the phrase, with the status "built", each of which once passed as a whole rule built (review of
+    # 4b29449). The words "not stated here" in any form but the exact phrase fail, read after NFKC, case folding and with
+    # every mark of Markdown and every character that is not a letter or a digit taken out.
+    "ref-part-like-accent": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-stroke": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-code-first": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-code-middle": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-emphasis": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-underscore": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-hyphens": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-no-spaces": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-digit": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-sharp-s": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-in-clause": PART_FORM % "ratchet.fresh-context",
+    "ref-part-like-text-only": PART_FORM % "ratchet.evidence-before-done",
+    # Unicode look-alikes and invisible characters, which no value may hold.
+    "ref-part-like-cyrillic": "ratchet.fresh-context: where holds U+043E",
+    "ref-part-like-full-width": "ratchet.fresh-context: where holds U+FF2E",
+    "ref-part-like-math-bold": "ratchet.fresh-context: where holds U+1D427",
+    "ref-part-like-zero-width": "ratchet.fresh-context: where holds U+200B",
+    "ref-part-like-soft-hyphen": "ratchet.fresh-context: where holds U+00AD",
+    "ref-part-like-combining": "ratchet.fresh-context: where holds U+0301",
+    # The same on a copied row and on a rule of the project's own.
+    "ref-part-like-copied-accent": "ratchet.root-cause: only a row adopted by reference is adopted in part",
+    "ref-part-like-copied-code": "ratchet.root-cause: only a row adopted by reference is adopted in part",
+    "ref-part-like-copied-stroke": "ratchet.root-cause: only a row adopted by reference is adopted in part",
+    "ref-part-like-own-accent": "example.changelog: an own rule is not adopted in part",
+    "ref-part-like-own-code": "example.changelog: an own rule is not adopted in part",
+    "ref-part-like-own-stroke": "example.changelog: an own rule is not adopted in part",
+    # Code in a clause: a separator inside code splits nothing, and a clause holds no half of a pair of backticks.
+    "ref-part-code-split": PART_CODE % "ratchet.fresh-context",
+    "ref-part-code-split-three": PART_CODE % "ratchet.fresh-context",
+    "ref-part-code-semicolon": PART_CODE % "ratchet.fresh-context",
+    "ref-part-code-period-space": PART_FORM % "ratchet.fresh-context",
 }
 
 # Fixtures with a clean register.json that names AGENTS.md, and an AGENTS.md whose block is not what it generates,
@@ -1187,6 +1223,32 @@ class RegisterInPart(FixtureTest):
                 self.assertIn("register.json: %s stands in RULES.md. %s\n" % (other["key"], LABEL % "not built"), output)
         # A register with no row in part says nothing of it.
         self.assertNotIn("adopted in part", self.check("ref-clean")[1])
+
+    def test_the_words_are_found_in_any_form_and_nothing_else_is(self):
+        check_register = self.module()
+        for where in ("Not stated here: one.", "N\u00f3t stated here: one.", "Not stated \u0127ere: one.", "`Not` stated here: one.",
+                      "Not `stated` here: the owner review.", "*Not* stated here: one.", "_not_ **stated** here", "NOT-STATED-HERE",
+                      "notstatedhere", "N0t stat3d h3r3", "Not sta\u0167ed here", "Not stated here", "In short, not stated here.",
+                      "N\u043et stated here", "\uff2eot stated here", "\U0001d427ot stated here", "Not\u200b stated here",
+                      "No\u00adt stated here", "No\u0301t stated here", "Not\u00a0stated\u00a0here", "Not stated here\u2060",
+                      "N.o.t s.t.a.t.e.d h.e.r.e", "Not\tstated\nhere", "Not st\u00e5ted h\u00e9re", "Not \u017ftated here"):
+            with self.subTest(where=where):
+                self.assertTrue(check_register.holds_part({"where": where}))
+        for where in ("checks/check_register.py, run in CI", "not here", "stated here", "not stated", "in our heads",
+                      "Not yet stated: here.", "`.github/CODEOWNERS`", ""):
+            with self.subTest(where=where):
+                self.assertFalse(check_register.holds_part({"where": where}))
+
+    def test_a_clause_never_splits_code(self):
+        check_register = self.module()
+        for where in ("Not stated here: `one; two`.", "Not stated here: `a; b; c`.", "Not stated here: x `a; b` y.",
+                      "Not stated here: `a;b`.", "Not stated here: `a. b`.", "Not stated here: one; `two.",
+                      "Not stated here: one; `` two ``."):
+            with self.subTest(where=where):
+                self.assertIsNone(check_register.part_clauses(where))
+                self.assertIsNotNone(check_register.part_problem("k", where))
+        self.assertEqual(check_register.part_clauses("Not stated here: `a.b`; `c` and d."), ["`a.b`", "`c` and d"])
+        self.assertEqual(check_register.part_problem("k", "Not stated here: `one; two`."), PART_CODE % "k")
 
     def test_a_text_only_rule_takes_where_only_as_the_phrase(self):
         register = json.loads(self.fixture_text("register/ref-part-several/register.json"))

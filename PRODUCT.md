@@ -1,0 +1,38 @@
+# The product module
+
+> **Experimental.** This file is outside Ratchet's core. Its rules may change in any version, and they are not counted in the share of rules that are text only. A project adopts them row by row, like any other rule.
+
+Rules for an application with users that runs in production. A project without one does not need them, and the rules in [RATCHET.md](RATCHET.md) work without them. The rules follow the same form as RATCHET.md: key, rule, ratchet and source. The table is generated from [ratchet.json](ratchet.json).
+
+## What it is
+
+Seven rules, all experimental and opt-in, under three principles of their own and one of the core ([D-2026-11-22-second-redraw](decisions/D-2026-11-22-second-redraw.md), "The product module"):
+
+- **Ship what was tested, and know the way back**: `ratchet.release-what-was-tested`.
+- **Keep what was accepted**: `ratchet.accepted-by-who-can-judge` and `ratchet.boundaries-have-tests`.
+- **Watch production and the ground under the code**: `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle`.
+- **Guard the boundaries**, a principle of the core: `ratchet.dependencies-pinned`.
+
+The principles stand with the others in [RATCHET.md](RATCHET.md#the-principles). The rules are written from one run on one application, so they stay experimental until a second project has used them. Each ratchet says what its check does not see, and the rules promise nothing beyond what the checks see. Ratchet itself has no runtime, no production and no lockfile, so six of the seven name in `not_used_because` why its own register does not adopt them. The seventh, `ratchet.platform-lifecycle`, Ratchet can use: its own jobs run on a runner image and a Python whose support ends on a date. Its register adopts the rule as text only for now, since no list of those dates and no scheduled job that reads one is built yet.
+
+A deploy to production waits for the owner's word, as a text-only clause in `ratchet.release-what-was-tested`. The rule for what cannot be undone, `ratchet.irreversible-waits` in [CONTROL-ROOM.md](CONTROL-ROOM.md), is not changed by it. The scheduled checks of `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle` post their results as every scheduled job does, and a late post is red (`ratchet.silence-is-red`).
+
+## Rules
+
+<!-- generated:table product -->
+| Key | Rule | Ratchet | Source |
+|---|---|---|---|
+| ratchet.release-what-was-tested | What is deployed to production is the exact artifact that passed in the test environment\, named by its digest\, never a new build of the same commit\. Every deploy has a way back that has been tried\, and a change to stored data says how it is undone or that it cannot be\. A smoke test runs after each deploy\, and when it fails or does not run\, the deploy fails or an alert is raised\. A deploy to production waits for the owner\'s word\. | Check\: the deploy step refuses an artifact with no passing run in the test environment\, and a smoke test posts its result after each deploy\, so that a failed or missing post fails the deploy or opens an alert\. The owner\'s word before a deploy to production is text only\. It does not see a deploy by another route\, whether the way back was tried\, or whether a change to stored data can be undone | — |
+| ratchet.accepted-by-who-can-judge | A change that a user sees is accepted by someone who can judge it\, a user or the owner\, on the running change and not on its description\. The acceptance is recorded in the issue\, and what was accepted gets a test tagged with that issue\, which goes red if the behavior changes later\. A change that no test can catch is recorded as such in the issue\, with the reason\, and is accepted without a test\. | Check\: each issue marked as accepted has a tagged test in the registry of `ratchet.root-cause`\, or is recorded as a change that no test can catch\. It does not see whether the test holds what was accepted\, whether the person could judge it\, or whether a change recorded as one no test can catch is one | — |
+| ratchet.boundaries-have-tests | The project keeps one list of its boundaries\: what each user\, role or tenant may see and change\, and where outside input enters\. Each boundary on the list names a test that tries to cross it and must be refused\. A change that adds or moves a boundary changes the list and its test in the same change\. | Check\: each test named in the list of boundaries ran and passed in the required job\. It does not see whether the test would catch a crossing\, whether the list is complete\, or whether authorization holds at every entry point | — |
+| ratchet.production-health | An outside probe asks production\, on a schedule\, what a user would ask\, and checks the answer\. The same probe checks that what should get no answer gets none\: a port that is not on the project\'s list\, and paths such as `/.env`\, `/.git/config` and a setup page\. A failure\, or a probe that did not post\, opens an alert to someone who acts on it\, within minutes\. | Check\: an outside probe posts its result on its schedule\, a failure opens an alert\, and a late post is red\, as in `ratchet.silence-is-red`\. It does not see errors on paths the probe does not ask for\, or whether anyone acted on the alert | — |
+| ratchet.measure-real-use | On a schedule\, the project reads how the application is used in production\: which paths are taken\, where users stop and which errors they meet\, beside what the tests cover\. The analysis posts its result where the control room reads every day\, and what it finds becomes an issue\. It reads no more about a person than the project\'s terms allow\. | Check\: the analysis is a scheduled job that posts its result\, and a late post is red\, as in `ratchet.silence-is-red`\. It does not see whether it read real use\, or whether anything was done with what it found | — |
+| ratchet.platform-lifecycle | The project keeps one list of what outside the repo changes state on a date\: the end of support of the operating system\, the runtime and the frameworks it runs on\, and certificates\, domains\, keys and plans that expire\. Each entry has its date and a warning time\. A scheduled job reads the list and is red when a date is within its warning time\. | Check\: a scheduled job reads the dates in the one list against each warning time\, posts its result\, and is red when a date is within it\, as in `ratchet.silence-is-red`\. It does not see whether the dates are right\, or whether the list is complete | — |
+| ratchet.dependencies-pinned | Every dependency of the application is pinned to an exact version in a lockfile that the package tool writes\, and the lockfile is committed\. The required job installs in frozen mode from the lockfile\, so a dependency that is not in it\, or a lockfile that does not match the manifest\, fails the job\. Scanning for known vulnerabilities is not what this rule asks for\. | Check\: the required job installs in frozen mode from the lockfile and fails when it cannot\. It does not see whether a pinned version is safe\, or pins the package tool does not record\, and it does not scan for known vulnerabilities | — |
+<!-- /generated -->
+
+## What it does not cover
+
+- A model in the product, such as an application that calls a language model for its users. The rule for it is deferred.
+- Scanning dependencies for known vulnerabilities. `ratchet.dependencies-pinned` pins and installs what was tested, and says nothing of whether a pinned version is safe.
+- A deploy by another route than the deploy step. The checks see the deploy step only.

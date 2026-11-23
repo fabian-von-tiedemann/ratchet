@@ -732,6 +732,10 @@ def reference_fixtures(data, clean, sourced, plain, soft):
     rule = registry.rules_by_key(data)[fresh]
     part = check_register.PART + PART_ONE + "."
     wrong_ratchet = dict(rule, ratchet="Check: a reminder in the working rules")
+
+    def copied(register):
+        """The copied row of ratchet.root-cause, which names a check."""
+        return next(entry for entry in register["adopted"] if entry["key"] == "ratchet.root-cause")
     faults = {
         "ref-unknown-key": lambda r: r["adopted"].append({"key": "ratchet.ship-first", "stands_in": "RULES.md", "sha256": "0" * 64}),
         "ref-wrong-hash": lambda r: r["adopted"][sourced].update(sha256=check_register.reference_sha256(dict(rule, rule=soft(rule["rule"])))),
@@ -776,8 +780,38 @@ def reference_fixtures(data, clean, sourced, plain, soft):
         "ref-part-text-only-malformed": lambda r: r["adopted"][plain].update(where=part[:-1]),
         "ref-part-text-only-status": lambda r: r["adopted"][plain].update(status="text only for now", where=part),
         "ref-part-where-on-text-only": lambda r: r["adopted"][plain].update(where="in our heads"),
-        "ref-part-copied": lambda r: next(entry for entry in r["adopted"] if entry["key"] == "ratchet.root-cause").update(where=part),
+        "ref-part-copied": lambda r: copied(r).update(where=part),
         "ref-part-own": lambda r: r["own"][0].update(status="text only for now", where=part),
+        # Look-alikes of the phrase, each on a row that claims to be built (review of 4b29449).
+        "ref-part-like-accent": lambda r: r["adopted"][sourced].update(status="built", where="N\u00f3t stated here: one."),
+        "ref-part-like-stroke": lambda r: r["adopted"][sourced].update(status="built", where="Not stated \u0127ere: one."),
+        "ref-part-like-code-first": lambda r: r["adopted"][sourced].update(status="built", where="`Not` stated here: one."),
+        "ref-part-like-code-middle": lambda r: r["adopted"][sourced].update(status="built", where="Not `stated` here: the owner review."),
+        "ref-part-like-emphasis": lambda r: r["adopted"][sourced].update(status="built", where="*Not* stated here: one."),
+        "ref-part-like-underscore": lambda r: r["adopted"][sourced].update(status="built", where="Not_stated_here: one."),
+        "ref-part-like-hyphens": lambda r: r["adopted"][sourced].update(status="built", where="Not-stated-here: one."),
+        "ref-part-like-no-spaces": lambda r: r["adopted"][sourced].update(status="built", where="Notstatedhere: one."),
+        "ref-part-like-digit": lambda r: r["adopted"][sourced].update(status="built", where="N0t stated here: one."),
+        "ref-part-like-sharp-s": lambda r: r["adopted"][sourced].update(status="built", where="Not \u00dftated here: one."),
+        "ref-part-like-in-clause": lambda r: r["adopted"][sourced].update(where=part[:-1] + "; and n\u00f3t stated here."),
+        "ref-part-like-text-only": lambda r: r["adopted"][plain].update(where="Not stated \u0127ere: one."),
+        "ref-part-like-cyrillic": lambda r: r["adopted"][sourced].update(status="built", where="N\u043et stated here: one."),
+        "ref-part-like-full-width": lambda r: r["adopted"][sourced].update(status="built", where="\uff2eot stated here: one."),
+        "ref-part-like-math-bold": lambda r: r["adopted"][sourced].update(status="built", where="N\U0001d427t stated here: one."),
+        "ref-part-like-zero-width": lambda r: r["adopted"][sourced].update(status="built", where="Not\u200b stated here: one."),
+        "ref-part-like-soft-hyphen": lambda r: r["adopted"][sourced].update(status="built", where="No\u00adt stated here: one."),
+        "ref-part-like-combining": lambda r: r["adopted"][sourced].update(status="built", where="No\u0301t stated here: one."),
+        "ref-part-like-copied-accent": lambda r: copied(r).update(where="N\u00f3t stated here: one."),
+        "ref-part-like-copied-code": lambda r: copied(r).update(where="`Not` stated here: one."),
+        "ref-part-like-copied-stroke": lambda r: copied(r).update(where="Not stated \u0127ere: one."),
+        "ref-part-like-own-accent": lambda r: r["own"][0].update(status="text only for now", where="N\u00f3t stated here: one."),
+        "ref-part-like-own-code": lambda r: r["own"][0].update(status="text only for now", where="Not `stated` here: one."),
+        "ref-part-like-own-stroke": lambda r: r["own"][0].update(status="text only for now", where="Not stated \u0127ere: one."),
+        # Code in a clause.
+        "ref-part-code-split": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`one; two`."),
+        "ref-part-code-split-three": lambda r: r["adopted"][sourced].update(where=check_register.PART + "one; `a; b; c` d."),
+        "ref-part-code-semicolon": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`a;b`."),
+        "ref-part-code-period-space": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`a. b`."),
     }
     for name, mutate in faults.items():
         result["%s/register.json" % name] = changed(mutate)

@@ -66,9 +66,21 @@ REGISTER_FORM_BY_REFERENCE = (
     'that marker, not the words. REGISTER.md may be left out by a register with such rows. A register without them stays '
     'valid, so none of this is a step.')
 
+# What the upgrade says to a register that moves from a version before 0.12 to 0.12 or later
+# (D-2026-11-23-partial-adoption-form).
+REGISTER_FORM_IN_PART = (
+    'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 starts '
+    'again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated here: '
+    '<clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is added, but a '
+    'row by reference of a rule that is text only, which took no "where" before, takes one, and only as that phrase. A '
+    'register without it stays valid, so none of this is a step.')
 
 # What a copy of this repo leaves out when a test makes a clone of Ratchet from it: git's own files, bytecode, and what
 # the checks do not read, so that each test copies little.
+# The seven experimental rules of the product module, which 0.12 adds (D-2026-11-22-second-redraw, step 12).
+PRODUCT_RULES = ("ratchet.release-what-was-tested", "ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests",
+                 "ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle",
+                 "ratchet.dependencies-pinned")
 COPY_IGNORED = (".git", "__pycache__", "fixtures", "docs", "assets")
 
 
@@ -506,7 +518,9 @@ class Upgrade(FixtureTest):
                                   'this entry to "own".' % key, output)
                 # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
                 # 0.10 adds the principles, and every rule names one (D-2026-11-20-principles-and-obligations).
-                since = '"principle" in a rule is new and "since" in a rule is new'
+                # 0.12 is the first version in which a rule holds "not_used_because", which upgrade.py reads as new in
+                # the form of a rule, as it reads every field that no rule of the older version held.
+                since = '"not_used_because" in a rule is new, "principle" in a rule is new and "since" in a rule is new'
                 if version in ("0.3", "0.4"):
                     # Neither has the cap, which came in 0.5 as a change of form. Every version before 0.9 has the date
                     # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
@@ -520,6 +534,8 @@ class Upgrade(FixtureTest):
                 self.assertIn(REGISTER_FORM, output)
                 # 0.11 changes it once more, with the rows by reference, and names the two new fields.
                 self.assertIn(REGISTER_FORM_BY_REFERENCE, output)
+                # 0.12 changes it once more, with the rows adopted in part (D-2026-11-23-partial-adoption-form).
+                self.assertIn(REGISTER_FORM_IN_PART, output)
                 # The rules that 0.7 and 0.10 add are new to each register before them. 0.8 adds none: it moves two pins
                 # in "sources", which is not a field that the register holds. 0.9 adds none. ratchet.phases, which 0.6
                 # added, leaves in 0.11 (D-2026-11-22-second-redraw, R8), so it is new to no register.
@@ -548,8 +564,10 @@ class Upgrade(FixtureTest):
                     # ratchet.lesson-loop, which go into other rules, renames ratchet.nightly-visible to
                     # ratchet.silence-is-red, which upgrade.py reports as one rule removed and one new, and changes
                     # ratchet.simplest, ratchet.test-can-fail, ratchet.agents-without-keys and ratchet.lesson-names-check:
-                    # 43 + 4 + 2 + 4 = 53.
-                    self.assertIn("In Ratchet %s, 53 rules are new, changed or removed." % new["version"], output)
+                    # 43 + 4 + 2 + 4 = 53. Step 12, the product module, adds seven experimental rules: 53 + 7 = 60.
+                    self.assertIn("In Ratchet %s, 60 rules are new, changed or removed." % new["version"], output)
+                    for key in PRODUCT_RULES:
+                        self.assertIn("- %s: new. The register may adopt it." % key, output)
                     self.assertIn("ratchet.register-on-top: changed: the rule and the ratchet.", output)
                     for key in ("ratchet.owner-paths", "ratchet.ask-the-owner", "ratchet.silence-is-red"):
                         self.assertIn("- %s: new. The register may adopt it." % key, output)
@@ -999,6 +1017,29 @@ class RemovedRules(FixtureTest):
         register = self.loaded("register.json")
         for after in (self.done(register, own), self.done(register, [])):
             self.assertEqual(check_register.check(after, self.loaded("new.json"))[0], [])
+
+    def test_a_removed_rule_adopted_in_part_is_told_that_its_entry_drops_the_where(self):
+        # The review of 4b29449: the step said that the entry for "own" kept its status and its "where", while the entry,
+        # rightly, holds Ratchet's whole text and no "where" that lists clauses not stated.
+        old, new = self.loaded("old.json"), self.loaded("new.json")
+        register = self.loaded("register.json")
+        rule = registry.rules_by_key(old)["ratchet.dropped-checked"]
+        row = {"key": rule["key"], "stands_in": "RULES.md", "sha256": check_register.reference_sha256(rule),
+               "status": "text only for now", "where": "Not stated here: one; two."}
+        register["adopted"] = [row if item["key"] == rule["key"] else item for item in register["adopted"]]
+        steps, _ = upgrade.plan(register, old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertEqual(step["entry"]["status"], "text only for now")
+        self.assertNotIn("where", step["entry"])
+        self.assertNotIn('keeps its status and its "where"', step["text"])
+        self.assertIn('An own rule may say where its check stands, so the entry keeps its status.', step["text"])
+        self.assertIn('It was adopted in part, and an own rule stands in the register in full, so the entry has no "where": '
+                      'the clauses it listed as not stated, one; two, stand in the rule of the entry like the rest of it.',
+                      step["text"])
+        # A row that is not in part still keeps both.
+        steps, _ = upgrade.plan(self.loaded("register.json"), old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertIn('so the entry keeps its status and its "where".', step["text"])
 
     def test_the_check_of_the_steps_covers_a_removed_rule_kept_in_own(self):
         # If the entry for "own" gave a rule that is text only a status, the steps would give a register that fails. The

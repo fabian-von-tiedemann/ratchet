@@ -40,7 +40,8 @@ Either way the script compares the two versions, rule by rule, and prints:
   keep it, add the printed entry to "own", which has the fields of an own rule only:
   its status and "where" are kept, and its translation is not. A rule adopted by
   reference gets Ratchet's text in that entry, and the step names its marker line to
-  take out of the file.
+  take out of the file. A rule adopted in part keeps its status and not its "where",
+  and the step says so.
   A rule merged into another, or moved into Ratchet's own register, shows as removed:
   the step says that the changelog says why, and that the rule it was merged into may
   be adopted in its place
@@ -51,8 +52,8 @@ Either way the script compares the two versions, rule by rule, and prints:
   a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
   check of its own, that reads it.
 - when the form of register.json changed between the two versions, what changed, with
-  the new fields named. Every field that came in 0.10 or 0.11 may be left out, so none
-  of it is a step.
+  the new fields named. Every field that came in 0.10 or 0.11 may be left out, and the
+  phrase of a row adopted in part, which came in 0.12, may too, so none of it is a step.
 - the commands that print REGISTER.md and the instruction file again and check them,
   with the options first and the register's path after "--". A register with rows by
   reference after the steps and no REGISTER.md beside it is not told to print one.
@@ -110,6 +111,11 @@ REGISTER_FORMS = (
              'ratchet. Such a row holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> '
              'once. check_register.py sees that marker, not the words. REGISTER.md may be left out by a register with such '
              'rows. A register without them stays valid, so none of this is a step.'),
+    ("0.12", 'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 '
+             'starts again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated '
+             'here: <clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is '
+             'added, but a row by reference of a rule that is text only, which took no "where" before, takes one, and only as '
+             'that phrase. A register without it stays valid, so none of this is a step.'),
 )
 
 
@@ -311,8 +317,15 @@ def plan(register, old, new):
                                 'form will do, but not "ratchet".' % (why, prefix))
                 if step["entry"]["key"] != "%s.%s" % (prefix, key.split(".", 1)[1]):
                     text.append('The key "%s.%s" is taken, so the entry has "%s".' % (prefix, key.split(".", 1)[1], step["entry"]["key"]))
-                if "status" in step["entry"]:
+                if "where" in step["entry"]:
                     text.append('An own rule may say where its check stands, so the entry keeps its status and its "where".')
+                elif "status" in step["entry"]:
+                    text.append('An own rule may say where its check stands, so the entry keeps its status.')
+                clauses = check_register.part_clauses(adopted[key].get("where"))
+                if check_register.holds_part(adopted[key]) and clauses:
+                    text.append('It was adopted in part, and an own rule stands in the register in full, so the entry has no '
+                                '"where": the clauses it listed as not stated, %s, stand in the rule of the entry like the rest '
+                                'of it.' % check_register.PART_SEPARATOR.join(clauses))
                 if check_register.TRANSLATION in adopted[key]:
                     text.append("An own rule has no translation, so the entry has none.")
                 if check_register.is_reference(adopted[key]):
