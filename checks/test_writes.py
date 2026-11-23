@@ -47,6 +47,8 @@ WRITERS = {
     "release.py": {"git"},
     "expected_tests.py": {"main"},
     "suite_runner.py": {"Recorder.__init__", "FixtureTest.scratch", "FixtureTest.fixture_file", "FixtureTest.fixture_directory"},
+    # The new directory it makes with tempfile, the pinned commit's tree written into it, and the directory removed.
+    "run_pinned.py": {"export", "main"},
 }
 
 # Calls that write, whatever the object they are called on: the methods of pathlib that change a file.

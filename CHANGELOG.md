@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+The step Ratchet tells an adopter to run is made safe, and adopt mode no longer writes a row that is not true. From the adoption report of a real project on 0.11, each finding shown there by a run.
+
+Added:
+
+- `checks/run_pinned.py`: runs `check_register.py` from the pinned commit and from nothing else. It uses `.ratchet` only as a store of git objects, cloning it when it is missing and fetching the commit when it is not there, reads the commit, its tree and every blob with replace objects off, hashes each object itself, writes the tree into a new directory from `tempfile`, and runs the check there with `python3 -E -s`. An edit in the clone's working tree, one hidden from `git status` by `git update-index --assume-unchanged` included, a module planted beside the check, a corrupt object and a replace ref never run. A project copies the file once from the pinned commit and runs it with `python3 -I`; it refuses to run when its own bytes are not the pinned commit's.
+
+Changed:
+
+- Adopt mode in `checks/init.py` writes no copied row. A copied `ratchet.register-on-top` says that the register lists every rule in force and takes precedence, which is false where the project's own instruction file governs. The first run writes nothing and prints the rows by reference and their markers. `--adopt <key>`, once for each rule whose marker the project has put in its file, writes `register.json` with those rows, and only when the register passes. This departs from the floor of one copied row in `D-2026-11-22-second-redraw`, as a proposal to the owner. A register that adopt mode wrote in 0.11 holds that copied row: where the project's own file governs, take it out once the register holds a row by reference, since a register that adopts nothing fails.
+- The step adopt mode prints runs `run_pinned.py`, with the copy command before it. A project that added the step 0.11 printed replaces it with this one. Beside it, `permissions: contents: read` for the job and `persist-credentials: false` for its checkout, each with why, and the same command as a line for a local check script that CI runs.
+- Adopt mode says how to record a rule as `built`, with `where` naming the enforcement point, such as the protection of main at the host, without saying that it is.
+- The project's name comes from the repo's name in the url of its git remote, `origin` first, when that is a name, and else from the folder. The run says which.
+- `templates/ratchet-checks.yml` gives each job `permissions: contents: read` of its own, beside the workflow's, and says why in a comment, as it does for `persist-credentials: false`.
+- Every script in `checks/` runs under `python3 -I`: each puts its own directory on `sys.path` before it imports a module beside it. Before, `check_register.py` failed there with `No module named 'registry'`.
+
 ## 0.11 (2026-11-23)
 
 <!-- generated:count -->
