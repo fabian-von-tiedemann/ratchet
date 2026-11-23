@@ -1,5 +1,5 @@
 {
-  "version": "0.11",
+  "version": "0.12",
   "experimental_cap": 17,
   "start": [
     "ratchet.register-on-top",
@@ -48,6 +48,21 @@
       "key": "principle.subtract-first",
       "title": "Subtract first",
       "text": "What is the simplest thing that meets the requirement, what can be removed, and is the project getting tighter or only heavier?"
+    },
+    {
+      "key": "principle.ship-what-was-tested",
+      "title": "Ship what was tested, and know the way back",
+      "text": "Is what runs in production the exact build that passed, and have I tried the way back?"
+    },
+    {
+      "key": "principle.keep-what-was-accepted",
+      "title": "Keep what was accepted",
+      "text": "Who can judge this change, have they accepted it, and which test goes red if that behavior or boundary changes later?"
+    },
+    {
+      "key": "principle.watch-production",
+      "title": "Watch production and the ground under the code",
+      "text": "Would I know within minutes if production stopped working? What does real use show that the tests do not, and what outside the repo is about to change state?"
     }
   ],
   "parts": [
@@ -100,6 +115,11 @@
       "id": "promoted",
       "file": "SELF-IMPROVEMENT.md",
       "title": "Rules promoted from projects"
+    },
+    {
+      "id": "product",
+      "file": "PRODUCT.md",
+      "title": "The product module"
     }
   ],
   "rules": [
@@ -405,6 +425,90 @@
       "rule": "A check that must refuse what it does not know accepts one exact form of the whole input and refuses everything else. It does not interpret free text, a command line or an address to decide what it means. Where the input cannot be given one form, the check is a tripwire and says so, and a lock elsewhere carries the rule.",
       "ratchet": "Text only: a check cannot tell how another check reads its input. Every form that once got past a check is a fixture it must fail, and every form it accepts has a fixture it passes, so the forms it accepts are a finite list",
       "source": ""
+    },
+    {
+      "key": "ratchet.release-what-was-tested",
+      "part": "product",
+      "principle": "principle.ship-what-was-tested",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "What is deployed to production is the exact artifact that passed in the test environment, named by its digest, never a new build of the same commit. Every deploy has a way back that has been tried, and a change to stored data says how it is undone or that it cannot be. A smoke test runs after each deploy, and when it fails or does not run, the deploy fails or an alert is raised. A deploy to production waits for the owner's word.",
+      "ratchet": "Check: the deploy step refuses an artifact with no passing run in the test environment, and a smoke test posts its result after each deploy, so that a failed or missing post fails the deploy or opens an alert. The owner's word before a deploy to production is text only. It does not see a deploy by another route, whether the way back was tried, or whether a change to stored data can be undone",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime: it runs no application, has no production and no users, so it has nothing to deploy."
+    },
+    {
+      "key": "ratchet.accepted-by-who-can-judge",
+      "part": "product",
+      "principle": "principle.keep-what-was-accepted",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "A change that a user sees is accepted by someone who can judge it, a user or the owner, on the running change and not on its description. The acceptance is recorded in the issue, and what was accepted gets a test tagged with that issue, which goes red if the behavior changes later. A change that no test can catch is recorded as such in the issue, with the reason, and is accepted without a test.",
+      "ratchet": "Check: each issue marked as accepted has a tagged test in the registry of `ratchet.root-cause`, or is recorded as a change that no test can catch. It does not see whether the test holds what was accepted, whether the person could judge it, or whether a change recorded as one no test can catch is one",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime: it runs no application, has no production and no users, so it has nothing to accept from a user."
+    },
+    {
+      "key": "ratchet.boundaries-have-tests",
+      "part": "product",
+      "principle": "principle.keep-what-was-accepted",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "The project keeps one list of its boundaries: what each user, role or tenant may see and change, and where outside input enters. Each boundary on the list names a test that tries to cross it and must be refused. A change that adds or moves a boundary changes the list and its test in the same change.",
+      "ratchet": "Check: each test named in the list of boundaries ran and passed in the required job. It does not see whether the test would catch a crossing, whether the list is complete, or whether authorization holds at every entry point",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime: it runs no application, has no production and no users, so it has nothing to guard between users."
+    },
+    {
+      "key": "ratchet.production-health",
+      "part": "product",
+      "principle": "principle.watch-production",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "An outside probe asks production, on a schedule, what a user would ask, and checks the answer. The same probe checks that what should get no answer gets none: a port that is not on the project's list, and paths such as `/.env`, `/.git/config` and a setup page. A failure, or a probe that did not post, opens an alert to someone who acts on it, within minutes.",
+      "ratchet": "Check: an outside probe posts its result on its schedule, a failure opens an alert, and a late post is red, as in `ratchet.silence-is-red`. It does not see errors on paths the probe does not ask for, or whether anyone acted on the alert",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime: it runs no application, has no production and no users, so it has nothing to probe."
+    },
+    {
+      "key": "ratchet.measure-real-use",
+      "part": "product",
+      "principle": "principle.watch-production",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "On a schedule, the project reads how the application is used in production: which paths are taken, where users stop and which errors they meet, beside what the tests cover. The analysis posts its result where the control room reads every day, and what it finds becomes an issue. It reads no more about a person than the project's terms allow.",
+      "ratchet": "Check: the analysis is a scheduled job that posts its result, and a late post is red, as in `ratchet.silence-is-red`. It does not see whether it read real use, or whether anything was done with what it found",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime: it runs no application, has no production and no users, so it has nothing to measure."
+    },
+    {
+      "key": "ratchet.platform-lifecycle",
+      "part": "product",
+      "principle": "principle.watch-production",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "The project keeps one list of what outside the repo changes state on a date: the end of support of the operating system, the runtime and the frameworks it runs on, and certificates, domains, keys and plans that expire. Each entry has its date and a warning time. A scheduled job reads the list and is red when a date is within its warning time.",
+      "ratchet": "Check: a scheduled job reads the dates in the one list against each warning time, posts its result, and is red when a date is within it, as in `ratchet.silence-is-red`. It does not see whether the dates are right, or whether the list is complete",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime and no production. It could keep the list for the Python versions and runner images its own jobs use, but it keeps none yet, so it does not adopt the rule."
+    },
+    {
+      "key": "ratchet.dependencies-pinned",
+      "part": "product",
+      "principle": "principle.guard-the-boundaries",
+      "status": "experimental",
+      "since": "0.12",
+      "enforcement": "enforced",
+      "rule": "Every dependency of the application is pinned to an exact version in a lockfile that the package tool writes, and the lockfile is committed. The required job installs in frozen mode from the lockfile, so a dependency that is not in it, or a lockfile that does not match the manifest, fails the job. A pin moves only in a change of its own, through the same job. Scanning for known vulnerabilities is not what this rule asks for.",
+      "ratchet": "Check: the required job installs in frozen mode from the lockfile and fails when it cannot. It does not see whether a pinned version is safe, or pins the package tool does not record, and it does not scan for known vulnerabilities",
+      "source": "",
+      "not_used_because": "Ratchet has no runtime and no dependencies to pin: its checks use the standard library of Python only."
     }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "project": "A & B <the example> [x](`)<!-- hidden -->`y",
-  "ratchet_version": "0.11",
+  "ratchet_version": "0.12",
   "adopted": [
     {
       "key": "ratchet.register-on-top",

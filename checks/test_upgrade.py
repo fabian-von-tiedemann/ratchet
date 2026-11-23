@@ -69,6 +69,10 @@ REGISTER_FORM_BY_REFERENCE = (
 
 # What a copy of this repo leaves out when a test makes a clone of Ratchet from it: git's own files, bytecode, and what
 # the checks do not read, so that each test copies little.
+# The seven experimental rules of the product module, which 0.12 adds (D-2026-11-22-second-redraw, step 12).
+PRODUCT_RULES = ("ratchet.release-what-was-tested", "ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests",
+                 "ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle",
+                 "ratchet.dependencies-pinned")
 COPY_IGNORED = (".git", "__pycache__", "fixtures", "docs", "assets")
 
 
@@ -506,7 +510,9 @@ class Upgrade(FixtureTest):
                                   'this entry to "own".' % key, output)
                 # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
                 # 0.10 adds the principles, and every rule names one (D-2026-11-20-principles-and-obligations).
-                since = '"principle" in a rule is new and "since" in a rule is new'
+                # 0.12 is the first version in which a rule holds "not_used_because", which upgrade.py reads as new in
+                # the form of a rule, as it reads every field that no rule of the older version held.
+                since = '"not_used_because" in a rule is new, "principle" in a rule is new and "since" in a rule is new'
                 if version in ("0.3", "0.4"):
                     # Neither has the cap, which came in 0.5 as a change of form. Every version before 0.9 has the date
                     # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
@@ -548,8 +554,10 @@ class Upgrade(FixtureTest):
                     # ratchet.lesson-loop, which go into other rules, renames ratchet.nightly-visible to
                     # ratchet.silence-is-red, which upgrade.py reports as one rule removed and one new, and changes
                     # ratchet.simplest, ratchet.test-can-fail, ratchet.agents-without-keys and ratchet.lesson-names-check:
-                    # 43 + 4 + 2 + 4 = 53.
-                    self.assertIn("In Ratchet %s, 53 rules are new, changed or removed." % new["version"], output)
+                    # 43 + 4 + 2 + 4 = 53. Step 12, the product module, adds seven experimental rules: 53 + 7 = 60.
+                    self.assertIn("In Ratchet %s, 60 rules are new, changed or removed." % new["version"], output)
+                    for key in PRODUCT_RULES:
+                        self.assertIn("- %s: new. The register may adopt it." % key, output)
                     self.assertIn("ratchet.register-on-top: changed: the rule and the ratchet.", output)
                     for key in ("ratchet.owner-paths", "ratchet.ask-the-owner", "ratchet.silence-is-red"):
                         self.assertIn("- %s: new. The register may adopt it." % key, output)
