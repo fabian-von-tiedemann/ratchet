@@ -12,8 +12,8 @@ missing, empty, cut short or not the pinned commit's fails the step.
 
 It uses the Ratchet clone, .ratchet unless --store names another, only as a store of git objects. When there is none
 it makes one, empty, and fetches the pinned commit alone into it, shallow and by its id, from the repository, Ratchet's
-on GitHub unless --repository names another. When the repository does not give a commit by its id, it clones the whole
-repository with no checkout, as 0.12 did. When the commit is not in a store that was there, it fetches the commit, from
+on GitHub unless --repository names another. When the repository does not give a commit by its id, it fetches the
+repository's branches and tags into it, what a clone fetches, as 0.12 did. When the commit is not in a store that was there, it fetches the commit, from
 that repository only. When the repository cannot be reached and the store lacks the commit, it refuses: it never
 passes without the pinned commit. It never reads the clone's working tree, so an
 edit there, one that git status does not show because of git update-index --assume-unchanged included, and a file
@@ -23,7 +23,7 @@ git never reads a config of the store's, the user's or the system's, and never f
 new, empty git directory, with the store's object directory as GIT_OBJECT_DIRECTORY, GIT_CONFIG_NOSYSTEM, the global
 config an empty file, HOME in a new directory, every GIT_ variable of the environment dropped, and no lazy fetch (see
 Git). So a core.sshCommand, core.fsmonitor, hook, credential helper, url rewrite or upload-pack of the store's config,
-or of the user's, never runs, also not for a partial clone that misses an object. The fetch or clone of a missing
+or of the user's, never runs, also not for a partial clone that misses an object. The fetches into a missing
 store and the fetch of a missing commit are the only steps that reach the network, each explicit and with the same
 isolation.
 
@@ -186,26 +186,29 @@ class Git:
 
 def store_with(git, store, commit, repository):
     """The object directory of the store, made when it is missing, and holding the commit, fetched when it does not.
-    A missing store is made empty and the pinned commit alone fetched into it, shallow and by its id, so neither the
-    history nor any other commit is fetched and indexed. When the repository does not give a commit by its id, the
-    store is cloned whole, as before, and the commit fetched when the clone does not hold it. The clone and the fetches
-    are the only steps that reach the network, each explicit, from the repository named alone, and with the same
-    isolation as every read: a fetch runs in the empty git directory, writing into the store's object directory, so not
-    even the store's remotes or url rewrites are read. When none of them gives the commit, it is refused: the check
+    A missing store is made empty, with no checkout, and the pinned commit alone fetched into it, shallow and by its id,
+    so neither the history nor any other commit is fetched and indexed. When the repository does not give a commit by
+    its id, the branches and tags of the repository are fetched into the store, which is what a clone fetches, as
+    0.12 did. A store that was there and lacks the commit fetches it by its id, as before. The fetches are the only
+    steps that reach the network, each explicit, from the repository named alone, and with the same isolation as every
+    read: a fetch runs in the empty git directory, writing into the store's object directory, so not even the store's
+    remotes or url rewrites are read. Nothing is removed. When none of them gives the commit, it is refused: the check
     never runs, and never passes, without the pinned commit."""
-    if not os.path.lexists(store):
+    made = not os.path.lexists(store)
+    if made:
         code, _, error = git.run(None, "init", "--quiet", "--template=", os.path.abspath(store))
-        if code == 0:
-            code, _, error = git.run(objects_of(store), "fetch", "--quiet", "--no-tags", "--no-write-fetch-head",
-                                     "--depth=1", repository, commit)
-        if code != 0 or git.kind(objects_of(store), commit) != "commit":
-            # The store made here, and only that, is removed, so the clone below starts where it would have before.
-            shutil.rmtree(os.path.abspath(store), ignore_errors=True)
-            code, _, error = git.run(None, "clone", "--quiet", "--no-checkout", "--template=", repository,
-                                     os.path.abspath(store))
-            if code != 0:
-                raise Refused("cannot clone %s into %s: %s" % (repository, store, error))
+        if code != 0:
+            raise Refused("cannot make a store at %s: %s" % (store, error))
     objects = objects_of(store)
+    if made:
+        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--depth=1",
+                                 repository, commit)
+        if code != 0 or git.kind(objects, commit) != "commit":
+            # The host does not give a commit by its id, or this id is not one: fetch what a clone would.
+            code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository,
+                                     "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
+            if code != 0:
+                raise Refused("cannot fetch %s into %s: %s" % (repository, store, error))
     if git.kind(objects, commit) is None:
         code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository, commit)
         if code != 0:

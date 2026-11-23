@@ -395,8 +395,8 @@ class RunPinned(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
 
     def test_a_host_that_does_not_give_a_commit_by_its_id_is_cloned_whole(self):
-        # The fall back: when the shallow fetch by id fails, the store made for it is removed and the whole repository
-        # cloned, as 0.12 did.
+        # The fall back: when the shallow fetch by id fails, the branches and tags of the repository are fetched into the
+        # store made for it, what a clone fetches, as 0.12 did. Nothing is removed.
         later, commit, parent = self.later()
         scratch = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(shutil.rmtree, scratch)
@@ -414,20 +414,22 @@ class RunPinned(unittest.TestCase):
         self.assertEqual(len(refused), 1)
         self.assertEqual(objects, os.path.abspath(os.path.join(store, ".git", "objects")))
         self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
-        self.assertEqual(git(store, "cat-file", "-t", parent), "commit", "the whole repository was cloned")
+        self.assertEqual(git(store, "cat-file", "-t", parent), "commit", "the whole repository was fetched")
 
     def test_a_repository_that_cannot_be_reached_never_passes(self):
-        # With no store and no repository to fetch from, the check does not run, and no store is left behind for the
-        # next run to take for one.
+        # With no store and no repository to fetch from, the check does not run, and a second run, with the store the
+        # first one made, does not either.
         for name in ("no-such-repository", "file:///no/such/repository"):
             with self.subTest(repository=name):
-                result = subprocess.run([sys.executable, "-I", COPY, self.commit, "--repository", name, "--",
-                                         "register.json"], cwd=self.project, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, universal_newlines=True)
-                self.assertEqual(result.returncode, 2, result.stdout)
-                self.assertIn("cannot clone", result.stdout)
-                self.assertIn("run_pinned: the check did not run", result.stdout)
-                self.assertFalse(os.path.lexists(self.path(".ratchet")))
+                for run in ("first", "second"):
+                    result = subprocess.run([sys.executable, "-I", COPY, self.commit, "--repository", name, "--",
+                                             "register.json"], cwd=self.project, stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, universal_newlines=True)
+                    self.assertEqual(result.returncode, 2, (run, result.stdout))
+                    self.assertIn("cannot be fetched" if run == "second" else "cannot fetch", result.stdout)
+                    self.assertIn("run_pinned: the check did not run", result.stdout)
+                self.assertNotIn("Ratchet at", result.stdout)
+            shutil.rmtree(self.path(".ratchet"))
 
     def test_the_copy_command_reads_no_git_variable_of_the_environment(self):
         # Codex's and Astra's case: GIT_COMMON_DIR was left in effect, so git read the config of a repo it was never
