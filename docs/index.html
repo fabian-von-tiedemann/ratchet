@@ -143,6 +143,15 @@ section p + p {
   margin-top: 0.75rem;
 }
 
+/* The one figure: the ratchet as a staircase. It is a file of its own, with the colors of this page. */
+.notch {
+  display: block;
+  width: 100%;
+  max-width: 30rem;
+  height: auto;
+  margin-bottom: 1.25rem;
+}
+
 /* The numbered lists: the three steps of how it works, the principles, and the three commands. */
 ol {
   padding-left: 1.75rem;
@@ -224,6 +233,7 @@ footer p + p {
 </section>
 <section>
 <h2 id="how-it-works">How it works</h2>
+<img class="notch" src="ratchet-notch.svg" width="400" height="256" alt="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
 <ol class="flow">
 <li><strong>Your repo keeps a register.</strong> One file, <code>register.json</code>, lists every rule in force: the ones you borrow from Ratchet, and your own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
 <li><strong>Each rule names its ratchet.</strong> That is the check that fails when the rule is broken, or the words “text only”. Your register says which checks you have built. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>

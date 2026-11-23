@@ -11,8 +11,14 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   have, each once; every element that is opened is closed, in order; a void element is never closed; there is no
   comment, no processing instruction and no other declaration. There is no script, no frame, no form, no base,
   no style attribute and no event handler, because none of them is an element or an attribute the page may hold
-- the page holds no figure: an <svg>, and every element of SVG, is not an element the page may hold, so nothing
+- the page holds no inline SVG: an <svg>, and every element of SVG, is not an element the page may hold, so nothing
   comes in through one. The only <title> is the one in <head>
+- the one figure is a file of its own, docs/ratchet-notch.svg, which one <img> loads, once, with alt text. The test
+  reads that file as strictly as the page: strict UTF-8, no hidden character, no doctype, comment, processing
+  instruction or reference, well-formed XML of six elements of SVG, svg, style, rect, path, circle and text, each
+  directly in the <svg> and with only the attributes it may have, whose values are numbers and words. So there is
+  no script, use, image, link or foreignObject in it, no href, no style attribute and no event handler. Its one
+  <style> follows the rules of the page's CSS, and each color in it is the page's color of the same name
 - nothing is loaded from another origin: what an element loads (img src, source srcset, link href) is the name of
   a file in docs/. The CSS in the one <style> element has no at-rule but @media and @keyframes, no function but
   var(), no backslash and no "url", so it loads nothing either
@@ -24,7 +30,8 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   Nothing links out of the repo to another site. A fragment on a link to the page, "#..." or "index.html#...", is
   an id on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the
   repo may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
-- docs/ holds exactly the page, .nojekyll and the two logos, and each logo is byte for byte its copy in assets/
+- docs/ holds exactly the page, .nojekyll, the two logos and the figure, and each logo is byte for byte its copy
+  in assets/
 - the page has one h1, its headings do not skip a level, html has lang="en" and every image has alt text
 - the colors are a palette of custom properties, one for light and one for dark, and each pair of text and
   background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
@@ -40,8 +47,9 @@ moves the README, a rule that changes kind, and a principle that is added, remov
 page when generate.py is run, and generate.py --check fails until it is. The tests of all three are here too, and
 they read each line as generate.py does, after the spaces that indent it.
 
-What the test does not claim: that a browser shows the page as intended, that a named color is legible (it reads
-hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
+What the test does not claim: that a browser shows the page or the figure as intended, that the figure's labels fit
+where they are drawn or that each lies on the background it is checked against, that a named color is legible (it
+reads hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
 nothing that its text and its place in the list do not), or that the text is true. The text is taken
 from README.md and the files the page links to, and read by the maintainer. That
 Pages is turned on is a setting of the repository. Each case is the page with one change, so the cases follow the
@@ -55,6 +63,7 @@ import re
 import shutil
 import sys
 import unittest
+import xml.etree.ElementTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -68,8 +77,22 @@ PAGE = "index.html"
 REPO = "https://github.com/fabian-von-tiedemann/ratchet"
 FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet"
 # Every file in docs/. A logo is a copy of the file of the same name in assets/.
-FILES = (".nojekyll", "index.html", "ratchet-dark.svg", "ratchet-light.svg")
+FILES = (".nojekyll", "index.html", "ratchet-dark.svg", "ratchet-light.svg", "ratchet-notch.svg")
 LOGOS = ("ratchet-dark.svg", "ratchet-light.svg")
+# The one figure, which one <img> on the page loads, and every element it may hold, with the attributes it may have.
+# Each stands directly in the <svg>. There is no id, no href, no style attribute and no attribute of a color: the
+# colors are in the one <style>. A value is numbers and words, so it calls no function and names no file.
+FIGURE = "ratchet-notch.svg"
+SVG = "http://www.w3.org/2000/svg"
+FIGURE_ELEMENTS = {
+    "svg": {"viewBox", "width", "height", "role", "aria-label"}, "style": set(),
+    "rect": {"class", "x", "y", "width", "height", "rx"}, "path": {"class", "d"}, "circle": {"class", "cx", "cy", "r"},
+    "text": {"class", "x", "y", "text-anchor"},
+}
+FIGURE_VALUE = re.compile(r"[A-Za-z0-9 .,-]+\Z")
+# What the figure may not hold anywhere, since each is a way to bring in what the XML parser would not show as an element.
+FIGURE_MARKS = (("<!", "a doctype, a comment or a CDATA section"), ("<?", "a processing instruction"),
+                ("&", "a character reference or an entity"))
 VOID = {"meta", "link", "img", "source", "br"}
 GLOBAL = {"id", "class"}
 # Every element the page may hold, with the attributes it may have beside id and class.
@@ -110,6 +133,8 @@ MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+
 # and bg, turned around, with the same ratio.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
          ("link", "box"), ("accent", "bg"), ("accent", "box"))
+# The pairs in the figure: its labels on its own background and on the body of the staircase.
+FIGURE_PAIRS = (("fg", "box"), ("fg", "code-bg"), ("muted", "box"), ("accent", "box"))
 # The list whose items the test reads one by one: the steps of how Ratchet works.
 ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5
@@ -270,7 +295,7 @@ def contrast(one, other):
     return (high + 0.05) / (low + 0.05)
 
 
-def css_problems(css):
+def css_problems(css, pairs=PAIRS):
     problems = []
     if "\\" in css:
         problems.append("the CSS holds a backslash, which could spell a word the check does not see")
@@ -291,7 +316,7 @@ def css_problems(css):
     if sum(len(PALETTE.findall(block)) for block in blocks) != len(HEX.findall(css)):
         problems.append("the CSS writes a hex color outside the two palettes, or one that is not #rrggbb in lower case")
     for scheme, palette in zip(("light", "dark"), palettes):
-        for text, background in PAIRS:
+        for text, background in pairs:
             if text not in palette or background not in palette:
                 problems.append("the %s palette has no --%s or no --%s" % (scheme, text, background))
                 continue
@@ -332,6 +357,72 @@ def motion_problems(css):
     if blocks:
         problems.append("the CSS has a brace that is not matched: %s is never closed" % blocks[-1])
     return problems
+
+
+def palettes(css):
+    """The light and the dark palette of a CSS that css_problems passed, each as a dict of name and color."""
+    return [dict(PALETTE.findall(block)) for block in ROOT_BLOCK.findall(css)]
+
+
+def figure_problems(root, page_css):
+    """Everything wrong with the figure in the checkout at root, as a list of messages that name the file.
+
+    page_css is the CSS of the page, whose palettes the figure's colors are taken from.
+    """
+    name = "%s/%s" % (DOCS, FIGURE)
+    path = os.path.join(root, DOCS, FIGURE)
+    if os.path.islink(path) or not os.path.isfile(path):
+        return ["%s: there is no such file" % name]
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: not valid UTF-8 at byte %d" % (name, error.start)]
+    problems = []
+    for number, line in enumerate(text.split("\n"), 1):
+        for match in HIDDEN.finditer(line):
+            problems.append("%s:%d: holds U+%04X, a control or a character that reorders or hides text" % (name, number, ord(match.group())))
+    for mark, what in FIGURE_MARKS:
+        if mark in text:
+            problems.append("%s: holds %r, %s, which the figure does not hold" % (name, mark, what))
+    if problems:
+        # A doctype is never given to the parser, so it expands no entity.
+        return problems
+    try:
+        tree = xml.etree.ElementTree.fromstring(text)
+    except xml.etree.ElementTree.ParseError as error:
+        return ["%s: not well-formed XML: %s" % (name, error)]
+    styles = []
+    for element in tree.iter():
+        space, _, tag = element.tag.rpartition("}")
+        if space != "{" + SVG or tag not in FIGURE_ELEMENTS or (tag == "svg") != (element is tree):
+            problems.append("%s: <%s> is not an element the figure may hold" % (name, element.tag))
+            continue
+        for attribute, value in element.attrib.items():
+            if attribute not in FIGURE_ELEMENTS[tag]:
+                problems.append("%s: <%s> may not have the attribute %s" % (name, tag, attribute))
+            elif not FIGURE_VALUE.match(value):
+                problems.append("%s: <%s> has %s=%r, and a value in the figure is numbers and words" % (name, tag, attribute, value))
+        if element is not tree and len(element):
+            problems.append("%s: <%s> holds an element, and each element stands directly in the <svg>" % (name, tag))
+        words = [element.tail] + ([] if tag in ("style", "text") else [element.text])
+        if any(each and each.strip() for each in words):
+            problems.append("%s: text in or after <%s>, and the figure holds text only in <text> and <style>" % (name, tag))
+        if tag == "style":
+            styles.append(element.text or "")
+    if tree.get("role") != "img" or not tree.get("aria-label"):
+        problems.append('%s: the <svg> has role="img" and an aria-label that names it' % name)
+    if len(styles) != 1:
+        return problems + ["%s: holds <style> %d times, and must hold it once" % (name, len(styles))]
+    found = css_problems(styles[0], FIGURE_PAIRS)
+    if not found and len(palettes(page_css)) == 2:
+        for scheme, own, pages in zip(("light", "dark"), palettes(styles[0]), palettes(page_css)):
+            for key, color in sorted(own.items()):
+                if pages.get(key) != color:
+                    found.append("in the %s palette, --%s is %s, and the page's is %s: the figure has the colors of the page"
+                                 % (scheme, key, color, pages.get(key, "not there")))
+    return problems + ["%s: %s" % (name, problem) for problem in found]
 
 
 def readme_commands(readme):
@@ -403,6 +494,9 @@ def page_problems(root):
     for where, tag, value in reader.loads:
         if not FILE.match(value) or value not in FILES or value == ".nojekyll":
             found.append("%s: %s: <%s> loads %r, and the page loads only a file in %s/ by its name" % (name, where, tag, value, DOCS))
+    figures = ["<%s>" % tag for _, tag, value in reader.loads if value == FIGURE]
+    if figures != ["<img>"]:
+        found.append("%s: the figure %s is loaded by %s, and one <img> loads it, once" % (name, FIGURE, ", ".join(figures) or "nothing"))
     duplicates = sorted(set(each for each in reader.ids if reader.ids.count(each) > 1))
     if duplicates:
         found.append("%s: ids that stand more than once: %s" % (name, ", ".join(duplicates)))
@@ -416,6 +510,7 @@ def page_problems(root):
             found.append("%s: %s: a step that links nowhere in this repo. Each step links to where the repo shows it"
                          % (name, item["where"]))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
+    found += figure_problems(root, "".join(reader.styles))
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
         allowed = readme_commands(handle.read())
@@ -555,7 +650,7 @@ class Page(RepoCopy, unittest.TestCase):
                        '<object data="https://example.invalid/x"></object>', '<embed src="https://example.invalid/x">',
                        '<base href="https://example.invalid/">', '<form action="https://example.invalid/"></form>',
                        '<svg><image href="https://example.invalid/x.png"></image></svg>', '<audio src="x.mp3"></audio>',
-                       # The page holds no figure, so an <svg> fails whole, and so does an element of SVG outside one.
+                       # The page holds no inline SVG, so an <svg> fails whole, and so does an element of SVG outside one.
                        '<svg viewBox="0 0 1 1" role="img" aria-labelledby="t"><title id="t">x</title></svg>',
                        '<svg onload="alert(1)"></svg>', '<path d="M0 0 L1 1"></path>', '<use href="#why"></use>',
                        "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"></animate>'):
@@ -733,6 +828,172 @@ class Page(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change(old, new)
                 self.assert_fails("is not a line of a code block marked sh in README.md")
+
+
+class Figure(RepoCopy, unittest.TestCase):
+    """The one figure, docs/ratchet-notch.svg, passes as it stands, and each change below fails with its message."""
+
+    def setUp(self):
+        super().setUp()
+        self.path = os.path.join(self.copy, DOCS, FIGURE)
+        with open(self.path, encoding="utf-8", newline="") as handle:
+            self.figure = handle.read()
+
+    def write(self, old, new, name=FIGURE):
+        """The file as it stands in the repo, with one change."""
+        path = os.path.join(self.copy, DOCS, name)
+        with open(os.path.join(ROOT, DOCS, name), encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        self.assertIn(old, text, "the test expects %r in %s" % (old, name))
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace(old, new, 1))
+
+    def assert_fails(self, *message):
+        problems = page_problems(self.copy)
+        self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
+
+    def test_the_figure_as_it_stands_passes_and_is_loaded_once(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8") as handle:
+            page = handle.read()
+        self.assertEqual(page.count(FIGURE), 1)
+        self.assertEqual(page_problems(self.copy), [])
+        tree = xml.etree.ElementTree.fromstring(self.figure)
+        labels = [element.text for element in tree.iter("{%s}text" % SVG)]
+        self.assertEqual(labels, ["failure \u2192 check"] * 3 + ["one notch tighter", "can\u2019t slip back"])
+
+    def test_a_figure_that_no_image_loads_or_that_is_loaded_twice_fails(self):
+        image = '<img class="notch" src="ratchet-notch.svg"'
+        for old, new, by in ((image, '<img class="notch" src="ratchet-light.svg"', "nothing"),
+                             ("</main>", image + ' alt="x">\n</main>', "<img>, <img>"),
+                             ('<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="ratchet-notch.svg"', "<link>, <img>"),
+                             (image, '<picture><source srcset="ratchet-notch.svg"></picture>\n<img src="ratchet-light.svg"', "<source>")):
+            with self.subTest(new=new):
+                self.write(old, new, PAGE)
+                self.assert_fails("the figure ratchet-notch.svg is loaded by %s, and one <img> loads it, once" % by)
+
+    def test_a_figure_without_alt_text_fails(self):
+        self.write('height="256" alt="A staircase', 'height="256" alt=" " title="A staircase', PAGE)
+        self.assert_fails("an <img> without alt text")
+
+    def test_no_figure_or_a_link_in_its_place_fails(self):
+        os.remove(self.path)
+        self.assert_fails("docs/ must hold exactly")
+        self.assert_fails("docs/ratchet-notch.svg: there is no such file")
+        os.symlink("ratchet-light.svg", self.path)
+        self.assert_fails("docs/ratchet-notch.svg: there is no such file")
+
+    def test_a_figure_that_is_not_utf8_or_holds_a_hidden_character_fails(self):
+        with open(self.path, "ab") as handle:
+            handle.write(b"\xff\n")
+        self.assert_fails("docs/ratchet-notch.svg: not valid UTF-8 at byte")
+        for character in ("\r", "\t", "\u202e", "\u200b", "\ufeff"):
+            with self.subTest(character=repr(character)):
+                self.write(">one notch tighter<", ">one notch%stighter<" % character)
+                self.assert_fails("docs/ratchet-notch.svg:", "holds U+%04X" % ord(character))
+
+    def test_a_doctype_a_comment_a_processing_instruction_or_a_reference_fails(self):
+        entity = '<!DOCTYPE svg [<!ENTITY x "failure">]>\n<svg '
+        for old, new, mark in (("<svg ", entity, "'<!'"), ("<svg ", '<?xml version="1.0"?>\n<svg ', "'<?'"),
+                               ("<svg ", '<?xml-stylesheet href="https://example.invalid/x.css"?>\n<svg ', "'<?'"),
+                               ("</style>", "</style>\n<!-- x -->", "'<!'"), (">one notch tighter<", "><![CDATA[one notch]]><", "'<!'"),
+                               (">one notch tighter<", ">one notch &#116;ighter<", "'&'"), (">one notch tighter<", ">one &amp; one<", "'&'")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: holds %s" % mark, "which the figure does not hold")
+
+    def test_a_figure_that_is_not_well_formed_fails(self):
+        for old, new in (("</svg>", ""), ('rx="8"/>', 'rx="8">'), ('rx="8"/>', 'rx="8" rx="8"/>'), ("<svg ", "x<svg ")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: not well-formed XML")
+
+    def test_an_element_that_is_not_on_the_list_fails(self):
+        for element in ("<script>alert(1)</script>", '<script href="https://example.invalid/t.js"/>', '<use href="#x"/>',
+                        '<image href="https://example.invalid/x.png"/>', '<a href="https://example.invalid/"><text>x</text></a>',
+                        "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"/>', '<set attributeName="x"/>',
+                        "<g><circle/></g>", "<title>x</title>", "<svg/>", '<svg xmlns="http://www.w3.org/2000/svg"/>',
+                        '<circle xmlns="http://www.w3.org/1999/xhtml"/>', '<x:script xmlns:x="http://www.w3.org/1999/xhtml">1</x:script>'):
+            with self.subTest(element=element):
+                self.write("</style>", "</style>\n" + element)
+                self.assert_fails("docs/ratchet-notch.svg:", "is not an element the figure may hold")
+        self.write(' xmlns="http://www.w3.org/2000/svg"', "")
+        self.assert_fails("docs/ratchet-notch.svg: <svg> is not an element the figure may hold")
+
+    def test_an_attribute_that_is_not_on_the_list_fails(self):
+        for attribute in ('onload="alert(1)"', 'onclick="x"', 'style="fill: red"', 'fill="#ff0000"', 'stroke="red"', 'id="x"',
+                          'href="https://example.invalid/"', 'filter="url(#f)"', 'transform="rotate(45)"',
+                          'xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://example.invalid/"'):
+            with self.subTest(attribute=attribute):
+                self.write('<circle class="ball"', '<circle %s class="ball"' % attribute)
+                self.assert_fails("docs/ratchet-notch.svg: <circle> may not have the attribute")
+        self.write('role="img"', 'role="img" onload="alert(1)"')
+        self.assert_fails("docs/ratchet-notch.svg: <svg> may not have the attribute onload")
+
+    def test_a_value_that_is_not_numbers_and_words_fails(self):
+        for old, new in (('class="ball"', 'class="url(#x)"'), ('class="ball"', 'class=""'), ('r="13.5"', 'r="calc(1px)"'),
+                         ('d="M200 62.5 H218 V36 Z"', 'd="M200 62.5; H218"'), ('text-anchor="end">one', 'text-anchor="javascript:x">one'),
+                         ('aria-label="A staircase', 'aria-label="https://example.invalid/ A staircase')):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg:", "and a value in the figure is numbers and words")
+
+    def test_an_element_or_text_out_of_place_fails(self):
+        self.write(">one notch tighter<", '>one <circle class="ball" cx="1" cy="1" r="1"/><')
+        self.assert_fails("docs/ratchet-notch.svg: <text> holds an element, and each element stands directly in the <svg>")
+        for old, new in (("</style>", "</style>\nfailure"), ('rx="8"/>', 'rx="8">failure</rect>'), ("</svg>", "failure</svg>")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: text in or after", "the figure holds text only in <text> and <style>")
+
+    def test_a_figure_without_its_role_its_name_or_its_one_style_fails(self):
+        for old, new in (('role="img" ', ""), ('role="img"', 'role="presentation"')):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails('docs/ratchet-notch.svg: the <svg> has role="img" and an aria-label that names it')
+        self.write(self.figure[self.figure.index(" aria-label="):self.figure.index(">")], "")
+        self.assert_fails('docs/ratchet-notch.svg: the <svg> has role="img" and an aria-label that names it')
+        self.write("</style>", "</style>\n<style>text { fill: red; }</style>")
+        self.assert_fails("docs/ratchet-notch.svg: holds <style> 2 times, and must hold it once")
+        self.write(self.figure[self.figure.index("<style>"):self.figure.index("</style>") + len("</style>")], "")
+        self.assert_fails("docs/ratchet-notch.svg: holds <style> 0 times, and must hold it once")
+
+    def test_css_in_the_figure_that_the_page_may_not_hold_fails(self):
+        for css, message in (('@import "https://example.invalid/x.css";', "holds @import"),
+                             ("@font-face { font-family: x; }", "holds @font-face"),
+                             (".ball { fill: url(#g); }", 'holds "url"'), (".ball { fill: \\75rl(x); }", "holds a backslash"),
+                             (".ball { r: calc(1px); }", "calls calc()"), (".ball { fill: #ff0000; }", "a hex color outside the two palettes"),
+                             (".ball { transition: fill 1s; }", "moves the page outside"), (".ball {", "a brace that is not matched")):
+            with self.subTest(css=css):
+                self.write("</style>", css + "\n</style>")
+                self.assert_fails("docs/ratchet-notch.svg: the CSS ", message)
+        self.write(DARK, "@media (prefers-color-scheme: light)")
+        self.assert_fails("docs/ratchet-notch.svg: the CSS has two :root blocks of colors")
+
+    def test_a_color_that_is_faint_or_not_the_pages_fails(self):
+        light, dark = palettes(self.figure)
+        for scheme, palette, key, faint in (("light", light, "muted", "#aaaaaa"), ("light", light, "accent", "#ffbb66"),
+                                            ("dark", dark, "fg", "#3a3a3a"), ("dark", dark, "box", "#9a9a9a"),
+                                            ("light", light, "code-bg", "#555555")):
+            with self.subTest(scheme=scheme, key=key):
+                self.write("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
+                self.assert_fails("docs/ratchet-notch.svg: in the %s palette" % scheme, "--%s" % key, "under 4.5")
+        # A color with contrast enough that is not the page's, the border, which is in no pair, and a name the page does not have.
+        for old, new, message in (("--fg: %s;" % light["fg"], "--fg: #000000;", "in the light palette, --fg is #000000, and the page's is %s" % light["fg"]),
+                                  ("--edge: %s;" % dark["edge"], "--edge: #444444;", "in the dark palette, --edge is #444444"),
+                                  ("--edge: %s;" % light["edge"], "--edge: %s;\n  --line: #000000;" % light["edge"], "the light and the dark palette name different colors")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: " + message)
+        self.write("--edge: %s;" % light["edge"], "--edge: %s;\n  --line: #000000;" % light["edge"])
+        with open(self.path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        with open(self.path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace("--edge: %s;" % dark["edge"], "--edge: %s;\n    --line: #ffffff;" % dark["edge"]))
+        self.assert_fails("docs/ratchet-notch.svg: in the light palette, --line is #000000, and the page's is not there")
+
+    def test_a_color_of_the_page_that_moves_fails_until_the_figure_follows(self):
+        self.write("--accent: #b23a04;", "--accent: #a03000;", PAGE)
+        self.assert_fails("docs/ratchet-notch.svg: in the light palette, --accent is #b23a04, and the page's is #a03000")
 
 
 class PageFetchLine(RepoCopy, unittest.TestCase):
