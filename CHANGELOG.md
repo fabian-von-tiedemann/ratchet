@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+Fixes to `checks/inventory.py` from an adoption report on 0.11. No rule changes.
+
+Fixed:
+
+- `--ruleset` follows links above the file it is given. A file under a folder from `mktemp -d` on macOS was refused, since `/var` is a link. The folder of the path the user typed is resolved once. The file itself is still refused when it is a link, a FIFO or not a regular file, or when its name looks like a credential. The walks of the repo and of the home folder are as strict as before.
+- `--ruleset` reads the rules for a branch, `GET /repos/{owner}/{repo}/rules/branches/{branch}`, the export an account without admin rights can get. It reads them strictly, one entry for each ruleset the rules come from, and refuses a malformed one. `checks/README.md` says which exports are read and which needs admin rights.
+- "Paths named that do not exist" lists fewer paths that are not missing. A path that the `.gitignore` at the root ignores (simple patterns only), a span in a table row that looks like a branch name, such as `feature/`, and a path outside the root, absolute or not, are now listed under "Paths named and not looked for", each with a count. Every other missing path is still named.
+
 ## 0.11 (2026-11-23)
 
 <!-- generated:count -->
