@@ -792,6 +792,23 @@ class OneCommand(FixtureTest):
         self.assertIn("run_pinned: Ratchet at %s" % commit, result.stdout)
         self.assertNotIn("ALL GREEN", result.stdout)
 
+    def test_a_register_by_reference_under_another_name_is_checked_by_that_name(self):
+        # Round 1 of #140: the printed commands named register.json, so they checked a neighbouring register.json and
+        # passed while the register that was upgraded failed.
+        project = self.project()
+        self.by_reference(project)
+        os.rename(os.path.join(project, "register.json"), os.path.join(project, "adoption.json"))
+        before = snapshot(project, skip=(".ratchet",))
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "adoption.json", "--to", "9.9")
+        self.assertEqual(snapshot(project, skip=(".ratchet",)), before, "no file of the project changed")
+        self.assertEqual(code, 0, output)
+        commit = self.tag("v9.9")
+        blob = git(self.origin, "rev-parse", "v9.9:checks/run_pinned.py")
+        for line in (run_pinned.local_line(commit, blob, run_pinned.COPY, "adoption.json"),
+                     run_pinned.run_command(commit, blob, run_pinned.COPY, "adoption.json")):
+            self.assertIn("\n    %s\n" % line, output + "\n")
+        self.assertNotIn("-- register.json", output)
+
     def test_a_register_by_reference_with_the_workflow_is_told_to_pin_it(self):
         project = self.project()
         self.by_reference(project)

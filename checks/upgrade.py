@@ -711,14 +711,14 @@ def one_command(args, out):
         print("", file=out)
         project = os.path.dirname(os.path.abspath(args.register))
         if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
-            for line in pinned_run(root, shown, project, known[target], commit):
+            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
                 print(line, file=out)
         else:
             print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
     return code
 
 
-def pinned_run(root, shown, project, tag, commit):
+def pinned_run(root, shown, project, tag, commit, register="register.json"):
     """What a register with rows by reference, in a project with no workflow of Ratchet's, is told to do with the commit:
     adopt mode wrote no workflow, and its check runs from checks/run_pinned.py, copied from the pinned commit. The same
     copy command and lines that init.py prints, with the new commit: the copy, the line of the local check script, and
@@ -730,7 +730,8 @@ def pinned_run(root, shown, project, tag, commit):
         raise UpgradeError("cannot read %s of %s from %s: %s" % (run_pinned.SELF, tag, shown, error))
     if not os.path.isabs(shown):
         objects = os.path.relpath(objects, project)
-    run = run_pinned.run_command(commit, blob, run_pinned.COPY)
+    # The register by its own name, as the project's root sees it: the commands run from there.
+    run = run_pinned.run_command(commit, blob, run_pinned.COPY, register)
     return ["The check runs from the pinned commit with %s. To move it to the commit of %s, %s, run these from the "
             "project's root. Copy the runner again from that commit:" % (run_pinned.COPY, tag, commit),
             "",
@@ -738,7 +739,7 @@ def pinned_run(root, shown, project, tag, commit):
             "",
             "Then put this line in the local check script, in place of the one there:",
             "",
-            "    " + run_pinned.local_line(commit, blob, run_pinned.COPY),
+            "    " + run_pinned.local_line(commit, blob, run_pinned.COPY, register),
             "",
             "or this in the step of the job that runs the check:",
             "",
