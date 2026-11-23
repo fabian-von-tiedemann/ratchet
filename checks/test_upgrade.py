@@ -238,12 +238,13 @@ class Upgrade(FixtureTest):
         code = upgrade.report("register.json", register, old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
         self.assertIn("Then print REGISTER.md and docs/AGENTS.md again, put each in place, and check them:", out.getvalue())
-        self.assertIn("    rm -f -- REGISTER.md.new && python3 check_register.py register.json --print-markdown > REGISTER.md.new && "
+        self.assertIn("    rm -f -- REGISTER.md.new && python3 check_register.py --print-markdown -- register.json > REGISTER.md.new && "
                       "rm -f -- REGISTER.md && mv -- REGISTER.md.new REGISTER.md\n", out.getvalue())
         # The .new file stands in the directory the commands run in, so nothing is removed or written through a directory
         # of the path before the check has refused a link there.
-        self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
+        self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py --print-instructions -- register.json > AGENTS.md.new && "
                       "rm -f -- docs/AGENTS.md && mv -- AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
+        self.assertIn("    python3 check_register.py --markdown REGISTER.md -- register.json\n", out.getvalue())
         # The script and the register's path are quoted for the shell, on each of the three lines (review of 3219bf4).
         out = io.StringIO()
         upgrade.report("my project/register.json", register, old, new, out, "my checks/check_register.py")
@@ -251,7 +252,8 @@ class Upgrade(FixtureTest):
         self.assertEqual(len(lines), 3, out.getvalue())
         for line in lines:
             with self.subTest(line=line):
-                self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' ", line)
+                self.assertIn("python3 'my checks/check_register.py' --", line)
+                self.assertIn(" -- 'my project/register.json'", line)
         self.assertNotIn("--write", out.getvalue())
 
     def test_a_row_by_reference_whose_rule_or_ratchet_changed_is_told_its_new_sha256(self):
@@ -279,6 +281,10 @@ class Upgrade(FixtureTest):
             self.assertIn("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the "
                           "new sha256 is %s. Read the project's own wording in RULES.md again against the new rule, and change "
                           "it where it no longer says what the rule says." % reference(new_by[key]), output)
+            # The new rule and its ratchet are printed, so the wording can be read against them (review of step 9a).
+            self.assertIn("\nThe rule in Ratchet 9.9, to read the wording in RULES.md against: %s\nIts ratchet: %s\n"
+                          % (new_by[key]["rule"], new_by[key]["ratchet"]), output)
+        self.assertEqual(output.count("to read the wording in RULES.md against"), 2, "not for a copied row or one removed")
         self.assertNotIn("ratchet.keep:", output, "a rule that did not change is not listed")
         self.assertIn("It was adopted by reference, and an own rule stands in the register in full, so the entry holds Ratchet's "
                       "text of it, which the project may replace with its own wording. Take the line "
@@ -294,6 +300,45 @@ class Upgrade(FixtureTest):
         # A rule whose rule and ratchet did not change keeps its sha256.
         self.assertIn("its sha256 still matches", upgrade.reference_text({"stands_in": "RULES.md", "sha256": reference(old_by["ratchet.keep"])},
                                                                          old_by["ratchet.keep"]))
+
+    def test_a_register_with_rows_by_reference_and_no_register_md_is_not_told_to_print_one(self):
+        # Review of step 9a: REGISTER.md is optional for a register with rows by reference. One that left it out is told
+        # to check the register, not to print REGISTER.md. One that has it is told to print it again, as before.
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        old_by = registry.rules_by_key(old)
+        item = next(item for item in register["adopted"] if item["key"] == "ratchet.keep")
+        for field in ("rule", "ratchet", "source"):
+            del item[field]
+        item.update(stands_in="RULES.md", sha256=check_register.reference_sha256(old_by["ratchet.keep"]))
+        project = self.scratch()
+        path = os.path.join(project, "register.json")
+        for instructions in (None, "AGENTS.md"):
+            with self.subTest(instructions=instructions):
+                given = dict(register, instructions=instructions) if instructions else register
+                out = io.StringIO()
+                self.assertEqual(upgrade.report(path, given, old, new, out, "check_register.py"), 0, out.getvalue())
+                output = out.getvalue()
+                self.assertNotIn("--print-markdown", output)
+                self.assertNotIn("print REGISTER.md", output)
+                self.assertIn("REGISTER.md is not there, which a register with rows adopted by reference may leave out, so it "
+                              "is not printed.", output)
+                self.assertIn("    python3 check_register.py --markdown REGISTER.md -- %s\n" % shlex.quote(path), output)
+                self.assertEqual("--print-instructions" in output, bool(instructions))
+                if instructions:
+                    self.assertIn("Then print %s again, put it in place, and check it:" % os.path.join(project, "AGENTS.md"), output)
+                else:
+                    self.assertIn("Then check it:", output)
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8") as handle:
+            handle.write(check_register.render(register))
+        out = io.StringIO()
+        self.assertEqual(upgrade.report(path, register, old, new, out, "check_register.py"), 0, out.getvalue())
+        self.assertIn("Then print REGISTER.md again, put it in place, and check it:", out.getvalue())
+        self.assertIn("--print-markdown", out.getvalue())
+        # A register with no row by reference is told to print it, there or not.
+        out = io.StringIO()
+        self.assertEqual(upgrade.report(os.path.join(self.scratch(), "register.json"), self.loaded("register.json"), old, new, out,
+                                        "check_register.py"), 0, out.getvalue())
+        self.assertIn("--print-markdown", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -606,7 +651,7 @@ class OneCommand(FixtureTest):
         project = self.scratch()
         data = self.fixture_bytes("upgrade/" + register)
         if version is not None:
-            data = re.sub(rb'"ratchet_version": "[0-9.]+"', b'"ratchet_version": "' + version.encode("ascii") + b'"', data, 1)
+            data = re.sub(rb'"ratchet_version": "[0-9.]+"', b'"ratchet_version": "' + version.encode("ascii") + b'"', data, count=1)
             self.assertEqual(registry.parse_json(data)["ratchet_version"], version)
         with open(os.path.join(project, "register.json"), "wb") as handle:
             handle.write(data)
@@ -665,7 +710,7 @@ class OneCommand(FixtureTest):
         offline = self.offline().replace("Ratchet 9.9", "Ratchet 9.10").replace('"9.9"', '"9.10"')
         self.assertIn("In Ratchet 9.10, 9 rules are new, changed or removed.", output)
         self.assertIn(offline, output)
-        self.assertIn("python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md", output)
+        self.assertIn("python3 .ratchet/checks/check_register.py --markdown REGISTER.md -- register.json", output)
 
     def test_the_release_asked_for_is_compared(self):
         project = self.project()
@@ -1114,6 +1159,40 @@ class UpgradingSteps(FixtureTest):
                 self.assertEqual(ran.returncode, 0, ran.stdout)
         with open(os.path.join(project, "AGENTS.md"), encoding="utf-8", newline="") as handle:
             self.assertEqual(handle.read(), check_register.render_block(after) + "\n# The project's own text\n")
+
+    def test_the_printed_commands_run_for_a_register_whose_path_starts_with_a_dash(self):
+        # Review of step 9a: the commands put the options first and the register's path after --, so that a path that
+        # starts with - is not read as an option by check_register.py.
+        project = self.scratch()
+        shutil.copytree(ROOT, os.path.join(project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.9/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
+        register = registry.parse_json(self.fixture_bytes("upgrade/released/0.9/register.json"))
+        register["instructions"] = "AGENTS.md"
+        path = os.path.join(project, "-register.json")
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
+        with open(os.path.join(project, "AGENTS.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render_block(register) + "\n# The project's own text\n")
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render(register))
+        result = subprocess.run([sys.executable, ".ratchet/checks/upgrade.py", "--from", ".ratchet/from.json", "--", "-register.json"],
+                                cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        commands = re.findall(r"(?m)^    ((?:rm -f |python3 )\S.*)$", result.stdout)
+        self.assertEqual(len(commands), 3, result.stdout)
+        for command in commands:
+            self.assertIn(" -- -register.json", command)
+        new = registry.load(os.path.join(ROOT, "ratchet.json"))
+        _, after = upgrade.plan(register, upgrade.load_older(os.path.join(project, ".ratchet", "from.json")), new)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
+        for command in commands:
+            with self.subTest(command=command):
+                ran = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " ")],
+                                     cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertEqual(ran.returncode, 0, ran.stdout)
+        with open(os.path.join(project, "REGISTER.md"), encoding="utf-8", newline="") as handle:
+            self.assertEqual(handle.read(), check_register.render(after))
 
 
 if __name__ == "__main__":

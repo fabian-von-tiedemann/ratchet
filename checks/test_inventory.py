@@ -460,6 +460,53 @@ class Inventory(FixtureTest):
                 self.assertEqual(out, "")
                 self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
 
+    def test_an_export_named_like_a_credential_is_refused_with_a_slash_or_a_dot_after_it(self):
+        # Gemini and Codex on #119: the name was taken from the last part of the path as typed, which is empty after a
+        # "/", so secret-token.json/ was read. The name is the last part that names something, and a path that ends in
+        # "/", "/." or "/.." names a folder, not an export.
+        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
+        folder = os.path.realpath(self.scratch())
+        secret = self.write("secret-token.json", data, top=folder)
+        plain = self.write("plain.json", data, top=folder)
+        for path, message in ((secret + "/", "looks like a credential, not read"), (secret + "/.", "looks like a credential, not read"),
+                              (secret + "//", "looks like a credential, not read"), (secret + "/./", "looks like a credential, not read"),
+                              (plain + "/", "names a folder, not a file"), (plain + "/.", "names a folder, not a file"),
+                              (plain + "/..", "names a folder, not a file"), (".", "names a folder, not a file")):
+            with self.subTest(path=path):
+                code, out, err = self.run_inventory(self.repo, "--ruleset", path, cwd=folder)
+                self.assertEqual(code, 2, out + err)
+                self.assertIn(message, err)
+                self.assertEqual(out, "")
+                self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+        code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", "./plain.json", cwd=folder)
+        self.assertEqual(code, 0, out + err)
+
+    def test_the_register_names_no_path_above_the_root_that_is_looked_at(self):
+        # Gemini and Codex on #119: a word in backticks in a "where", such as ../outside/x, has its first part looked at to
+        # tell a path from a word like owner/repo. That first part is looked at only inside the root, as in a file.
+        sys.path.insert(0, HERE)
+        import inventory
+        top = os.path.realpath(self.repo)
+        self.write("register.json", json.dumps({"adopted": [
+            {"key": "a", "where": "`../outside/x`, `../../etc/passwd`, `sub/../../x/y` and `checks/gone.py`"}], "own": []}))
+        found = inventory.Inventory()
+        with open(os.path.join(top, "register.json"), "rb") as handle:
+            found.data["register.json"] = handle.read()
+        looked = []
+        real = inventory.exists_in
+        def exists_in(layer, place):
+            looked.append(os.path.normpath(place))
+            return real(layer, place)
+        inventory.exists_in = exists_in
+        try:
+            owners = inventory.code_owners(found, inventory.Layer("repo", top, ""))
+        finally:
+            inventory.exists_in = real
+        self.assertTrue(looked)
+        for place in looked:
+            self.assertTrue(inventory.within(top, place), place)
+        self.assertEqual(owners["register_names"], [["checks/gone.py", False]])
+
     def test_a_job_with_a_name_is_required_by_its_name_only(self):
         self.write(".github/workflows/gate.yml", "on: pull_request\njobs:\n  checks:\n    name: Run Checks\n    runs-on: x\n"
                    "  build:\n    name: ${{ matrix.os }} build\n    runs-on: x\n")
@@ -570,7 +617,8 @@ class Inventory(FixtureTest):
         self.assertEqual(owners["register_names"], [["AGENTS.md", True], ["checks/gone.py", False]])
 
     def test_options_that_say_nothing(self):
-        for args in (["--uses", ""], ["--uses", " , "], ["--home", self.home]):
+        # An empty --home is not HOME (Gemini and Codex on #119).
+        for args in (["--uses", ""], ["--uses", " , "], ["--home", self.home], ["--global", "--home", ""]):
             with self.subTest(args=args):
                 code, out, err = self.run_inventory(self.repo, *args)
                 self.assertEqual(code, 2, out + err)
@@ -600,6 +648,9 @@ class Inventory(FixtureTest):
                 self.assertEqual(code, 2, out + err)
                 self.assertEqual(out, "")
                 self.assertIn("%s on its path is a link, not followed" % part, err)
+                # It says how to give the path without the link, as /tmp and /var are on macOS (Gemini and Codex on #119).
+                self.assertIn("Give the path with no link on it: as realpath prints it, or relative from a folder below the link",
+                              err)
                 self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
         # The same file, given without a link on its path, is read.
         code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", "export.json", cwd=outside)
@@ -686,6 +737,8 @@ class Inventory(FixtureTest):
             "---\non: [pull_request, push]  # trailing\n": ["pull_request", "push"],
             "on: \"pull_request\"\n": ["pull_request"],
             "on:\n  pull_request:\n    branches: [main]\n  workflow_dispatch:\n": ["pull_request", "workflow_dispatch"],
+            # What stands under an event is not read, so an alias there is taken as it is (review of #119).
+            "on:\n  pull_request:\n    branches: *main\n  push:\n    branches: &main [main]\n": ["pull_request", "push"],
         }
         not_read = (
             "on: &triggers\n  pull_request:\n",

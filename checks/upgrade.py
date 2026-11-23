@@ -34,7 +34,8 @@ Either way the script compares the two versions, rule by rule, and prints:
 - for a changed rule that the register adopts by reference: whether its sha256 still
   matches, and when the rule or its ratchet changed, that it no longer does, the new
   sha256 in the entry, and that the project reads its own wording in the file the row
-  names again. Nothing fails until the owner moves "ratchet_version"
+  names again, with the new rule and its ratchet printed to read it against. Nothing
+  fails until the owner moves "ratchet_version"
 - a step for each adopted rule that was removed: take it out of "adopted", and to
   keep it, add the printed entry to "own", which has the fields of an own rule only:
   its status and "where" are kept, and its translation is not. A rule adopted by
@@ -52,6 +53,9 @@ Either way the script compares the two versions, rule by rule, and prints:
 - when the form of register.json changed between the two versions, what changed, with
   the new fields named. Every field that came in 0.10 or 0.11 may be left out, so none
   of it is a step.
+- the commands that print REGISTER.md and the instruction file again and check them,
+  with the options first and the register's path after "--". A register with rows by
+  reference after the steps and no REGISTER.md beside it is not told to print one.
 
 It writes no file of the project. Only the one command changes anything: the tags
 and the checkout of .ratchet, through git. Before it prints a
@@ -270,6 +274,9 @@ def plan(register, old, new):
                             'the ratchet says, or set the status to "text only for now".')
             if check_register.is_reference(before):
                 text.append(reference_text(before, rule))
+                if before[check_register.SHA] != check_register.reference_sha256(rule):
+                    # The new rule and its ratchet, so the project can read its wording against them (review of step 9a).
+                    step["against"] = rule
             if check_register.TRANSLATION in before and check_register.TRANSLATION not in step["entry"]:
                 text.append('Its rule changed, so its translation must be made again, and the entry has none. Translate the new '
                             'rule and add its "translation" with "sha256": "%s".' % check_register.rule_sha256(rule["rule"]))
@@ -348,8 +355,9 @@ def put_in_place(script, path, option, target):
     """The shell command that prints one file with check_register.py and puts it in place at target: a new file in the
     directory the command runs in, named after the target, then moved there. The target is a relative path."""
     new = shlex.quote(target.split("/")[-1] + ".new")
-    return "rm -f -- %s && python3 %s %s %s > %s && rm -f -- %s && mv -- %s %s" % (
-        new, shlex.quote(script), shlex.quote(path), option, new, shlex.quote(target), new, shlex.quote(target))
+    # The option stands first and the register's path after --, so a path that starts with - is not read as an option.
+    return "rm -f -- %s && python3 %s %s -- %s > %s && rm -f -- %s && mv -- %s %s" % (
+        new, shlex.quote(script), option, shlex.quote(path), new, shlex.quote(target), new, shlex.quote(target))
 
 
 def passes(name, register, old, out):
@@ -409,6 +417,11 @@ def report(path, register, old, new, out, script):
             print("", file=out)
             print(paste(step["entry"]), file=out)
             print("", file=out)
+        if step.get("against"):
+            print("The rule in Ratchet %s, to read the wording in %s against: %s" % (
+                new["version"], step["entry"][check_register.STANDS_IN], step["against"]["rule"]), file=out)
+            print("Its ratchet: %s" % step["against"]["ratchet"], file=out)
+            print("", file=out)
     if must_adopt:
         number += 1
         print("%d. Every rule the register adopts was removed, and a register that adopts no rule from Ratchet does not pass "
@@ -452,17 +465,29 @@ def report(path, register, old, new, out, script):
     instructions = None
     if check_register.INSTRUCTIONS in register:
         instructions = "/".join(part for part in (os.path.dirname(path).replace(os.sep, "/"), register[check_register.INSTRUCTIONS]) if part)
+    # REGISTER.md is optional for a register with rows by reference. One that left it out is not told to print it
+    # (review of step 9a). The register looked at is the one with the steps done.
+    markdown = not check_register.references(after) or os.path.lexists(os.path.join(os.path.dirname(path), "REGISTER.md"))
+    if not markdown:
+        print("REGISTER.md is not there, which a register with rows adopted by reference may leave out, so it is not printed.",
+              file=out)
+    if markdown and instructions is not None:
         print("Then print REGISTER.md and %s again, put each in place, and check them:" % instructions, file=out)
-    else:
+    elif markdown:
         print("Then print REGISTER.md again, put it in place, and check it:", file=out)
+    elif instructions is not None:
+        print("Then print %s again, put it in place, and check it:" % instructions, file=out)
+    else:
+        print("Then check it:", file=out)
     print("", file=out)
     # The check writes nothing (round 3 of #100). Each file is printed to a new file in the directory the commands run in,
     # and moved into place. rm -f removes a link that stands at either name, never what it points at, so neither the
     # redirection nor mv follows one, and mv does not move the file into a directory that a link leads to.
-    print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
+    if markdown:
+        print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
     if instructions is not None:
         print("    %s" % put_in_place(script, path, "--print-instructions", instructions), file=out)
-    print("    python3 %s %s --markdown REGISTER.md" % (shlex.quote(script), shlex.quote(path)), file=out)
+    print("    python3 %s --markdown REGISTER.md -- %s" % (shlex.quote(script), shlex.quote(path)), file=out)
     print("", file=out)
     if not must_adopt:
         adopting = "no new rule adopted"
