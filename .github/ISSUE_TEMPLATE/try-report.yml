@@ -2,6 +2,9 @@ name: Tried Ratchet
 description: Tell us how trying Ratchet on your repo went, as TRYING.md describes. This repo is public.
 title: "Tried Ratchet: "
 body:
+  - type: markdown
+    attributes:
+      value: "**This repo is public.** Write nothing that names a project, customer, company or person, and no internal detail: no architecture, incident, system or path of your repo. No code and no secrets. Say what happened in Ratchet's words, and remove such details from any message you quote."
   - type: dropdown
     id: path
     attributes:
@@ -39,11 +42,11 @@ body:
     id: friction
     attributes:
       label: What got in the way
-      description: Verbatim, in your words or the agent's.
+      description: An error message or step in Ratchet's output may be quoted as it stood. Remove any name, path or detail of your repo from it first.
   - type: checkboxes
     id: public
     attributes:
       label: Public repo
       options:
-        - label: This report names no project, customer, company or person, and holds no code or secrets from my repo.
+        - label: This report names no project, customer, company or person, holds no internal detail, and holds no code or secrets from my repo. I removed such details from everything I quoted.
           required: true

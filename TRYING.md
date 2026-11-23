@@ -18,7 +18,7 @@ Open a [report](https://github.com/fabian-von-tiedemann/ratchet/issues/new?templ
 - the time it took, for the agent and for you
 - the rules that fit
 - the rules that found a gap
-- what got in the way, in your own words or the agent's, verbatim
+- what got in the way: Ratchet's own message or step as it stood, with any detail of your repo taken out
 
 ## Before you send it
 
