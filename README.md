@@ -106,6 +106,8 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
 
    It writes `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. The project's name is the folder's name, or the one you give with `--name`. It never overwrites a file: one that exists is skipped and named. With `--solo`, for one agent and no control room, it leaves the control room and the skills out of `AGENTS.md`. Then it names what is left: the placeholders in `AGENTS.md`, the jobs to require in the protection of `main`, and, when the repo has no remote yet, the adopted rules that wait for one. Last it runs the register check. See [checks/README.md](checks/README.md#initpy).
 
+   If your repo already has an instruction file of its own, such as `AGENTS.md` or `CLAUDE.md`, `init.py` adopts it instead, and says so: see "If you have an instruction file of your own" below. Steps 4 to 6 are for a project that `init.py` started.
+
    `register.json` holds ten rules to start with, copied verbatim: you choose which rules you take, and you never rewrite one. Your own rules go in the list `own`, under your own prefix. `REGISTER.md` is generated: to change it, change `register.json` and write it again.
 
 4. Fill in the parts of `AGENTS.md` in angle brackets, and commit the files. The workflow runs the register check on every PR, and it fails while `AGENTS.md` still holds a placeholder of the template.
@@ -117,6 +119,12 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
    python3 .ratchet/checks/generate.py --entries ratchet.simplest
    rm -f REGISTER.md.new && python3 .ratchet/checks/check_register.py register.json --print-markdown > REGISTER.md.new && rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md
    ```
+
+**If you have an instruction file of your own.** Steps 1 to 3 are the same, and `init.py` runs in adopt mode. Run `python3 .ratchet/checks/inventory.py` first to see what your agent layer holds. `init.py` writes only `register.json`, with one rule copied, `ratchet.register-on-top`, and never changes your file. It writes no `AGENTS.md` to fill in, no `REGISTER.md`, and no workflow, so there are no jobs `ratchet` or `project-checks` to require. In place of steps 4 to 6:
+
+1. For each other rule to start with, `init.py` prints the rule, a marker line and a row by reference. Where your file states the rule in your own words, put the marker line there, alone on a line, and paste the row into `adopted` in `register.json`, each as printed, from its first character. Leave out a rule your file does not state, or state it there first. A marker counts only in a file in UTF-8 with LF line endings.
+2. Add the one step it prints to a job that the protection of your `main` already requires, and commit `register.json` and your file. It adds no workflow and no required job, so you need no admin. `python3 .ratchet/checks/inventory.py --ruleset <file>`, given the ruleset or branch protection of `main` exported from your host, names which jobs are required. Add `/.ratchet/` to `.gitignore` if `init.py` says it is missing.
+3. A row by reference is the weaker mode: the check sees the marker, not your words. Step 7 applies as it stands, with the rows you add.
 
 The ten rules to start with:
 

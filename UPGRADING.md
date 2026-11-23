@@ -1,6 +1,6 @@
 # Upgrading to a newer Ratchet
 
-A project states in `register.json` which version of Ratchet it follows. An upgrade moves it to a newer one, in a PR of its own (`ratchet.si-pull`). This works for a register on 0.3 or later. A register written for 0.2 is moved by hand first: see [MIGRATING.md](MIGRATING.md). A new project does not upgrade: it starts with `checks/init.py`, as the [README](README.md#start-here) says.
+A project states in `register.json` which version of Ratchet it follows. An upgrade moves it to a newer one, in a PR of its own (`ratchet.si-pull`). This works for a register on 0.3 or later. A register written for 0.2 is moved by hand first: see [MIGRATING.md](MIGRATING.md). A new project does not upgrade: it starts with `checks/init.py`, as the [README](README.md#start-here) says, and so does a project that has an instruction file of its own and no register yet, which `init.py` adopts.
 
 ## The command
 
