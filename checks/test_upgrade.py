@@ -57,9 +57,30 @@ REGISTER_FORM = ('The form of register.json grew in Ratchet 0.10 (D-2026-11-20-g
                  'An adopted rule may carry a "translation", bound to its English rule by a sha256. An own rule may carry '
                  '"status" and "where". A register without them stays valid, so none of this is a step.')
 
+# What the upgrade says to a register that moves from a version before 0.11 to 0.11 or later (D-2026-11-22-second-redraw).
+REGISTER_FORM_BY_REFERENCE = (
+    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change of form '
+    'before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
+    'file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its ratchet. Such a row '
+    'holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> once. check_register.py sees '
+    'that marker, not the words. REGISTER.md may be left out by a register with such rows. A register without them stays '
+    'valid, so none of this is a step.')
+
+# What the upgrade says to a register that moves from a version before 0.12 to 0.12 or later
+# (D-2026-11-23-partial-adoption-form).
+REGISTER_FORM_IN_PART = (
+    'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 starts '
+    'again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated here: '
+    '<clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is added, but a '
+    'row by reference of a rule that is text only, which took no "where" before, takes one, and only as that phrase. A '
+    'register without it stays valid, so none of this is a step.')
 
 # What a copy of this repo leaves out when a test makes a clone of Ratchet from it: git's own files, bytecode, and what
 # the checks do not read, so that each test copies little.
+# The seven experimental rules of the product module, which 0.12 adds (D-2026-11-22-second-redraw, step 12).
+PRODUCT_RULES = ("ratchet.release-what-was-tested", "ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests",
+                 "ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle",
+                 "ratchet.dependencies-pinned")
 COPY_IGNORED = (".git", "__pycache__", "fixtures", "docs", "assets")
 
 
@@ -67,15 +88,28 @@ def sha256(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
+# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
+# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
+# own config, so that a script under test that runs git there starts none either.
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git(directory, *args):
     """What git prints for args in directory, as text. No GIT_ variable, and no global or system config, is used."""
     env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
     env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
-    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false",
-                             "-C", directory] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    if args[:1] == ("clone",):
+        args = args[:1] + tuple(part for name, value in QUIET for part in ("--config", "%s=%s" % (name, value))) + args[1:]
+    quiet = [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
+    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false"]
+                            + quiet + ["-C", directory] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             universal_newlines=True)
     if result.returncode != 0:
         raise AssertionError("git %s: %s" % (" ".join(args), result.stdout))
+    if args[:1] == ("init",):
+        for name, value in QUIET:
+            git(directory, "config", name, value)
     return result.stdout.strip()
 
 
@@ -216,12 +250,13 @@ class Upgrade(FixtureTest):
         code = upgrade.report("register.json", register, old, new, out, "check_register.py")
         self.assertEqual(code, 0, out.getvalue())
         self.assertIn("Then print REGISTER.md and docs/AGENTS.md again, put each in place, and check them:", out.getvalue())
-        self.assertIn("    rm -f -- REGISTER.md.new && python3 check_register.py register.json --print-markdown > REGISTER.md.new && "
+        self.assertIn("    rm -f -- REGISTER.md.new && python3 check_register.py --print-markdown -- register.json > REGISTER.md.new && "
                       "rm -f -- REGISTER.md && mv -- REGISTER.md.new REGISTER.md\n", out.getvalue())
         # The .new file stands in the directory the commands run in, so nothing is removed or written through a directory
         # of the path before the check has refused a link there.
-        self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py register.json --print-instructions > AGENTS.md.new && "
+        self.assertIn("    rm -f -- AGENTS.md.new && python3 check_register.py --print-instructions -- register.json > AGENTS.md.new && "
                       "rm -f -- docs/AGENTS.md && mv -- AGENTS.md.new docs/AGENTS.md\n", out.getvalue())
+        self.assertIn("    python3 check_register.py --markdown REGISTER.md -- register.json\n", out.getvalue())
         # The script and the register's path are quoted for the shell, on each of the three lines (review of 3219bf4).
         out = io.StringIO()
         upgrade.report("my project/register.json", register, old, new, out, "my checks/check_register.py")
@@ -229,8 +264,93 @@ class Upgrade(FixtureTest):
         self.assertEqual(len(lines), 3, out.getvalue())
         for line in lines:
             with self.subTest(line=line):
-                self.assertIn("python3 'my checks/check_register.py' 'my project/register.json' ", line)
+                self.assertIn("python3 'my checks/check_register.py' --", line)
+                self.assertIn(" -- 'my project/register.json'", line)
         self.assertNotIn("--write", out.getvalue())
+
+    def test_a_row_by_reference_whose_rule_or_ratchet_changed_is_told_its_new_sha256(self):
+        # D-2026-11-22-second-redraw, step 9a: the sha256 of a row by reference covers the rule and its ratchet, so an
+        # upgrade that changes either says that it no longer matches, prints the new one, and asks the project to read its
+        # own wording again. The register passes against the version it states until the owner moves the version.
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        old_by, new_by = registry.rules_by_key(old), registry.rules_by_key(new)
+        def reference(rule):
+            return sha256(rule["rule"] + "\n" + rule["ratchet"])
+        for item in register["adopted"]:
+            if item["key"] in ("ratchet.keep", "ratchet.reworded", "ratchet.new-ratchet", "ratchet.dropped"):
+                for field in ("rule", "ratchet", "source"):
+                    del item[field]
+                item.update(stands_in="RULES.md", sha256=reference(old_by[item["key"]]))
+        self.assertEqual(check_register.check(register, old)[0], [], "it passes against the version it states")
+        moved = dict(register, ratchet_version=new["version"])
+        self.assertIn("ratchet.reworded: the sha256 is ", "\n".join(check_register.check(moved, new)[0]),
+                      "it fails once the version is moved and the sha256 is not")
+        out = io.StringIO()
+        code = upgrade.report("register.json", register, old, new, out, "check_register.py")
+        output = out.getvalue()
+        self.assertEqual(code, 0, output)
+        for key in ("ratchet.reworded", "ratchet.new-ratchet"):
+            self.assertIn("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the "
+                          "new sha256 is %s. Read the project's own wording in RULES.md again against the new rule, and change "
+                          "it where it no longer says what the rule says." % reference(new_by[key]), output)
+            # The new rule and its ratchet are printed, so the wording can be read against them (review of step 9a).
+            self.assertIn("\nThe rule in Ratchet 9.9, to read the wording in RULES.md against: %s\nIts ratchet: %s\n"
+                          % (new_by[key]["rule"], new_by[key]["ratchet"]), output)
+        self.assertEqual(output.count("to read the wording in RULES.md against"), 2, "not for a copied row or one removed")
+        self.assertNotIn("ratchet.keep:", output, "a rule that did not change is not listed")
+        self.assertIn("It was adopted by reference, and an own rule stands in the register in full, so the entry holds Ratchet's "
+                      "text of it, which the project may replace with its own wording. Take the line "
+                      "<!-- ratchet:rule ratchet.dropped --> out of RULES.md, since no row names it there.", output)
+        printed = dict((entry["key"], entry) for entry in entries(output))
+        self.assertEqual(printed["ratchet.reworded"], {"key": "ratchet.reworded", "stands_in": "RULES.md",
+                                                       "sha256": reference(new_by["ratchet.reworded"])})
+        self.assertEqual(printed["ratchet.new-ratchet"]["status"], "built", "the status and where stay")
+        self.assertNotIn("rule", printed["ratchet.new-ratchet"])
+        self.assertEqual(printed["example.dropped"]["rule"], old_by["ratchet.dropped"]["rule"])
+        steps, after = upgrade.plan(register, old, new)
+        self.assertEqual(check_register.check(after, new)[0], [])
+        # A rule whose rule and ratchet did not change keeps its sha256.
+        self.assertIn("its sha256 still matches", upgrade.reference_text({"stands_in": "RULES.md", "sha256": reference(old_by["ratchet.keep"])},
+                                                                         old_by["ratchet.keep"]))
+
+    def test_a_register_with_rows_by_reference_and_no_register_md_is_not_told_to_print_one(self):
+        # Review of step 9a: REGISTER.md is optional for a register with rows by reference. One that left it out is told
+        # to check the register, not to print REGISTER.md. One that has it is told to print it again, as before.
+        register, old, new = self.loaded("register.json"), self.loaded("old/ratchet.json"), self.loaded("new/ratchet.json")
+        old_by = registry.rules_by_key(old)
+        item = next(item for item in register["adopted"] if item["key"] == "ratchet.keep")
+        for field in ("rule", "ratchet", "source"):
+            del item[field]
+        item.update(stands_in="RULES.md", sha256=check_register.reference_sha256(old_by["ratchet.keep"]))
+        project = self.scratch()
+        path = os.path.join(project, "register.json")
+        for instructions in (None, "AGENTS.md"):
+            with self.subTest(instructions=instructions):
+                given = dict(register, instructions=instructions) if instructions else register
+                out = io.StringIO()
+                self.assertEqual(upgrade.report(path, given, old, new, out, "check_register.py"), 0, out.getvalue())
+                output = out.getvalue()
+                self.assertNotIn("--print-markdown", output)
+                self.assertNotIn("print REGISTER.md", output)
+                self.assertIn("REGISTER.md is not there, which a register with rows adopted by reference may leave out, so it "
+                              "is not printed.", output)
+                self.assertIn("    python3 check_register.py --markdown REGISTER.md -- %s\n" % shlex.quote(path), output)
+                self.assertEqual("--print-instructions" in output, bool(instructions))
+                if instructions:
+                    self.assertIn("Then print %s again, put it in place, and check it:" % os.path.join(project, "AGENTS.md"), output)
+                else:
+                    self.assertIn("Then check it:", output)
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8") as handle:
+            handle.write(check_register.render(register))
+        out = io.StringIO()
+        self.assertEqual(upgrade.report(path, register, old, new, out, "check_register.py"), 0, out.getvalue())
+        self.assertIn("Then print REGISTER.md again, put it in place, and check it:", out.getvalue())
+        self.assertIn("--print-markdown", out.getvalue())
+        # A register with no row by reference is told to print it, there or not.
+        out = io.StringIO()
+        self.assertEqual(upgrade.report(os.path.join(self.scratch(), "register.json"), self.loaded("register.json"), old, new, out,
+                                        "check_register.py"), 0, out.getvalue())
+        self.assertIn("--print-markdown", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
         code, output = self.upgrade()
@@ -398,7 +518,9 @@ class Upgrade(FixtureTest):
                                   'this entry to "own".' % key, output)
                 # Every experimental rule has "since" from 0.10, a change of form in its rules (D-2026-11-19-one-point-oh).
                 # 0.10 adds the principles, and every rule names one (D-2026-11-20-principles-and-obligations).
-                since = '"principle" in a rule is new and "since" in a rule is new'
+                # 0.12 is the first version in which a rule holds "not_used_because", which upgrade.py reads as new in
+                # the form of a rule, as it reads every field that no rule of the older version held.
+                since = '"not_used_because" in a rule is new, "principle" in a rule is new and "since" in a rule is new'
                 if version in ("0.3", "0.4"):
                     # Neither has the cap, which came in 0.5 as a change of form. Every version before 0.9 has the date
                     # and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases).
@@ -410,6 +532,10 @@ class Upgrade(FixtureTest):
                 self.assertIn(FORM % (version, new["version"], form, version, new["version"], new["version"]), output)
                 # 0.10 also changes the form of register.json, and every new field is optional (D-2026-11-20-generated-block).
                 self.assertIn(REGISTER_FORM, output)
+                # 0.11 changes it once more, with the rows by reference, and names the two new fields.
+                self.assertIn(REGISTER_FORM_BY_REFERENCE, output)
+                # 0.12 changes it once more, with the rows adopted in part (D-2026-11-23-partial-adoption-form).
+                self.assertIn(REGISTER_FORM_IN_PART, output)
                 # The rules that 0.7 and 0.10 add are new to each register before them. 0.8 adds none: it moves two pins
                 # in "sources", which is not a field that the register holds. 0.9 adds none. ratchet.phases, which 0.6
                 # added, leaves in 0.11 (D-2026-11-22-second-redraw, R8), so it is new to no register.
@@ -428,15 +554,43 @@ class Upgrade(FixtureTest):
                     # 0.11 removes six more and changes ratchet.cr-workspace, and changes ratchet.cr-wake and
                     # ratchet.review-by-risk again (D-2026-11-22-second-redraw, step 2): 11 + 6 + 1 = 18. Step 3 changes
                     # ratchet.si-harden, removes ratchet.si-repeat-is-signal and ratchet.si-promote, and removes
-                    # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21.
-                    self.assertIn("In Ratchet %s, 21 rules are new, changed or removed." % new["version"], output)
-                    self.assertIn("Not adopted, so nothing to do: ratchet.cr-analysis-model (removed), ratchet.cr-background-wait "
-                                  "(removed), ratchet.cr-does-not-build (removed), ratchet.cr-lead-with-ask (removed), "
-                                  "ratchet.cr-next-task (removed), ratchet.cr-quiet-hours (removed), ratchet.cr-reads-first "
-                                  "(removed), ratchet.cr-review (removed), ratchet.cr-verify-reports (removed), ratchet.cr-wake "
-                                  "(changed), ratchet.cr-workspace (changed), ratchet.phases (removed), ratchet.root-cause "
-                                  "(changed), ratchet.si-harden (changed), ratchet.si-promote (removed), "
-                                  "ratchet.si-repeat-is-signal (removed), ratchet.si-subtract (removed).", output)
+                    # ratchet.si-subtract, which 0.10 changed: 18 + 3 = 21. Step 8, core batch A, adds ratchet.owner-paths
+                    # and ratchet.ask-the-owner, removes the nine rules that go into them or leave the core, and changes
+                    # ratchet.decision-as-file, ratchet.si-measure and ratchet.expected-tests-ran: 21 + 2 + 9 + 3 = 35.
+                    # Step 9a changes ratchet.register-on-top, by the clause on adoption by reference: 35 + 1 = 36.
+                    # Step 10, core batch B, removes the five rules that go into ratchet.fresh-context and
+                    # ratchet.evidence-before-done or leave the core, and changes those two: 36 + 5 + 2 = 43.
+                    # Step 11, core batch C, removes ratchet.reuse-first, ratchet.slices, ratchet.test-first and
+                    # ratchet.lesson-loop, which go into other rules, renames ratchet.nightly-visible to
+                    # ratchet.silence-is-red, which upgrade.py reports as one rule removed and one new, and changes
+                    # ratchet.simplest, ratchet.test-can-fail, ratchet.agents-without-keys and ratchet.lesson-names-check:
+                    # 43 + 4 + 2 + 4 = 53. Step 12, the product module, adds seven experimental rules: 53 + 7 = 60.
+                    self.assertIn("In Ratchet %s, 60 rules are new, changed or removed." % new["version"], output)
+                    for key in PRODUCT_RULES:
+                        self.assertIn("- %s: new. The register may adopt it." % key, output)
+                    self.assertIn("ratchet.register-on-top: changed: the rule and the ratchet.", output)
+                    for key in ("ratchet.owner-paths", "ratchet.ask-the-owner", "ratchet.silence-is-red"):
+                        self.assertIn("- %s: new. The register may adopt it." % key, output)
+                    for key in ("ratchet.one-approver", "ratchet.kinds-apart", "ratchet.glossary", "ratchet.checks-owner-read"):
+                        self.assertIn('%s: removed. Remove it from "adopted".' % key, output)
+                    for key in ("ratchet.decision-as-file", "ratchet.expected-tests-ran"):
+                        self.assertIn("%s: changed: " % key, output)
+                    self.assertIn("ratchet.evidence-before-done: changed: the rule, the ratchet and the source.", output)
+                    self.assertIn("Not adopted, so nothing to do: ratchet.agents-without-keys (changed), ratchet.cr-analysis-model "
+                                  "(removed), ratchet.cr-background-wait (removed), ratchet.cr-does-not-build (removed), "
+                                  "ratchet.cr-lead-with-ask (removed), ratchet.cr-next-task (removed), ratchet.cr-quiet-hours "
+                                  "(removed), ratchet.cr-reads-first (removed), ratchet.cr-review (removed), "
+                                  "ratchet.cr-verify-reports (removed), ratchet.cr-wake (changed), ratchet.cr-workspace (changed), "
+                                  "ratchet.experiment-plan (removed), ratchet.findings-marked (removed), ratchet.five-choices "
+                                  "(removed), ratchet.fresh-context (changed), ratchet.grill-first (removed), ratchet.lesson-loop "
+                                  "(removed), ratchet.lesson-names-check (changed), ratchet.look-up-facts (removed), "
+                                  "ratchet.nightly-visible (removed), ratchet.once-per-version (removed), ratchet.one-channel "
+                                  "(removed), ratchet.phases (removed), ratchet.register-review-first (removed), "
+                                  "ratchet.reuse-first (removed), ratchet.root-cause (changed), ratchet.run-early (removed), "
+                                  "ratchet.si-harden (changed), ratchet.si-measure (changed), ratchet.si-promote (removed), "
+                                  "ratchet.si-repeat-is-signal (removed), ratchet.si-subtract (removed), ratchet.simplest (changed), "
+                                  "ratchet.slices (removed), ratchet.test-can-fail (changed), ratchet.test-first (removed), "
+                                  "ratchet.verify-findings (removed).", output)
                 steps, after = upgrade.plan(registry.parse_json(self.fixture_bytes("upgrade/released/%s/register.json" % version)),
                                             upgrade.load_older(old), new)
                 self.assertEqual(check_register.check(after, new)[0], [])
@@ -515,7 +669,7 @@ class OneCommand(FixtureTest):
         project = self.scratch()
         data = self.fixture_bytes("upgrade/" + register)
         if version is not None:
-            data = re.sub(rb'"ratchet_version": "[0-9.]+"', b'"ratchet_version": "' + version.encode("ascii") + b'"', data, 1)
+            data = re.sub(rb'"ratchet_version": "[0-9.]+"', b'"ratchet_version": "' + version.encode("ascii") + b'"', data, count=1)
             self.assertEqual(registry.parse_json(data)["ratchet_version"], version)
         with open(os.path.join(project, "register.json"), "wb") as handle:
             handle.write(data)
@@ -574,7 +728,7 @@ class OneCommand(FixtureTest):
         offline = self.offline().replace("Ratchet 9.9", "Ratchet 9.10").replace('"9.9"', '"9.10"')
         self.assertIn("In Ratchet 9.10, 9 rules are new, changed or removed.", output)
         self.assertIn(offline, output)
-        self.assertIn("python3 .ratchet/checks/check_register.py register.json --markdown REGISTER.md", output)
+        self.assertIn("python3 .ratchet/checks/check_register.py --markdown REGISTER.md -- register.json", output)
 
     def test_the_release_asked_for_is_compared(self):
         project = self.project()
@@ -864,6 +1018,29 @@ class RemovedRules(FixtureTest):
         for after in (self.done(register, own), self.done(register, [])):
             self.assertEqual(check_register.check(after, self.loaded("new.json"))[0], [])
 
+    def test_a_removed_rule_adopted_in_part_is_told_that_its_entry_drops_the_where(self):
+        # The review of 4b29449: the step said that the entry for "own" kept its status and its "where", while the entry,
+        # rightly, holds Ratchet's whole text and no "where" that lists clauses not stated.
+        old, new = self.loaded("old.json"), self.loaded("new.json")
+        register = self.loaded("register.json")
+        rule = registry.rules_by_key(old)["ratchet.dropped-checked"]
+        row = {"key": rule["key"], "stands_in": "RULES.md", "sha256": check_register.reference_sha256(rule),
+               "status": "text only for now", "where": "Not stated here: one; two."}
+        register["adopted"] = [row if item["key"] == rule["key"] else item for item in register["adopted"]]
+        steps, _ = upgrade.plan(register, old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertEqual(step["entry"]["status"], "text only for now")
+        self.assertNotIn("where", step["entry"])
+        self.assertNotIn('keeps its status and its "where"', step["text"])
+        self.assertIn('An own rule may say where its check stands, so the entry keeps its status.', step["text"])
+        self.assertIn('It was adopted in part, and an own rule stands in the register in full, so the entry has no "where": '
+                      'the clauses it listed as not stated, one; two, stand in the rule of the entry like the rest of it.',
+                      step["text"])
+        # A row that is not in part still keeps both.
+        steps, _ = upgrade.plan(self.loaded("register.json"), old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertIn('so the entry keeps its status and its "where".', step["text"])
+
     def test_the_check_of_the_steps_covers_a_removed_rule_kept_in_own(self):
         # If the entry for "own" gave a rule that is text only a status, the steps would give a register that fails. The
         # script must then fail too, not print the steps.
@@ -1023,6 +1200,40 @@ class UpgradingSteps(FixtureTest):
                 self.assertEqual(ran.returncode, 0, ran.stdout)
         with open(os.path.join(project, "AGENTS.md"), encoding="utf-8", newline="") as handle:
             self.assertEqual(handle.read(), check_register.render_block(after) + "\n# The project's own text\n")
+
+    def test_the_printed_commands_run_for_a_register_whose_path_starts_with_a_dash(self):
+        # Review of step 9a: the commands put the options first and the register's path after --, so that a path that
+        # starts with - is not read as an option by check_register.py.
+        project = self.scratch()
+        shutil.copytree(ROOT, os.path.join(project, ".ratchet"), ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures"))
+        shutil.copyfile(self.fixture_file("upgrade/released/0.9/ratchet.json"), os.path.join(project, ".ratchet", "from.json"))
+        register = registry.parse_json(self.fixture_bytes("upgrade/released/0.9/register.json"))
+        register["instructions"] = "AGENTS.md"
+        path = os.path.join(project, "-register.json")
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
+        with open(os.path.join(project, "AGENTS.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render_block(register) + "\n# The project's own text\n")
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8", newline="") as handle:
+            handle.write(check_register.render(register))
+        result = subprocess.run([sys.executable, ".ratchet/checks/upgrade.py", "--from", ".ratchet/from.json", "--", "-register.json"],
+                                cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        commands = re.findall(r"(?m)^    ((?:rm -f |python3 )\S.*)$", result.stdout)
+        self.assertEqual(len(commands), 3, result.stdout)
+        for command in commands:
+            self.assertIn(" -- -register.json", command)
+        new = registry.load(os.path.join(ROOT, "ratchet.json"))
+        _, after = upgrade.plan(register, upgrade.load_older(os.path.join(project, ".ratchet", "from.json")), new)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(after, indent=2, ensure_ascii=False) + "\n")
+        for command in commands:
+            with self.subTest(command=command):
+                ran = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " ")],
+                                     cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertEqual(ran.returncode, 0, ran.stdout)
+        with open(os.path.join(project, "REGISTER.md"), encoding="utf-8", newline="") as handle:
+            self.assertEqual(handle.read(), check_register.render(after))
 
 
 if __name__ == "__main__":

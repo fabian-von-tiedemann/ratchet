@@ -136,12 +136,47 @@ class PrincipleForm(FixtureTest):
 
 
 class ThisRatchet(unittest.TestCase):
-    def test_eleven_principles_each_over_at_least_one_rule_and_every_rule_under_one(self):
-        # D-2026-11-20-principles-and-obligations: eleven principles on top, today's rules under them.
+    def test_ten_principles_each_over_at_least_one_rule_and_every_rule_under_one(self):
+        # D-2026-11-22-second-redraw, step 4: the seven principles of the core on top, today's rules under them. Step
+        # 12 adds principles 8 to 10, for an application in production, with the rules of the product module.
         data = registry.load(os.path.join(ROOT, "ratchet.json"))
-        self.assertEqual(len(data["principles"]), 11)
+        self.assertEqual(len(data["principles"]), 10)
         keys = [principle["key"] for principle in data["principles"]]
         self.assertEqual(sorted(set(rule["principle"] for rule in data["rules"])), sorted(keys))
+
+    def test_principles_8_to_10_stand_over_the_product_rules_of_the_decision(self):
+        # D-2026-11-22-second-redraw, the table of the principles and "The product module": the titles and questions
+        # word for word, the seven rules under principles 8, 9, 10 and 6, each experimental, from 0.12, in PRODUCT.md.
+        data = registry.load(os.path.join(ROOT, "ratchet.json"))
+        product = [
+            ("Ship what was tested, and know the way back",
+             "Is what runs in production the exact build that passed, and have I tried the way back?",
+             ["ratchet.release-what-was-tested"]),
+            ("Keep what was accepted",
+             "Who can judge this change, have they accepted it, and which test goes red if that behavior or boundary "
+             "changes later?",
+             ["ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests"]),
+            ("Watch production and the ground under the code",
+             "Would I know within minutes if production stopped working? What does real use show that the tests do "
+             "not, and what outside the repo is about to change state?",
+             ["ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle"]),
+        ]
+        self.assertEqual([(p["title"], p["text"], [r["key"] for r in registry.rules_under(data, p["key"])])
+                          for p in data["principles"][7:]], product)
+        guard = [r["key"] for r in registry.rules_under(data, "principle.guard-the-boundaries")]
+        self.assertEqual(guard[-1], "ratchet.dependencies-pinned")
+        parts = dict((part["id"], part["file"]) for part in data["parts"])
+        keys = [key for _, _, rules in product for key in rules] + ["ratchet.dependencies-pinned"]
+        # Six of the seven say why Ratchet cannot use them. Ratchet can use ratchet.platform-lifecycle, for the runner
+        # image and the Python its own jobs run on, so its register adopts it and it gives no reason.
+        adopted = set(item["key"] for item in registry.load_json(os.path.join(ROOT, "register.json"))["adopted"])
+        for rule in data["rules"]:
+            if rule["key"] in keys:
+                with self.subTest(rule=rule["key"]):
+                    self.assertEqual((rule["status"], rule["since"], parts[rule["part"]]), ("experimental", "0.12", "PRODUCT.md"))
+                    used = rule["key"] == "ratchet.platform-lifecycle"
+                    self.assertEqual(("not_used_because" in rule, rule["key"] in adopted), (not used, used))
+        self.assertEqual(sorted(r["key"] for r in data["rules"] if r["part"] == "product"), sorted(keys))
 
     def test_ratchet_md_shows_the_principles_first(self):
         text = read("RATCHET.md")
@@ -162,11 +197,11 @@ class ThisRatchet(unittest.TestCase):
 
 class GeneratedPrinciples(RepoCopy, unittest.TestCase):
     def test_a_principle_edited_by_hand_in_ratchet_md_fails(self):
-        self.edit("RATCHET.md", "### One register\n", "### One register, where practical\n")
+        self.edit("RATCHET.md", "### Keep one place\n", "### Keep one place, where practical\n")
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_a_rule_moved_to_another_principle_without_generating_fails(self):
-        self.edit("ratchet.json", '"principle": "principle.one-register"', '"principle": "principle.one-gate"')
+        self.edit("ratchet.json", '"principle": "principle.keep-one-place"', '"principle": "principle.independent-gate"')
         self.assert_check_fails("RATCHET.md: generated text is out of date or was edited by hand")
 
     def test_the_list_of_titles_must_stand_in_the_readme(self):

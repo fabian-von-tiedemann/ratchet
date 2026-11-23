@@ -14,11 +14,22 @@ The keys. Every rule in 0.2 has the same key in 0.3. The core is the same 35 rul
 
 A register takes Ratchet's wording at the version it states, so these change when you move:
 
-- `ratchet.glossary`: the rule and its ratchet now say the same thing.
 - `ratchet.work-in-issues`: the handover may be a file in the repo.
 - `ratchet.lesson-names-check`: the rule no longer holds a link.
-- `ratchet.one-approver` and `ratchet.checks-owner-read`: the ratchet is now a check, a required review by the owner through code ownership.
-- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
+- Six rules of 0.2 are no longer in Ratchet from 0.10: one merged into another, three removed and two moved into Ratchet's own register. The entry for 0.10 in the [changelog](CHANGELOG.md) names them. Twenty-seven more are no longer in Ratchet from 0.11, and the entry for 0.11 in the changelog says where each went. They are named here without the prefix `ratchet.`:
+  - into `ratchet.owner-paths`, which keeps the owner's required review through code ownership: `one-approver` and `checks-owner-read`
+  - into `ratchet.ask-the-owner`: `one-channel`, `five-choices` and `look-up-facts`, and the spending clause of `experiment-plan`, which left
+  - into `ratchet.fresh-context`: `once-per-version` and `register-review-first`
+  - into `ratchet.evidence-before-done`: `verify-findings`, and `findings-marked` without its marks "standards" and "spec"
+  - into `ratchet.simplest`: `reuse-first` and `slices`
+  - into another rule that stays: `cr-next-task` into `ratchet.cr-wake`, `si-repeat-is-signal` into `ratchet.si-harden`, `test-first` into `ratchet.test-can-fail`, and `lesson-loop` into `ratchet.lesson-names-check`, without its "at most three"
+  - into Ratchet's own register: `glossary`, `kinds-apart` and `si-subtract`
+  - into `CONTRIBUTING.md`, as an invitation: `si-promote`
+  - into a line of the control room's handbook template: `cr-does-not-build`, `cr-analysis-model`, two of whose clauses went into `ratchet.review-by-risk`, `cr-quiet-hours`, `grill-first` and `run-early`
+  - renamed and widened: `nightly-visible`, now `ratchet.silence-is-red`
+  - removed as a duplicate of `ratchet.evidence-before-done`: `cr-verify-reports`
+
+  `generate.py --entries` refuses a key that is not a rule. To keep one, write it in `own` under your own prefix.
 
 ## Steps
 
@@ -32,7 +43,7 @@ Run these in the root of your own repo.
    cp .ratchet/templates/register.json register.json
    ```
 
-4. Print the rules you adopt, and put them in the list `adopted` in place of the nine that the template holds. Use the keys your project adopts, not these two.
+4. Print the rules you adopt, and put them in the list `adopted` in place of the ten that the template holds. Use the keys your project adopts, not these two.
 
    ```sh
    python3 .ratchet/checks/generate.py --entries ratchet.register-on-top ratchet.no-secrets

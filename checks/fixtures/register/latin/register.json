@@ -1,11 +1,11 @@
 {
   "project": "the éxample project",
-  "ratchet_version": "0.11",
+  "ratchet_version": "0.13",
   "adopted": [
     {
       "key": "ratchet.register-on-top",
-      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins.",
-      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version",
+      "rule": "One file, the register, lists every rule in force and takes precedence over all other text in the repo. Where a text and the register differ, the register wins. A Ratchet row may point at the project's own wording, and the check then sees a marker, not the rule's text.",
+      "ratchet": "Check: in every PR, the Ratchet rows in the register match Ratchet at the stated version: a copied row character for character, and a row by reference by the sha256 of the rule and its ratchet and by one marker line in the file it names, not by the words there",
       "source": "",
       "status": "text only for now"
     },
@@ -18,15 +18,22 @@
     },
     {
       "key": "ratchet.decision-as-file",
-      "rule": "Each decision by the owner is written as a file with the question and the answer verbatim, and an id of the form `D-YYYY-MM-DD-<slug>`.",
-      "ratchet": "Check: a lint of the decision file's name and format",
+      "rule": "Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`, as a file of its own or as a record in one log the project names.",
+      "ratchet": "Check: a strict lint of the form chosen, each decision file's name and format or each record's id and format in the log",
+      "source": "",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.owner-paths",
+      "rule": "Only the owner approves decisions. Agents write proposals and mark them as proposals. The project lists the paths that are the owner's: the decisions, the register and every file it names, the checks, the gates and the automated reviewers. A change to any of them merges only after the owner has read it and approved its head. A work package that changes a check, a gate or an automated reviewer states, before review, what it claims and against which threat, with a finite list of cases. Checks, gates and automated reviewers, and the settings outside the repo they depend on, such as the host's rules, its variables or the brief and model of an automated reviewer, change only after the owner has read the change.",
+      "ratchet": "Check: the host requires the owner's review on the listed paths and dismisses it on a new push, and agents work under an account of their own that cannot approve and cannot bypass the requirement. It does not see whether the claim and the threat were stated, whether a proposal is marked as one, or whether the owner read a change to a check, gate or automated reviewer, or to a setting outside the repo they depend on",
       "source": "",
       "status": "text only for now"
     },
     {
       "key": "ratchet.fresh-context",
-      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed.",
-      "ratchet": "Check: the review script builds the assignment and saves it next to the review",
+      "rule": "A reviewer starts in a new thread, on a model from a different model family than the author's. A script builds the assignment from the role, the PR and the issue, without the author's account of what was fixed. An assignment covers exactly one head and is started once per head and model. A change to the register is reviewed before it is merged, by a model from a different family than the author's. A review after the merge does not replace it.",
+      "ratchet": "Check: the review script builds the assignment and saves it next to the review, and keeps a lock file per PR, head and model. That a change to the register was reviewed before it was merged is text only until the project's merge check can see review outcomes",
       "source": "google/elephant-goldfish-model (the fresh context)",
       "status": "text only for now"
     },
@@ -39,9 +46,9 @@
     },
     {
       "key": "ratchet.evidence-before-done",
-      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise.",
-      "ratchet": "Text only: a check cannot see a claim made in a message. Required checks on the PR head cover the claims they run",
-      "source": "obra/superpowers `verification-before-completion`"
+      "rule": "No claim that something is done without a check run just now, shown with the command and its result. A claim shows the head it ran on, and for a change a user sees, the run shows what the user sees. A subagent's \"done\" is checked independently. A working demo or a green scan does not prove the whole promise. Every finding is marked \"proven by a run\", with the command and its result, or \"unproven\". An unproven finding keeps its severity. Whoever receives a review checks each finding against the code before changing anything, and pushes back with evidence when a finding is wrong.",
+      "ratchet": "Text only: a check cannot see a claim made in a message or whether a finding was verified, and a script can see that a finding's marks are there, not that they are true. Required checks on the PR head cover the claims they run",
+      "source": "obra/superpowers `verification-before-completion`, `receiving-code-review`; pstack `interrogate`, which goes further and drops unproven findings; mattpocock/skills `code-review`"
     },
     {
       "key": "ratchet.no-secrets",
@@ -58,8 +65,8 @@
     },
     {
       "key": "ratchet.lesson-names-check",
-      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check.",
-      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field",
+      "rule": "Every lesson is written with the lesson template and names its ratchet, or \"text only\" with the reason. An instruction that keeps being repeated becomes a check. After a failed review or a failed experiment, lessons are proposed. They apply only after the owner approves them.",
+      "ratchet": "Check: the lesson template is the project's issue template for lessons, with the ratchet as a required field. It does not see whether a lesson was proposed, or whether the owner approved it",
       "source": "pstack `principle-encode-lessons-in-structure`",
       "status": "text only for now"
     }

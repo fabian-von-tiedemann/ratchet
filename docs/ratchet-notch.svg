@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 256" width="400" height="256" role="img" aria-label="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
+<style>
+:root {
+  --fg: #15140f;
+  --muted: #56524a;
+  --accent: #b23a04;
+  --box: #fbf9f3;
+  --code-bg: #e8e3d5;
+  --edge: #cfc8b5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #edeadf;
+    --muted: #a6a192;
+    --accent: #ff9648;
+    --box: #1a1813;
+    --code-bg: #23201a;
+    --edge: #37342a;
+  }
+}
+text {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+}
+.panel { fill: var(--box); stroke: var(--edge); }
+.body { fill: var(--code-bg); }
+.stairs { fill: none; stroke: var(--fg); stroke-width: 3; }
+.step { fill: var(--fg); }
+.ball { fill: var(--fg); }
+.stop { fill: var(--accent); }
+.note { fill: var(--muted); font-size: 17px; font-weight: 400; }
+.rise { fill: none; stroke: var(--muted); stroke-width: 2; }
+</style>
+<rect class="panel" x="0.5" y="0.5" width="399" height="255" rx="8"/>
+<path class="body" d="M16 232 V176 H108 V120 H200 V64 H384 V232 Z"/>
+<path class="stairs" d="M16 232 V176 H108 V120 H200 V64 H384"/>
+<text class="step" x="30" y="206">failure → check</text>
+<text class="step" x="122" y="150">failure → check</text>
+<text class="step" x="214" y="94">failure → check</text>
+<text class="note" x="172" y="100" text-anchor="end">one notch tighter</text>
+<path class="rise" d="M184 114 V76 M178 85 L184 75 L190 85"/>
+<path class="stop" d="M200 62.5 H218 V36 Z"/>
+<circle class="ball" cx="232.5" cy="49" r="13.5"/>
+<text class="stop" x="190" y="56" text-anchor="end">can’t slip back</text>
+</svg>

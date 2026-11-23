@@ -12,7 +12,7 @@ jobs:
   # The pull request's own checks, on its own data. On a push to main, the only checks that run.
   own:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       # No bytecode next to the checks: unittest imports them before their own code can say so (#100).
       PYTHONDONTWRITEBYTECODE: "1"
@@ -37,7 +37,7 @@ jobs:
   base:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       BASE_SHA: ${{ github.event.pull_request.base.sha }}

@@ -61,11 +61,22 @@ DEFECTS = {
 VALID_BUT_NO_MATCH = ("expired", "other-command", "other-step")
 
 
+# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
+# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
+# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
+# own config, so that a script under test that runs git there starts none either.
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git(cwd, *args):
-    subprocess.run(["git"] + list(args), cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    quiet = [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
+    subprocess.run(["git"] + quiet + list(args), cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                    env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
                             GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid",
                             GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="test@example.invalid"))
+    if args[:1] == ("init",):
+        for name, value in QUIET:
+            git(cwd, "config", name, value)
 
 
 def fresh(root, length, make):
@@ -459,8 +470,9 @@ class Rule(FixtureTest):
             self.assertIn(words, rule["ratchet"])
         # 23 when it was added in 0.7. 0.10 adds ratchet.review-by-risk (D-2026-11-19-review-by-risk) and
         # ratchet.one-exact-form, and takes six out (D-2026-11-20-proposal-triage): 19. 0.11 takes six more out, step 2
-        # of D-2026-11-22-second-redraw: 13. Step 3 takes three more out: 10.
-        self.assertEqual(registry.counts(data)["experimental"]["rules"], 10)
+        # of D-2026-11-22-second-redraw: 13. Step 3 takes three more out: 10. Step 12 adds the seven rules of the
+        # product module: 17.
+        self.assertEqual(registry.counts(data)["experimental"]["rules"], 17)
 
     def test_this_repo_adopts_it_as_not_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
         # Built from 2026-11-19, when the maintainer applied the tag ruleset and the control room read it back

@@ -651,17 +651,41 @@ def run_main(github, argv=("publish",), environ=None, root=None):
     return code, out.getvalue(), err.getvalue(), opener
 
 
+# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
+# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
+# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
+# own config, so that a script under test that runs git there starts none either.
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git(directory, *args, **kwargs):
     """Run git in a repository that a test made, with no config of the user and no GIT_ variable of the environment."""
+    args = quiet_args(args)
     env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.realpath(directory)),
                GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid", GIT_COMMITTER_NAME="Test",
                GIT_COMMITTER_EMAIL="test@example.invalid", LC_ALL="C")
-    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main", "-C", directory] + list(args),
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, universal_newlines=True, **kwargs)
+    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"] + quiet_options() + ["-C", directory]
+                            + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, universal_newlines=True, **kwargs)
     if result.returncode:
         raise AssertionError("git %s: %s" % (" ".join(args), result.stderr))
+    if args[:1] == ("init",):
+        for name, value in QUIET:
+            git(directory, "config", name, value)
     return result.stdout.strip()
+
+
+def quiet_options():
+    """-c for each setting of QUIET, for one call of git."""
+    return [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
+
+
+def quiet_args(args):
+    """args, with each setting of QUIET written into the config of the repository that a clone makes."""
+    args = tuple(args)
+    if args[:1] == ("clone",):
+        return args[:1] + tuple(part for name, value in QUIET for part in ("--config", "%s=%s" % (name, value))) + args[1:]
+    return args
 
 
 class Checkout:
@@ -1983,14 +2007,14 @@ class Workflow(unittest.TestCase):
                 self.assertIn("U+%04X" % ord(character), str(caught.exception))
         # The reviewer's file, byte for byte: "# review marker", a lone CR, then "if: false" on the job.
         with self.assertRaises(ValueError):
-            workflow_text(live.replace(b"    timeout-minutes: 15\n", b"    timeout-minutes: 15\n    # review marker\r    if: false\n"))
+            workflow_text(live.replace(b"    timeout-minutes: 30\n", b"    timeout-minutes: 30\n    # review marker\r    if: false\n"))
         with self.assertRaises(UnicodeDecodeError):
             workflow_text(live.replace(b"name: release", b"name: release\xff"))
 
     def test_the_reading_that_the_comparison_uses_refuses_the_reviewers_file(self):
         # The same lines() that every test of the workflow reads, given the reviewer's file instead of the live one.
         live = self.data()
-        hostile = live.replace(b"    timeout-minutes: 15\n", b"    timeout-minutes: 15\n    # review marker\r    if: false\n")
+        hostile = live.replace(b"    timeout-minutes: 30\n", b"    timeout-minutes: 30\n    # review marker\r    if: false\n")
         directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, directory)
         path = os.path.join(directory, "release.yml")
@@ -2015,7 +2039,7 @@ class Workflow(unittest.TestCase):
         self.assertFalse([l for l in lines if "inputs:" in l])
         self.assertEqual([l for l in lines if "contents: write" in l], ["      contents: write"])
         self.assertEqual([l.strip(" ") for l in lines if "runs-on:" in l], ["runs-on: ubuntu-24.04"])
-        self.assertEqual([l.strip(" ") for l in lines if "timeout-minutes:" in l], ["timeout-minutes: 15"])
+        self.assertEqual([l.strip(" ") for l in lines if "timeout-minutes:" in l], ["timeout-minutes: 30"])
         uses = [l.strip(" ") for l in lines if "uses:" in l]
         self.assertEqual(len(uses), 1)
         self.assertRegex(uses[0], r"^- uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\Z")
@@ -2092,7 +2116,7 @@ class Workflow(unittest.TestCase):
         self.assertEqual([l for l in self.code() if "fetch-depth" in l or "filter:" in l or "sparse" in l], ["          fetch-depth: 0"])
 
     def test_a_run_has_a_time_limit(self):
-        self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 15"])
+        self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 30"])
 
     def test_the_three_checks_run_in_order_before_the_one_step_that_writes(self):
         steps = self.block("    steps:")
@@ -2124,7 +2148,7 @@ class Workflow(unittest.TestCase):
             "jobs:",
             "  release:",
             "    runs-on: ubuntu-24.04",
-            "    timeout-minutes: 15",
+            "    timeout-minutes: 30",
             "    permissions:",
             "      contents: write",
             "    env:",

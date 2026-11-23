@@ -2,6 +2,8 @@
 
 Ratchet takes proposals from people and from agents, in the same steps. The words are defined in [GLOSSARY.md](GLOSSARY.md).
 
+A project that tries Ratchet and meets a rule that does not fit is the input Ratchet improves from. Feedback from one project, [issue #89](https://github.com/fabian-von-tiedemann/ratchet/issues/89), led to a change of form in 0.10: a project may keep the rules it adopts in a block generated into its own instruction file ([D-2026-11-20-generated-block](decisions/D-2026-11-20-generated-block.md)). A proposal takes the same way in as any rule, and nothing is promised in advance.
+
 ## Propose
 
 1. Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml), [.github/ISSUE_TEMPLATE/proposal.yml](.github/ISSUE_TEMPLATE/proposal.yml). It asks for five things, each required: what happened, the failure class, the ratchet, whether it would apply in other projects, and the primary source ([D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md)). An issue opened with the form gets the label `proposal`. A lesson from a project comes the same way: see [A lesson from a project](#a-lesson-from-a-project).
@@ -19,7 +21,7 @@ It starts as an issue with the proposal form, as in step 1 above, and the PR lin
 ## Change
 
 4. Make the change in a PR against `main` that links the issue. [AGENTS.md](AGENTS.md) says how to change a rule, the register or a check, and which commands to run before you say it is done. Show the commands and their results in the PR (`ratchet.evidence-before-done`).
-5. A PR is merged when the job `checks` is green and the maintainer, the code owner, has approved its exact head. A new push dismisses the approval. The maintainer reads every change to `checks/`, `.github/`, `ratchet.json`, `register.json` and `decisions/` before it is merged (`ratchet.checks-owner-read`).
+5. A PR is merged when the job `checks` is green and the maintainer, the code owner, has approved its exact head. A new push dismisses the approval. The maintainer reads every change to `checks/`, `.github/`, `ratchet.json`, `register.json` and `decisions/` before it is merged (`ratchet.owner-paths`).
 6. A PR from the agents' account is also passed, at that same head, by a reviewer from another model family, unless it changes only `decisions/` and `HANDOVER.md`. The account then merges it with a squash, with the approved head as the expected head. Auto-merge is not used. See [The main branch](AGENTS.md#the-main-branch).
 
 ## Out of scope

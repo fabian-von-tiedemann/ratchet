@@ -2,9 +2,35 @@
 """Reference check for ratchet.register-on-top.
 
 A project's register is a data file, register.json. This check compares it with
-Ratchet at the version it states: every adopted rule must be Ratchet's own rule,
-character for character. A project chooses which rules it adopts. It never
-rewrites one.
+Ratchet at the version it states: every adopted rule that is copied must be
+Ratchet's own rule, character for character. A project chooses which rules it
+adopts. It never rewrites a copied one.
+
+An adopted rule may instead be adopted by reference, the weaker mode
+(D-2026-11-22-second-redraw). The row holds no rule text: it names the key, in
+"stands_in" a Markdown file in the repo where the rule stands in the project's own
+words, and in "sha256" the hash of the rule and its ratchet in Ratchet at the
+version the register states. The check fails unless the key is a rule at that
+version, the hash is that rule's and its ratchet's, and the file holds the line
+"<!-- ratchet:rule <key> -->" exactly once. It reads nothing else in the file, and
+labels each such row, as REGISTER.md does: the check sees a marker, not the words.
+The label says the protection against a softened wording is built only when the
+register itself copies the row of ratchet.owner-paths, not by reference, with the
+status "built". stands_in has the
+path form of "instructions", is checked on its path the same way, and is never the
+instruction file. A row by reference has no translation, and an own rule is never
+one. From 0.12 a row by reference may be adopted in part: its "where" is then
+exactly "Not stated here: <clause>; <clause>.", the clauses the project's wording
+does not state. Such a row is never "built", may stand on a rule that is text only,
+and is labeled "Adopted in part" with its clauses. "not stated here" in a "where" in
+any other form, an empty list, an empty or doubled clause, and the phrase on a
+copied row or an own rule fail. The check sees the phrase, not whether the clauses
+are the true gaps. The words are found in any form: after NFKC and case folding, with
+every character that is not a letter or a digit left out, and with a letter that does not
+reduce to one of ASCII read as any letter. A clause never splits code. REGISTER.md may be left out by a register with rows by reference: with
+--markdown, a file that is not there is then not a failure. Where it is there, it is
+what the register generates, and the rows by reference stand in a table of their own,
+with their label and no rule text, there and in the block.
 
     python3 checks/check_register.py register.json
     python3 checks/check_register.py register.json --markdown REGISTER.md
@@ -35,7 +61,9 @@ with no other byte of the file changed. Each prints to standard output and nothi
 and prints nothing when there is a problem. The user puts the file in place with the
 commands in checks/README.md. The register and every file named on the command line are
 taken as given and refused when the path to them passes through a symbolic link, below
-the working directory or the enclosing git root (registry.root_link).
+the working directory or the enclosing git root (registry.root_link). Neither print
+mode reads or prints a file that a row by reference names, or a marker line: the
+marker is the project's to put in its own file.
 
 An adopted rule may carry a translation of its rule: a language code, the text, and
 the sha256 of the English rule it translates. The check fails when the sha256 is not
@@ -69,11 +97,17 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
+# sys.path, still finds the modules beside it.
+import os  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import hashlib
 import os
 import re
+import unicodedata
 
 import registry
 
@@ -87,7 +121,7 @@ TRANSLATION_FIELDS = ("language", "text", "sha256")
 # A language code: two or three lowercase letters, and a region of two capitals after a hyphen if needed, such as sv or pt-BR.
 LANGUAGE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?\Z")
 SHA256 = re.compile(r"^[0-9a-f]{64}\Z")
-# One part of the path of the instruction file: letters, digits, ".", "_" and "-". The whole path ends in ".md".
+# One part of the path of the instruction file: ASCII letters, digits, ".", "_" and "-". The whole path ends in ".md".
 PATH_PART = re.compile(r"^[A-Za-z0-9._-]+\Z")
 PATH_LENGTH = 200
 BEGIN = "<!-- ratchet:begin -->"
@@ -97,14 +131,62 @@ END = "<!-- ratchet:end -->"
 # #100), may stand in place of each character of the word, and any number of them
 # between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
 # not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
-# of the word must be the word's own, so text in another script is not taken for it. No table of Unicode is asked, so
-# the answer is the same on every version of Python (round 2 of #100).
+# of the word must be the word's own, so text in another script is not taken for it. On a line that is not shaped like
+# an HTML comment (see comment_shaped), one of them must also be a letter after its colon, so prose that names Ratchet
+# in a script with no spaces between words, such as Japanese or Chinese, is not taken for it: "ratchet" is SHARE
+# characters (review of step 9a). On a line shaped like a comment that letter is not asked, so a decoy whose letters
+# after the colon are all in disguise, such as math-bold ones, is found there as before (review of d3f25aa). No table of
+# Unicode is asked, so the answer is the same on every version of Python (round 2 of #100).
 MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
 SHARE = 7
 # The full-width forms of ASCII, U+FF01 to U+FF5E, each U+FEE0 above its ASCII character.
 FULL_WIDTH = dict((code, code - 0xFEE0) for code in range(0xFF01, 0xFF5F))
 STATUSES = ("built", "text only for now")
 OWN_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.[a-z0-9]+(-[a-z0-9]+)*\Z")
+# A row adopted by reference, the weaker mode, from 0.11 (D-2026-11-22-second-redraw). It holds no rule text: the key,
+# the Markdown file where the project's own wording stands, and the sha256 of the rule and its ratchet at the version
+# the register states. It may hold "status" and "where" on the same terms as a copied row, and nothing else.
+STANDS_IN = "stands_in"
+SHA = "sha256"
+REFERENCE_FIELDS = ("key", STANDS_IN, SHA)
+TEXT_FIELDS = ("rule", "ratchet", "source")
+# The one line that stands for a rule adopted by reference in the file its row names, alone on its line. The word
+# "ratchet:rule" anywhere else in that file, in any case and in disguise, is a broken marker.
+MARKER = "<!-- ratchet:rule %s -->"
+MARKER_LINE = re.compile(r"\A<!-- ratchet:rule (ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*) -->\Z")
+RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
+# The label of every row by reference, in the check's output and in REGISTER.md, word for word as the decision has
+# it. The last word is "built" only when the register itself copies the row of OWNER_PATHS with the status "built": the
+# check reads the register's own claim, not the host. A row of OWNER_PATHS by reference does not count, since the check
+# does not see its wording, which is the one that protects the others (review of step 9a).
+LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
+         "sees a marker, not the words. Protection against a softened wording: %s.")
+OWNER_PATHS = "ratchet.owner-paths"
+# A row by reference adopted in part, from 0.12: the project's wording states the rule's core but not every clause. Its
+# "where" is then exactly PART, the clauses the wording does not state joined by "; ", and one ".". No field is added,
+# but a row by reference of a text-only rule takes a "where" only as this phrase, which is a change of form of
+# register.json (D-2026-11-23-partial-adoption-form). The words "not stated here" anywhere else in a "where", in any form,
+# are a broken phrase: they are found in the skeleton of the text (part_skeleton), so a look-alike fails closed (review
+# of 4b29449). A clause is not empty, is text by itself, so a pair of backticks stands in one clause and no separator
+# splits code, holds a letter or a digit, has no space at its ends, holds no ";" and no ". ", so no sentence follows the
+# list, does not end in ".", and no clause stands twice. Such a row is never "built", and may stand on a rule that is
+# text only, whose row has no "where" otherwise. The check sees the phrase, not whether the clauses are the true gaps.
+PART = "Not stated here: "
+PART_SEPARATOR = "; "
+PART_WORD = "notstatedhere"
+# In a skeleton: a letter or a digit that does not reduce to one of ASCII stands for any one letter, and any other
+# character outside ASCII that is not a space, a combining mark or a format character stands for one letter or none.
+PART_ANY_LETTER = "\x00"
+PART_ANY_OR_NONE = "\x01"
+# Digits that stand for the letters of the phrase.
+PART_DIGITS = {"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t"}
+PART_WORDS = re.compile((PART_ANY_OR_NONE + "*").join("[%s%s%s]" % (letter, PART_ANY_LETTER, PART_ANY_OR_NONE) for letter in PART_WORD))
+PART_CODE = ("%s: where splits code: a clause holds a backtick without its pair. A clause holds no semicolon, in code or out "
+             "of it, so a pair of backticks stands in one clause")
+PART_LABEL = "Adopted in part. Not stated in the project's wording: %s. "
+PART_FORM = ('%s: where holds the words "not stated here", so the row is adopted in part, and then where must be exactly '
+             '"Not stated here: <clause>; <clause>.": the clauses that the project\'s wording does not state, each joined to '
+             'the next by a semicolon and one space, after the colon and one space, and one period at the end')
 
 INTRO = (
     "Every rule in force in this project. This file takes precedence over all other text in the repo. "
@@ -125,6 +207,11 @@ TRANSLATIONS = (
     "A translation is there for the people who read the rules in that language. The English text above is the rule. "
     "Each translation is bound to the English text it translates by that text's sha256, so a rule that changes fails "
     "the check until its translation is made again."
+)
+REFERENCED = (
+    "Ratchet version: %s. Each row below names a rule of Ratchet at that version and the file where the project's own "
+    "wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds "
+    "one marker line for each of its rows. No rule text stands here."
 )
 BLOCK_INTRO = (
     "Generated from `register.json` by Ratchet's `check_register.py`. Never edit this block by hand: change `register.json` "
@@ -183,7 +270,7 @@ def check(register, ratchet):
 
     by_key = registry.rules_by_key(ratchet)
     seen = set()
-    built = needs = core = translated = 0
+    built = needs = core = translated = referenced = referenced_core = in_part = 0
     for number, entry in enumerate(register["adopted"], 1):
         name = "adopted rule %d" % number
         if not isinstance(entry, dict):
@@ -191,50 +278,77 @@ def check(register, ratchet):
             continue
         if isinstance(entry.get("key"), str):
             name = entry["key"]
-        missing = [field for field in RULE_FIELDS if field not in entry]
-        unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS) - {TRANSLATION})
-        if missing or unknown:
-            problems += ["%s: missing field %r" % (name, field) for field in missing]
-            problems += ["%s: unknown field %r" % (name, field) for field in unknown]
-            continue
-        if not all(isinstance(value, str) for field, value in entry.items() if field != TRANSLATION):
-            problems.append("%s: every field must be a string" % name)
-            continue
-        if entry["key"] not in by_key:
-            problems.append("%s is not a rule in Ratchet %s" % (name, version))
-            continue
-        if name in seen:
-            problems.append("%s is adopted twice" % name)
-            continue
-        seen.add(name)
-        rule = by_key[name]
-        differs = False
-        for field in ("rule", "ratchet", "source"):
-            if entry[field] != rule[field]:
-                differs = True
-                problems.append(
-                    "the %s of %s differs from Ratchet %s\n  expected: %s\n  found:    %s" % (field, name, version, rule[field], entry[field])
-                )
-        if differs:
-            continue
-        if TRANSLATION in entry:
-            found = translation_problem(entry[TRANSLATION], rule["rule"], version)
+        if is_reference(entry):
+            found = reference_problem(name, entry, register, by_key, version)
             if found:
-                problems.append("%s: %s" % (name, found))
+                problems.append(found)
                 continue
-            translated += 1
+            if name in seen:
+                problems.append("%s is adopted twice" % name)
+                continue
+            seen.add(name)
+            rule = by_key[name]
+            referenced += 1
+            referenced_core += rule["status"] == "core"
+        else:
+            missing = [field for field in RULE_FIELDS if field not in entry]
+            unknown = sorted(set(entry) - set(RULE_FIELDS) - set(STATUS_FIELDS) - {TRANSLATION})
+            if missing or unknown:
+                problems += ["%s: missing field %r" % (name, field) for field in missing]
+                problems += ["%s: unknown field %r" % (name, field) for field in unknown]
+                continue
+            if not all(isinstance(value, str) for field, value in entry.items() if field != TRANSLATION):
+                problems.append("%s: every field must be a string" % name)
+                continue
+            if entry["key"] not in by_key:
+                problems.append("%s is not a rule in Ratchet %s" % (name, version))
+                continue
+            if name in seen:
+                problems.append("%s is adopted twice" % name)
+                continue
+            seen.add(name)
+            rule = by_key[name]
+            differs = False
+            for field in ("rule", "ratchet", "source"):
+                if entry[field] != rule[field]:
+                    differs = True
+                    problems.append(
+                        "the %s of %s differs from Ratchet %s\n  expected: %s\n  found:    %s" % (field, name, version, rule[field], entry[field])
+                    )
+            if differs:
+                continue
+            if TRANSLATION in entry:
+                found = translation_problem(entry[TRANSLATION], rule["rule"], version)
+                if found:
+                    problems.append("%s: %s" % (name, found))
+                    continue
+                translated += 1
         core += rule["status"] == "core"
+        part = holds_part(entry)
+        if part and not is_reference(entry):
+            problems.append("%s: only a row adopted by reference is adopted in part. A copied row holds the whole rule; to say "
+                            "that the project's wording leaves out a clause, adopt the rule by reference" % name)
+            continue
+        if part and part_problem(name, entry["where"]):
+            problems.append(part_problem(name, entry["where"]))
+            continue
         if rule["enforcement"] != "enforced":
-            if "status" in entry or "where" in entry:
+            if "status" in entry or ("where" in entry and not part):
                 problems.append("%s is text only in Ratchet. It cannot have a status or a place where its check lives" % name)
+                continue
+            in_part += part
             continue
         needs += 1
         if "status" not in entry:
             problems.append('%s names a check, so it needs a status: "built" or "text only for now"' % name)
         elif status_problem(name, entry):
             problems.append(status_problem(name, entry))
+        elif part and entry["status"] == "built":
+            problems.append('%s is adopted in part, so it cannot be built: its where lists clauses that the project\'s wording '
+                            'does not state. Give it the status "text only for now", or state the clauses and take the phrase out' % name)
         else:
             built += entry["status"] == "built"
+            in_part += part
 
     own = set()
     own_status = own_built = 0
@@ -250,6 +364,12 @@ def check(register, ratchet):
         if TRANSLATION in unknown:
             problems.append("%s: an own rule has no translation. A translation is bound to a rule of Ratchet; the project "
                             "writes its own rules in the language it chooses" % name)
+        elif STANDS_IN in unknown or SHA in unknown:
+            problems.append("%s: an own rule is not adopted by reference. stands_in and sha256 stand for a rule of Ratchet; "
+                            "the project's own rules stand in the register in full" % name)
+        elif holds_part(entry):
+            problems.append("%s: an own rule is not adopted in part. Only a row adopted by reference lists the clauses its "
+                            "wording does not state; the project's own rules stand in the register in full" % name)
         elif missing or unknown:
             problems += ["%s: missing field %r" % (name, field) for field in missing]
             problems += ["%s: unknown field %r" % (name, field) for field in unknown]
@@ -285,9 +405,16 @@ def check(register, ratchet):
             if len(places) != 1:
                 problems.append("a value holds %s in code, and the block of rules for %s would hold it outside its marker. "
                                 "Write it another way" % (word, register[INSTRUCTIONS]))
-    summary = "%d rules match Ratchet %s (%d core, %d experimental). %d name a check: %d built, %d text only for now." % (
-        len(seen), version, core, len(seen) - core, needs, built, needs - built,
-    )
+    copied, copied_core = len(seen) - referenced, core - referenced_core
+    summary = "%d rules match Ratchet %s (%d core, %d experimental)." % (copied, version, copied_core, copied - copied_core)
+    if referenced:
+        summary += (" %d rules are adopted by reference, the weaker mode (%d core, %d experimental): each names a rule of "
+                    "Ratchet %s with the sha256 of its rule and ratchet, and the check sees a marker, not the words." % (
+                        referenced, referenced_core, referenced - referenced_core, version))
+    if in_part:
+        summary += (" %d of them adopted in part: the check sees the clauses listed, not whether they are the ones the "
+                    "wording leaves out." % in_part)
+    summary += " %d name a check: %d built, %d text only for now." % (needs, built, needs - built)
     if translated:
         summary += " %d translated." % translated
     if own_status:
@@ -309,21 +436,168 @@ def status_problem(name, entry):
     return None
 
 
-def instructions_problem(value):
-    """Why the path of the instruction file breaks its form, or None.
+def instructions_problem(value, field=INSTRUCTIONS):
+    """Why the path of the instruction file, or of the file a row by reference names in stands_in, breaks its form, or
+    None.
 
-    A path inside the repo, relative to the register: parts of letters, digits, ".", "_" and "-", joined by single "/",
+    A path inside the repo, relative to the register: parts of ASCII letters, digits, ".", "_" and "-", joined by single "/",
     none of them "." or "..", none starting with "-", ending in ".md", at most PATH_LENGTH characters. So the block is
     put into a Markdown file of the project's own and nowhere else, and no part of the path reads as an option to the
     rm and mv of the printed commands (review of ef5cbaa).
     """
-    form = ("instructions must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
-            "parts of letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
-            "ending in .md")
+    form = ("%s must be the path of a Markdown file in the repo, relative to register.json, such as AGENTS.md: "
+            "parts of ASCII letters, digits, '.', '_' and '-' joined by '/', none of them '.' or '..' and none starting with '-', "
+            "ending in .md" % field)
     if not isinstance(value, str) or len(value) > PATH_LENGTH or not value.endswith(".md"):
         return form
     if any(not PATH_PART.match(part) or part in (".", "..") or part.startswith("-") for part in value.split("/")):
         return form
+    return None
+
+
+def part_skeleton(text):
+    """The text as the words of the phrase of a row adopted in part are looked for in it, so that a look-alike fails
+    closed. It is read in NFKC. Each character is put in lower case and decomposed, and its combining marks are left
+    out. An ASCII letter stands as itself, and a digit that looks like a letter of the phrase as that letter. Any other
+    letter or digit stands for any one letter (PART_ANY_LETTER). Every other ASCII character is left out: spaces,
+    punctuation and every mark of Markdown, such as backticks, asterisks and underscores. Any other character outside
+    ASCII is left out when it is a space, a combining mark, a control or a format character, and otherwise stands for
+    one letter or none (PART_ANY_OR_NONE). A value holds only the characters of the fixed list, so the tables of
+    Unicode that the interpreter has decide nothing for a value that is valid."""
+    out = []
+    for character in unicodedata.normalize("NFKC", text):
+        for part in unicodedata.normalize("NFKD", character.lower()):
+            if unicodedata.combining(part):
+                continue
+            if "a" <= part <= "z":
+                out.append(part)
+            elif part in PART_DIGITS:
+                out.append(PART_DIGITS[part])
+            elif part < "\x80":
+                continue
+            elif part.isalnum():
+                out.append(PART_ANY_LETTER)
+            elif not part.isspace() and unicodedata.category(part) not in ("Cc", "Cf", "Mn", "Me", "Mc"):
+                out.append(PART_ANY_OR_NONE)
+    return "".join(out)
+
+
+def holds_words(text):
+    """Whether a text holds the words "not stated here", in any form (part_skeleton)."""
+    return bool(PART_WORDS.search(part_skeleton(text)))
+
+
+def holds_part(entry):
+    """Whether a row's "where" holds the words of the phrase of a row adopted in part, in any form."""
+    return isinstance(entry.get("where"), str) and holds_words(entry["where"])
+
+
+def part_clauses(where):
+    """The clauses that a "where" in the one exact form of a row adopted in part lists, in order, or None when it is not
+    in that form. The list may come back empty, for "Not stated here: .", which part_problem refuses."""
+    if not isinstance(where, str) or not where.startswith(PART) or not where.endswith("."):
+        return None
+    body = where[len(PART):-1]
+    if holds_words(body):
+        return None
+    if not body:
+        return []
+    clauses = body.split(PART_SEPARATOR)
+    for clause in clauses:
+        if clause and (clause != clause.strip() or ";" in clause or ". " in clause or clause.endswith(".")
+                       or registry.text_problem(clause)):
+            return None
+    return clauses
+
+
+def part_problem(name, where):
+    """Why a "where" that holds the words of the phrase is not a valid list of clauses not stated, or None."""
+    if registry.text_problem(where):
+        return "%s: where %s" % (name, registry.text_problem(where))
+    if where.startswith(PART) and where.endswith(".") and any(clause.count("`") % 2 for clause in where[len(PART):-1].split(";")):
+        return PART_CODE % name
+    clauses = part_clauses(where)
+    if clauses is None:
+        return PART_FORM % name
+    if not clauses:
+        return "%s: where says Not stated here and lists no clause. List the clauses the wording does not state, or take the phrase out" % name
+    if any(not clause for clause in clauses):
+        return "%s: where lists an empty clause, between two semicolons or at an end" % name
+    for clause in clauses:
+        if not registry.WORD.search(clause):
+            return "%s: where lists a clause with no letter or digit: %s" % (name, clause)
+    for number, clause in enumerate(clauses):
+        if clause in clauses[:number]:
+            return "%s: where lists the clause %s twice" % (name, clause)
+    return None
+
+
+def is_reference(entry):
+    """Whether an adopted row is meant to be adopted by reference: it has stands_in or sha256."""
+    return STANDS_IN in entry or SHA in entry
+
+
+def references(register):
+    """The rows of a register that passes check() that are adopted by reference, in order."""
+    return [entry for entry in register["adopted"] if is_reference(entry)]
+
+
+def protection(register):
+    """The last word of the label of a row by reference: "built" when the register copies the row of ratchet.owner-paths,
+    not by reference, with the status "built", else "not built". It reads the register's own claim, not the host
+    (D-2026-11-22-second-redraw)."""
+    built = any(entry.get("key") == OWNER_PATHS and entry.get("status") == "built" and not is_reference(entry)
+                for entry in register["adopted"])
+    return "built" if built else "not built"
+
+
+def label(register):
+    """The label of every row by reference in this register, word for word as the decision has it."""
+    return LABEL % protection(register)
+
+
+def row_label(register, entry):
+    """The label of one row by reference: that of every row, after the clauses not stated for a row adopted in part."""
+    clauses = part_clauses(entry.get("where"))
+    return (PART_LABEL % PART_SEPARATOR.join(clauses) if clauses else "") + label(register)
+
+
+def reference_sha256(rule):
+    """The sha256 that a row by reference names: of the UTF-8 bytes of the rule, one line feed, and the ratchet, in
+    lowercase hex. Neither holds a line feed, so the two are told apart. A change to either changes it."""
+    return hashlib.sha256((rule["rule"] + "\n" + rule["ratchet"]).encode("utf-8")).hexdigest()
+
+
+def reference_problem(name, entry, register, by_key, version):
+    """Why an adopted row that has stands_in or sha256 is not a valid row by reference at this version, or None."""
+    text = [field for field in TEXT_FIELDS if field in entry]
+    if text:
+        return ("%s: a row adopted by reference holds no rule text, and this one has stands_in or sha256 and %s. Copy the row "
+                "whole, without stands_in and sha256, or adopt it by reference, without rule, ratchet and source" % (name, " and ".join(text)))
+    if TRANSLATION in entry:
+        return ("%s: a row adopted by reference has no translation. The project's own wording of it, in the file it names, "
+                "is in the language the project chooses" % name)
+    missing = [field for field in REFERENCE_FIELDS if field not in entry]
+    unknown = sorted(set(entry) - set(REFERENCE_FIELDS) - set(STATUS_FIELDS))
+    if missing or unknown:
+        return "; ".join(["%s: missing field %r" % (name, field) for field in missing]
+                         + ["%s: unknown field %r" % (name, field) for field in unknown])
+    if not all(isinstance(value, str) for value in entry.values()):
+        return "%s: every field must be a string" % name
+    if entry["key"] not in by_key:
+        return "%s is not a rule in Ratchet %s" % (name, version)
+    if instructions_problem(entry[STANDS_IN], STANDS_IN):
+        return "%s: %s" % (name, instructions_problem(entry[STANDS_IN], STANDS_IN))
+    if INSTRUCTIONS in register and entry[STANDS_IN].lower() == register[INSTRUCTIONS].lower():
+        return ("%s: stands_in names %s, the instruction file, which starts with the generated block. The project's own "
+                "wording of a rule by reference stands in another file" % (name, entry[STANDS_IN]))
+    if not SHA256.match(entry[SHA]):
+        return "%s: sha256 must be 64 characters 0 to 9 and a to f: the sha256 of the rule and its ratchet" % name
+    expected = reference_sha256(by_key[name])
+    if entry[SHA] != expected:
+        return ("%s: the sha256 is %s, and that of the rule and its ratchet in Ratchet %s is %s. The rule or its ratchet is "
+                "not the one the project's wording was read against: read the wording in %s again, and when it says what "
+                "the rule says, set sha256 to the new one" % (name, entry[SHA], version, expected, entry[STANDS_IN]))
     return None
 
 
@@ -360,8 +634,12 @@ def translation_problem(translation, rule, version):
 
 def sections(register, level):
     """The sections of the rules, each headed at the level given: the rules from Ratchet, their translations if there
-    are any, where each check stands, and the project's own rules. REGISTER.md and the block both hold them."""
-    rows = [registry.row(entry) for entry in register["adopted"]]
+    are any, the rules adopted by reference if there are any, where each check stands, and the project's own rules.
+    REGISTER.md and the block both hold them. A row by reference stands in a table of its own, with its label and no
+    rule text."""
+    copied = [entry for entry in register["adopted"] if not is_reference(entry)]
+    referenced = references(register)
+    rows = [registry.row(entry) for entry in copied]
     translations = [
         "| %s | %s | %s |" % (entry["key"], entry[TRANSLATION]["language"], registry.cell(entry[TRANSLATION]["text"]))
         for entry in register["adopted"] if TRANSLATION in entry
@@ -372,9 +650,16 @@ def sections(register, level):
         "| %s | %s | %s |" % (entry["key"], entry["status"], registry.cell(entry.get("where", "")))
         for entry in stated + own_stated
     ]
-    lines = [
-        level + " Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
-        registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [""]
+    lines = []
+    if copied or not referenced:
+        lines += [
+            level + " Rules from Ratchet", "", ADOPTED % register["ratchet_version"], "",
+            registry.TABLE_HEADER, registry.TABLE_RULE] + rows + [""]
+    if referenced:
+        lines += [level + " Rules adopted by reference", "", REFERENCED % register["ratchet_version"], "",
+                  "| Key | Stands in | Mode |", "|---|---|---|"]
+        lines += ["| %s | `%s` | %s |" % (entry["key"], entry[STANDS_IN], registry.cell(row_label(register, entry))) for entry in referenced]
+        lines += [""]
     if translations:
         lines += [level + " Translations", "", TRANSLATIONS, "", "| Key | Language | Translation |", "|---|---|---|"]
         lines += translations + [""]
@@ -402,51 +687,77 @@ def render_block(register):
     return "\n".join(lines) + "\n"
 
 
-def disguised(line, word):
+def disguised(line, word, letter_after=True):
     """The places in a line that holds characters outside printable ASCII where the word stands in disguise, read in one
     pass. A control character of ASCII counts as one outside it.
 
-    best[j] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
-    them that are the word's own, and where that part starts. A word found starts the search again after it.
+    best[j][h] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
+    them that are the word's own, and where that part starts: h is 1 when one of them is a letter after the colon, and
+    0 when none is. The word is found when it has SHARE of its own characters and, if letter_after, one of them is such
+    a letter. Without letter_after it is found as it was before the review of step 9a, on SHARE alone. A word found
+    starts the search again after it.
     """
+    after = word.index(":") + 1
     none = (-1, 0)
-    best, places = [(0, 0)] + [none] * len(word), []
+
+    def fresh(start):
+        return [[(0, start), none]] + [[none, none] for _ in word]
+
+    best, places = fresh(0), []
     for at, char in enumerate(line):
         # A control character of ASCII, such as NUL or DEL, shows as nothing, and counts as a character outside ASCII.
         other = char >= "\x80" or char < "\x20" or char == "\x7f"
-        step = [(0, at + 1)] + [none] * len(word)
+        step = fresh(at + 1)
         for j in range(len(word)):
-            count, start = best[j] if j else (0, at)
-            if count < 0:
-                continue
-            if not other and char.lower() == word[j] and count + 1 > step[j + 1][0]:
-                step[j + 1] = (count + 1, start)
-            elif other and count > step[j + 1][0]:
-                step[j + 1] = (count, start)
-            if other and 0 < j and count > step[j][0]:
-                step[j] = (count, start)
+            for h in (0, 1):
+                count, start = best[j][h] if j else ((0, at) if h == 0 else none)
+                if count < 0:
+                    continue
+                if not other and char.lower() == word[j]:
+                    k = 1 if h or j >= after else 0
+                    if count + 1 > step[j + 1][k][0]:
+                        step[j + 1][k] = (count + 1, start)
+                elif other and count > step[j + 1][h][0]:
+                    step[j + 1][h] = (count, start)
+                if other and 0 < j and count > step[j][h][0]:
+                    step[j][h] = (count, start)
         best = step
-        if best[len(word)][0] >= SHARE:
-            places.append(best[len(word)][1])
-            best = [(0, at + 1)] + [none] * len(word)
+        found = best[len(word)][1] if letter_after else max(best[len(word)], key=lambda part: part[0])
+        if found[0] >= SHARE:
+            places.append(found[1])
+            best = fresh(at + 1)
     return places
 
 
-def marker_words(text):
-    """For each of the two marker words, where it stands in the text, in any case and in disguise (see MARKER_WORDS).
+def comment_shaped(lines):
+    """For each line, already read with FULL_WIDTH, whether it is shaped like an HTML comment: it holds "<" or ">", or it
+    stands after a line that opens a comment with "<!--" and before the "-->" that closes it. No Markdown is read, so a
+    "<!--" in code opens one too, and the lines after it are read the stricter way (review of d3f25aa)."""
+    shaped, open_ = [], False
+    for line in lines:
+        shaped.append(open_ or "<" in line or ">" in line)
+        for mark in re.findall("<!--|-->", line):
+            open_ = mark == "<!--"
+    return shaped
+
+
+def marker_words(text, words=MARKER_WORDS):
+    """For each of the marker words, the two of the block by default, where it stands in the text, in any case and in
+    disguise (see MARKER_WORDS).
 
     A line of printable ASCII alone is searched for the word as it is. A line with any other character, a control
-    character of ASCII among them, is read by disguised().
+    character of ASCII among them, is read by disguised(): on a line shaped like an HTML comment (comment_shaped) as
+    strictly as before the review of step 9a, and on any other line with a letter after the colon asked of the word.
     """
-    folded = text.translate(FULL_WIDTH)
-    found = [[], []]
+    lines = text.translate(FULL_WIDTH).split("\n")
+    found = [[] for _ in words]
     offset = 0
-    for line in folded.split("\n"):
-        for places, (word, pattern) in zip(found, MARKER_WORDS):
+    for line, shaped in zip(lines, comment_shaped(lines)):
+        for places, (word, pattern) in zip(found, words):
             if all("\x20" <= char < "\x7f" for char in line):
                 places += [offset + match.start() for match in pattern.finditer(line)]
             else:
-                places += [offset + start for start in disguised(line, word)]
+                places += [offset + start for start in disguised(line, word, letter_after=not shaped)]
         offset += len(line) + 1
     return found
 
@@ -511,6 +822,74 @@ def block_problems(name, data, register):
             % (name, text.count("\n", 0, place[0]) + line, show(want), show(have))]
 
 
+def marker_problems(name, data, keys):
+    """Every problem with the marker lines in the bytes of a file that rows by reference name, for the keys of those
+    rows, or nothing.
+
+    The word "ratchet:rule" is found wherever it stands, in any case and in disguise, as the words of the block are.
+    Each line that holds it must be exactly "<!-- ratchet:rule <key> -->", alone on its line and ending in LF. When
+    every such line is exact, the marker of each key given stands once, and no marker names a key that no row names
+    this file for. Nothing else in the file is read.
+    """
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: %s. Every file a check reads is UTF-8" % (name, registry.not_utf8(error))]
+    problems, counts, lines = [], {}, set()
+    for at in marker_words(text, RULE_WORD)[0]:
+        start = text.rfind("\n", 0, at) + 1
+        if start in lines:
+            continue
+        lines.add(start)
+        stop = text.find("\n", at)
+        line = text[start:] if stop < 0 else text[start:stop + 1]
+        match = MARKER_LINE.match(line[:-1]) if line.endswith("\n") else None
+        if match is None:
+            problems.append("%s: the line that holds ratchet:rule, line %d, must be exactly %s, alone on its line and ending "
+                            "in LF, found %r" % (name, text.count("\n", 0, start) + 1, MARKER % "<key>", line))
+        else:
+            counts[match.group(1)] = counts.get(match.group(1), 0) + 1
+    if problems:
+        return problems
+    for key in keys:
+        if key not in counts:
+            problems.append("%s: holds no marker for %s, and register.json names it in stands_in for that rule. Put the line "
+                            "%s where the project's own wording of the rule stands" % (name, key, MARKER % key))
+        elif counts[key] != 1:
+            problems.append("%s: the marker %s stands %d times. It stands once" % (name, MARKER % key, counts[key]))
+    for key in sorted(set(counts) - set(keys)):
+        problems.append("%s: holds the marker %s, and no row adopted by reference names this file for %s. Take the line "
+                        "out, or adopt the rule by reference here" % (name, MARKER % key, key))
+    return problems
+
+
+def reference_files(register_path, register):
+    """(every problem with the files that the rows by reference of a register that passes check() name, the paths
+    read). Each file is checked on its path as the instruction file is, and read without following a link."""
+    files = {}
+    for entry in references(register):
+        files.setdefault(entry[STANDS_IN], []).append(entry["key"])
+    problems, read = [], []
+    for value, keys in files.items():
+        path, found = file_place(register_path, value, STANDS_IN)
+        if found:
+            problems += found
+            continue
+        if not os.path.isfile(path):
+            problems.append("%s: the file is missing. register.json names it in stands_in for %s" % (path, ", ".join(keys)))
+            continue
+        try:
+            data = registry.read_plain(path)
+        except OSError as error:
+            problems.append("%s: cannot be read as a plain file: %s" % (path, error.strerror))
+            continue
+        found = marker_problems(path, data, keys)
+        problems += found
+        if not found:
+            read.append((path, keys))
+    return problems, read
+
+
 def with_block(text, register, name):
     """(the text of the instruction file with the block brought up to date, or None, problems).
 
@@ -536,21 +915,34 @@ def instruction_place(register_path, register):
     file, resolved, stays inside that directory. So the file is read only inside the repo (round 2 of #100). The last
     part may be missing: --print-instructions then prints the block alone.
     """
+    return file_place(register_path, register[INSTRUCTIONS], INSTRUCTIONS)
+
+
+# How each field that names a file says what is done with it, when a part of its path is a link or a directory missing.
+READ_AS = {
+    INSTRUCTIONS: ("The instruction file is read and written only as a plain file in the repo",
+                   "and the block is neither read nor written there"),
+    STANDS_IN: ("The file a row by reference names is read only as a plain file in the repo",
+                "and its marker is not read there"),
+}
+
+
+def file_place(register_path, value, field):
+    """(the path of the file that value names in field, instructions or stands_in, or None, problems), as
+    instruction_place says, before anything is read there."""
     root = os.path.dirname(register_path)
-    value = register[INSTRUCTIONS]
-    if instructions_problem(value):
-        return None, [instructions_problem(value)]
+    if instructions_problem(value, field):
+        return None, [instructions_problem(value, field)]
+    plain, neither = READ_AS[field]
     parts = value.split("/")
     path = root
     for number, part in enumerate(parts, 1):
         path = os.path.join(path, part)
         shown = os.path.join(root, *parts[:number])
         if os.path.islink(path):
-            return None, ["%s is a symbolic link. The instruction file is read and written only as a plain file in the repo, "
-                          "and no part of its path may be a link" % shown]
+            return None, ["%s is a symbolic link. %s, and no part of its path may be a link" % (shown, plain)]
         if number < len(parts) and not os.path.isdir(path):
-            return None, ["%s is missing or is not a directory. register.json names %s in instructions, and the block is "
-                          "neither read nor written there" % (shown, value)]
+            return None, ["%s is missing or is not a directory. register.json names %s in %s, %s" % (shown, value, field, neither)]
     if os.path.exists(path) and not os.path.isfile(path):
         return None, ["%s: it is not a plain file" % path]
     inside = os.path.realpath(root or ".")
@@ -585,14 +977,18 @@ def generated_problems(register_path, register, markdown=None, planned=None):
     check at the end of a real run (review of d86ff3e). Every other file is read from the disk.
     """
     planned = {os.path.normpath(path): data for path, data in (planned or {}).items()}
-    problems = []
+    problems = reference_files(register_path, register)[0]
     if markdown:
         try:
             if os.path.normpath(markdown) in planned:
                 current = planned[os.path.normpath(markdown)].decode("utf-8", errors="strict").replace("\r\n", "\n")
             else:
                 current = registry.read(markdown)
-            problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
+            # REGISTER.md is optional for a register with rows by reference (D-2026-11-22-second-redraw). Where it is
+            # there, it is what the register generates.
+            absent = os.path.normpath(markdown) not in planned and not os.path.lexists(markdown)
+            if not (absent and references(register)):
+                problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
         except registry.RegistryError as error:
             problems.append(str(error))
     block, found = instruction_place(register_path, register) if INSTRUCTIONS in register else (None, [])
@@ -693,6 +1089,12 @@ def main(argv=None):
         print("FAIL: %d problem(s)" % len(problems))
         return 1
     print("%s: %s" % (args.register, summary))
+    for entry in references(register):
+        print("%s: %s stands in %s. %s" % (args.register, entry["key"], entry[STANDS_IN], row_label(register, entry)))
+    for path, keys in reference_files(args.register, register)[1]:
+        print("%s: holds the marker line of %s once each, and nothing else in it is read" % (path, ", ".join(keys)))
+    if args.markdown and references(register) and not os.path.lexists(args.markdown):
+        print("%s: not there, which a register with rows adopted by reference may leave out" % args.markdown)
     if block is not None:
         print("%s: the block between the markers is what register.json generates" % block)
     if args.agents:

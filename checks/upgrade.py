@@ -31,9 +31,17 @@ Either way the script compares the two versions, rule by rule, and prints:
 - a step for each adopted rule that changed and carries a translation whose English
   text changed: the translation must be made again, and the entry is printed without
   it, with the sha256 of the new text
+- for a changed rule that the register adopts by reference: whether its sha256 still
+  matches, and when the rule or its ratchet changed, that it no longer does, the new
+  sha256 in the entry, and that the project reads its own wording in the file the row
+  names again, with the new rule and its ratchet printed to read it against. Nothing
+  fails until the owner moves "ratchet_version"
 - a step for each adopted rule that was removed: take it out of "adopted", and to
   keep it, add the printed entry to "own", which has the fields of an own rule only:
-  its status and "where" are kept, and its translation is not.
+  its status and "where" are kept, and its translation is not. A rule adopted by
+  reference gets Ratchet's text in that entry, and the step names its marker line to
+  take out of the file. A rule adopted in part keeps its status and not its "where",
+  and the step says so.
   A rule merged into another, or moved into Ratchet's own register, shows as removed:
   the step says that the changelog says why, and that the rule it was merged into may
   be adopted in its place
@@ -43,8 +51,12 @@ Either way the script compares the two versions, rule by rule, and prints:
 - when the fields of ratchet.json differ between the two, at the top or in its rules,
   a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
   check of its own, that reads it.
-- when the form of register.json changed between the two versions, what changed. Every
-  field that came in 0.10 may be left out, so none of it is a step.
+- when the form of register.json changed between the two versions, what changed, with
+  the new fields named. Every field that came in 0.10 or 0.11 may be left out, and the
+  phrase of a row adopted in part, which came in 0.12, may too, so none of it is a step.
+- the commands that print REGISTER.md and the instruction file again and check them,
+  with the options first and the register's path after "--". A register with rows by
+  reference after the steps and no REGISTER.md beside it is not told to print one.
 
 It writes no file of the project. Only the one command changes anything: the tags
 and the checkout of .ratchet, through git. Before it prints a
@@ -68,6 +80,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
+# sys.path, still finds the modules beside it.
+import os  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import copy
@@ -93,6 +110,17 @@ REGISTER_FORMS = (
              '"instructions", and check_register.py then checks the block of rules it generates into that file. An adopted rule '
              'may carry a "translation", bound to its English rule by a sha256. An own rule may carry "status" and "where". A '
              'register without them stays valid, so none of this is a step.'),
+    ("0.11", 'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change '
+             'of form before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", '
+             'the Markdown file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its '
+             'ratchet. Such a row holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> '
+             'once. check_register.py sees that marker, not the words. REGISTER.md may be left out by a register with such '
+             'rows. A register without them stays valid, so none of this is a step.'),
+    ("0.12", 'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 '
+             'starts again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated '
+             'here: <clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is '
+             'added, but a row by reference of a rule that is text only, which took no "where" before, takes one, and only as '
+             'that phrase. A register without it stays valid, so none of this is a step.'),
 )
 
 
@@ -130,9 +158,16 @@ def load_older(path, data=None):
 def entry(rule, old_entry=None):
     """A rule as it stands in a register, keeping the status, the place of the check and the translation that still hold.
 
-    A translation is kept when the English text it is bound to did not change, and is left out when it did.
+    A translation is kept when the English text it is bound to did not change, and is left out when it did. A row
+    adopted by reference stays one: its key, its file, and the sha256 of the rule and its ratchet in this version. A row
+    adopted in part keeps its "where", the clauses its wording does not state, whether the rule names a check or not.
     """
-    result = dict((field, rule[field]) for field in check_register.RULE_FIELDS)
+    part = old_entry is not None and check_register.is_reference(old_entry) and check_register.holds_part(old_entry)
+    if old_entry is not None and check_register.is_reference(old_entry):
+        result = {"key": rule["key"], check_register.STANDS_IN: old_entry[check_register.STANDS_IN],
+                  check_register.SHA: check_register.reference_sha256(rule)}
+    else:
+        result = dict((field, rule[field]) for field in check_register.RULE_FIELDS)
     if rule["enforcement"] == "enforced":
         if old_entry is not None and "status" in old_entry:
             result["status"] = old_entry["status"]
@@ -140,6 +175,10 @@ def entry(rule, old_entry=None):
                 result["where"] = old_entry["where"]
         else:
             result["status"] = "text only for now"
+            if part:
+                result["where"] = old_entry["where"]
+    elif part:
+        result["where"] = old_entry["where"]
     if old_entry is not None and check_register.TRANSLATION in old_entry and old_entry["rule"] == rule["rule"]:
         result[check_register.TRANSLATION] = copy.deepcopy(old_entry[check_register.TRANSLATION])
     return result
@@ -173,7 +212,9 @@ def own_entry(rule, before, prefix, taken):
         key = "%s.%s-%d" % (prefix, name, number)
     fields = [("key", key)] + [(field, rule[field]) for field in check_register.RULE_FIELDS if field != "key"]
     if rule["ratchet"].startswith("Check: "):
-        fields += [(field, before[field]) for field in check_register.STATUS_FIELDS if field in before]
+        # Not the "where" of a row adopted in part: the own rule holds Ratchet's whole text, and is never in part.
+        fields += [(field, before[field]) for field in check_register.STATUS_FIELDS
+                   if field in before and not (field == "where" and check_register.holds_part(before))]
     return dict(fields)
 
 
@@ -201,6 +242,21 @@ def form_changes(old, new):
 
 def changed_fields(old, new):
     return [name for field, name in COMPARED if old[field] != new[field]]
+
+
+def reference_text(before, rule):
+    """What the step for a changed rule says to a row adopted by reference: whether its sha256 still matches, and if not,
+    the new one and that the project reads its own wording again."""
+    new = check_register.reference_sha256(rule)
+    if before[check_register.SHA] == new:
+        return ("It is adopted by reference, and its rule and its ratchet did not change, so its sha256 still matches and the "
+                "entry is as it was.")
+    return ("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the new sha256 "
+            "is %s. Read the project's own wording in %s again against the new rule, and change it where it no longer says "
+            "what the rule says. check_register.py fails from when \"ratchet_version\" is moved until sha256 is set to the "
+            "new one, and not before.%s" % (new, before[check_register.STANDS_IN],
+                                            " It is adopted in part: read the clauses its \"where\" lists against the new rule "
+                                            "too." if check_register.holds_part(before) else ""))
 
 
 def joined(names):
@@ -233,10 +289,17 @@ def plan(register, old, new):
             if rule["enforcement"] == "enforced" and "status" not in before:
                 text.append('Its ratchet now names a check, so the entry has a status: "text only for now" until the project has built the check.')
             elif rule["enforcement"] != "enforced" and "status" in before:
-                text.append('It is text only now, so the entry has no status and no "where".')
+                text.append('It is text only now, so the entry has no status%s.' % (
+                    ', and keeps the "where" that lists the clauses its wording does not state' if "where" in step["entry"]
+                    else ' and no "where"'))
             elif step["entry"].get("status") == "built" and old_by[key]["ratchet"] != rule["ratchet"]:
                 text.append('It keeps the status "built". Its ratchet changed: check that the check in "where" still does what '
                             'the ratchet says, or set the status to "text only for now".')
+            if check_register.is_reference(before):
+                text.append(reference_text(before, rule))
+                if before[check_register.SHA] != check_register.reference_sha256(rule):
+                    # The new rule and its ratchet, so the project can read its wording against them (review of step 9a).
+                    step["against"] = rule
             if check_register.TRANSLATION in before and check_register.TRANSLATION not in step["entry"]:
                 text.append('Its rule changed, so its translation must be made again, and the entry has none. Translate the new '
                             'rule and add its "translation" with "sha256": "%s".' % check_register.rule_sha256(rule["rule"]))
@@ -259,10 +322,22 @@ def plan(register, old, new):
                                 'form will do, but not "ratchet".' % (why, prefix))
                 if step["entry"]["key"] != "%s.%s" % (prefix, key.split(".", 1)[1]):
                     text.append('The key "%s.%s" is taken, so the entry has "%s".' % (prefix, key.split(".", 1)[1], step["entry"]["key"]))
-                if "status" in step["entry"]:
+                if "where" in step["entry"]:
                     text.append('An own rule may say where its check stands, so the entry keeps its status and its "where".')
+                elif "status" in step["entry"]:
+                    text.append('An own rule may say where its check stands, so the entry keeps its status.')
+                clauses = check_register.part_clauses(adopted[key].get("where"))
+                if check_register.holds_part(adopted[key]) and clauses:
+                    text.append('It was adopted in part, and an own rule stands in the register in full, so the entry has no '
+                                '"where": the clauses it listed as not stated, %s, stand in the rule of the entry like the rest '
+                                'of it.' % check_register.PART_SEPARATOR.join(clauses))
                 if check_register.TRANSLATION in adopted[key]:
                     text.append("An own rule has no translation, so the entry has none.")
+                if check_register.is_reference(adopted[key]):
+                    text.append("It was adopted by reference, and an own rule stands in the register in full, so the entry "
+                                "holds Ratchet's text of it, which the project may replace with its own wording. Take the line "
+                                "%s out of %s, since no row names it there." % (
+                                    check_register.MARKER % key, adopted[key][check_register.STANDS_IN]))
                 text.append(MERGED % new["version"])
                 step["text"] = " ".join(text)
             steps.append(step)
@@ -310,8 +385,9 @@ def put_in_place(script, path, option, target):
     """The shell command that prints one file with check_register.py and puts it in place at target: a new file in the
     directory the command runs in, named after the target, then moved there. The target is a relative path."""
     new = shlex.quote(target.split("/")[-1] + ".new")
-    return "rm -f -- %s && python3 %s %s %s > %s && rm -f -- %s && mv -- %s %s" % (
-        new, shlex.quote(script), shlex.quote(path), option, new, shlex.quote(target), new, shlex.quote(target))
+    # The option stands first and the register's path after --, so a path that starts with - is not read as an option.
+    return "rm -f -- %s && python3 %s %s -- %s > %s && rm -f -- %s && mv -- %s %s" % (
+        new, shlex.quote(script), option, shlex.quote(path), new, shlex.quote(target), new, shlex.quote(target))
 
 
 def passes(name, register, old, out):
@@ -371,6 +447,11 @@ def report(path, register, old, new, out, script):
             print("", file=out)
             print(paste(step["entry"]), file=out)
             print("", file=out)
+        if step.get("against"):
+            print("The rule in Ratchet %s, to read the wording in %s against: %s" % (
+                new["version"], step["entry"][check_register.STANDS_IN], step["against"]["rule"]), file=out)
+            print("Its ratchet: %s" % step["against"]["ratchet"], file=out)
+            print("", file=out)
     if must_adopt:
         number += 1
         print("%d. Every rule the register adopts was removed, and a register that adopts no rule from Ratchet does not pass "
@@ -414,17 +495,29 @@ def report(path, register, old, new, out, script):
     instructions = None
     if check_register.INSTRUCTIONS in register:
         instructions = "/".join(part for part in (os.path.dirname(path).replace(os.sep, "/"), register[check_register.INSTRUCTIONS]) if part)
+    # REGISTER.md is optional for a register with rows by reference. One that left it out is not told to print it
+    # (review of step 9a). The register looked at is the one with the steps done.
+    markdown = not check_register.references(after) or os.path.lexists(os.path.join(os.path.dirname(path), "REGISTER.md"))
+    if not markdown:
+        print("REGISTER.md is not there, which a register with rows adopted by reference may leave out, so it is not printed.",
+              file=out)
+    if markdown and instructions is not None:
         print("Then print REGISTER.md and %s again, put each in place, and check them:" % instructions, file=out)
-    else:
+    elif markdown:
         print("Then print REGISTER.md again, put it in place, and check it:", file=out)
+    elif instructions is not None:
+        print("Then print %s again, put it in place, and check it:" % instructions, file=out)
+    else:
+        print("Then check it:", file=out)
     print("", file=out)
     # The check writes nothing (round 3 of #100). Each file is printed to a new file in the directory the commands run in,
     # and moved into place. rm -f removes a link that stands at either name, never what it points at, so neither the
     # redirection nor mv follows one, and mv does not move the file into a directory that a link leads to.
-    print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
+    if markdown:
+        print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
     if instructions is not None:
         print("    %s" % put_in_place(script, path, "--print-instructions", instructions), file=out)
-    print("    python3 %s %s --markdown REGISTER.md" % (shlex.quote(script), shlex.quote(path)), file=out)
+    print("    python3 %s --markdown REGISTER.md -- %s" % (shlex.quote(script), shlex.quote(path)), file=out)
     print("", file=out)
     if not must_adopt:
         adopting = "no new rule adopted"

@@ -26,7 +26,7 @@ The expected tests are the tests that discover collects, and the expected fixtur
 are the files under checks/fixtures/. The check catches tests dropped by mistake. It
 does not stop test code that defeats it on purpose: that code runs with the same
 rights as the check, and a change to checks/ is read by the maintainer
-(ratchet.checks-owner-read).
+(ratchet.owner-paths).
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -35,6 +35,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
+# sys.path, still finds the modules beside it.
+import os  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import hashlib

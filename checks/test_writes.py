@@ -48,6 +48,9 @@ WRITERS = {
     "expected_tests.py": {"main"},
     "from_base.py": {"judge", "placeholders"},
     "suite_runner.py": {"Recorder.__init__", "FixtureTest.scratch", "FixtureTest.fixture_file", "FixtureTest.fixture_directory"},
+    # The new directory it makes with tempfile, with the empty git directory, home and config it reads the store
+    # through, the pinned commit's tree written into it, and the directory removed.
+    "run_pinned.py": {"Git.__init__", "export", "main", "stored_blob"},
 }
 
 # Calls that write, whatever the object they are called on: the methods of pathlib that change a file.
@@ -1142,6 +1145,8 @@ class InitRoot(Trees):
         project = os.path.join(self.outside, "project")
         os.mkdir(project)
         git(project, "init", "-q")
+        git(project, "config", "gc.auto", "0")
+        git(project, "config", "maintenance.auto", "false")
         os.symlink(project, os.path.join(self.repo, "project"))
         commit_all(self.repo)
         linked = os.path.join(self.repo, "project")

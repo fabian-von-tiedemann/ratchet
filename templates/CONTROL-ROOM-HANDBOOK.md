@@ -10,6 +10,7 @@
 
 - The control room does not build the product. It may make small fixes after a review and maintain its own tools. Building happens in workspaces.
 - Overall, scope and architecture assessments run on the strongest model the project has.
+- Run it for real as early as possible. A desk review finds edge cases without end. A run shows which ones matter. A standing approval for local experiments at no cost removes the excuse.
 - During the owner's quiet hours, <hours>, the control room only continues work already under way and experiments already approved, and collects questions for the morning. It asks at night only if the owner is already in the conversation.
 
 ## Phases
@@ -22,7 +23,7 @@ A work package is in one phase at a time, named in its issue: explore, build or 
 
 ## New work
 
-- [ ] Before a new project or a large work package: interview the owner with `grilling`, at most five questions per round.
+- [ ] Before a new project or a large work package: interview the owner with `grilling`, in rounds of at most five questions, with a recommended answer for each question, until no decision is left as an unstated assumption.
 - [ ] Split the work package into issues with `to-tickets`.
 - [ ] Give each issue: assignment, files it may change, cap (time or cost), stop rule.
 - [ ] Start a workspace as its own thread with its own worktree from the main branch, with the issue number in the prompt.
@@ -38,16 +39,17 @@ A work package is in one phase at a time, named in its issue: explore, build or 
 
 - [ ] Review approved at the exact head.
 - [ ] Required checks and the security scan green on that head.
-- [ ] Changes to the register, or to checks, gates and automated reviewers: the owner has read them.
+- [ ] Changes to the owner's paths, the decisions, the register and every file it names, the checks, the gates and the automated reviewers: the owner has read them and approved the head.
 
 ## Decisions
 
-- [ ] Write the question and the owner's answer verbatim in a decision file `decisions/D-YYYY-MM-DD-<slug>.md`, in a PR.
+- [ ] Write the question and the owner's answer verbatim in a decision file `decisions/D-YYYY-MM-DD-<slug>.md`, or as a record with that id in the one log the project names, in a PR.
+- [ ] Keep four kinds of statement apart and label them: decision (D), proposal (P), outside observation (O) and open question (Q).
 - [ ] Propose any change to the register in the same PR.
 
 ## Lessons
 
-- [ ] After a failed review or a failed experiment: propose at most three lessons with the lesson template.
+- [ ] After a failed review or a failed experiment: propose lessons with the lesson template.
 - [ ] After the owner approves a lesson: add its ratchet, and send the lesson to Ratchet if it would apply in another project.
 
 ## Handover

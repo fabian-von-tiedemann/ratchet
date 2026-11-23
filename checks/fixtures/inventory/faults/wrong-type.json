@@ -1,0 +1,1 @@
+{"name": "x", "target": "branch", "enforcement": "active", "rules": [{"type": "required_status_checks", "parameters": {"required_status_checks": "checks"}}]}

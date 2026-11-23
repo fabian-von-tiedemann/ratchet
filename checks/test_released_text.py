@@ -47,9 +47,19 @@ def changelog(*versions):
     return TITLE + "".join(ENTRIES[version] for version in versions)
 
 
+# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
+# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
+# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
+# own config, so that a script under test that runs git there starts none either.
+QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+
+
 def git_environment(home):
     """git with no configuration but its own, so that a person's settings, such as signing, change nothing."""
-    environment = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C")
+    environment = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C",
+                       GIT_CONFIG_COUNT=str(len(QUIET)))
+    for number, (name, value) in enumerate(QUIET):
+        environment["GIT_CONFIG_KEY_%d" % number], environment["GIT_CONFIG_VALUE_%d" % number] = name, value
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
         environment.pop(name, None)
     return environment
@@ -63,13 +73,24 @@ def git(root, *args):
     )
     if result.returncode != 0:
         raise AssertionError("git %s: %s" % (" ".join(args), result.stdout))
+    if args[:1] == ("init",):
+        for name, value in QUIET:
+            git(root, "config", name, value)
     return result.stdout
 
 
-def run(script, *args, root=ROOT, cwd=None):
+# How long one script may run before the test fails it as hung. A script on its own takes seconds. The run of the whole
+# suite inside ReleaseSteps takes as long as the suite, which grows with every check and fixture: it took more than 600
+# seconds on a loaded machine in November 2026. The limit for that run guards against a hang, not against a slow suite,
+# so it is well above the suite's time. In CI the job's own timeout-minutes in .github/workflows/checks.yml ends it sooner.
+SCRIPT_TIMEOUT = 600
+SUITE_TIMEOUT = 3600
+
+
+def run(script, *args, root=ROOT, cwd=None, timeout=SCRIPT_TIMEOUT):
     result = subprocess.run(
         [sys.executable, os.path.join(root, "checks", script)] + list(args),
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, timeout=600,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, timeout=timeout,
         env=git_environment(cwd or root),
     )
     return result.returncode, result.stdout
@@ -463,7 +484,7 @@ class ReleaseSteps(unittest.TestCase):
         # After it, the full suite passes in the copy, run by the check that every expected test ran. This module
         # holds no test in that run, so that it does not run itself again.
         write(self.copy, "checks/test_released_text.py", '"""Left out of the run inside ReleaseSteps, which runs this module."""\n')
-        code, output = run("expected_tests.py", root=self.copy, cwd=self.copy)
+        code, output = run("expected_tests.py", root=self.copy, cwd=self.copy, timeout=SUITE_TIMEOUT)
         self.assertEqual(code, 0, output)
         self.assertIn("expected_tests: every expected test ran and passed", output)
 

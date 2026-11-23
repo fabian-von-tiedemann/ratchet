@@ -1,6 +1,6 @@
 # Glossary for <project>
 
-The project's canonical terms (`ratchet.glossary`). The register, the working rules and the handbooks use the term in the first column, never a form listed in the last one. Add a term in the PR that introduces it. List each form to avoid as it is written, the plural next to the singular: the check matches the listed forms and derives no others.
+The project's canonical terms, if the project keeps a glossary, as Ratchet does with its own rule `repo.glossary`. The register, the working rules and the handbooks use the term in the first column, never a form listed in the last one. Add a term in the PR that introduces it. List each form to avoid as it is written, the plural next to the singular: the check matches the listed forms and derives no others.
 
 | Term | Meaning | Avoid |
 |---|---|---|

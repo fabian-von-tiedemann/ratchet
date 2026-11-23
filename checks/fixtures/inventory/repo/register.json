@@ -1,0 +1,9 @@
+{
+  "project": "Fixture",
+  "ratchet_version": "0.11",
+  "instructions": "AGENTS.md",
+  "adopted": [
+    {"key": "ratchet.register-on-top", "status": "built", "where": "`checks/check_register.py`, run by `.github/workflows/checks.yml`"}
+  ],
+  "own": []
+}
