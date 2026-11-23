@@ -13,7 +13,7 @@ For the second path, a mode that only maps your checks to Ratchet's rules, and a
 
 ## What we want back
 
-Open a [trial report](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=trial-report.yml) with:
+Open a [report](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=try-report.yml) with:
 
 - the time it took, for the agent and for you
 - the rules that fit

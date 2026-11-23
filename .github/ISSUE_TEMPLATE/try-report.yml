@@ -1,6 +1,6 @@
-name: Trial report
+name: Tried Ratchet
 description: Tell us how trying Ratchet on your repo went, as TRYING.md describes. This repo is public.
-title: "Trial report: "
+title: "Tried Ratchet: "
 body:
   - type: dropdown
     id: path
