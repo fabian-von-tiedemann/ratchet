@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.13 (unreleased)
+
+In short: a change to a check's code is now reviewed by two reviewers from two model families other than the author's. It is a clause of the experimental rule `ratchet.review-by-risk`, text only, so a project that adopts that rule follows the new text. No form changes.
+
+- `ratchet.review-by-risk` gets a clause: a PR that changes a check's code, in the paths the project lists as its checks, is reviewed by two reviewers from two model families other than the author's, each at the same head, and merges only when both have passed it. It takes no place under the cap ([D-2026-11-23-two-reviewers-for-check-code](decisions/D-2026-11-23-two-reviewers-for-check-code.md), [#PR]).
+- This repo's register adopts the new text, and its own rule `repo.review-classes` names its checks: `checks/` and `.github/workflows/` ([#PR]).
+
+<!-- generated:count -->
+Ratchet 0.13, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.12 (2026-11-23)
 
 In short: Ratchet gets an opt-in product module for an application with users in production, a rule may be adopted by reference in part, and the README and the landing page are much shorter. Adopting in part is a change of form of `register.json`, so the count toward 1.0 starts again, but a register of 0.11 stays valid and no core rule changes. If adopt mode wrote your register in 0.11, replace the CI step and take out one copied row, as the two bullets that start "To do" say.

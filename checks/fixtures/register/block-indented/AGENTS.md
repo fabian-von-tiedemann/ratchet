@@ -5,7 +5,7 @@
     
     ### Rules from Ratchet
     
-    Ratchet version: 0.12. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+    Ratchet version: 0.13. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
     
     | Key | Rule | Ratchet | Source |
     |---|---|---|---|
