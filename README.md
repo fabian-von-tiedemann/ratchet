@@ -56,10 +56,11 @@ Ratchet is built for one person who decides, several coding agents, and a repo t
 | Your situation | What to do |
 |---|---|
 | A new repo | Run the three commands under [Start here](#start-here). |
-| A repo with an instruction file of its own, such as `AGENTS.md` or `CLAUDE.md` | Run the same three commands. `init.py` sees your file and never changes it. It prints a marker line for each rule, and writes your register when you run it with `--adopt <key>`. |
+| A repo with an instruction file of its own: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` or `.claude/CLAUDE.md` | Run the same three commands. `init.py` sees your file and never changes it. It prints a marker line for each rule, and writes your register when you run it with `--adopt <key>`. |
+| A repo whose rules stand in another form, such as `.cursor/rules` | `init.py` does not see them and would write the files of a new repo. Take the inventory-first path in [TRYING.md](TRYING.md) instead. |
 | One agent and no control room | Run the same three commands, with `--solo` on `init.py`. |
 | One agent on a short project | Ratchet is more than you need. Read [the rules to start with](STARTING.md#the-rules-to-start-with) and stop. |
-| A register that follows 0.3 or later | [UPGRADING.md](UPGRADING.md): one command moves it to this version. |
+| A register that follows 0.3 or later | [UPGRADING.md](UPGRADING.md): one command moves `.ratchet` to this version and prints the edits your register needs. |
 | A register written for 0.2 | [MIGRATING.md](MIGRATING.md) first. |
 | A rule that does not fit your project | Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml). That is what Ratchet improves from. |
 

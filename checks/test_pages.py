@@ -1362,6 +1362,13 @@ class PageValues(RepoCopy, unittest.TestCase):
                          ("<li><strong>Shown results</strong> over reported success</li>",
                           "<li><strong>Shown results</strong> over\nreported success</li>"),
                          ('<p class="lead">', '<p class="lead" id="values">'),
+                         # Markup the generator never writes, added inside a line it writes: a link in the line that
+                         # weighs the values, a second paragraph after the story on its line, an em in the lead. Each
+                         # fails, and write mode leaves it as it is (round 1 of #143).
+                         ("The left is for when it doesn't.</p>",
+                          "The left is for when it doesn't. <a href=\"https://github.com/fabian-von-tiedemann/ratchet\">More</a></p>"),
+                         ("with confidence.</em></p>", "with confidence.</em></p><p>KEEP THIS</p>"),
+                         ("<strong>We value:</strong></p>", "<strong>We value:</strong> <em>all of it</em></p>"),
                          ("<li><strong>Written decisions</strong>", "<li><strong>Written</strong> <strong>decisions</strong>")):
             with self.subTest(new=new):
                 self.setUp()

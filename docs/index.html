@@ -247,7 +247,7 @@ footer p + p {
 <ol class="flow">
 <li><strong>A rule describes a check that you build,</strong> or says “text only” and why it stays an instruction. Copied rules keep their wording, and the register check that Ratchet ships compares them with the version you state. “Decisions belong to the owner” is text only: a check cannot tell a fact from a decision. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
 <li><strong>Your repo keeps a register.</strong> One file lists every rule in force, the ones you copy and your own, and records which checks you have built. Ratchet ships only a few reference checks itself. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
-<li><strong>It turns one way.</strong> When an agent gets something wrong, you add a check that fails on it, one notch tighter. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
+<li><strong>It turns one way.</strong> When an agent errs, you add a check that fails on it. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
 </ol>
 <p id="count" class="count"><strong>Ratchet today:</strong> the core has 19 rules. 13 describe a check and 6 are text only. Ratchet ships a reference check for 1 of the 13, and you build the others.</p>
 </section>
@@ -255,7 +255,7 @@ footer p + p {
 <h2 id="start-here">Start here</h2>
 <p>In the root of your git repo:</p>
 <ol class="steps">
-<li>Fetch Ratchet at the latest release.
+<li>Fetch Ratchet.
 <pre><code>git clone --branch v0.12 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
 </li>
 <li>See what it would write. This writes nothing.
@@ -267,13 +267,13 @@ footer p + p {
 </ol>
 <ul class="paths">
 <li><strong>A new repo:</strong> <code>init.py</code> writes <code>AGENTS.md</code>, your register and a workflow that checks it on every pull request.</li>
-<li><strong>A repo with rules of its own:</strong> <code>init.py</code> runs in adopt mode, never changes your file, and with <code>--adopt</code> writes a register that points at your wording. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">Which path is yours</a></li>
+<li><strong>A repo with <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>GEMINI.md</code>, <code>.github/copilot-instructions.md</code> or <code>.claude/CLAUDE.md</code>:</strong> <code>init.py</code> runs in adopt mode, never changes that file, and with <code>--adopt</code> writes a register that points at your wording. Rules in another form, such as <code>.cursor/rules</code>, get the new repo's files, so <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">take inventory first</a>.</li>
 </ul>
 <p class="next">You turn on branch protection on your host, so that the check is required. <code>init.py</code> never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
 </section>
 </main>
 <footer>
-<p>Open source. Take the rules that fit, and send back what you learn. Ideas from public sources, in Ratchet's own words and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">credited rule by rule</a>.</p>
+<p>Open source. Ideas from public sources, in Ratchet's own words and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">credited rule by rule</a>.</p>
 <p><a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT license</a></p>
 </footer>
 </body>

@@ -87,9 +87,12 @@ PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> 
                    'and %d are text only. Ratchet ships a reference check for %d of the %d, and you build the others.</p>')
 PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\Z")
 # The page's story and values, from values.json: this line, the lines the generator writes, and the line that closes
-# them. Every line between the two is of one of the forms PAGE_VALUE_LINE, so the generator never writes over anything else.
+# them. Every line between the two is of one of the forms PAGE_VALUE_LINE, exactly as page_values writes them, with
+# text that holds no "<" or ">", since html.escape writes those as references. So the generator never writes over
+# anything else: a link or a second paragraph added to a line is not of these forms.
 PAGE_VALUES, PAGE_VALUES_END = '<section id="values" class="values">', "</section>"
-PAGE_VALUE_LINE = re.compile(r'(?:<p class="(?:story|lead|balance)">.*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]*</strong>[^<>]*</li>)\Z')
+PAGE_VALUE_LINE = re.compile(r'(?:<p class="story"><em>[^<>]*</em></p>|<p class="lead"><strong>[^<>]*</strong></p>'
+                             r'|<p class="balance">[^<>]*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]*</strong>[^<>]*</li>)\Z')
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
