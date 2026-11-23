@@ -11,11 +11,14 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   have, each once; every element that is opened is closed, in order; a void element is never closed; there is no
   comment, no processing instruction and no other declaration. There is no script, no frame, no form, no base,
   no style attribute and no event handler, because none of them is an element or an attribute the page may hold
-- the figures are inline SVG of seven elements, svg, g, path, circle, rect, line and text, and title, each with only
-  the attributes listed for it. There is no use, image, link, script, style, foreignObject, marker, gradient,
-  filter or animation element in an <svg>, and no href. A value in an <svg> is numbers and words, calls no function
-  but translate() and rotate(), and a fill or a stroke is none or currentColor. Each <svg> has role="img" and one
-  <title> directly in it, which its aria-labelledby names, and the only other <title> is the one in <head>
+- the page holds no inline SVG: an <svg>, and every element of SVG, is not an element the page may hold, so nothing
+  comes in through one. The only <title> is the one in <head>
+- the one figure is a file of its own, docs/ratchet-notch.svg, which one <img> loads, once, with alt text. The test
+  reads that file as strictly as the page: strict UTF-8, no hidden character, no doctype, comment, processing
+  instruction or reference, well-formed XML of six elements of SVG, svg, style, rect, path, circle and text, each
+  directly in the <svg> and with only the attributes it may have, whose values are numbers and words. So there is
+  no script, use, image, link or foreignObject in it, no href, no style attribute and no event handler. Its one
+  <style> follows the rules of the page's CSS, and each color in it is the page's color of the same name
 - nothing is loaded from another origin: what an element loads (img src, source srcset, link href) is the name of
   a file in docs/. The CSS in the one <style> element has no at-rule but @media and @keyframes, no function but
   var(), no backslash and no "url", so it loads nothing either
@@ -23,40 +26,32 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   transition or scroll-behavior, also with a vendor prefix such as -webkit-, stands in that query, or in a
   @keyframes. A prefixed at-rule, such as @-webkit-keyframes, is not an at-rule the CSS may hold
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
-  file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release. The
-  only links out of the repo are to the sources in sources.json, one each, matched whole: the repo of a source, or
-  for a source with a directory, that directory at HEAD. Nothing else links out to another site. A fragment on a link to the page, "#..." or "index.html#...", is an id
-  on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the repo
-  may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
-- docs/ holds exactly the page, .nojekyll and the two logos, and each logo is byte for byte its copy in assets/
+  file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release.
+  Nothing links out of the repo to another site. A fragment on a link to the page, "#..." or "index.html#...", is
+  an id on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the
+  repo may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
+- docs/ holds exactly the page, .nojekyll, the two logos and the figure, and each logo is byte for byte its copy
+  in assets/
 - the page has one h1, its headings do not skip a level, html has lang="en" and every image has alt text
 - the colors are a palette of custom properties, one for light and one for dark, and each pair of text and
-  background in it, in the light bands, the dark bands ("ink") and the orange one ("go"), has a contrast ratio of at
-  least 4.5 (WCAG 2, level AA). No other hex color is written.
+  background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
 - every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md
-- the list of sources, <ul class="sources">, holds one item for each source in sources.json, in its order. Each
-  item starts with a link to the source, named by its name, gives its license once in an element of the class
-  "license", and names in <code>, in the order of ratchet.json, exactly the rules whose source cites it
-- each step of a diagram, an item of an <ol class="flow">, links to where the repo shows it
-- the dial of the principles, <svg class="fig-dial">, labels its notches with the titles of the principles of the
-  core in ratchet.json, "01 " and the first, and so on, in order, and holds no other <text>. A principle of the core
-  is one with a core rule under it: principles 8 to 10, for an application in production, have only the experimental
-  rules of the product module under them, and stay off the dial (D-2026-11-22-second-redraw). The list <ol
-  class="principle-list">, for a narrow screen, holds the same titles in the same order. A principle of the core
-  added, removed, moved or renamed fails until the dial is drawn again and the list follows. generate.py writes neither, since the
-  place and wrapping of each label are part of the drawing.
+- each step of how Ratchet works, an item of the one <ol class="flow">, links to where the repo shows it
+- the list of the principles, the one <ol id="principles">, holds the titles of the principles in ratchet.json, in
+  order, as items that hold only text. The test reads the list itself, and does not ask generate.py.
 
-The line that fetches Ratchet is checked by generate.py, which writes it: it names the newest version with a date
-in CHANGELOG.md, as the command in README.md does, so a release that moves the README moves the page when
-generate.py is run, and generate.py --check fails until it is. The line that gives the count of rules and the cap
-on experimental rules is written the same way, from ratchet.json. The tests of both are here too, and they read
-each line as generate.py does, after the spaces that indent it.
+Three parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
+the newest version with a date in CHANGELOG.md, as the command in README.md does; the line that counts the rules
+of the core, from ratchet.json; and the items of the list of the principles, from ratchet.json. So a release that
+moves the README, a rule that changes kind, and a principle that is added, removed, moved or renamed each move the
+page when generate.py is run, and generate.py --check fails until it is. The tests of all three are here too, and
+they read each line as generate.py does, after the spaces that indent it.
 
-What the test does not claim: that a browser shows the page as intended, that a named color is legible (it reads
-hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
+What the test does not claim: that a browser shows the page or the figure as intended, that the figure's labels fit
+where they are drawn or that each lies on the background it is checked against, that a named color is legible (it
+reads hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
 nothing that its text and its place in the list do not), or that the text is true. The text is taken
-from README.md and the files the page links to, and read by the maintainer. What a source gives Ratchet is in
-Ratchet's own words, and the test does not see whether anything was copied. That
+from README.md and the files the page links to, and read by the maintainer. That
 Pages is turned on is a setting of the repository. Each case is the page with one change, so the cases follow the
 page when it changes. Standard library only.
 """
@@ -68,6 +63,7 @@ import re
 import shutil
 import sys
 import unittest
+import xml.etree.ElementTree
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -81,8 +77,22 @@ PAGE = "index.html"
 REPO = "https://github.com/fabian-von-tiedemann/ratchet"
 FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet .ratchet"
 # Every file in docs/. A logo is a copy of the file of the same name in assets/.
-FILES = (".nojekyll", "index.html", "ratchet-dark.svg", "ratchet-light.svg")
+FILES = (".nojekyll", "index.html", "ratchet-dark.svg", "ratchet-light.svg", "ratchet-notch.svg")
 LOGOS = ("ratchet-dark.svg", "ratchet-light.svg")
+# The one figure, which one <img> on the page loads, and every element it may hold, with the attributes it may have.
+# Each stands directly in the <svg>. There is no id, no href, no style attribute and no attribute of a color: the
+# colors are in the one <style>. A value is numbers and words, so it calls no function and names no file.
+FIGURE = "ratchet-notch.svg"
+SVG = "http://www.w3.org/2000/svg"
+FIGURE_ELEMENTS = {
+    "svg": {"viewBox", "width", "height", "role", "aria-label"}, "style": set(),
+    "rect": {"class", "x", "y", "width", "height", "rx"}, "path": {"class", "d"}, "circle": {"class", "cx", "cy", "r"},
+    "text": {"class", "x", "y", "text-anchor"},
+}
+FIGURE_VALUE = re.compile(r"[A-Za-z0-9 .,-]+\Z")
+# What the figure may not hold anywhere, since each is a way to bring in what the XML parser would not show as an element.
+FIGURE_MARKS = (("<!", "a doctype, a comment or a CDATA section"), ("<?", "a processing instruction"),
+                ("&", "a character reference or an entity"))
 VOID = {"meta", "link", "img", "source", "br"}
 GLOBAL = {"id", "class"}
 # Every element the page may hold, with the attributes it may have beside id and class.
@@ -92,20 +102,7 @@ ELEMENTS = {
     "h1": set(), "h2": set(), "h3": set(), "p": set(), "ul": set(), "ol": set(), "li": set(), "a": {"href"},
     "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(), "span": set(),
     "picture": set(), "source": {"media", "srcset"}, "img": {"src", "width", "height", "alt"},
-    "svg": {"viewbox", "width", "height", "role", "aria-labelledby", "fill", "stroke", "stroke-width", "stroke-linejoin",
-            "stroke-linecap", "font-family", "font-size"},
 }
-# Every element an <svg> may hold, with the attributes it may have beside id and class, as html.parser names them. There
-# is no use, image, link, script, style, foreignObject, marker, gradient, filter or animation element, and no href.
-SVG_ELEMENTS = {
-    "title": set(), "g": {"fill", "stroke", "transform"}, "path": {"d"}, "circle": {"cx", "cy", "r"},
-    "rect": {"x", "y", "width", "height", "rx"}, "line": {"x1", "y1", "x2", "y2"}, "text": {"x", "y", "text-anchor", "transform"},
-}
-# The value of an attribute of an <svg> or in one: numbers and words, and no function but translate() and rotate(). So
-# no url(), no colon and no character reference that spells one. A fill or a stroke is none or the color of the text.
-SVG_VALUE = re.compile(r"[A-Za-z0-9 .,()-]*\Z")
-SVG_FUNCTIONS = {"translate", "rotate"}
-PAINT = {"none", "currentColor"}
 # What an element loads: the attribute that names a file.
 LOADS = {("img", "src"), ("source", "srcset"), ("link", "href")}
 META = {"viewport", "description", "color-scheme"}
@@ -131,17 +128,15 @@ AT_RULES = {"media", "keyframes"}
 # A property that moves the page, an animation, a transition or smooth scrolling, with or without a vendor prefix such as -webkit-, -moz-, -o- or -ms-: any one word
 # between dashes before the name counts as one. A prefixed at-rule, such as @-webkit-keyframes, is not in AT_RULES.
 MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+)*|scroll-behavior)\Z")
-# Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The "ink" colors are the
-# dark bands, and "go" the orange one, which the CSS sets in place of fg, muted, link, accent, box and code. The "$"
-# before a command is --ink-accent, also on the code of the orange band.
+# Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The button is the
+# background on the text color, and on the accent when the pointer is over it: the pairs of fg and bg, and of accent
+# and bg, turned around, with the same ratio.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
-         ("link", "box"), ("accent", "bg"), ("accent", "box"),
-         ("ink-fg", "ink-bg"), ("ink-muted", "ink-bg"), ("ink-accent", "ink-bg"), ("ink-fg", "ink-box"), ("ink-muted", "ink-box"),
-         ("ink-accent", "ink-box"), ("ink-fg", "ink-code"), ("go-fg", "signal"), ("go-code-fg", "go-code-bg"),
-         ("ink-accent", "go-code-bg"))
-# The lists whose items the test reads one by one: the sources, and the steps of a diagram.
-ITEM_LISTS = {"ul": "sources", "ol": "flow"}
-KEY = re.compile(r"ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+         ("link", "box"), ("accent", "bg"), ("accent", "box"))
+# The pairs in the figure: its labels on its own background and on the body of the staircase.
+FIGURE_PAIRS = (("fg", "box"), ("fg", "code-bg"), ("muted", "box"), ("accent", "box"))
+# The list whose items the test reads one by one: the steps of how Ratchet works.
+ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5
 
 
@@ -158,14 +153,13 @@ class PageReader(html.parser.HTMLParser):
         self.commands, self.styles, self.counts = [], [], {}
         self.text_in = None
         # The classes of each open element, beside self.stack. An item of a list in ITEM_LISTS, a <li> whose list has
-        # that class, records the links in it with their text, the text of each <code>, and the text of each element
-        # of the class "license". Each capture is [depth, field, href, parts], and ends when its element is closed.
+        # that class, records the links in it with their text. Each capture is [depth, field, href, parts], and ends
+        # when its element is closed.
         self.classes, self.items, self.captures = [], [], []
         self.item, self.item_at = None, None
         # Each list on the page, as (its tag, the classes of its class attribute), in order.
         self.lists = []
-        # Each <svg>, with its role, the id its aria-labelledby names, and the ids of the <title> elements directly in it.
-        self.figures, self.head_titles = [], 0
+        self.head_titles = 0
 
     def where(self):
         return "line %d" % self.getpos()[0]
@@ -183,10 +177,9 @@ class PageReader(html.parser.HTMLParser):
 
     def start(self, tag, attrs, closed):
         self.started = True
-        in_svg = "svg" in self.stack
-        table = SVG_ELEMENTS if in_svg else ELEMENTS
+        table = ELEMENTS
         if tag not in table:
-            self.problems.append("%s: <%s> is not an element this page may hold%s" % (self.where(), tag, " in an <svg>" if in_svg else ""))
+            self.problems.append("%s: <%s> is not an element this page may hold" % (self.where(), tag))
         if closed and tag not in VOID:
             self.problems.append("%s: <%s/> is not closed by its slash, only a void element may end so" % (self.where(), tag))
         self.counts[tag] = self.counts.get(tag, 0) + 1
@@ -200,11 +193,6 @@ class PageReader(html.parser.HTMLParser):
                 self.problems.append("%s: <%s> may not have the attribute %s" % (self.where(), tag, name))
             elif value is None:
                 self.problems.append("%s: <%s> has the attribute %s without a value" % (self.where(), tag, name))
-            elif (in_svg or tag == "svg") and name in ("fill", "stroke") and value not in PAINT:
-                self.problems.append("%s: <%s> has %s=%r, and a fill or a stroke is none or currentColor" % (self.where(), tag, name, value))
-            elif (in_svg or tag == "svg") and (not SVG_VALUE.match(value) or set(CSS_FUNCTION.findall(value)) - SVG_FUNCTIONS):
-                self.problems.append("%s: <%s> has %s=%r, and a value in an <svg> is numbers and words, and calls only translate() "
-                                     "and rotate()" % (self.where(), tag, name, value))
             elif (tag, name) in LOADS:
                 self.loads.append((self.where(), tag, value))
             elif (tag, name) == ("a", "href"):
@@ -221,16 +209,11 @@ class PageReader(html.parser.HTMLParser):
             self.problems.append("%s: an <a> has an href" % self.where())
         if tag == "img":
             self.images.append((self.where(), values.get("alt")))
-        if tag == "svg" and not in_svg:
-            self.figures.append({"where": self.where(), "role": values.get("role"), "labelledby": values.get("aria-labelledby"),
-                                 "titles": [], "classes": (values.get("class") or "").split()})
         if tag == "title":
             if self.stack[-1:] == ["head"]:
                 self.head_titles += 1
-            elif self.stack[-1:] == ["svg"] and self.figures:
-                self.figures[-1]["titles"].append(values.get("id"))
             else:
-                self.problems.append("%s: a <title> stands in <head>, or directly in an <svg> as its name" % self.where())
+                self.problems.append("%s: a <title> stands in <head>, and nowhere else" % self.where())
         if tag == "source" and self.stack[-1:] != ["picture"]:
             self.problems.append("%s: a <source> stands in a <picture>" % self.where())
         if re.fullmatch(r"h[1-6]", tag):
@@ -241,16 +224,12 @@ class PageReader(html.parser.HTMLParser):
         if tag in ITEM_LISTS:
             self.lists.append((tag, classes))
         if tag == "li" and self.stack and ITEM_LISTS.get(self.stack[-1]) in self.classes[-1]:
-            self.item = {"list": ITEM_LISTS[self.stack[-1]], "where": self.where(), "links": [], "codes": [], "licenses": []}
+            self.item = {"list": ITEM_LISTS[self.stack[-1]], "where": self.where(), "links": []}
             self.items.append(self.item)
             self.item_at = len(self.stack)
         elif self.item is not None and tag not in VOID:
             if tag == "a":
                 self.captures.append([len(self.stack), "links", values.get("href"), []])
-            if tag == "code":
-                self.captures.append([len(self.stack), "codes", None, []])
-            if "license" in classes:
-                self.captures.append([len(self.stack), "licenses", None, []])
         if tag not in VOID:
             self.stack.append(tag)
             self.classes.append(classes)
@@ -279,7 +258,7 @@ class PageReader(html.parser.HTMLParser):
         while self.captures and self.captures[-1][0] >= len(self.stack):
             _, field, href, parts = self.captures.pop()
             text = " ".join("".join(parts).split())
-            self.item[field].append((href, text) if field == "links" else text)
+            self.item[field].append((href, text))
         if self.item is not None and self.item_at >= len(self.stack):
             self.item, self.item_at = None, None
 
@@ -316,7 +295,7 @@ def contrast(one, other):
     return (high + 0.05) / (low + 0.05)
 
 
-def css_problems(css):
+def css_problems(css, pairs=PAIRS):
     problems = []
     if "\\" in css:
         problems.append("the CSS holds a backslash, which could spell a word the check does not see")
@@ -337,7 +316,7 @@ def css_problems(css):
     if sum(len(PALETTE.findall(block)) for block in blocks) != len(HEX.findall(css)):
         problems.append("the CSS writes a hex color outside the two palettes, or one that is not #rrggbb in lower case")
     for scheme, palette in zip(("light", "dark"), palettes):
-        for text, background in PAIRS:
+        for text, background in pairs:
             if text not in palette or background not in palette:
                 problems.append("the %s palette has no --%s or no --%s" % (scheme, text, background))
                 continue
@@ -378,6 +357,72 @@ def motion_problems(css):
     if blocks:
         problems.append("the CSS has a brace that is not matched: %s is never closed" % blocks[-1])
     return problems
+
+
+def palettes(css):
+    """The light and the dark palette of a CSS that css_problems passed, each as a dict of name and color."""
+    return [dict(PALETTE.findall(block)) for block in ROOT_BLOCK.findall(css)]
+
+
+def figure_problems(root, page_css):
+    """Everything wrong with the figure in the checkout at root, as a list of messages that name the file.
+
+    page_css is the CSS of the page, whose palettes the figure's colors are taken from.
+    """
+    name = "%s/%s" % (DOCS, FIGURE)
+    path = os.path.join(root, DOCS, FIGURE)
+    if os.path.islink(path) or not os.path.isfile(path):
+        return ["%s: there is no such file" % name]
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        return ["%s: not valid UTF-8 at byte %d" % (name, error.start)]
+    problems = []
+    for number, line in enumerate(text.split("\n"), 1):
+        for match in HIDDEN.finditer(line):
+            problems.append("%s:%d: holds U+%04X, a control or a character that reorders or hides text" % (name, number, ord(match.group())))
+    for mark, what in FIGURE_MARKS:
+        if mark in text:
+            problems.append("%s: holds %r, %s, which the figure does not hold" % (name, mark, what))
+    if problems:
+        # A doctype is never given to the parser, so it expands no entity.
+        return problems
+    try:
+        tree = xml.etree.ElementTree.fromstring(text)
+    except xml.etree.ElementTree.ParseError as error:
+        return ["%s: not well-formed XML: %s" % (name, error)]
+    styles = []
+    for element in tree.iter():
+        space, _, tag = element.tag.rpartition("}")
+        if space != "{" + SVG or tag not in FIGURE_ELEMENTS or (tag == "svg") != (element is tree):
+            problems.append("%s: <%s> is not an element the figure may hold" % (name, element.tag))
+            continue
+        for attribute, value in element.attrib.items():
+            if attribute not in FIGURE_ELEMENTS[tag]:
+                problems.append("%s: <%s> may not have the attribute %s" % (name, tag, attribute))
+            elif not FIGURE_VALUE.match(value):
+                problems.append("%s: <%s> has %s=%r, and a value in the figure is numbers and words" % (name, tag, attribute, value))
+        if element is not tree and len(element):
+            problems.append("%s: <%s> holds an element, and each element stands directly in the <svg>" % (name, tag))
+        words = [element.tail] + ([] if tag in ("style", "text") else [element.text])
+        if any(each and each.strip() for each in words):
+            problems.append("%s: text in or after <%s>, and the figure holds text only in <text> and <style>" % (name, tag))
+        if tag == "style":
+            styles.append(element.text or "")
+    if tree.get("role") != "img" or not tree.get("aria-label"):
+        problems.append('%s: the <svg> has role="img" and an aria-label that names it' % name)
+    if len(styles) != 1:
+        return problems + ["%s: holds <style> %d times, and must hold it once" % (name, len(styles))]
+    found = css_problems(styles[0], FIGURE_PAIRS)
+    if not found and len(palettes(page_css)) == 2:
+        for scheme, own, pages in zip(("light", "dark"), palettes(styles[0]), palettes(page_css)):
+            for key, color in sorted(own.items()):
+                if pages.get(key) != color:
+                    found.append("in the %s palette, --%s is %s, and the page's is %s: the figure has the colors of the page"
+                                 % (scheme, key, color, pages.get(key, "not there")))
+    return problems + ["%s: %s" % (name, problem) for problem in found]
 
 
 def readme_commands(readme):
@@ -436,10 +481,6 @@ def page_problems(root):
             found.append("%s: holds <%s> %d times, and must hold it once" % (name, tag, reader.counts.get(tag, 0)))
     if reader.head_titles != 1:
         found.append("%s: holds <title> %d times in <head>, and must hold it once" % (name, reader.head_titles))
-    for figure in reader.figures:
-        if figure["role"] != "img" or len(figure["titles"]) != 1 or not figure["titles"][0] or figure["labelledby"] != figure["titles"][0]:
-            found.append('%s: %s: an <svg> has role="img" and one <title> directly in it, whose id its aria-labelledby names'
-                         % (name, figure["where"]))
     level = 0
     for where, heading in reader.headings:
         if heading > level + 1:
@@ -453,28 +494,23 @@ def page_problems(root):
     for where, tag, value in reader.loads:
         if not FILE.match(value) or value not in FILES or value == ".nojekyll":
             found.append("%s: %s: <%s> loads %r, and the page loads only a file in %s/ by its name" % (name, where, tag, value, DOCS))
+    figures = ["<%s>" % tag for _, tag, value in reader.loads if value == FIGURE]
+    if figures != ["<img>"]:
+        found.append("%s: the figure %s is loaded by %s, and one <img> loads it, once" % (name, FIGURE, ", ".join(figures) or "nothing"))
     duplicates = sorted(set(each for each in reader.ids if reader.ids.count(each) > 1))
     if duplicates:
         found.append("%s: ids that stand more than once: %s" % (name, ", ".join(duplicates)))
-    try:
-        sources = registry.load_sources(os.path.join(root, "sources.json"))
-        data = registry.load(os.path.join(root, "ratchet.json"))
-    except registry.RegistryError as error:
-        sources, data = [], None
-        found.append("%s: the sources and the rules cannot be read: %s" % (name, error))
     # The page is the one page in docs/ (FILES), so its ids, as html.parser read them, are the ids a fragment may name.
-    outside = set(source_link(source) for source in sources)
     for where, value in reader.links:
-        problem = link_problem(root, value, {PAGE: reader.ids}, outside)
+        problem = link_problem(root, value, {PAGE: reader.ids})
         if problem:
             found.append("%s: %s: the link %r %s" % (name, where, value, problem))
-    if data is not None:
-        found += ["%s: %s" % (name, problem) for problem in source_problems(reader.items, sources, data)]
     for item in reader.items:
         if item["list"] == "flow" and not any(into_repo(href) for href, _ in item["links"]):
-            found.append("%s: %s: a step of a diagram that links nowhere in this repo. Each step links to where the repo shows it"
+            found.append("%s: %s: a step that links nowhere in this repo. Each step links to where the repo shows it"
                          % (name, item["where"]))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
+    found += figure_problems(root, "".join(reader.styles))
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
         allowed = readme_commands(handle.read())
@@ -486,58 +522,13 @@ def page_problems(root):
     return problems + found
 
 
-def source_link(source):
-    """The one link out of the repo that the page may hold for a source in sources.json: its repo, or its directory.
-
-    The link names no commit, so a pin that moves in sources.json does not make the page stale. The commit is in
-    sources.json, which the page links to.
-    """
-    if "directory" in source:
-        return "%s/tree/HEAD/%s" % (source["repo"], source["directory"])
-    return source["repo"]
-
-
-def source_problems(items, sources, data):
-    """Why the list of sources on the page is not sources.json, with the rules in ratchet.json that cite each.
-
-    The list is a <ul class="sources"> with one <li> per source, in the order of sources.json. Each item starts with
-    a link to the source, named by its name, holds its license once in an element of the class "license", and
-    names in <code>, in the order of ratchet.json, exactly the rules whose source cites it.
-    """
-    items = [item for item in items if item["list"] == "sources"]
-    if len(items) != len(sources):
-        return ["the list of sources holds %d items, and sources.json %d sources. It holds one item for each source, in the "
-                "order of sources.json" % (len(items), len(sources))]
-    cited = {}
-    for rule in data["rules"]:
-        for each in registry.cited_names(rule):
-            cited.setdefault(each, []).append(rule["key"])
-    problems = []
-    for item, source in zip(items, sources):
-        link = (source_link(source), source["name"])
-        if item["links"][:1] != [link]:
-            problems.append("%s: the list of sources, in the order of sources.json, has here the item for %s. It starts with a link "
-                            "to %s named %s, found %r" % (item["where"], source["name"], link[0], link[1], item["links"][:1]))
-            continue
-        if item["licenses"] != [source["license"]]:
-            problems.append("%s: the item for %s gives the license %r, and sources.json %r, once, in an element of the class "
-                            "license" % (item["where"], source["name"], item["licenses"], source["license"]))
-        keys = cited.get(source["name"], [])
-        if item["codes"] != keys or not all(KEY.match(key) for key in item["codes"]):
-            problems.append("%s: the item for %s names the rules %s, and the rules in ratchet.json that cite it are %s"
-                            % (item["where"], source["name"], ", ".join(item["codes"]) or "none", ", ".join(keys) or "none"))
-    return problems
-
-
-def link_problem(root, value, ids, outside=()):
+def link_problem(root, value, ids):
     """Why a link on the page is not allowed, or None. ids maps each page in docs/ to the ids on it.
 
     A link into the repo may end in a fragment of the form of an id, which is not checked against GitHub. A link
-    to a page in docs/, or to "#..." on this page, has a fragment only if it is an id on that page. The only links
-    out of the repo are those in outside, each matched whole: the link to each source in sources.json.
+    to a page in docs/, or to "#..." on this page, has a fragment only if it is an id on that page. Nothing links
+    out of the repo.
     """
-    if value in outside:
-        return None
     if value.startswith(REPO):
         match = REPO_LINK.match(value[len(REPO):])
         if not match:
@@ -565,7 +556,7 @@ def link_problem(root, value, ids, outside=()):
 
 
 def into_repo(href):
-    """Whether a link leads into this repo on GitHub, as a step of a diagram must: not out of it, and not to this page."""
+    """Whether a link leads into this repo on GitHub, as a step must: not out of it, and not to this page."""
     return isinstance(href, str) and (href == REPO or href.startswith(REPO + "/"))
 
 
@@ -601,10 +592,20 @@ class Page(RepoCopy, unittest.TestCase):
         released = generate.changelog_context(self.copy)[1]
         for words in (FETCH % released, "python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py</code>",
                       REPO + "/releases/latest", REPO + "/blob/main/LICENSE", 'href="%s"' % REPO,
-                      "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", "The honest limits",
-                      "Evidence from this repo", "How the ratchet turns", "How this repo is run", "What Ratchet builds on",
-                      "How it stays tight", '<a class="button" href="#start-here">Start here</a>'):
+                      "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<h2 id="why">Why it exists</h2>',
+                      '<h2 id="how-it-works">How it works</h2>', '<h2 id="the-principles">The principles</h2>',
+                      REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md",
+                      '<a class="button" href="#start-here">Start here</a>'):
             self.assertIn(words, text)
+
+    def test_the_page_is_short(self):
+        # One page a newcomer reads in a minute: under 450 words outside the CSS, and five headings.
+        text = self.page()
+        body = re.sub(r"<[^>]+>", " ", text[text.index("</style>"):])
+        self.assertLess(len(body.split()), 450)
+        reader = PageReader()
+        reader.feed(text)
+        self.assertEqual([level for _, level in reader.headings], [1, 2, 2, 2, 2])
 
     def test_no_page_fails(self):
         shutil.rmtree(os.path.join(self.copy, DOCS))
@@ -648,7 +649,11 @@ class Page(RepoCopy, unittest.TestCase):
                        '<SCRIPT src="t.js"></SCRIPT>', '<iframe src="https://example.invalid/"></iframe>',
                        '<object data="https://example.invalid/x"></object>', '<embed src="https://example.invalid/x">',
                        '<base href="https://example.invalid/">', '<form action="https://example.invalid/"></form>',
-                       '<svg><image href="https://example.invalid/x.png"></image></svg>', '<audio src="x.mp3"></audio>'):
+                       '<svg><image href="https://example.invalid/x.png"></image></svg>', '<audio src="x.mp3"></audio>',
+                       # The page holds no inline SVG, so an <svg> fails whole, and so does an element of SVG outside one.
+                       '<svg viewBox="0 0 1 1" role="img" aria-labelledby="t"><title id="t">x</title></svg>',
+                       '<svg onload="alert(1)"></svg>', '<path d="M0 0 L1 1"></path>', '<use href="#why"></use>',
+                       "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"></animate>'):
             with self.subTest(script=script):
                 self.setUp()
                 self.change("</main>", script + "\n</main>")
@@ -695,7 +700,9 @@ class Page(RepoCopy, unittest.TestCase):
         for target in ("https://example.invalid/", "http://github.com/fabian-von-tiedemann/ratchet",
                        "https://github.com/fabian-von-tiedemann/ratchet-other", "https://github.com/fabian-von-tiedemann",
                        "javascript:alert(1)", "&#106;avascript:alert(1)", "mailto:x@example.invalid",
-                       "https://fabian-von-tiedemann.github.io/ratchet/", "//example.invalid/"):
+                       "https://fabian-von-tiedemann.github.io/ratchet/", "//example.invalid/",
+                       # A source in sources.json is credited in RATCHET.md, which the page links to, and not on the page.
+                       "https://github.com/mattpocock/skills", "https://github.com/cursor/plugins/tree/HEAD/pstack"):
             with self.subTest(target=target):
                 self.setUp()
                 self.change('href="%s"' % REPO, 'href="%s"' % target)
@@ -713,6 +720,18 @@ class Page(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
                 self.assert_fails(message)
+
+    def test_a_link_to_a_pull_request_or_an_issue_passes_and_one_of_another_form_fails(self):
+        for target in ("/issues/49", "/pull/42", "/releases/latest"):
+            with self.subTest(target=target):
+                self.setUp()
+                self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
+                self.assertEqual(page_problems(self.copy), [])
+        for target in ("/issues/0", "/issues/49/../../x", "/issues", "/issues/new", "/pull/0", "/pulls"):
+            with self.subTest(target=target):
+                self.setUp()
+                self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
+                self.assert_fails("goes into the repo, but not")
 
     def test_a_relative_link_or_a_fragment_that_leads_nowhere_fails(self):
         for target in ("missing.html", "../README.md", "/index.html", "#no-such-id", ".nojekyll"):
@@ -739,7 +758,7 @@ class Page(RepoCopy, unittest.TestCase):
 
     def test_an_id_twice_on_the_page_fails(self):
         # The second start-here is one a link names, so the link would lead to either.
-        self.change('<h2 id="limits">', '<h2 id="start-here">')
+        self.change('<h2 id="why">', '<h2 id="start-here">')
         self.assert_fails("ids that stand more than once: start-here")
 
     def test_an_element_left_open_or_closed_out_of_order_fails(self):
@@ -753,7 +772,8 @@ class Page(RepoCopy, unittest.TestCase):
                                   ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><?php ?>", "which the page does not hold"),
                                   ("<h1>Ratchet</h1>", '<h1 id="x" id="y">Ratchet</h1>', "has the attribute id twice"),
                                   ("<h1>Ratchet</h1>", "<h1 hidden>Ratchet</h1>", "may not have the attribute hidden"),
-                                  ("<main>", "<main><title>x</title>", "a <title> stands in <head>, or directly in an <svg>")):
+                                  ("<main>", "<main><title>x</title>", "a <title> stands in <head>, and nowhere else"),
+                                  ("<h1>Ratchet</h1>", "<h1>Ratchet<title>x</title></h1>", "a <title> stands in <head>, and nowhere else")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -774,18 +794,26 @@ class Page(RepoCopy, unittest.TestCase):
         css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
         light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
         dark = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[1]))
+        # Each key differs between the palettes, so the first match on the page is the one in the palette named.
         for scheme, palette, key, faint in (("light", light, "muted", "#aaaaaa"), ("dark", dark, "link", "#333366"),
-                                            ("light", light, "bg", "#777777")):
+                                            ("light", light, "bg", "#777777"), ("light", light, "box", "#555555"),
+                                            ("dark", dark, "box", "#9a9a9a"), ("light", light, "accent", "#ffbb66"),
+                                            ("dark", dark, "accent", "#3a2a10"), ("light", light, "code-bg", "#555555"),
+                                            ("dark", dark, "code-fg", "#3a3a3a")):
             with self.subTest(scheme=scheme, key=key):
                 self.setUp()
                 self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
-                self.assert_fails("in the %s palette" % scheme)
+                self.assert_fails("in the %s palette" % scheme, "--%s" % key)
         self.setUp()
         self.change("</style>", "p { color: #777; }\n</style>")
         self.assert_fails("a hex color outside the two palettes")
         self.setUp()
         self.change(DARK, "@media (prefers-color-scheme: light)")
         self.assert_fails("the CSS has two :root blocks of colors")
+
+    def test_a_second_title_in_the_head_fails(self):
+        self.change("</title>\n", "</title>\n<title>x</title>\n")
+        self.assert_fails("holds <title> 2 times in <head>, and must hold it once")
 
     def test_the_ratios_are_as_wcag_computes_them(self):
         self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0)
@@ -800,6 +828,172 @@ class Page(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change(old, new)
                 self.assert_fails("is not a line of a code block marked sh in README.md")
+
+
+class Figure(RepoCopy, unittest.TestCase):
+    """The one figure, docs/ratchet-notch.svg, passes as it stands, and each change below fails with its message."""
+
+    def setUp(self):
+        super().setUp()
+        self.path = os.path.join(self.copy, DOCS, FIGURE)
+        with open(self.path, encoding="utf-8", newline="") as handle:
+            self.figure = handle.read()
+
+    def write(self, old, new, name=FIGURE):
+        """The file as it stands in the repo, with one change."""
+        path = os.path.join(self.copy, DOCS, name)
+        with open(os.path.join(ROOT, DOCS, name), encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        self.assertIn(old, text, "the test expects %r in %s" % (old, name))
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace(old, new, 1))
+
+    def assert_fails(self, *message):
+        problems = page_problems(self.copy)
+        self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
+
+    def test_the_figure_as_it_stands_passes_and_is_loaded_once(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8") as handle:
+            page = handle.read()
+        self.assertEqual(page.count(FIGURE), 1)
+        self.assertEqual(page_problems(self.copy), [])
+        tree = xml.etree.ElementTree.fromstring(self.figure)
+        labels = [element.text for element in tree.iter("{%s}text" % SVG)]
+        self.assertEqual(labels, ["failure \u2192 check"] * 3 + ["one notch tighter", "can\u2019t slip back"])
+
+    def test_a_figure_that_no_image_loads_or_that_is_loaded_twice_fails(self):
+        image = '<img class="notch" src="ratchet-notch.svg"'
+        for old, new, by in ((image, '<img class="notch" src="ratchet-light.svg"', "nothing"),
+                             ("</main>", image + ' alt="x">\n</main>', "<img>, <img>"),
+                             ('<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="ratchet-notch.svg"', "<link>, <img>"),
+                             (image, '<picture><source srcset="ratchet-notch.svg"></picture>\n<img src="ratchet-light.svg"', "<source>")):
+            with self.subTest(new=new):
+                self.write(old, new, PAGE)
+                self.assert_fails("the figure ratchet-notch.svg is loaded by %s, and one <img> loads it, once" % by)
+
+    def test_a_figure_without_alt_text_fails(self):
+        self.write('height="256" alt="A staircase', 'height="256" alt=" " title="A staircase', PAGE)
+        self.assert_fails("an <img> without alt text")
+
+    def test_no_figure_or_a_link_in_its_place_fails(self):
+        os.remove(self.path)
+        self.assert_fails("docs/ must hold exactly")
+        self.assert_fails("docs/ratchet-notch.svg: there is no such file")
+        os.symlink("ratchet-light.svg", self.path)
+        self.assert_fails("docs/ratchet-notch.svg: there is no such file")
+
+    def test_a_figure_that_is_not_utf8_or_holds_a_hidden_character_fails(self):
+        with open(self.path, "ab") as handle:
+            handle.write(b"\xff\n")
+        self.assert_fails("docs/ratchet-notch.svg: not valid UTF-8 at byte")
+        for character in ("\r", "\t", "\u202e", "\u200b", "\ufeff"):
+            with self.subTest(character=repr(character)):
+                self.write(">one notch tighter<", ">one notch%stighter<" % character)
+                self.assert_fails("docs/ratchet-notch.svg:", "holds U+%04X" % ord(character))
+
+    def test_a_doctype_a_comment_a_processing_instruction_or_a_reference_fails(self):
+        entity = '<!DOCTYPE svg [<!ENTITY x "failure">]>\n<svg '
+        for old, new, mark in (("<svg ", entity, "'<!'"), ("<svg ", '<?xml version="1.0"?>\n<svg ', "'<?'"),
+                               ("<svg ", '<?xml-stylesheet href="https://example.invalid/x.css"?>\n<svg ', "'<?'"),
+                               ("</style>", "</style>\n<!-- x -->", "'<!'"), (">one notch tighter<", "><![CDATA[one notch]]><", "'<!'"),
+                               (">one notch tighter<", ">one notch &#116;ighter<", "'&'"), (">one notch tighter<", ">one &amp; one<", "'&'")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: holds %s" % mark, "which the figure does not hold")
+
+    def test_a_figure_that_is_not_well_formed_fails(self):
+        for old, new in (("</svg>", ""), ('rx="8"/>', 'rx="8">'), ('rx="8"/>', 'rx="8" rx="8"/>'), ("<svg ", "x<svg ")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: not well-formed XML")
+
+    def test_an_element_that_is_not_on_the_list_fails(self):
+        for element in ("<script>alert(1)</script>", '<script href="https://example.invalid/t.js"/>', '<use href="#x"/>',
+                        '<image href="https://example.invalid/x.png"/>', '<a href="https://example.invalid/"><text>x</text></a>',
+                        "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"/>', '<set attributeName="x"/>',
+                        "<g><circle/></g>", "<title>x</title>", "<svg/>", '<svg xmlns="http://www.w3.org/2000/svg"/>',
+                        '<circle xmlns="http://www.w3.org/1999/xhtml"/>', '<x:script xmlns:x="http://www.w3.org/1999/xhtml">1</x:script>'):
+            with self.subTest(element=element):
+                self.write("</style>", "</style>\n" + element)
+                self.assert_fails("docs/ratchet-notch.svg:", "is not an element the figure may hold")
+        self.write(' xmlns="http://www.w3.org/2000/svg"', "")
+        self.assert_fails("docs/ratchet-notch.svg: <svg> is not an element the figure may hold")
+
+    def test_an_attribute_that_is_not_on_the_list_fails(self):
+        for attribute in ('onload="alert(1)"', 'onclick="x"', 'style="fill: red"', 'fill="#ff0000"', 'stroke="red"', 'id="x"',
+                          'href="https://example.invalid/"', 'filter="url(#f)"', 'transform="rotate(45)"',
+                          'xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://example.invalid/"'):
+            with self.subTest(attribute=attribute):
+                self.write('<circle class="ball"', '<circle %s class="ball"' % attribute)
+                self.assert_fails("docs/ratchet-notch.svg: <circle> may not have the attribute")
+        self.write('role="img"', 'role="img" onload="alert(1)"')
+        self.assert_fails("docs/ratchet-notch.svg: <svg> may not have the attribute onload")
+
+    def test_a_value_that_is_not_numbers_and_words_fails(self):
+        for old, new in (('class="ball"', 'class="url(#x)"'), ('class="ball"', 'class=""'), ('r="13.5"', 'r="calc(1px)"'),
+                         ('d="M200 62.5 H218 V36 Z"', 'd="M200 62.5; H218"'), ('text-anchor="end">one', 'text-anchor="javascript:x">one'),
+                         ('aria-label="A staircase', 'aria-label="https://example.invalid/ A staircase')):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg:", "and a value in the figure is numbers and words")
+
+    def test_an_element_or_text_out_of_place_fails(self):
+        self.write(">one notch tighter<", '>one <circle class="ball" cx="1" cy="1" r="1"/><')
+        self.assert_fails("docs/ratchet-notch.svg: <text> holds an element, and each element stands directly in the <svg>")
+        for old, new in (("</style>", "</style>\nfailure"), ('rx="8"/>', 'rx="8">failure</rect>'), ("</svg>", "failure</svg>")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: text in or after", "the figure holds text only in <text> and <style>")
+
+    def test_a_figure_without_its_role_its_name_or_its_one_style_fails(self):
+        for old, new in (('role="img" ', ""), ('role="img"', 'role="presentation"')):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails('docs/ratchet-notch.svg: the <svg> has role="img" and an aria-label that names it')
+        self.write(self.figure[self.figure.index(" aria-label="):self.figure.index(">")], "")
+        self.assert_fails('docs/ratchet-notch.svg: the <svg> has role="img" and an aria-label that names it')
+        self.write("</style>", "</style>\n<style>text { fill: red; }</style>")
+        self.assert_fails("docs/ratchet-notch.svg: holds <style> 2 times, and must hold it once")
+        self.write(self.figure[self.figure.index("<style>"):self.figure.index("</style>") + len("</style>")], "")
+        self.assert_fails("docs/ratchet-notch.svg: holds <style> 0 times, and must hold it once")
+
+    def test_css_in_the_figure_that_the_page_may_not_hold_fails(self):
+        for css, message in (('@import "https://example.invalid/x.css";', "holds @import"),
+                             ("@font-face { font-family: x; }", "holds @font-face"),
+                             (".ball { fill: url(#g); }", 'holds "url"'), (".ball { fill: \\75rl(x); }", "holds a backslash"),
+                             (".ball { r: calc(1px); }", "calls calc()"), (".ball { fill: #ff0000; }", "a hex color outside the two palettes"),
+                             (".ball { transition: fill 1s; }", "moves the page outside"), (".ball {", "a brace that is not matched")):
+            with self.subTest(css=css):
+                self.write("</style>", css + "\n</style>")
+                self.assert_fails("docs/ratchet-notch.svg: the CSS ", message)
+        self.write(DARK, "@media (prefers-color-scheme: light)")
+        self.assert_fails("docs/ratchet-notch.svg: the CSS has two :root blocks of colors")
+
+    def test_a_color_that_is_faint_or_not_the_pages_fails(self):
+        light, dark = palettes(self.figure)
+        for scheme, palette, key, faint in (("light", light, "muted", "#aaaaaa"), ("light", light, "accent", "#ffbb66"),
+                                            ("dark", dark, "fg", "#3a3a3a"), ("dark", dark, "box", "#9a9a9a"),
+                                            ("light", light, "code-bg", "#555555")):
+            with self.subTest(scheme=scheme, key=key):
+                self.write("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
+                self.assert_fails("docs/ratchet-notch.svg: in the %s palette" % scheme, "--%s" % key, "under 4.5")
+        # A color with contrast enough that is not the page's, the border, which is in no pair, and a name the page does not have.
+        for old, new, message in (("--fg: %s;" % light["fg"], "--fg: #000000;", "in the light palette, --fg is #000000, and the page's is %s" % light["fg"]),
+                                  ("--edge: %s;" % dark["edge"], "--edge: #444444;", "in the dark palette, --edge is #444444"),
+                                  ("--edge: %s;" % light["edge"], "--edge: %s;\n  --line: #000000;" % light["edge"], "the light and the dark palette name different colors")):
+            with self.subTest(new=new):
+                self.write(old, new)
+                self.assert_fails("docs/ratchet-notch.svg: " + message)
+        self.write("--edge: %s;" % light["edge"], "--edge: %s;\n  --line: #000000;" % light["edge"])
+        with open(self.path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        with open(self.path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text.replace("--edge: %s;" % dark["edge"], "--edge: %s;\n    --line: #ffffff;" % dark["edge"]))
+        self.assert_fails("docs/ratchet-notch.svg: in the light palette, --line is #000000, and the page's is not there")
+
+    def test_a_color_of_the_page_that_moves_fails_until_the_figure_follows(self):
+        self.write("--accent: #b23a04;", "--accent: #a03000;", PAGE)
+        self.assert_fails("docs/ratchet-notch.svg: in the light palette, --accent is #b23a04, and the page's is #a03000")
 
 
 class PageFetchLine(RepoCopy, unittest.TestCase):
@@ -896,25 +1090,34 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.assertNotIn("Traceback", output)
 
 
-
-# The line on the page that gives the count and the cap, as the test expects it. It is spelled out here and counted
+# The line on the page that counts the rules of the core, as the test expects it. It is spelled out here and counted
 # from ratchet.json below, not taken from generate.py, so the test does not compute it the way the generator does.
-BUDGET_LINE = ('<p id="budget" class="stat"><strong>%d experimental rules, with a cap of %d.</strong> The core holds %d '
-               'rules and is frozen: %d name a check and %d are text only. Counted by <code>checks/generate.py</code> '
-               'from <code>ratchet.json</code>.</p>')
+COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d name a check and '
+              '%d are text only.</p>')
 
 
-def budget_line(root):
+def count_line(root):
     with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
         data = json.load(handle)
     core = [rule for rule in data["rules"] if rule["status"] == "core"]
-    experimental = [rule for rule in data["rules"] if rule["status"] == "experimental"]
     enforced = [rule for rule in core if rule["enforcement"] == "enforced"]
-    return BUDGET_LINE % (len(experimental), data["experimental_cap"], len(core), len(enforced), len(core) - len(enforced))
+    return COUNT_LINE % (len(core), len(enforced), len(core) - len(enforced))
 
 
-class PageBudget(RepoCopy, unittest.TestCase):
-    """generate.py writes the line on the page that gives the count of rules and the cap, and --check fails when it is stale."""
+def rewrite_ratchet(root, change):
+    """Change ratchet.json in a copy of the repo, as data, and read it back as every check reads it."""
+    path = os.path.join(root, "ratchet.json")
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    change(data)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    registry.load(path)
+
+
+class PageCount(RepoCopy, unittest.TestCase):
+    """generate.py writes the line on the page that counts the rules of the core, and --check fails when it is stale."""
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -924,16 +1127,25 @@ class PageBudget(RepoCopy, unittest.TestCase):
         with open(os.path.join(self.copy, DOCS, PAGE), "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
 
-    def test_the_page_gives_the_count_and_the_cap_of_ratchet_json(self):
-        self.assertEqual(lines_that_hold(self.page(), 'id="budget"'), [budget_line(self.copy)])
-        self.assertIn("with a cap of 17.", budget_line(self.copy))
+    def test_the_page_gives_the_count_of_ratchet_json(self):
+        self.assertEqual(lines_that_hold(self.page(), 'id="count"'), [count_line(self.copy)])
+        self.assertIn("the core has 19 rules. 13 name a check and 6 are text only.", count_line(self.copy))
 
-    def test_a_raised_cap_fails_until_generate_moves_the_page(self):
+    def test_a_rule_that_gets_a_check_fails_until_generate_moves_the_page(self):
         before = self.page()
-        old = budget_line(self.copy)
-        self.edit("ratchet.json", '"experimental_cap": 17', '"experimental_cap": 18')
-        new = budget_line(self.copy)
+        old = count_line(self.copy)
+
+        def give_a_check(data):
+            # A text-only rule of the core that this repo's register does not copy, so that only the count moves.
+            with open(os.path.join(self.copy, "register.json"), encoding="utf-8") as handle:
+                copied = set(item["key"] for item in json.load(handle)["adopted"])
+            rule = next(rule for rule in data["rules"] if rule["status"] == "core" and rule["enforcement"] == "text-only"
+                        and rule["key"] not in copied and rule["key"] not in data["start"])
+            rule["enforcement"], rule["ratchet"] = "enforced", "Check: a check that the test made up"
+        rewrite_ratchet(self.copy, give_a_check)
+        new = count_line(self.copy)
         self.assertNotEqual(old, new)
+        self.assertIn("14 name a check and 5 are text only.", new)
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
         code, output = run("generate.py", root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
@@ -944,22 +1156,22 @@ class PageBudget(RepoCopy, unittest.TestCase):
         self.assertEqual(page_problems(self.copy), [])
 
     def test_a_number_edited_by_hand_fails(self):
-        line = budget_line(self.copy)
-        self.write_page(self.page().replace(line, line.replace("with a cap of 17.", "with a cap of 40."), 1))
+        line = count_line(self.copy)
+        self.write_page(self.page().replace(line, line.replace("13 name a check", "19 name a check"), 1))
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
 
-    def test_an_indented_budget_line_passes(self):
-        line = budget_line(self.copy)
+    def test_an_indented_count_line_passes(self):
+        line = count_line(self.copy)
         self.write_page(self.page().replace(line, "  " + line, 1))
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
 
-    def test_a_budget_line_of_another_form_fails(self):
-        line = budget_line(self.copy)
+    def test_a_count_line_of_another_form_fails(self):
+        line = count_line(self.copy)
         for new in ("", line + "\n" + line, line + " And more.", line.replace("<strong>", "<strong>about ", 1),
-                    line.replace('<p id="budget" class="stat">', '<p class="stat">\n<span id="budget"></span>', 1),
-                    line + '\n<p id="budget-old">23 experimental rules</p>'.replace("budget-old", "budget"),
-                    line.replace("with a cap of 17.", "with a cap of seventeen.")):
+                    line.replace('<p id="count" class="count">', '<p class="count">\n<span id="count"></span>', 1),
+                    line + '\n<p id="count">23 rules</p>',
+                    line.replace("13 name a check", "thirteen name a check")):
             with self.subTest(new=new):
                 self.setUp()
                 self.write_page(self.page().replace(line, new, 1))
@@ -972,8 +1184,8 @@ class PageBudget(RepoCopy, unittest.TestCase):
                 self.assertNotIn("wrote docs/index.html", output)
 
 
-class PageSources(RepoCopy, unittest.TestCase):
-    """The list of sources on the page is sources.json, with the rules in ratchet.json that cite each."""
+class PageSteps(RepoCopy, unittest.TestCase):
+    """How Ratchet works is one ordered list whose every step links to where the repo shows it."""
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -985,296 +1197,50 @@ class PageSources(RepoCopy, unittest.TestCase):
     def assert_fails(self, *message):
         Page.assert_fails(self, *message)
 
-    def test_each_source_stands_with_its_link_its_license_and_the_rules_that_cite_it(self):
-        # Written out here from sources.json and the sources of the rules in ratchet.json, as they stand.
-        text = self.page()
-        expected = (
-            ("https://github.com/google/elephant-goldfish-model", "google/elephant-goldfish-model", "Apache-2.0",
-             ("ratchet.fresh-context",)),
-            ("https://github.com/mattpocock/skills", "mattpocock/skills", "MIT",
-             ("ratchet.ask-the-owner", "ratchet.root-cause", "ratchet.simplest", "ratchet.test-can-fail", "ratchet.evidence-before-done")),
-            ("https://github.com/cursor/plugins/tree/HEAD/pstack", "pstack", "MIT",
-             ("ratchet.two-rounds", "ratchet.root-cause", "ratchet.simplest", "ratchet.evidence-before-done",
-              "ratchet.lesson-names-check", "ratchet.si-harden")),
-            ("https://github.com/obra/superpowers", "obra/superpowers", "MIT",
-             ("ratchet.evidence-before-done",)),
-        )
-        reader = PageReader()
-        reader.feed(text)
-        items = [item for item in reader.items if item["list"] == "sources"]
-        self.assertEqual([(item["links"][0], item["licenses"], tuple(item["codes"])) for item in items],
-                         [((link, name), [license], keys) for link, name, license, keys in expected])
-
-    def test_a_source_left_out_or_out_of_order_fails(self):
-        text = self.page()
-        start, end = text.index('<ul class="sources">'), text.index("</ul>", text.index('<ul class="sources">'))
-        items = text[start:end].split("<li>")[1:]
-        for new in ("<li>".join([""] + items[1:]), "<li>".join([""] + [items[1], items[0]] + items[2:])):
-            with self.subTest(new=new[:60]):
-                self.setUp()
-                self.change(text[start:end], '<ul class="sources">\n' + new.lstrip("\n"))
-                self.assert_fails("the list of sources")
-
-    def test_a_source_added_to_sources_json_fails_until_the_page_names_it(self):
-        self.edit("sources.json", '  "sources": [\n', '  "sources": [\n    {\n      "name": "example/new",\n      "repo": '
-                  '"https://github.com/example/new",\n      "commit": "%s",\n      "license": "MIT"\n    },\n' % ("a" * 40))
-        self.assert_fails("the list of sources")
-
-    def test_a_wrong_license_fails(self):
-        self.change('<span class="license">Apache-2.0</span>', '<span class="license">MIT</span>')
-        self.assert_fails("google/elephant-goldfish-model", "license")
-
-    def test_a_rule_that_cites_a_source_and_is_not_on_the_page_fails(self):
-        path = os.path.join(self.copy, "ratchet.json")
-        with open(path, encoding="utf-8") as handle:
-            text = handle.read()
-        at = text.index('"key": "ratchet.no-tracing"')
-        cut = text.index('"source": ""', at)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(text[:cut] + '"source": "obra/superpowers `example`"' + text[cut + len('"source": ""'):])
-        self.assert_fails("obra/superpowers", "ratchet.no-tracing")
-
-    def test_a_key_on_the_page_that_does_not_cite_the_source_fails(self):
-        for old, new in (("<code>ratchet.fresh-context</code>", "<code>ratchet.fresh-context</code>, <code>ratchet.simplest</code>"),
-                         ("<code>ratchet.fresh-context</code>", "")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails("google/elephant-goldfish-model", "cite it")
-
-    def test_a_link_to_a_source_in_another_form_fails(self):
-        for target in ("https://github.com/google/elephant-goldfish-model/tree/main", "https://github.com/google",
-                       "https://github.com/google/elephant-goldfish-model/", "http://github.com/google/elephant-goldfish-model",
-                       "https://github.com/cursor/plugins"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="https://github.com/google/elephant-goldfish-model"', 'href="%s"' % target)
-                self.assert_fails("the link %r" % target)
-
-
-class PageDiagrams(RepoCopy, unittest.TestCase):
-    """The two diagrams are ordered lists whose every step links to where the repo shows it."""
-
-    def page(self):
-        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
-            return handle.read()
-
-    def change(self, old, new):
-        Page.change(self, old, new)
-
-    def assert_fails(self, *message):
-        Page.assert_fails(self, *message)
-
-    def test_there_are_two_diagrams_of_steps_that_each_link_into_the_repo(self):
+    def test_there_is_one_list_of_three_steps_that_each_link_into_the_repo(self):
         reader = PageReader()
         reader.feed(self.page())
         steps = [item for item in reader.items if item["list"] == "flow"]
-        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 2)
-        self.assertGreaterEqual(len(steps), 10)
+        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 1)
+        self.assertEqual(len(steps), 3)
         self.assertTrue(all(any(into_repo(href) for href, _ in item["links"]) for item in steps))
 
-    def test_a_diagram_is_counted_by_its_class_in_any_order(self):
-        # The class attribute holds a list: "loop flow" is a diagram as much as "flow loop" is.
-        self.change('<ol class="flow loop">', '<ol class="loop  flow">')
+    def test_the_list_is_counted_by_its_class_in_any_order(self):
+        # The class attribute holds a list: "wide  flow" is the list of steps as much as "flow" is.
+        self.change('<ol class="flow">', '<ol class="wide  flow">')
         reader = PageReader()
         reader.feed(self.page())
-        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 2)
+        self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 1)
+        self.assertEqual(len([item for item in reader.items if item["list"] == "flow"]), 3)
         self.assertEqual(page_problems(self.copy), [])
 
     def test_a_step_without_a_link_fails(self):
-        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a>',
-                    "templates/LESSON.md")
-        self.assert_fails("a step of a diagram that links nowhere in this repo")
+        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet\'s own register</a>',
+                    "Ratchet's own register")
+        self.assert_fails("a step that links nowhere in this repo")
 
-    def test_a_step_whose_only_link_leads_out_of_the_repo_fails(self):
-        # A link to a source in sources.json is allowed on the page, but it does not show where this repo does the step.
-        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/templates/LESSON.md">templates/LESSON.md</a>',
-                    '<a href="https://github.com/mattpocock/skills">mattpocock/skills</a>')
-        self.assert_fails("a step of a diagram that links nowhere in this repo")
-        self.assertEqual(len([problem for problem in page_problems(self.copy) if "links nowhere" in problem]), 1)
-
-    def test_the_sandbox_is_linked_to_its_issue(self):
-        self.assertIn('href="%s/issues/49"' % REPO, self.page())
-
-    def test_a_link_to_an_issue_of_another_form_fails(self):
-        for target, message in (("/issues/0", "goes into the repo, but not"), ("/issues/49/../../x", "goes into the repo, but not"),
-                                ("/issues", "goes into the repo, but not"), ("/issues/new", "goes into the repo, but not")):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="%s/issues/49"' % REPO, 'href="%s%s"' % (REPO, target))
-                self.assert_fails(message)
-
-    def test_the_new_colors_are_held_to_the_same_contrast(self):
-        css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
-        light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
-        dark = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[1]))
-        for scheme, palette, key, faint in (("light", light, "box", "#555555"), ("dark", dark, "box", "#9a9a9a"),
-                                            ("light", light, "accent", "#ffbb66"), ("dark", dark, "accent", "#3a2a10")):
-            with self.subTest(scheme=scheme, key=key):
-                self.setUp()
-                self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
-                self.assert_fails("in the %s palette" % scheme, "--%s" % key)
-
-    def test_the_dark_and_the_orange_bands_are_held_to_the_same_contrast(self):
-        css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
-        light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
-        dark = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[1]))
-        # Each key differs between the palettes, so the first match on the page is the one in the palette named.
-        for scheme, palette, key, faint in (("light", light, "ink-muted", "#3d392e"), ("dark", dark, "ink-fg", "#303030"),
-                                            ("light", light, "go-fg", "#c05010"), ("dark", dark, "ink-box", "#9a9a9a"),
-                                            ("light", light, "code-fg", "#a09a8a")):
-            with self.subTest(scheme=scheme, key=key):
-                self.setUp()
-                self.change("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
-                self.assert_fails("in the %s palette" % scheme, "--%s" % key)
-
-    def test_the_prompt_on_the_code_of_the_orange_band_is_held_to_the_same_contrast(self):
-        # The "$" before a command is --ink-accent, and in the orange band it stands on --go-code-bg. The new background
-        # keeps --go-code-fg legible, so only that pair fails.
-        for scheme, old in (("light", "\n  --go-code-bg: #15140f;"), ("dark", "\n    --go-code-bg: #15140f;")):
-            with self.subTest(scheme=scheme):
-                self.setUp()
-                self.change(old, old.replace("#15140f", "#555555"))
-                problems = [problem for problem in page_problems(self.copy) if "contrast ratio" in problem]
-                self.assertEqual(len(problems), 1, problems)
-                self.assert_fails("in the %s palette, --ink-accent on --go-code-bg" % scheme)
+    def test_a_step_whose_only_link_leads_to_the_page_fails(self):
+        # A link to an id on the page is allowed, but it does not show where this repo does the step.
+        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet\'s own register</a>',
+                    '<a href="#why">Why</a>')
+        self.assert_fails("a step that links nowhere in this repo")
+        self.assertEqual(len(page_problems(self.copy)), 1)
 
 
-# The first figure, where a case below puts what it adds. Each insert stands at the first of its kind on the page.
-FIGURE = '<svg class="fig fig-ratchet"'
-FIGURE_INSIDE = '<g fill="currentColor" stroke="none">'
-
-
-class PageFigures(RepoCopy, unittest.TestCase):
-    """The figures are inline SVG drawn from a short list of elements and attributes, each named by its own title."""
-
-    def page(self):
-        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
-            return handle.read()
-
-    def change(self, old, new):
-        Page.change(self, old, new)
-
-    def assert_fails(self, *message):
-        Page.assert_fails(self, *message)
-
-    def test_there_are_five_figures_each_named_by_its_title(self):
-        reader = PageReader()
-        reader.feed(self.page())
-        self.assertEqual(len(reader.figures), 5)
-        # Each figure is named by the class fig and one class fig-<name>, so that no class of a part of a figure, such
-        # as the ski in the loop, is also the class of a whole figure and styles every stroke in it.
-        names = [[each for each in figure["classes"] if each.startswith("fig-")] for figure in reader.figures]
-        self.assertEqual(names, [["fig-dial"], ["fig-ratchet"], ["fig-loop"], ["fig-ski"], ["fig-machine"]])
-        self.assertTrue(all(figure["classes"][:1] == ["fig"] and len(figure["classes"]) == 2 for figure in reader.figures))
-        for figure in reader.figures:
-            self.assertEqual(figure["role"], "img")
-            self.assertEqual(figure["titles"], [figure["labelledby"]])
-        self.assertEqual(reader.head_titles, 1)
-
-    def test_an_element_that_is_not_on_the_list_of_svg_fails(self):
-        for element in ('<use href="#fig-loop-title"></use>', '<image href="https://example.invalid/x.png"></image>',
-                        '<a href="https://example.invalid/"><text>x</text></a>', "<script>alert(1)</script>",
-                        "<foreignObject><p>x</p></foreignObject>", "<style>path { fill: red; }</style>",
-                        '<marker id="m"></marker>', '<linearGradient id="g"></linearGradient>', '<filter id="f"></filter>',
-                        '<animate attributeName="x"></animate>', '<set attributeName="x"></set>', "<svg></svg>",
-                        "<p>x</p>"):
-            with self.subTest(element=element):
-                self.setUp()
-                self.change(FIGURE_INSIDE, element + FIGURE_INSIDE)
-                self.assert_fails("is not an element this page may hold in an <svg>")
-
-    def test_an_element_of_svg_outside_an_svg_fails(self):
-        self.change("</main>", '<path d="M0 0 L1 1"></path>\n</main>')
-        self.assert_fails("<path> is not an element this page may hold")
-
-    def test_an_attribute_that_is_not_on_the_list_fails(self):
-        for where, attribute, name in ((FIGURE, 'onload="alert(1)"', "onload"), (FIGURE, 'xmlns:xlink="x"', "xmlns:xlink"),
-                                       ('<path class="axis"', 'href="#fig-loop-title"', "href"),
-                                       ('<path class="axis"', 'xlink:href="#fig-loop-title"', "xlink:href"),
-                                       ('<path class="axis"', 'style="fill: url(#g)"', "style"),
-                                       ('<path class="axis"', 'onclick="x()"', "onclick"),
-                                       ('<path class="axis"', 'filter="x"', "filter"),
-                                       ('<path class="axis"', 'marker-end="x"', "marker-end"),
-                                       ('<text class="mark-no"', 'onmouseover="x()"', "onmouseover")):
-            with self.subTest(attribute=attribute):
-                self.setUp()
-                tag = where.split()[0][1:]
-                self.change(where, "<%s %s%s" % (tag, attribute, where[len(tag) + 1:]))
-                self.assert_fails("<%s> may not have the attribute %s" % (tag, name))
-
-    def test_a_paint_that_is_not_none_or_the_current_color_fails(self):
-        for paint in ("url(#g)", "#ff0000", "red", "url(https://example.invalid/x.svg#g)"):
-            with self.subTest(paint=paint):
-                self.setUp()
-                self.change(FIGURE_INSIDE, '<g fill="%s" stroke="none">' % paint)
-                self.assert_fails("<g> has fill=%r, and a fill or a stroke is none or currentColor" % paint)
-
-    def test_a_value_of_another_form_fails(self):
-        for old, new in (('transform="translate(204 226)"', 'transform="url(#x)"'),
-                         ('transform="translate(204 226)"', 'transform="matrix(1 0 0 1 0 0)"'),
-                         ('transform="translate(204 226)"', 'transform="translate(204 226); x: y"'),
-                         ('<path class="axis" d="', '<path class="axis" d="javascript:x '),
-                         ('font-family="monospace"', 'font-family="x&#58;y"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails("in an <svg> is numbers and words, and calls only translate() and rotate()")
-
-    def test_a_title_that_stands_elsewhere_fails(self):
-        for old, new in (("<main>", "<main><title>x</title>"), ("<h1>Ratchet</h1>", "<h1>Ratchet<title>x</title></h1>"),
-                         ('<path class="axis"', '<g><title>x</title></g><path class="axis"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails("a <title> stands in <head>, or directly in an <svg>")
-
-    def test_a_second_title_in_the_head_fails(self):
-        self.change("</title>\n", "</title>\n<title>x</title>\n")
-        self.assert_fails("holds <title> 2 times in <head>, and must hold it once")
-
-    def test_a_figure_that_is_not_named_by_its_one_title_fails(self):
-        for old, new in (('role="img" aria-labelledby="fig-ratchet-title"', 'aria-labelledby="fig-ratchet-title"'),
-                         ('role="img" aria-labelledby="fig-ratchet-title"', 'role="presentation" aria-labelledby="fig-ratchet-title"'),
-                         ('aria-labelledby="fig-ratchet-title"', 'aria-labelledby="fig-loop-title"'),
-                         ('aria-labelledby="fig-ratchet-title" ', ""),
-                         ('<title id="fig-ratchet-title">', "<title>"),
-                         ('<title id="fig-ratchet-title">', '<title id="fig-ratchet-title">x</title>\n<title id="fig-ratchet-title-2">')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails('an <svg> has role="img" and one <title> directly in it, whose id its aria-labelledby names')
-
-
-# The dial of the principles: the <svg> of this class, and in it one label per notch, a <text> of the class "lab" and of
-# the class n0 to n6 for its notch. A long label is wrapped over several <text> elements of the same notch. The dial
-# holds no other <text>. Beside it, the same titles stand as a list for a narrow screen, <ol class="principle-list">.
-DIAL = "fig-dial"
-DIAL_LIST = "principle-list"
-DIAL_NOTCH = re.compile(r"n(0|[1-9][0-9]*)\Z")
+# The list of the principles: the one <ol> with this id, whose items are the titles of the principles, as text.
+PRINCIPLES = "principles"
 # Every void element of HTML. One has no end tag, so the reader counts none of them as opening or closing the list.
 HTML_VOID = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"))
 
 
-class DialReader(html.parser.HTMLParser):
-    """Reads the dial of the principles and its list: each label with its notch, each item of the list, and what is wrong."""
+class ListReader(html.parser.HTMLParser):
+    """Reads the list of the principles: each item of it, and what is wrong with its form."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.dials, self.depth, self.labels, self.text = 0, 0, [], None
-        self.lists, self.items, self.in_list, self.problems = 0, [], 0, []
+        self.lists, self.items, self.in_list, self.problems, self.text = 0, [], 0, [], None
 
     def handle_starttag(self, tag, attrs):
-        classes = (dict(attrs).get("class") or "").split()
-        if self.depth:
-            self.depth += 1
-        elif tag == "svg" and DIAL in classes:
-            self.dials, self.depth = self.dials + 1, 1
-        if self.depth and tag == "text":
-            if "lab" not in classes:
-                self.problems.append("line %d: a <text> in the dial that is not a label of the class lab" % self.getpos()[0])
-            notches = [int(match.group(1)) for match in map(DIAL_NOTCH.match, classes) if match]
-            self.text = [notches[0] if len(notches) == 1 else None, []]
         if self.in_list:
             if tag in HTML_VOID:
                 self.problems.append("line %d: the list of the principles holds a <%s>, a void element, and its items hold only"
@@ -1282,27 +1248,25 @@ class DialReader(html.parser.HTMLParser):
                 return
             self.in_list += 1
             if tag == "li" and self.in_list == 2:
-                self.text = [None, []]
+                self.text = []
             elif self.in_list == 2:
                 self.problems.append("line %d: the list of the principles holds a <%s>, and holds only <li>" % (self.getpos()[0], tag))
-        elif tag == "ol" and DIAL_LIST in classes:
+            else:
+                self.problems.append("line %d: an item of the list of the principles holds a <%s>, and holds only text"
+                                     % (self.getpos()[0], tag))
+        elif tag == "ol" and dict(attrs).get("id") == PRINCIPLES:
             self.lists, self.in_list = self.lists + 1, 1
 
     def handle_endtag(self, tag):
-        if self.depth:
-            self.depth -= 1
-        if self.in_list:
-            if tag in HTML_VOID:
-                self.problems.append("line %d: the list of the principles holds a </%s>, which a browser reads as a void element,"
-                                     " and its items hold only text" % (self.getpos()[0], tag))
-                return
-            self.in_list -= 1
-            if tag == "li" and self.in_list == 1 and self.text is not None:
-                self.items.append(" ".join("".join(self.text[1]).split()))
-                self.text = None
+        if not self.in_list:
             return
-        if tag == "text" and self.text is not None:
-            self.labels.append((self.text[0], " ".join("".join(self.text[1]).split())))
+        if tag in HTML_VOID:
+            self.problems.append("line %d: the list of the principles holds a </%s>, which a browser reads as a void element,"
+                                 " and its items hold only text" % (self.getpos()[0], tag))
+            return
+        self.in_list -= 1
+        if tag == "li" and self.in_list == 1 and self.text is not None:
+            self.items.append(" ".join("".join(self.text).split()))
             self.text = None
 
     def handle_startendtag(self, tag, attrs):
@@ -1316,55 +1280,34 @@ class DialReader(html.parser.HTMLParser):
             self.problems.append("line %d: the list of the principles holds text outside an <li>, and holds only <li>"
                                  % self.getpos()[0])
         if self.text is not None:
-            self.text[1].append(data)
+            self.text.append(data)
 
 
-def core_principles(data):
-    """The principles with at least one core rule under them, in the order of ratchet.json: the ones the dial shows."""
-    return [principle for principle in data["principles"]
-            if any(rule["status"] == "core" for rule in registry.rules_under(data, principle["key"]))]
+def principle_problems(root):
+    """Why the list of the principles on the page does not name the principles in ratchet.json, in order.
 
-
-def dial_problems(root):
-    """Why the dial on the page, or its list, does not name the principles of the core in ratchet.json, in order.
-
-    The page holds one dial. Its labels stand by notch, n0 first, and notch k is labelled by one or more <text>
-    elements in a row. Joined with a space, they read "01 " and the title of the first principle, "02 " and the title
-    of the second, and so on, one notch for each principle. The dial holds no other <text>. The page also holds one
-    <ol class="principle-list">, whose items are the titles, in the same order. So a principle that is added, removed,
-    moved or renamed in ratchet.json fails until the dial is drawn again and the list follows, and a label or an item
-    edited by hand fails as well.
+    The page holds one <ol id="principles">, of <li> only, and its items, which hold only text, are the titles, in
+    order. So a principle that is added, removed, moved or renamed in ratchet.json fails until the list follows, and
+    an item edited by hand fails as well. generate.py writes the items, and this reads them without asking it.
     """
     with open(os.path.join(root, DOCS, PAGE), encoding="utf-8") as handle:
-        reader = DialReader()
+        reader = ListReader()
         reader.feed(handle.read())
-    if reader.dials != 1:
-        return ['the page holds %d dials of the principles, an <svg class="%s">, and must hold one' % (reader.dials, DIAL)]
+    if reader.lists != 1:
+        return ['the page holds %d lists of the principles, an <ol id="%s">, and must hold one' % (reader.lists, PRINCIPLES)]
     if reader.problems:
         return reader.problems
-    groups = []
-    for notch, text in reader.labels:
-        if notch is None:
-            return ["a label of the dial, %r, has no one class n0 to n6 for its notch" % text]
-        if groups and groups[-1][0] == notch:
-            groups[-1][1].append(text)
-        else:
-            groups.append((notch, [text]))
-    titles = [principle["title"] for principle in core_principles(registry.load(os.path.join(root, "ratchet.json")))]
-    problems = []
-    expected = [(at, "%02d %s" % (at + 1, title)) for at, title in enumerate(titles)]
-    found = [(notch, " ".join(parts)) for notch, parts in groups]
-    if found != expected:
-        problems.append("the labels of the dial are %r, and the principles in ratchet.json, in order, are %r" % (found, expected))
-    if reader.lists != 1:
-        problems.append('the page holds %d lists of the principles, an <ol class="%s">, and must hold one' % (reader.lists, DIAL_LIST))
-    elif reader.items != titles:
-        problems.append("the list of the principles is %r, and the principles in ratchet.json, in order, are %r" % (reader.items, titles))
-    return problems
+    titles = [principle["title"] for principle in registry.load(os.path.join(root, "ratchet.json"))["principles"]]
+    if reader.items != titles:
+        return ["the list of the principles is %r, and the principles in ratchet.json, in order, are %r" % (reader.items, titles)]
+    return []
 
 
-class PageDial(RepoCopy, unittest.TestCase):
-    """The dial and its list name the principles in ratchet.json, one per notch and one per item, in order."""
+class PagePrinciples(RepoCopy, unittest.TestCase):
+    """The list of the principles names the principles in ratchet.json, one per item, in order, and generate.py writes it."""
+
+    stale = "docs/index.html: generated text is out of date or was edited by hand"
+    form = "docs/index.html: the list of the principles must be the line"
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -1373,34 +1316,38 @@ class PageDial(RepoCopy, unittest.TestCase):
     def change(self, old, new):
         Page.change(self, old, new)
 
-    def assert_dial_fails(self, *message):
-        problems = dial_problems(self.copy)
+    def assert_list_fails(self, *message):
+        problems = principle_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_dial_and_its_list_name_the_seven_principles_of_the_core_in_order(self):
-        self.assertEqual(dial_problems(ROOT), [])
-        data = registry.load(os.path.join(ROOT, "ratchet.json"))
-        self.assertEqual(core_principles(data), data["principles"][:7])
-        self.assertEqual(dial_problems(self.copy), [])
-        reader = DialReader()
+    def test_the_list_names_the_ten_principles_in_order(self):
+        self.assertEqual(principle_problems(ROOT), [])
+        self.assertEqual(principle_problems(self.copy), [])
+        reader = ListReader()
         reader.feed(self.page())
-        self.assertEqual(len(set(notch for notch, _ in reader.labels)), 7)
-        self.assertEqual(len(reader.items), 7)
+        # Seven for every project, then the three of the product module, as the README lists them.
+        self.assertEqual(len(reader.items), 10)
+        self.assertEqual(reader.items[0], "Keep one place")
+        self.assertEqual(reader.items[6], "Subtract first")
+        self.assertEqual(reader.items[-1], "Watch production and the ground under the code")
 
-    def test_a_principle_renamed_in_ratchet_json_fails_until_the_dial_and_the_list_follow(self):
+    def test_a_principle_renamed_in_ratchet_json_fails_until_generate_moves_the_page(self):
+        before = self.page()
         self.edit("ratchet.json", '"title": "Subtract first"', '"title": "Subtract before you add"')
-        self.assert_dial_fails("the labels of the dial")
-        self.assert_dial_fails("the list of the principles is")
+        self.assert_list_fails("the list of the principles is")
+        self.assert_check_fails(self.stale)
+        code, output = run("generate.py", root=self.copy, cwd=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote docs/index.html", output)
+        self.assertEqual(self.page(), before.replace("<li>Subtract first</li>", "<li>Subtract before you add</li>"))
+        self.assertEqual(principle_problems(self.copy), [])
+        self.assertEqual(page_problems(self.copy), [])
 
-    def rewrite_principles(self, change):
-        path = os.path.join(self.copy, "ratchet.json")
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-        change(data)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=False)
-            handle.write("\n")
-        registry.load(path)
+    def test_a_title_is_written_as_text(self):
+        # A title holds no "<", by the characters a value may hold. An "&" is written as a character reference.
+        import generate as generator
+        data = {"principles": [{"title": "Keep one place & no other"}]}
+        self.assertEqual(generator.page_principles(data), ["<li>Keep one place &amp; no other</li>"])
 
     def test_a_principle_added_to_ratchet_json_fails(self):
         def add(data):
@@ -1409,95 +1356,83 @@ class PageDial(RepoCopy, unittest.TestCase):
             rule = next(rule for rule in data["rules"] if keys.count(rule["principle"]) > 1)
             rule["principle"] = "principle.example"
             data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
-        self.rewrite_principles(add)
-        self.assert_dial_fails("the labels of the dial")
-        self.assert_dial_fails("the list of the principles is")
+        rewrite_ratchet(self.copy, add)
+        self.assert_list_fails("the list of the principles is")
+        self.assert_check_fails(self.stale)
 
     def test_a_principle_removed_from_ratchet_json_fails(self):
         def remove(data):
-            # Every rule names a principle, so the rules under the last principle of the core move under the first.
-            gone = core_principles(data)[-1]
-            data["principles"].remove(gone)
+            # Every rule names a principle, so the rules under the last one move under the first.
+            gone = data["principles"].pop()
             for rule in data["rules"]:
                 if rule["principle"] == gone["key"]:
                     rule["principle"] = data["principles"][0]["key"]
-        self.rewrite_principles(remove)
-        self.assert_dial_fails("the labels of the dial")
-        self.assert_dial_fails("the list of the principles is")
-
-    def test_a_principle_of_the_product_module_that_gets_a_core_rule_fails(self):
-        def move(data):
-            # A core rule of a principle that keeps another moves under principle 10, which then belongs on the dial.
-            keys = [rule["principle"] for rule in data["rules"]]
-            rule = next(rule for rule in data["rules"] if rule["status"] == "core" and keys.count(rule["principle"]) > 1)
-            rule["principle"] = data["principles"][-1]["key"]
-        self.rewrite_principles(move)
-        self.assert_dial_fails("the labels of the dial")
-        self.assert_dial_fails("the list of the principles is")
-
-    def test_a_principle_with_only_experimental_rules_is_not_on_the_dial(self):
-        def add(data):
-            rule = next(rule for rule in data["rules"] if rule["key"] == "ratchet.measure-real-use")
-            rule["principle"] = "principle.example"
-            data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
-        self.rewrite_principles(add)
-        self.assertEqual(dial_problems(self.copy), [])
+        rewrite_ratchet(self.copy, remove)
+        self.assert_list_fails("the list of the principles is")
+        self.assert_check_fails(self.stale)
 
     def test_two_principles_swapped_in_ratchet_json_fail(self):
         def swap(data):
             data["principles"][0], data["principles"][1] = data["principles"][1], data["principles"][0]
-        self.rewrite_principles(swap)
-        self.assert_dial_fails("the labels of the dial")
-        self.assert_dial_fails("the list of the principles is")
-
-    def test_a_label_edited_moved_or_left_out_fails(self):
-        for old, new in (('text-anchor="end">07 Subtract first</text>', 'text-anchor="end">07 Add more</text>'),
-                         ('text-anchor="middle">01 Keep one place</text>', 'text-anchor="middle">01 Keep one place, mostly</text>'),
-                         ('text-anchor="end">06 Guard the boundaries</text>', 'text-anchor="end">06 Guard the boundaries</text>\n'
-                          '<text class="lab n5" x="0" y="0" text-anchor="end">if you can</text>'),
-                         ('<text class="lab n6" x="273.7" y="169.2" text-anchor="end">07 Subtract first</text>', ""),
-                         ('<text class="lab n0"', '<text class="lab n1"'),
-                         ('<text class="lab n0"', '<text class="lab"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_dial_fails("label")
-
-    def test_a_text_in_the_dial_that_is_not_a_label_fails(self):
-        # A <text> of another class would show words on the dial that the test does not compare.
-        for old, new in (('<text class="lab n0"', '<text x="0" y="0">12 Ship it</text>\n<text class="lab n0"'),
-                         ('<text class="lab n0"', '<text class="n0" x="0" y="0">12 Ship it</text>\n<text class="lab n0"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_dial_fails("a <text> in the dial that is not a label of the class lab")
+        rewrite_ratchet(self.copy, swap)
+        self.assert_list_fails("the list of the principles is")
+        self.assert_check_fails(self.stale)
 
     def test_an_item_of_the_list_edited_moved_or_left_out_fails(self):
-        for old, new in (("<li>Subtract first</li>", "<li>Add more</li>"), ("<li>Subtract first</li>", ""),
+        for old, new in (("<li>Subtract first</li>", "<li>Add more</li>"), ("<li>Subtract first</li>\n", ""),
                          ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep one place</li>"),
-                         ("<li>Guard the boundaries</li>", "<li>Guard <em>the</em> boundaries, mostly</li>")):
+                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries, mostly</li>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
-                self.assert_dial_fails("the list of the principles is")
+                self.assert_list_fails("the list of the principles is")
+                self.assert_check_fails(self.stale)
 
-    def test_a_list_of_another_form_fails(self):
-        for old, new, message in (('<ol class="principle-list">', '<ol class="other">', "lists of the principles"),
-                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<p>x</p>", "holds only <li>")):
+    def test_an_item_that_holds_more_than_text_fails(self):
+        self.change("<li>Guard the boundaries</li>", "<li>Guard <em>the</em> boundaries</li>")
+        self.assert_list_fails("an item of the list of the principles holds a <em>, and holds only text")
+        self.assert_check_fails(self.form)
+
+    def test_a_list_of_another_form_fails_and_generate_writes_nothing(self):
+        for old, new, message in (('<ol id="principles">', '<ol id="other">', "lists of the principles"),
+                                  ('<ol id="principles">', '<ol id="principles" class="wide">', None),
+                                  ('<ol id="principles">', '<ol id="principles">\n<ol id="principles">', "holds a <ol>, and holds only <li>"),
+                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<p>x</p>", "holds only <li>"),
+                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep\none place</li>", None),
+                                  # Without the line that closes the list, the next </ol> on the page is not its end: what
+                                  # stands before it is not an item, and nothing is written over.
+                                  ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>", None)):
             with self.subTest(new=new):
                 self.setUp()
+                before = self.page().replace(old, new, 1)
                 self.change(old, new)
-                self.assert_dial_fails(message)
+                if message:
+                    self.assert_list_fails(message)
+                self.assert_check_fails(self.form)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("wrote docs/index.html", output)
+                self.assertEqual(self.page(), before)
+
+    def test_an_indented_list_passes(self):
+        text = self.page()
+        start = text.index('<ol id="principles">')
+        end = text.index("</ol>", start) + len("</ol>")
+        self.change(text[start:end], "\n".join("  " + line for line in text[start:end].split("\n")))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(principle_problems(self.copy), [])
 
     def test_text_in_the_list_outside_an_item_fails(self):
         # Words straight in the <ol> show on the page as part of the list, and are not an item the test compares.
         for old, new in (("<li>Keep one place</li>", "<li>Keep one place</li>\nand one more"),
-                         ('<ol class="principle-list">', '<ol class="principle-list">Ship it'),
-                         ("<li>Subtract first</li>\n</ol>", "<li>Subtract first</li>\n&#83;hip it</ol>")):
+                         ('<ol id="principles">', '<ol id="principles">Ship it'),
+                         ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>\n&#83;hip it</ol>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
-                self.assert_dial_fails("holds text outside an <li>")
+                self.assert_list_fails("holds text outside an <li>")
+                self.assert_check_fails(self.form)
 
     def test_a_void_element_in_the_list_fails_and_leaves_the_count_right(self):
         # A <br> has no end tag. Counted as opened, it would leave the reader one level deep, so that the next <li> was
@@ -1509,27 +1444,20 @@ class PageDial(RepoCopy, unittest.TestCase):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
-                self.assert_dial_fails("void element", "and its items hold only text")
+                self.assert_list_fails("void element", "and its items hold only text")
+                self.assert_check_fails(self.form)
         self.setUp()
         self.change("<li>Guard the boundaries</li>", "<li>Guard the<br>boundaries</li>")
         self.change("<li>Subtract first</li>", "<li>Subtract first</li>\n<p>x</p>")
-        self.assert_dial_fails("holds a <p>, and holds only <li>")
-        reader = DialReader()
+        self.assert_list_fails("holds a <p>, and holds only <li>")
+        reader = ListReader()
         reader.feed(self.page())
         self.assertEqual(reader.in_list, 0)
-        self.assertEqual(len(reader.items), 7)
-
-    def test_a_second_dial_or_none_fails(self):
-        for old, new in (('<svg class="fig fig-dial"', '<svg class="fig"'),
-                         ('<svg class="fig fig-ratchet"', '<svg class="fig fig-ratchet fig-dial"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_dial_fails("dials of the principles")
+        self.assertEqual(len(reader.items), 10)
 
 
 class PageMotion(RepoCopy, unittest.TestCase):
-    """The figure moves only for a visitor who has not asked for less motion, and the CSS still loads nothing."""
+    """The page moves only for a visitor who has not asked for less motion, and the CSS still loads nothing."""
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -1541,17 +1469,23 @@ class PageMotion(RepoCopy, unittest.TestCase):
     def assert_fails(self, *message):
         Page.assert_fails(self, *message)
 
-    def test_the_animations_stand_in_the_query_for_no_preference(self):
+    def test_the_page_as_it_stands_does_not_move(self):
         css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
-        self.assertIn(REDUCED + " {", css)
-        self.assertIn("@keyframes wheel-tick", css)
         self.assertEqual(motion_problems(css), [])
+        for word in ("animation", "transition", "scroll-behavior", "@keyframes"):
+            self.assertNotIn(word, css)
+
+    def test_an_animation_inside_the_query_for_no_preference_passes(self):
+        self.change("</style>", "%s { .button { transition: color 0.15s ease-out; } }\n"
+                    "@keyframes wheel-tick { from { opacity: 0; } to { opacity: 1; } }\n</style>" % REDUCED)
+        self.assertEqual(page_problems(self.copy), [])
 
     def test_an_animation_outside_the_query_fails(self):
         for rule in (".fig { animation: wheel-tick 3.8s linear infinite; }", ".fig { animation-name: wheel-tick; }",
                      ".fig{animation:wheel-tick 1s}", "html { scroll-behavior: smooth; }",
                      "@media (prefers-reduced-motion: reduce) { .fig { animation: wheel-tick 1s; } }",
                      "@media (min-width: 1px) { .fig { animation: wheel-tick 1s; } }",
+                     "@media (min-width: 0) { .button { transition: color 0.15s ease-out; } }",
                      "@media (prefers-reduced-motion: no-preference), (min-width: 1px) { .fig { animation: wheel-tick 1s; } }",
                      ".wheel-tick { -webkit-animation: wheel-tick 3.8s linear infinite; }",
                      ".fig { -webkit-animation-name: wheel-tick; }", ".fig { -moz-animation: wheel-tick 1s; }",
@@ -1578,10 +1512,6 @@ class PageMotion(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change("</style>", rule + "\n</style>")
                 self.assert_fails("the CSS holds @%s" % rule[1:].split()[0], "the only at-rules it may hold are @media and @keyframes")
-
-    def test_the_query_taken_away_fails(self):
-        self.change(REDUCED + " {", "@media (min-width: 0) {")
-        self.assert_fails("moves the page outside %s" % REDUCED)
 
     def test_a_brace_that_is_not_matched_fails(self):
         for rule in (".x { color: inherit;", ".x { color: inherit; } }"):

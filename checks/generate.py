@@ -31,8 +31,8 @@ block marked sh, and names the newest version with a date. That version's tag is
 the release run after the merge, so for the minutes that run takes the command names a tag
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
-version in it, so the page fetches what README.md fetches. It writes one more line of the page, the
-count of rules and the cap on experimental rules, from ratchet.json.
+version in it, so the page fetches what README.md fetches. It writes two more parts of the page
+from ratchet.json: the line that counts the rules of the core, and the list of the principles.
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
@@ -58,6 +58,7 @@ import argparse
 import copy
 import datetime
 import difflib
+import html
 import json
 import os
 import re
@@ -76,11 +77,14 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 # The landing page that GitHub Pages serves from docs/, and its one line that fetches Ratchet, which the generator writes.
 PAGE = "docs/index.html"
 PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
-# The page's one line that gives the count of rules and the cap on experimental rules, which the generator writes.
-BUDGET = ('<p id="budget" class="stat"><strong>%d experimental rules, with a cap of %d.</strong> The core holds %d '
-          'rules and is frozen: %d name a check and %d are text only. Counted by <code>checks/generate.py</code> '
-          'from <code>ratchet.json</code>.</p>')
-PAGE_BUDGET = re.compile(re.escape(BUDGET).replace("%d", "[0-9]+") + r"\Z")
+# The page's one line that counts the rules of the core, which the generator writes.
+PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d name a check and '
+                   '%d are text only.</p>')
+PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\Z")
+# The page's list of the principles: this line, one line "<li>title</li>" for each principle, which the generator writes,
+# and the line that closes the list.
+PAGE_LIST, PAGE_LIST_END = '<ol id="principles">', "</ol>"
+PAGE_ITEM = re.compile(r"<li>[^<>]*</li>\Z")
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -235,7 +239,8 @@ def required_blocks(data):
     """Which generated blocks each file must hold, exactly once each."""
     required = {
         "RATCHET.md": ["version", "count", "principles", "sources"],
-        "README.md": ["count", "principle-list", "reference-checks", "start"],
+        "README.md": ["principle-list"],
+        "STARTING.md": ["start"],
         "SELF-IMPROVEMENT.md": ["count"],
         "CHANGELOG.md": ["count"],
         "checks/README.md": ["reference-checks"],
@@ -966,27 +971,36 @@ def expected_files(data, root, context):
     return result, problems
 
 
-def budget_text(data):
-    """The line of the landing page that gives the count of rules and the cap on experimental rules."""
-    numbers = registry.counts(data)
-    core = numbers["core"]
-    return BUDGET % (numbers["experimental"]["rules"], data[registry.CAP], core["rules"], core["enforced"], core["text_only"])
+def page_count(data):
+    """The line of the landing page that counts the rules of the core."""
+    core = registry.counts(data)["core"]
+    return PAGE_COUNT_LINE % (core["rules"], core["enforced"], core["text_only"])
+
+
+def page_principles(data):
+    """The items of the list of the principles on the landing page, one line each: the title, as text."""
+    return ["<li>%s</li>" % html.escape(principle["title"], quote=False) for principle in data["principles"]]
 
 
 def page_text(text, released, data):
-    """(the landing page with its two generated lines written, or None, and the problems, if any).
+    """(the landing page with its generated parts written, or None, and the problems, if any).
 
-    Each generated line is one line of the page, after the spaces that indent it, of a fixed form with any numbers:
-    the command that fetches Ratchet, "<pre><code>" FETCH "</code></pre>", at the newest dated version, and the
-    count of rules, BUDGET, from ratchet.json. No other line of the page may hold "git clone", or 'id="budget"', so
+    Two parts are one line each, after the spaces that indent it, of a fixed form with any numbers: the command that
+    fetches Ratchet, "<pre><code>" FETCH "</code></pre>", at the newest dated version, and the count of the rules of
+    the core, PAGE_COUNT_LINE, from ratchet.json. No other line of the page may hold "git clone", or 'id="count"', so
     the page shows no second command and no second count that is not written.
+
+    The third is the list of the principles: the line PAGE_LIST, once, and every line from it to the next line
+    PAGE_LIST_END, which the generator writes as one item for each principle in ratchet.json, in order. Every line
+    between the two is an item, "<li>" text "</li>", so the generator never writes over anything else, and no other
+    line may hold 'id="principles"'.
     """
     lines = text.split("\n")
     problems = []
     fetch = "<pre><code>%s</code></pre>" % (FETCH % released)
     for pattern, marker, line, what, form in (
             (PAGE_FETCH, "git clone", fetch, "the command that fetches Ratchet", "with any version"),
-            (PAGE_BUDGET, 'id="budget"', budget_text(data), "the count of rules", "with any numbers")):
+            (PAGE_COUNT, 'id="count"', page_count(data), "the count of rules", "with any numbers")):
         found = [number for number, each in enumerate(lines) if pattern.match(each.lstrip(" "))]
         others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
         if (len(found), others) != (1, 0):
@@ -995,6 +1009,21 @@ def page_text(text, released, data):
             continue
         at = found[0]
         lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
+    marker = 'id="principles"'
+    found = [number for number, each in enumerate(lines) if each.lstrip(" ") == PAGE_LIST]
+    others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
+    ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == PAGE_LIST_END]
+    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not PAGE_ITEM.match(each.lstrip(" "))) if found and ends else 0
+    if (len(found), others, strays) != (1, 0, 0) or not ends:
+        problems.append('%s: the list of the principles must be the line "%s", once, then lines "<li>title</li>" only, then '
+                        'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '
+                        "%s, %s after it, and %d lines in the list that are not an item"
+                        % (PAGE, PAGE_LIST, PAGE_LIST_END, marker, len(found), others, marker,
+                           "a line that closes the list" if ends else "no line that closes the list", strays))
+    else:
+        at = found[0]
+        indent = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))]
+        lines[at + 1:ends[0]] = [indent + item for item in page_principles(data)]
     if problems:
         return None, problems
     return "\n".join(lines), []
