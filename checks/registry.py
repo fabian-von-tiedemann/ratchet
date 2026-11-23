@@ -19,6 +19,7 @@ import subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = os.path.join(ROOT, "ratchet.json")
 SOURCES_PATH = os.path.join(ROOT, "sources.json")
+VALUES_PATH = os.path.join(ROOT, "values.json")
 
 KEY = re.compile(r"^ratchet\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 # The key of a principle: one exact form, as the key of a rule has (D-2026-11-20-principles-and-obligations).
@@ -87,8 +88,9 @@ TOP_FIELDS = {"version", "experimental_cap", "start", "principles", "parts", "ru
 # names no check, and what is checked is the rules under it (D-2026-11-20-principles-and-obligations). A principle has exactly these fields, each text.
 PRINCIPLES = "principles"
 PRINCIPLE_FIELDS = ("key", "title", "text")
-# A title is short, as a heading. A text applies to cases no one listed, in at most this many sentences.
-TITLE_LENGTH = 60
+# A title is short: one or two sentences, the principle itself (D-2026-11-23-values-and-principles). The longest is
+# 109 characters. A text, the question, applies to cases no one listed, in at most this many sentences.
+TITLE_LENGTH = 120
 SENTENCES = 3
 # Where a sentence ends: a full stop, a question mark or an exclamation mark, then a space or the end of the text.
 SENTENCE_END = re.compile(r"[.?!](?= |\Z)")
@@ -880,6 +882,59 @@ def sources_file_problems(data):
     problems = [] if "sources" in data else ["missing field 'sources'"]
     problems += ["unknown field %r" % field for field in sorted(set(data) - {"sources"})]
     return problems or source_problems(data["sources"])
+
+
+# values.json: Ratchet's story, its four values and the lines around the principles, one home for text that
+# README.md, RATCHET.md and the landing page show (D-2026-11-23-values-and-principles). It is text, not rules: no rule
+# stands under a value, and no check claims anything about what a value says.
+VALUES_FIELDS = ("story", "lead", "values", "balance", "production", "aims")
+VALUE_FIELDS = ("prefer", "over")
+
+
+def load_values(path=VALUES_PATH):
+    """The parsed values.json, or RegistryError naming every problem.
+
+    The file is read as strictly as every data file: strict UTF-8, no field twice, no NaN. It is an object with
+    exactly the fields VALUES_FIELDS. Each is a value of text, one line from the fixed list of characters, holding
+    words and no code, except "values": a list of at least one object with exactly the fields VALUE_FIELDS, each
+    such a value.
+    """
+    name = os.path.basename(path)
+    try:
+        data = load_json(path)
+    except RegistryError as error:
+        raise RegistryError("%s: %s" % (name, error))
+    problems = values_file_problems(data)
+    if problems:
+        raise RegistryError("\n".join("%s: %s" % (name, problem) for problem in problems))
+    return data
+
+
+def values_file_problems(data):
+    """Why a parsed values.json breaks its form, or nothing."""
+    if not isinstance(data, dict):
+        return ["the top level must be an object"]
+    problems = ["missing field %r" % field for field in VALUES_FIELDS if field not in data]
+    problems += ["unknown field %r" % field for field in sorted(set(data) - set(VALUES_FIELDS))]
+    texts = [(field, data[field]) for field in VALUES_FIELDS if field in data and field != "values"]
+    values = data.get("values", [])
+    if not isinstance(values, list) or not values:
+        problems.append("values must be a list of at least one value")
+        values = []
+    for number, value in enumerate(values, 1):
+        if not isinstance(value, dict) or set(value) != set(VALUE_FIELDS):
+            problems.append("value %d must be an object with exactly the fields prefer and over" % number)
+            continue
+        texts += [("value %d: %s" % (number, field), value[field]) for field in VALUE_FIELDS]
+    for field, text in texts:
+        problem = text_problem(text)
+        if problem:
+            problems.append("%s %s" % (field, problem))
+        elif not WORD.search(text):
+            problems.append("%s holds no words" % field)
+        elif "`" in text:
+            problems.append("%s holds code. A value here is text only, written as text on the page as well" % field)
+    return problems
 
 
 def citation_problems(data, sources):

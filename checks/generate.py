@@ -10,6 +10,8 @@
 From ratchet.json: the text between "<!-- generated:NAME -->" and "<!-- /generated -->"
 in the markdown files, templates/register.json and the registers under
 checks/fixtures/register/. From sources.json: the table of sources in RATCHET.md. From
+values.json: the story and the values in README.md, RATCHET.md and the landing page, and the
+lines around the principles (D-2026-11-23-values-and-principles). From
 register.json: REGISTER.md, and the block of rules in the instruction file it names in
 "instructions", as check_register.py --print-instructions prints it. Which blocks each
 file must hold is listed in required_blocks().
@@ -32,7 +34,8 @@ the release run after the merge, so for the minutes that run takes the command n
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
 version in it, so the page fetches what README.md fetches. It writes two more parts of the page
-from ratchet.json: the line that counts the rules of the core, and the list of the principles.
+from ratchet.json: the line that counts the rules of the core, and from values.json the story and
+the values, which stand on the page between two lines of their own.
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
@@ -78,13 +81,15 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 PAGE = "docs/index.html"
 PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
 # The page's one line that counts the rules of the core, which the generator writes.
-PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d name a check and '
-                   '%d are text only.</p>')
+# It says how many of the rules that name a check come with one from Ratchet, so that the number of rules that name a
+# check does not read as the number of checks that exist.
+PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d describe a check '
+                   'and %d are text only. Ratchet ships a reference check for %d of the %d, and you build the others.</p>')
 PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\Z")
-# The page's list of the principles: this line, one line "<li>title</li>" for each principle, which the generator writes,
-# and the line that closes the list.
-PAGE_LIST, PAGE_LIST_END = '<ol id="principles">', "</ol>"
-PAGE_ITEM = re.compile(r"<li>[^<>]*</li>\Z")
+# The page's story and values, from values.json: this line, the lines the generator writes, and the line that closes
+# them. Every line between the two is of one of the forms PAGE_VALUE_LINE, so the generator never writes over anything else.
+PAGE_VALUES, PAGE_VALUES_END = '<section id="values" class="values">', "</section>"
+PAGE_VALUE_LINE = re.compile(r'(?:<p class="(?:story|lead|balance)">.*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]*</strong>[^<>]*</li>)\Z')
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -183,27 +188,64 @@ def kind(rule):
     return "experimental, " + ratchet if rule["status"] == "experimental" else ratchet
 
 
-def principles_text(data):
-    """Each principle: its title as a heading, its text, marked as guidance, and the rules under it with what each is.
+def production(data):
+    """The keys of the principles for an application with users in production: those whose rules all stand in a part of
+    PRODUCT.md, the product module."""
+    product = set(part["id"] for part in data["parts"] if part["file"] == "PRODUCT.md")
+    return set(principle["key"] for principle in data["principles"]
+               if all(rule["part"] in product for rule in registry.rules_under(data, principle["key"])))
+
+
+def numbered(data, values, item):
+    """The principles in order, numbered from 1, each as item(number, principle) gives it, with the line from
+    values.json that introduces those for production before the first of them, and the line on aims last."""
+    product, blocks = production(data), []
+    for number, principle in enumerate(data["principles"], 1):
+        # Before the first principle for production, while blocks holds only the principles before it.
+        if principle["key"] in product and number - 1 == len(blocks):
+            blocks.append("**%s**" % registry.cell(values["production"]))
+        blocks.append(item(number, principle))
+    return blocks + ["*%s*" % registry.cell(values["aims"])]
+
+
+def principles_text(data, values):
+    """Each principle: its number and title as a heading, its text, marked as guidance, and the rules under it with what
+    each is.
 
     A principle is a question to ask when no rule fits, or an aim, and text only. It names no check and claims no
     protection, so the section marks it as guidance and says for each rule under it whether its ratchet names a check
     or is text only, and whether it is experimental: what is checked is the rules, not the principle
     (D-2026-11-20-principles-and-obligations, the amendment).
     """
-    blocks = []
-    for principle in data["principles"]:
+    def item(number, principle):
         rules = ", ".join("`%s` (%s)" % (rule["key"], kind(rule)) for rule in registry.rules_under(data, principle["key"]))
-        blocks.append("### %s\n\n%s\n\nGuidance, text only. Rules under it: %s"
-                      % (registry.cell(principle["title"]), registry.cell(principle["text"]), rules))
-    return "\n\n".join(blocks)
+        return ("### %d. %s\n\n%s\n\nGuidance, text only. Rules under it: %s"
+                % (number, registry.cell(principle["title"]), registry.cell(principle["text"]), rules))
+    return "\n\n".join(numbered(data, values, item))
+
+
+def principle_list(data, values):
+    """The principles as a numbered list of their titles, with the lines that values.json gives around them."""
+    blocks = numbered(data, values, lambda number, principle: "%d. %s" % (number, registry.cell(principle["title"])))
+    text = blocks[0]
+    for before, block in zip(blocks, blocks[1:]):
+        # The items of the list follow one another. A line between them stands as a paragraph of its own.
+        text += ("\n" if before[0].isdigit() and block[0].isdigit() else "\n\n") + block
+    return text
+
+
+def values_text(values):
+    """The story, the line that leads to the values, each value, and the line that weighs them, as paragraphs."""
+    lines = ["*%s*" % registry.cell(values["story"]), "**%s**" % registry.cell(values["lead"])]
+    lines += ["**%s** over %s" % (registry.cell(value["prefer"]), registry.cell(value["over"])) for value in values["values"]]
+    return "\n\n".join(lines + [registry.cell(values["balance"])])
 
 
 def render(data, name, argument, directory, context):
     """The text of one generated block. directory is where the document lives, relative to the root.
 
-    context holds what does not come from ratchet.json: "sources", from sources.json, and "date", the date in the
-    heading of the first entry of the changelog, or None while it is unreleased.
+    context holds what does not come from ratchet.json: "sources", from sources.json, "values", from values.json, and
+    "date", the date in the heading of the first entry of the changelog, or None while it is unreleased.
     """
     if name == "table":
         rules = [rule for rule in data["rules"] if rule["part"] == argument]
@@ -215,10 +257,12 @@ def render(data, name, argument, directory, context):
         return "Version %s, %s. See [CHANGELOG.md](CHANGELOG.md)." % (data["version"], when)
     if name == "count":
         return count_text(data)
+    if name == "values":
+        return values_text(context["values"])
     if name == "principles":
-        return principles_text(data)
+        return principles_text(data, context["values"])
     if name == "principle-list":
-        return "\n".join("- %s" % registry.cell(principle["title"]) for principle in data["principles"])
+        return principle_list(data, context["values"])
     if name == "start":
         return ", ".join("`%s`" % key for key in data["start"])
     if name == "reference-checks":
@@ -238,8 +282,8 @@ def render(data, name, argument, directory, context):
 def required_blocks(data):
     """Which generated blocks each file must hold, exactly once each."""
     required = {
-        "RATCHET.md": ["version", "count", "principles", "sources"],
-        "README.md": ["principle-list"],
+        "RATCHET.md": ["version", "values", "count", "principles", "sources"],
+        "README.md": ["values", "principle-list"],
         "STARTING.md": ["start"],
         "SELF-IMPROVEMENT.md": ["count"],
         "CHANGELOG.md": ["count"],
@@ -963,7 +1007,7 @@ def expected_files(data, root, context):
     if current is None:
         problems.append("%s: the file is missing. It is the landing page, and holds the command that fetches Ratchet" % PAGE)
     elif context["released"] is not None:
-        expected, found = page_text(current, context["released"], data)
+        expected, found = page_text(current, context["released"], data, context["values"])
         if found:
             problems += found
         else:
@@ -974,15 +1018,20 @@ def expected_files(data, root, context):
 def page_count(data):
     """The line of the landing page that counts the rules of the core."""
     core = registry.counts(data)["core"]
-    return PAGE_COUNT_LINE % (core["rules"], core["enforced"], core["text_only"])
+    return PAGE_COUNT_LINE % (core["rules"], core["enforced"], core["text_only"], core["reference_checks"], core["enforced"])
 
 
-def page_principles(data):
-    """The items of the list of the principles on the landing page, one line each: the title, as text."""
-    return ["<li>%s</li>" % html.escape(principle["title"], quote=False) for principle in data["principles"]]
+def page_values(values):
+    """The lines of the landing page between PAGE_VALUES and PAGE_VALUES_END: the story, the line that leads to the
+    values, each value, and the line that weighs them, each written as text."""
+    text = lambda value: html.escape(value, quote=False)
+    lines = ['<p class="story"><em>%s</em></p>' % text(values["story"]), '<p class="lead"><strong>%s</strong></p>' % text(values["lead"]),
+             '<ul class="manifesto">']
+    lines += ["<li><strong>%s</strong> over %s</li>" % (text(value["prefer"]), text(value["over"])) for value in values["values"]]
+    return lines + ["</ul>", '<p class="balance">%s</p>' % text(values["balance"])]
 
 
-def page_text(text, released, data):
+def page_text(text, released, data, values):
     """(the landing page with its generated parts written, or None, and the problems, if any).
 
     Two parts are one line each, after the spaces that indent it, of a fixed form with any numbers: the command that
@@ -990,10 +1039,9 @@ def page_text(text, released, data):
     the core, PAGE_COUNT_LINE, from ratchet.json. No other line of the page may hold "git clone", or 'id="count"', so
     the page shows no second command and no second count that is not written.
 
-    The third is the list of the principles: the line PAGE_LIST, once, and every line from it to the next line
-    PAGE_LIST_END, which the generator writes as one item for each principle in ratchet.json, in order. Every line
-    between the two is an item, "<li>" text "</li>", so the generator never writes over anything else, and no other
-    line may hold 'id="principles"'.
+    The third is the story and the values: the line PAGE_VALUES, once, and every line from it to the next line
+    PAGE_VALUES_END, which the generator writes from values.json. Every line between the two is of one of the forms
+    PAGE_VALUE_LINE, so the generator never writes over anything else, and no other line may hold 'id="values"'.
     """
     lines = text.split("\n")
     problems = []
@@ -1009,21 +1057,21 @@ def page_text(text, released, data):
             continue
         at = found[0]
         lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
-    marker = 'id="principles"'
-    found = [number for number, each in enumerate(lines) if each.lstrip(" ") == PAGE_LIST]
+    marker = 'id="values"'
+    found = [number for number, each in enumerate(lines) if each.lstrip(" ") == PAGE_VALUES]
     others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
-    ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == PAGE_LIST_END]
-    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not PAGE_ITEM.match(each.lstrip(" "))) if found and ends else 0
+    ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == PAGE_VALUES_END]
+    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not PAGE_VALUE_LINE.match(each.lstrip(" "))) if found and ends else 0
     if (len(found), others, strays) != (1, 0, 0) or not ends:
-        problems.append('%s: the list of the principles must be the line "%s", once, then lines "<li>title</li>" only, then '
+        problems.append('%s: the story and the values must be the line "%s", once, then lines the generator writes only, then '
                         'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '
-                        "%s, %s after it, and %d lines in the list that are not an item"
-                        % (PAGE, PAGE_LIST, PAGE_LIST_END, marker, len(found), others, marker,
-                           "a line that closes the list" if ends else "no line that closes the list", strays))
+                        "%s, %s after it, and %d lines between that the generator does not write"
+                        % (PAGE, PAGE_VALUES, PAGE_VALUES_END, marker, len(found), others, marker,
+                           "a line that closes them" if ends else "no line that closes them", strays))
     else:
         at = found[0]
         indent = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))]
-        lines[at + 1:ends[0]] = [indent + item for item in page_principles(data)]
+        lines[at + 1:ends[0]] = [indent + line for line in page_values(values)]
     if problems:
         return None, problems
     return "\n".join(lines), []
@@ -1232,7 +1280,8 @@ def main(argv=None):
             print(count_text(data))
             return 0
         date, released = changelog_context(root)
-        context = {"sources": registry.load_sources(os.path.join(root, "sources.json")), "date": date, "released": released}
+        context = {"sources": registry.load_sources(os.path.join(root, "sources.json")),
+                   "values": registry.load_values(os.path.join(root, "values.json")), "date": date, "released": released}
         files, problems = expected_files(data, root, context)
         problems += consistency_problems(data, root, context)
     except registry.RegistryError as error:

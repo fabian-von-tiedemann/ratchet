@@ -7,7 +7,7 @@
   "principles": [
     {
       "key": "principle.test-everything",
-      "title": "Test everything that is changed, before it is merged, on every PR",
+      "title": "Test everything that is changed, before it is merged, on every PR. A test that never failed proves nothing, so see it fail first.",
       "text": "Every change is tested before it is merged. A test that never failed proves nothing."
     },
     {

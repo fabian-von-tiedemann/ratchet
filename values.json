@@ -1,0 +1,25 @@
+{
+  "story": "Agile was written for a team of people. Ratchet is for one person with a team of agents, who work fast, forget everything between sessions and say \"done\" with confidence.",
+  "lead": "We value:",
+  "values": [
+    {
+      "prefer": "Checks that catch mistakes",
+      "over": "instructions that warn about them"
+    },
+    {
+      "prefer": "Written decisions",
+      "over": "remembered conversations"
+    },
+    {
+      "prefer": "Shown results",
+      "over": "reported success"
+    },
+    {
+      "prefer": "Independent review",
+      "over": "self-review"
+    }
+  ],
+  "balance": "That is, while there is value in the items on the right, we value the items on the left more. The right is faster. It works while the agent remembers, obeys and judges itself well. The left is for when it doesn't.",
+  "production": "For applications with users in production:",
+  "aims": "These are aims. Ratchet's rules say which of them a check can see."
+}

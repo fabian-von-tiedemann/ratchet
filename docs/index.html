@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta name="description" content="Ratchet is a set of working rules for AI coding agents. Each rule names the check that fails when it is broken, or says that no check can see it.">
-<title>Ratchet: rules for AI coding agents, each with its check</title>
+<meta name="description" content="Ratchet is a set of rules for one person with a team of AI coding agents. Each rule describes a check that you build, or says why it stays an instruction.">
+<title>Ratchet: rules for one person with a team of agents</title>
 <link rel="icon" href="ratchet-light.svg" type="image/svg+xml">
 <style>
 :root {
@@ -94,20 +94,28 @@ pre code {
   font-size: 1em;
 }
 
-/* The top: the logo, the name, what Ratchet is, and where to go. */
+/* The top: the logo, the name, the story and the values, and where to go. */
 h1 {
   margin-top: 1rem;
   font-size: 2.75rem;
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
-.lede {
+.values {
   margin-top: 1rem;
+}
+.values p + p, .values p + ul, .values ul + p {
+  margin-top: 0.75rem;
+}
+.story {
   font-size: 1.35rem;
   line-height: 1.4;
 }
-.differs {
-  margin-top: 0.75rem;
+.manifesto {
+  list-style: none;
+  font-size: 1.2rem;
+}
+.balance {
   color: var(--muted);
 }
 .actions {
@@ -152,7 +160,7 @@ section p + p {
   margin-bottom: 1.25rem;
 }
 
-/* The numbered lists: the three steps of how it works, the principles, and the three commands. */
+/* The numbered lists: the three steps of how it works, and the three commands. */
 ol {
   padding-left: 1.75rem;
 }
@@ -170,9 +178,6 @@ ol li::marker {
 .count {
   margin-top: 1rem;
   color: var(--muted);
-}
-#principles {
-  margin-top: 0.75rem;
 }
 .steps li {
   margin-top: 1rem;
@@ -222,44 +227,33 @@ footer p + p {
 <img src="ratchet-light.svg" width="64" height="64" alt="Ratchet logo">
 </picture>
 <h1>Ratchet</h1>
-<p class="lede">Working rules for AI coding agents. Each rule names the check that fails when the rule is broken.</p>
-<p class="differs">A rule that no check can see is marked <strong>text only</strong>, with the reason. So nothing claims a protection it does not have.</p>
-<p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet">GitHub</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md">README</a></p>
+<section id="values" class="values">
+<p class="story"><em>Agile was written for a team of people. Ratchet is for one person with a team of agents, who work fast, forget everything between sessions and say "done" with confidence.</em></p>
+<p class="lead"><strong>We value:</strong></p>
+<ul class="manifesto">
+<li><strong>Checks that catch mistakes</strong> over instructions that warn about them</li>
+<li><strong>Written decisions</strong> over remembered conversations</li>
+<li><strong>Shown results</strong> over reported success</li>
+<li><strong>Independent review</strong> over self-review</li>
+</ul>
+<p class="balance">That is, while there is value in the items on the right, we value the items on the left more. The right is faster. It works while the agent remembers, obeys and judges itself well. The left is for when it doesn't.</p>
+</section>
+<p class="actions"><a class="button" href="#start-here">Start here</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">The principles</a> <a href="https://github.com/fabian-von-tiedemann/ratchet">GitHub</a> <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/README.md">README</a></p>
 </header>
 <main>
-<section>
-<h2 id="why">Why it exists</h2>
-<p>AI agents read your instructions and still say “done” without running the tests. The maintainer had more than 100 repos built by agents, and no longer knew what governed the agents in them. Now each repo owns its rules, in one file, and borrows them from Ratchet.</p>
-</section>
 <section>
 <h2 id="how-it-works">How it works</h2>
 <img class="notch" src="ratchet-notch.svg" width="400" height="256" alt="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
 <ol class="flow">
-<li><strong>Your repo keeps a register.</strong> One file, <code>register.json</code>, lists every rule in force: the ones you borrow from Ratchet, and your own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
-<li><strong>Each rule names its ratchet.</strong> That is the check that fails when the rule is broken, or the words “text only”. Your register says which checks you have built. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
-<li><strong>A failure becomes a check.</strong> The check gets a fixture it must fail on, so the same failure cannot quietly come back. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
+<li><strong>A rule describes a check that you build,</strong> or says “text only” and why it stays an instruction. Copied rules keep their wording, and the register check that Ratchet ships compares them with the version you state. “Decisions belong to the owner” is text only: a check cannot tell a fact from a decision. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
+<li><strong>Your repo keeps a register.</strong> One file lists every rule in force, the ones you copy and your own, and records which checks you have built. Ratchet ships only a few reference checks itself. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
+<li><strong>It turns one way.</strong> When an agent gets something wrong, you add a check that fails on it, one notch tighter. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
 </ol>
-<p id="count" class="count"><strong>Ratchet today:</strong> the core has 19 rules. 13 name a check and 6 are text only.</p>
-</section>
-<section>
-<h2 id="the-principles">The principles</h2>
-<p>Each is a question to ask when no rule fits. The rules stand under them. The last three are for applications in production. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">Read them in full</a></p>
-<ol id="principles">
-<li>Keep one place</li>
-<li>Make the gate independent of the author</li>
-<li>Wait for the owner on what cannot be undone</li>
-<li>Show the run, and treat silence as red</li>
-<li>Make checks that can fail, and turn failures into checks</li>
-<li>Guard the boundaries</li>
-<li>Subtract first</li>
-<li>Ship what was tested, and know the way back</li>
-<li>Keep what was accepted</li>
-<li>Watch production and the ground under the code</li>
-</ol>
+<p id="count" class="count"><strong>Ratchet today:</strong> the core has 19 rules. 13 describe a check and 6 are text only. Ratchet ships a reference check for 1 of the 13, and you build the others.</p>
 </section>
 <section>
 <h2 id="start-here">Start here</h2>
-<p>Run these in the root of your own git repo.</p>
+<p>In the root of your git repo:</p>
 <ol class="steps">
 <li>Fetch Ratchet at the latest release.
 <pre><code>git clone --branch v0.12 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
@@ -272,14 +266,14 @@ footer p + p {
 </li>
 </ol>
 <ul class="paths">
-<li><strong>In a new repo,</strong> it writes <code>AGENTS.md</code>, <code>register.json</code> with the rules to start with, the generated <code>REGISTER.md</code>, and a workflow that checks the register on every pull request.</li>
-<li><strong>In a repo with an instruction file of its own,</strong> such as <code>AGENTS.md</code> or <code>CLAUDE.md</code>, it never changes your file. It prints a marker line for each rule, and <code>init.py --adopt</code> then writes <code>register.json</code>.</li>
+<li><strong>A new repo:</strong> <code>init.py</code> writes <code>AGENTS.md</code>, your register and a workflow that checks it on every pull request.</li>
+<li><strong>A repo with rules of its own:</strong> <code>init.py</code> runs in adopt mode, never changes your file, and with <code>--adopt</code> writes a register that points at your wording. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">Which path is yours</a></li>
 </ul>
-<p class="next">It never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
+<p class="next">You turn on branch protection on your host, so that the check is required. <code>init.py</code> never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
 </section>
 </main>
 <footer>
-<p>Ratchet is open source. Take the rules that fit your project, leave the rest, and send back what you learn. It restates ideas from public sources in its own words, and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">credits them rule by rule</a>.</p>
+<p>Open source. Take the rules that fit, and send back what you learn. Ideas from public sources, in Ratchet's own words and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">credited rule by rule</a>.</p>
 <p><a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT license</a></p>
 </footer>
 </body>

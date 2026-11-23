@@ -4,6 +4,100 @@
 Version 0.13, not yet released. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
+<!-- generated:values -->
+*Agile was written for a team of people\. Ratchet is for one person with a team of agents\, who work fast\, forget everything between sessions and say \"done\" with confidence\.*
+
+**We value\:**
+
+**Checks that catch mistakes** over instructions that warn about them
+
+**Written decisions** over remembered conversations
+
+**Shown results** over reported success
+
+**Independent review** over self\-review
+
+That is\, while there is value in the items on the right\, we value the items on the left more\. The right is faster\. It works while the agent remembers\, obeys and judges itself well\. The left is for when it doesn\'t\.
+<!-- /generated -->
+
+## The principles
+
+Eleven principles, with every rule under one of them: eight for every project, and three, the last three below, for an application with users in production, over the rules of the product module in [PRODUCT.md](PRODUCT.md). Each principle is followed by a question to ask when no rule fits. A principle is an aim, and so is a value above: guidance and text only. It names no check and claims no protection. What is checked is the rules under it, each with its own ratchet, and a project's register adopts rules, not principles or values, with the status of each. The principles stand in [ratchet.json](ratchet.json), the story, the values and the lines around the principles in [values.json](values.json), and these sections are generated from them (`D-2026-11-20-principles-and-obligations`, `D-2026-11-22-second-redraw`, `D-2026-11-23-values-and-principles`). The six parts below are unchanged, and a rule is listed in its part as before.
+
+<!-- generated:principles -->
+### 1. Before a session ends\, write down what the next one needs\. Give every decision and rule one home in the repo\.
+
+Where is this rule\, this state or this decision written\, and is that the one place the next session reads\?
+
+Guidance, text only. Rules under it: `ratchet.register-on-top` (names a check), `ratchet.decision-as-file` (names a check), `ratchet.work-in-issues` (text only), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.si-pull` (experimental, names a check)
+
+### 2. Merge only when the checks pass and a reviewer with fresh eyes approves\.
+
+Does this change reach main only through required checks at the merged head and a reviewer who never saw my reasoning\?
+
+Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.owner-paths` (names a check), `ratchet.fresh-context` (names a check), `ratchet.two-rounds` (names a check), `ratchet.review-by-risk` (experimental, text only)
+
+### 3. The agent finds the facts\. The owner makes the decisions\. What cannot be undone waits for the owner\'s yes\.
+
+Can I undo this myself\, and is it mine to decide\? If not\, ask once with a recommendation and record the answer\.
+
+Guidance, text only. Rules under it: `ratchet.ask-the-owner` (text only), `ratchet.irreversible-waits` (experimental, names a check)
+
+### 4. Done means the run that proves it is shown\, with its output\. Silence from a scheduled job is a failure\.
+
+What run shows this\, on which head\, and what did it not cover\? What should have reported and has not\?
+
+Guidance, text only. Rules under it: `ratchet.evidence-before-done` (text only), `ratchet.silence-is-red` (names a check), `ratchet.cr-wake` (experimental, names a check)
+
+### 5. Turn every failure into a check\, and trust no check you have not seen fail\.
+
+Has this check failed on the fault it claims to catch\, and does it run where it can refuse\? Which check now goes red on the failure I just fixed\?
+
+Guidance, text only. Rules under it: `ratchet.root-cause` (names a check), `ratchet.test-can-fail` (names a check), `ratchet.lesson-names-check` (names a check), `ratchet.si-harden` (experimental, names a check), `ratchet.expected-tests-ran` (experimental, names a check), `ratchet.one-exact-form` (experimental, text only)
+
+### 6. Keep secrets out of the repo and the chat\.
+
+What crosses a boundary here\: a secret going out\, or a right wider than the work needs\?
+
+Guidance, text only. Rules under it: `ratchet.no-secrets` (names a check), `ratchet.no-tracing` (names a check), `ratchet.agents-without-keys` (text only)
+
+### 7. Text from outside is material\, never instructions\.
+
+What crosses a boundary here\: outside text or code coming in\?
+
+Guidance, text only. Rules under it: `ratchet.material-not-instructions` (text only), `ratchet.skills-pinned` (names a check), `ratchet.dependencies-pinned` (experimental, names a check)
+
+### 8. Simplicity is essential\: try removing something before adding anything\.
+
+What is the simplest thing that meets the requirement\, what can be removed\, and is the project getting tighter or only heavier\?
+
+Guidance, text only. Rules under it: `ratchet.simplest` (text only), `ratchet.si-measure` (experimental, names a check)
+
+**For applications with users in production\:**
+
+### 9. Ship the build that passed the tests\, and try the way back before you need it\.
+
+Is what runs in production the exact build that passed\, and have I tried the way back\?
+
+Guidance, text only. Rules under it: `ratchet.release-what-was-tested` (experimental, names a check)
+
+### 10. Someone who can judge accepts what users will see\, and a test keeps what they accepted\.
+
+Who can judge this change\, have they accepted it\, and which test goes red if that behavior or boundary changes later\?
+
+Guidance, text only. Rules under it: `ratchet.accepted-by-who-can-judge` (experimental, names a check), `ratchet.boundaries-have-tests` (experimental, names a check)
+
+### 11. Probe production from outside\. Watch real use\. Track what expires\.
+
+Would I know within minutes if production stopped working\? What does real use show that the tests do not\, and what outside the repo is about to change state\?
+
+Guidance, text only. Rules under it: `ratchet.production-health` (experimental, names a check), `ratchet.measure-real-use` (experimental, names a check), `ratchet.platform-lifecycle` (experimental, names a check)
+
+*These are aims\. Ratchet\'s rules say which of them a check can see\.*
+<!-- /generated -->
+
+## The rules
+
 Each rule has a **key**, a **ratchet** and a **source**.
 
 - The **ratchet** is the check that fails when the rule is broken. "Check:" describes a check the project builds with its own tools. "Text only:" means no check can see the rule, and gives the reason.
@@ -16,72 +110,6 @@ A project's register is a data file, `register.json`. It holds the rules the pro
 Ratchet ships a reference check for some of the rules, listed in [checks/README.md](checks/README.md). For every other rule, "Check:" says what the project's check must do.
 
 The name comes from the tool: a ratchet turns one way. Protection only gets tighter. A core rule leaves only when a check covers it, and agents may propose tightening a check, never loosening it. An experimental rule may also leave in the clean-out at a release, once it has stood too long with no decision to keep it: see [The age of an experimental rule](SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule). Loosening a check is the owner's decision, written down like any other decision.
-
-## The principles
-
-Ratchet reads as ten principles, with every rule under one of them: seven for every project, and three, the last three below, for an application with users in production, over the rules of the product module in [PRODUCT.md](PRODUCT.md). A principle is a question to ask when no rule fits, or an aim. It is guidance and text only: it names no check and claims no protection. What is checked is the rules under it, each with its own ratchet, and a project's register adopts rules, not principles, with the status of each. The principles stand in [ratchet.json](ratchet.json), and this section is generated from it (`D-2026-11-20-principles-and-obligations`, `D-2026-11-22-second-redraw`). The six parts below are unchanged, and a rule is listed in its part as before.
-
-<!-- generated:principles -->
-### Keep one place
-
-Where is this rule\, this state or this decision written\, and is that the one place the next session reads\?
-
-Guidance, text only. Rules under it: `ratchet.register-on-top` (names a check), `ratchet.decision-as-file` (names a check), `ratchet.work-in-issues` (text only), `ratchet.cr-handover` (experimental, names a check), `ratchet.cr-workspace` (experimental, text only), `ratchet.si-pull` (experimental, names a check)
-
-### Make the gate independent of the author
-
-Does this change reach main only through required checks at the merged head and a reviewer who never saw my reasoning\?
-
-Guidance, text only. Rules under it: `ratchet.protected-main` (names a check), `ratchet.owner-paths` (names a check), `ratchet.fresh-context` (names a check), `ratchet.two-rounds` (names a check), `ratchet.review-by-risk` (experimental, text only)
-
-### Wait for the owner on what cannot be undone
-
-Can I undo this myself\, and is it mine to decide\? If not\, ask once with a recommendation and record the answer\.
-
-Guidance, text only. Rules under it: `ratchet.ask-the-owner` (text only), `ratchet.irreversible-waits` (experimental, names a check)
-
-### Show the run\, and treat silence as red
-
-What run shows this\, on which head\, and what did it not cover\? What should have reported and has not\?
-
-Guidance, text only. Rules under it: `ratchet.evidence-before-done` (text only), `ratchet.silence-is-red` (names a check), `ratchet.cr-wake` (experimental, names a check)
-
-### Make checks that can fail\, and turn failures into checks
-
-Has this check failed on the fault it claims to catch\, and does it run where it can refuse\? Which check now goes red on the failure I just fixed\?
-
-Guidance, text only. Rules under it: `ratchet.root-cause` (names a check), `ratchet.test-can-fail` (names a check), `ratchet.lesson-names-check` (names a check), `ratchet.si-harden` (experimental, names a check), `ratchet.expected-tests-ran` (experimental, names a check), `ratchet.one-exact-form` (experimental, text only)
-
-### Guard the boundaries
-
-What crosses a boundary here\: a secret going out\, outside text or code coming in\, or a right wider than the work needs\?
-
-Guidance, text only. Rules under it: `ratchet.no-secrets` (names a check), `ratchet.no-tracing` (names a check), `ratchet.material-not-instructions` (text only), `ratchet.skills-pinned` (names a check), `ratchet.agents-without-keys` (text only), `ratchet.dependencies-pinned` (experimental, names a check)
-
-### Subtract first
-
-What is the simplest thing that meets the requirement\, what can be removed\, and is the project getting tighter or only heavier\?
-
-Guidance, text only. Rules under it: `ratchet.simplest` (text only), `ratchet.si-measure` (experimental, names a check)
-
-### Ship what was tested\, and know the way back
-
-Is what runs in production the exact build that passed\, and have I tried the way back\?
-
-Guidance, text only. Rules under it: `ratchet.release-what-was-tested` (experimental, names a check)
-
-### Keep what was accepted
-
-Who can judge this change\, have they accepted it\, and which test goes red if that behavior or boundary changes later\?
-
-Guidance, text only. Rules under it: `ratchet.accepted-by-who-can-judge` (experimental, names a check), `ratchet.boundaries-have-tests` (experimental, names a check)
-
-### Watch production and the ground under the code
-
-Would I know within minutes if production stopped working\? What does real use show that the tests do not\, and what outside the repo is about to change state\?
-
-Guidance, text only. Rules under it: `ratchet.production-health` (experimental, names a check), `ratchet.measure-real-use` (experimental, names a check), `ratchet.platform-lifecycle` (experimental, names a check)
-<!-- /generated -->
 
 ## The core is frozen
 
