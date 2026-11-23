@@ -189,7 +189,7 @@ def store_with(git, store, commit, repository):
     A missing store is made empty, with no checkout, and the pinned commit alone fetched into it, shallow and by its id,
     so neither the history nor any other commit is fetched and indexed. When the repository does not give a commit by
     its id, the branches and tags of the repository are fetched into the store, which is what a clone fetches, as
-    0.12 did. A store that was there and lacks the commit fetches it by its id, as before. The fetches are the only
+    0.12 did. A store that was there and lacks the commit fetches it by its id, with the same fall back. The fetches are the only
     steps that reach the network, each explicit, from the repository named alone, and with the same isolation as every
     read: a fetch runs in the empty git directory, writing into the store's object directory, so not even the store's
     remotes or url rewrites are read. Nothing is removed. When none of them gives the commit, it is refused: the check
@@ -200,19 +200,22 @@ def store_with(git, store, commit, repository):
         if code != 0:
             raise Refused("cannot make a store at %s: %s" % (store, error))
     objects = objects_of(store)
-    if made:
-        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--depth=1",
+    if git.kind(objects, commit) is None:
+        # A store made now gets the commit alone, shallow. One that was there, perhaps left empty by a run that could
+        # not reach the host, fetches it by its id, with its history (round 2 of #140).
+        shallow = ["--depth=1"] if made else []
+        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", *shallow,
                                  repository, commit)
         if code != 0 or git.kind(objects, commit) != "commit":
             # The host does not give a commit by its id, or this id is not one: fetch what a clone would.
+            by_id = error
             code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository,
                                      "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
-            if code != 0:
+            if code != 0 and made:
                 raise Refused("cannot fetch %s into %s: %s" % (repository, store, error))
-    if git.kind(objects, commit) is None:
-        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository, commit)
-        if code != 0:
-            raise Refused("commit %s is not in %s, and cannot be fetched from %s: %s" % (commit, store, repository, error))
+            if code != 0 or git.kind(objects, commit) is None:
+                raise Refused("commit %s is not in %s, and cannot be fetched from %s: %s"
+                              % (commit, store, repository, error or by_id or "it is in none of its branches or tags"))
     found = git.kind(objects, commit)
     if found != "commit":
         raise Refused("%s is not a commit in %s%s" % (commit, store, ", it is a %s" % found if found else ""))
@@ -328,7 +331,9 @@ def run_command(commit, blob, target, register="register.json"):
     without it ends there, in sh, bash and dash."""
     return ("if ! test \"$(git hash-object --no-filters --stdin < %s)\" = %s; then echo '%s is not checks/run_pinned.py "
             "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- %s"
-            % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit, shlex.quote(register)))
+            % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit,
+               # A name that starts with - would be read as an option by the check after the runner's --.
+               shlex.quote("./" + register if register.startswith("-") else register)))
 
 
 def local_line(commit, blob, target, register="register.json"):

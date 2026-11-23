@@ -709,9 +709,12 @@ def one_command(args, out):
     code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"))
     if code == 0 and behind:
         print("", file=out)
-        project = os.path.dirname(os.path.abspath(args.register))
+        # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run: the
+        # register and the store are named from there, so a register in a folder keeps its folder (round 2 of #140).
+        project = os.getcwd()
         if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
-            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
+            for line in pinned_run(root, shown, project, known[target], commit,
+                                   os.path.relpath(os.path.abspath(args.register), project)):
                 print(line, file=out)
         else:
             print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
@@ -729,7 +732,7 @@ def pinned_run(root, shown, project, tag, commit, register="register.json"):
     except (run_pinned.Refused, OSError) as error:
         raise UpgradeError("cannot read %s of %s from %s: %s" % (run_pinned.SELF, tag, shown, error))
     if not os.path.isabs(shown):
-        objects = os.path.relpath(objects, project)
+        objects = os.path.relpath(os.path.abspath(objects), project)
     # The register by its own name, as the project's root sees it: the commands run from there.
     run = run_pinned.run_command(commit, blob, run_pinned.COPY, register)
     return ["The check runs from the pinned commit with %s. To move it to the commit of %s, %s, run these from the "

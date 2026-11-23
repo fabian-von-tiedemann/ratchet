@@ -809,6 +809,30 @@ class OneCommand(FixtureTest):
             self.assertIn("\n    %s\n" % line, output + "\n")
         self.assertNotIn("-- register.json", output)
 
+    def test_a_register_by_reference_in_a_folder_keeps_its_folder_and_the_copy_runs_from_the_root(self):
+        # Round 2 of #140: for policy/adoption.json the store was named from policy/ and the folder was dropped from the
+        # check commands, so the copy failed from the project's root and the check named another file.
+        project = self.project()
+        self.by_reference(project)
+        os.makedirs(os.path.join(project, "policy"))
+        os.rename(os.path.join(project, "register.json"), os.path.join(project, "policy", "adoption.json"))
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "policy/adoption.json", "--to", "9.9")
+        self.assertEqual(code, 0, output)
+        commit = self.tag("v9.9")
+        blob = git(self.origin, "rev-parse", "v9.9:checks/run_pinned.py")
+        copy = run_pinned.copy_command(os.path.join(".ratchet", ".git", "objects"), commit, blob, run_pinned.COPY)
+        for line in (copy, run_pinned.local_line(commit, blob, run_pinned.COPY, "policy/adoption.json"),
+                     run_pinned.run_command(commit, blob, run_pinned.COPY, "policy/adoption.json")):
+            self.assertIn("\n    %s\n" % line, output + "\n")
+        result = subprocess.run(["sh", "-c", copy], cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_a_register_whose_name_starts_with_a_dash_is_not_read_as_an_option(self):
+        step = run_pinned.run_command("0" * 40, "1" * 40, run_pinned.COPY, "-register.json")
+        self.assertTrue(step.endswith(" -- ./-register.json"), step)
+        self.assertTrue(run_pinned.run_command("0" * 40, "1" * 40, run_pinned.COPY).endswith(" -- register.json"))
+
     def test_a_register_by_reference_with_the_workflow_is_told_to_pin_it(self):
         project = self.project()
         self.by_reference(project)

@@ -416,6 +416,35 @@ class RunPinned(unittest.TestCase):
         self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
         self.assertEqual(git(store, "cat-file", "-t", parent), "commit", "the whole repository was fetched")
 
+    def test_a_store_left_empty_by_an_outage_gets_the_commit_once_the_host_answers(self):
+        # Round 2 of #140: a first run that could not reach the host left an empty store, and a retry against a host that
+        # gives branches and tags but no commit by its id was refused, though a fresh store would have passed.
+        later, commit, parent = self.later()
+        scratch = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, scratch)
+
+        class Outage(run_pinned.Git):
+            def run(self, objects, *args, data=None):
+                if "fetch" in args:
+                    return 128, b"", "Could not resolve host"
+                return run_pinned.Git.run(self, objects, *args, data=data)
+
+        class NoFetchById(run_pinned.Git):
+            def run(self, objects, *args, data=None):
+                if "fetch" in args and args[-1] == commit:
+                    return 128, b"", "Server does not allow request for unadvertised object"
+                return run_pinned.Git.run(self, objects, *args, data=data)
+
+        store = self.path(".ratchet")
+        with self.assertRaises(run_pinned.Refused):
+            run_pinned.store_with(Outage(scratch), store, commit, later)
+        self.assertTrue(os.path.isdir(store), "the first run left its store")
+        again = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, again)
+        objects = run_pinned.store_with(NoFetchById(again), store, commit, later)
+        self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
+        self.assertEqual(objects, os.path.abspath(os.path.join(store, ".git", "objects")))
+
     def test_a_repository_that_cannot_be_reached_never_passes(self):
         # With no store and no repository to fetch from, the check does not run, and a second run, with the store the
         # first one made, does not either.
