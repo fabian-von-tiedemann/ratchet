@@ -8,7 +8,7 @@
 
 Ratchet is a set of working rules for long-lived code projects built by AI agents, with templates and reference checks. Each rule names its **ratchet**: the check that fails when the rule is broken, or the words "text only" and the reason no check can see it. So no rule claims a protection it does not have.
 
-**Trying it on a repo of your own?** [TRYING.md](TRYING.md) says which path is yours and what to send back.
+**Trying it on a repo of your own?** [TRYING.md](TRYING.md) says which path is yours and what to send back. To send it, tell your agent: "Give back to Ratchet as its CONTRIBUTING.md says."
 
 AI agents read your instructions and still say "done" without running the tests. The maintainer had more than 100 repos built by agents, and no longer knew what governed the agents in them. With Ratchet, each repo owns its rules. It keeps them in one file, the register, borrows the ones it wants from Ratchet, and adds its own. Nothing arrives by itself: a rule changes in your repo only when you upgrade, in a pull request of its own.
 
