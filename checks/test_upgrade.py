@@ -59,13 +59,21 @@ REGISTER_FORM = ('The form of register.json grew in Ratchet 0.10 (D-2026-11-20-g
 
 # What the upgrade says to a register that moves from a version before 0.11 to 0.11 or later (D-2026-11-22-second-redraw).
 REGISTER_FORM_BY_REFERENCE = (
-    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw), the last change of form before the count '
-    'toward 1.0. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
+    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change of form '
+    'before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
     'file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its ratchet. Such a row '
     'holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> once. check_register.py sees '
     'that marker, not the words. REGISTER.md may be left out by a register with such rows. A register without them stays '
     'valid, so none of this is a step.')
 
+# What the upgrade says to a register that moves from a version before 0.12 to 0.12 or later
+# (D-2026-11-23-partial-adoption-form).
+REGISTER_FORM_IN_PART = (
+    'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 starts '
+    'again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated here: '
+    '<clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is added, but a '
+    'row by reference of a rule that is text only, which took no "where" before, takes one, and only as that phrase. A '
+    'register without it stays valid, so none of this is a step.')
 
 # What a copy of this repo leaves out when a test makes a clone of Ratchet from it: git's own files, bytecode, and what
 # the checks do not read, so that each test copies little.
@@ -526,6 +534,8 @@ class Upgrade(FixtureTest):
                 self.assertIn(REGISTER_FORM, output)
                 # 0.11 changes it once more, with the rows by reference, and names the two new fields.
                 self.assertIn(REGISTER_FORM_BY_REFERENCE, output)
+                # 0.12 changes it once more, with the rows adopted in part (D-2026-11-23-partial-adoption-form).
+                self.assertIn(REGISTER_FORM_IN_PART, output)
                 # The rules that 0.7 and 0.10 add are new to each register before them. 0.8 adds none: it moves two pins
                 # in "sources", which is not a field that the register holds. 0.9 adds none. ratchet.phases, which 0.6
                 # added, leaves in 0.11 (D-2026-11-22-second-redraw, R8), so it is new to no register.
@@ -1007,6 +1017,29 @@ class RemovedRules(FixtureTest):
         register = self.loaded("register.json")
         for after in (self.done(register, own), self.done(register, [])):
             self.assertEqual(check_register.check(after, self.loaded("new.json"))[0], [])
+
+    def test_a_removed_rule_adopted_in_part_is_told_that_its_entry_drops_the_where(self):
+        # The review of 4b29449: the step said that the entry for "own" kept its status and its "where", while the entry,
+        # rightly, holds Ratchet's whole text and no "where" that lists clauses not stated.
+        old, new = self.loaded("old.json"), self.loaded("new.json")
+        register = self.loaded("register.json")
+        rule = registry.rules_by_key(old)["ratchet.dropped-checked"]
+        row = {"key": rule["key"], "stands_in": "RULES.md", "sha256": check_register.reference_sha256(rule),
+               "status": "text only for now", "where": "Not stated here: one; two."}
+        register["adopted"] = [row if item["key"] == rule["key"] else item for item in register["adopted"]]
+        steps, _ = upgrade.plan(register, old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertEqual(step["entry"]["status"], "text only for now")
+        self.assertNotIn("where", step["entry"])
+        self.assertNotIn('keeps its status and its "where"', step["text"])
+        self.assertIn('An own rule may say where its check stands, so the entry keeps its status.', step["text"])
+        self.assertIn('It was adopted in part, and an own rule stands in the register in full, so the entry has no "where": '
+                      'the clauses it listed as not stated, one; two, stand in the rule of the entry like the rest of it.',
+                      step["text"])
+        # A row that is not in part still keeps both.
+        steps, _ = upgrade.plan(self.loaded("register.json"), old, new)
+        step = next(step for step in steps if step["key"] == rule["key"])
+        self.assertIn('so the entry keeps its status and its "where".', step["text"])
 
     def test_the_check_of_the_steps_covers_a_removed_rule_kept_in_own(self):
         # If the entry for "own" gave a rule that is text only a status, the steps would give a register that fails. The

@@ -116,6 +116,12 @@ OWN_CHECK = "Check: `checks/changelog.sh`, run in CI"
 # A translation into Swedish of the rule of ratchet.register-on-top, and the text around the block in an instruction file.
 SWEDISH = ("Varje regel som g\u00e4ller st\u00e5r i en fil, registret, som g\u00e5r f\u00f6re all annan text i repot. D\u00e4r en "
            "text och registret skiljer sig \u00e5t, g\u00e4ller registret.")
+# The clauses that the fixtures adopted in part list as not stated in the project's wording: one, and several, one of
+# them in code.
+PART_ONE = "a change to the register is reviewed before it is merged"
+PART_SEVERAL = ("a subagent's done is checked independently", "every finding is marked proven by a run or unproven",
+                "`checks/` is read by the receiver")
+
 # The project's own text in the AGENTS.md of the fixtures of the block. The block stands first, and this follows it.
 AGENTS_AFTER = ("\n# Working rules for the example project\n\nThe project's own text. <!-- a comment of the project's own --> The "
                 "check never reads it.\n\n## More\n\nMore of the project's own text, which names ratchet.register-on-top and "
@@ -667,6 +673,14 @@ def reference_fixtures(data, clean, sourced, plain, soft):
     result["ref-block/AGENTS.md"] = check_register.render_block(block) + AGENTS_AFTER
     # The project's own wording in Japanese and Chinese, which names Ratchet, around the marker lines.
     files("ref-cjk-prose", referenced, rules_md + CJK_PROSE)
+    # Adopted in part: the where of a row by reference lists the clauses its wording does not state, one clause on a
+    # rule that names a check and has a status, and several on a rule that is text only and has no status otherwise.
+    one = copy.deepcopy(referenced)
+    one["adopted"][sourced]["where"] = check_register.PART + PART_ONE + "."
+    files("ref-part-one", one)
+    several = copy.deepcopy(referenced)
+    several["adopted"][plain]["where"] = check_register.PART + "; ".join(PART_SEVERAL) + "."
+    files("ref-part-several", several)
 
     # Faults in the file that the rows by reference name, each with the register of ref-clean.
     def decoy(word):
@@ -721,7 +735,12 @@ def reference_fixtures(data, clean, sourced, plain, soft):
         mutate(register)
         return dump(register)
     rule = registry.rules_by_key(data)[fresh]
+    part = check_register.PART + PART_ONE + "."
     wrong_ratchet = dict(rule, ratchet="Check: a reminder in the working rules")
+
+    def copied(register):
+        """The copied row of ratchet.root-cause, which names a check."""
+        return next(entry for entry in register["adopted"] if entry["key"] == "ratchet.root-cause")
     faults = {
         "ref-unknown-key": lambda r: r["adopted"].append({"key": "ratchet.ship-first", "stands_in": "RULES.md", "sha256": "0" * 64}),
         "ref-wrong-hash": lambda r: r["adopted"][sourced].update(sha256=check_register.reference_sha256(dict(rule, rule=soft(rule["rule"])))),
@@ -750,6 +769,54 @@ def reference_fixtures(data, clean, sourced, plain, soft):
         "ref-status-missing": lambda r: r["adopted"][sourced].pop("status"),
         "ref-status-on-text-only": lambda r: r["adopted"][plain].update(status="built", where="in our heads"),
         "ref-built-nowhere": lambda r: r["adopted"][sourced].update(status="built"),
+        # Adopted in part, each with one fault in the phrase or where it stands.
+        "ref-part-built": lambda r: r["adopted"][sourced].update(status="built", where=part),
+        "ref-part-case": lambda r: r["adopted"][sourced].update(where=part.lower()),
+        "ref-part-no-space": lambda r: r["adopted"][sourced].update(where=part.replace(": ", ":", 1)),
+        "ref-part-no-period": lambda r: r["adopted"][sourced].update(where=part[:-1]),
+        "ref-part-text-before": lambda r: r["adopted"][sourced].update(where="In short. " + part),
+        "ref-part-text-after": lambda r: r["adopted"][sourced].update(where=part + " The rest is held."),
+        "ref-part-comma": lambda r: r["adopted"][sourced].update(where=part[:-1] + ", and more"),
+        "ref-part-no-space-after-semicolon": lambda r: r["adopted"][sourced].update(where=part[:-1] + ";another clause."),
+        "ref-part-two-spaces": lambda r: r["adopted"][sourced].update(where=part[:-1] + ";  another clause."),
+        "ref-part-empty": lambda r: r["adopted"][sourced].update(where=check_register.PART + "."),
+        "ref-part-empty-clause": lambda r: r["adopted"][sourced].update(where=part[:-1] + "; ; another clause."),
+        "ref-part-clause-twice": lambda r: r["adopted"][sourced].update(where=part[:-1] + "; " + PART_ONE + "."),
+        "ref-part-text-only-malformed": lambda r: r["adopted"][plain].update(where=part[:-1]),
+        "ref-part-text-only-status": lambda r: r["adopted"][plain].update(status="text only for now", where=part),
+        "ref-part-where-on-text-only": lambda r: r["adopted"][plain].update(where="in our heads"),
+        "ref-part-copied": lambda r: copied(r).update(where=part),
+        "ref-part-own": lambda r: r["own"][0].update(status="text only for now", where=part),
+        # Look-alikes of the phrase, each on a row that claims to be built (review of 4b29449).
+        "ref-part-like-accent": lambda r: r["adopted"][sourced].update(status="built", where="N\u00f3t stated here: one."),
+        "ref-part-like-stroke": lambda r: r["adopted"][sourced].update(status="built", where="Not stated \u0127ere: one."),
+        "ref-part-like-code-first": lambda r: r["adopted"][sourced].update(status="built", where="`Not` stated here: one."),
+        "ref-part-like-code-middle": lambda r: r["adopted"][sourced].update(status="built", where="Not `stated` here: the owner review."),
+        "ref-part-like-emphasis": lambda r: r["adopted"][sourced].update(status="built", where="*Not* stated here: one."),
+        "ref-part-like-underscore": lambda r: r["adopted"][sourced].update(status="built", where="Not_stated_here: one."),
+        "ref-part-like-hyphens": lambda r: r["adopted"][sourced].update(status="built", where="Not-stated-here: one."),
+        "ref-part-like-no-spaces": lambda r: r["adopted"][sourced].update(status="built", where="Notstatedhere: one."),
+        "ref-part-like-digit": lambda r: r["adopted"][sourced].update(status="built", where="N0t stated here: one."),
+        "ref-part-like-sharp-s": lambda r: r["adopted"][sourced].update(status="built", where="Not \u00dftated here: one."),
+        "ref-part-like-in-clause": lambda r: r["adopted"][sourced].update(where=part[:-1] + "; and n\u00f3t stated here."),
+        "ref-part-like-text-only": lambda r: r["adopted"][plain].update(where="Not stated \u0127ere: one."),
+        "ref-part-like-cyrillic": lambda r: r["adopted"][sourced].update(status="built", where="N\u043et stated here: one."),
+        "ref-part-like-full-width": lambda r: r["adopted"][sourced].update(status="built", where="\uff2eot stated here: one."),
+        "ref-part-like-math-bold": lambda r: r["adopted"][sourced].update(status="built", where="N\U0001d427t stated here: one."),
+        "ref-part-like-zero-width": lambda r: r["adopted"][sourced].update(status="built", where="Not\u200b stated here: one."),
+        "ref-part-like-soft-hyphen": lambda r: r["adopted"][sourced].update(status="built", where="No\u00adt stated here: one."),
+        "ref-part-like-combining": lambda r: r["adopted"][sourced].update(status="built", where="No\u0301t stated here: one."),
+        "ref-part-like-copied-accent": lambda r: copied(r).update(where="N\u00f3t stated here: one."),
+        "ref-part-like-copied-code": lambda r: copied(r).update(where="`Not` stated here: one."),
+        "ref-part-like-copied-stroke": lambda r: copied(r).update(where="Not stated \u0127ere: one."),
+        "ref-part-like-own-accent": lambda r: r["own"][0].update(status="text only for now", where="N\u00f3t stated here: one."),
+        "ref-part-like-own-code": lambda r: r["own"][0].update(status="text only for now", where="Not `stated` here: one."),
+        "ref-part-like-own-stroke": lambda r: r["own"][0].update(status="text only for now", where="Not stated \u0127ere: one."),
+        # Code in a clause.
+        "ref-part-code-split": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`one; two`."),
+        "ref-part-code-split-three": lambda r: r["adopted"][sourced].update(where=check_register.PART + "one; `a; b; c` d."),
+        "ref-part-code-semicolon": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`a;b`."),
+        "ref-part-code-period-space": lambda r: r["adopted"][sourced].update(where=check_register.PART + "`a. b`."),
     }
     for name, mutate in faults.items():
         result["%s/register.json" % name] = changed(mutate)

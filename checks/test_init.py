@@ -1080,6 +1080,10 @@ os.link = link
                 self.assertIn("\n  - name: Ratchet's register check\n    run: |\n      %s\n" % run, output)
                 self.assertStepParses(output, run)
                 self.assertIn("No workflow and no required job are added", output)
+                # One line names adoption in part, and its exact form.
+                self.assertEqual(output.count("adopted in part"), 1, output)
+                self.assertIn('may be adopted in part: in its row in register.json, give "where": "Not stated here: <clause>; '
+                              '<clause>."', output)
                 self.assertIn("python3 .ratchet/checks/inventory.py", output)
                 self.assertNotIn("..", output.replace("...", ""))
                 self.assertNotIn("would write", output)

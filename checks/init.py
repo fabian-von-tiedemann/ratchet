@@ -931,7 +931,10 @@ def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
                       % (stands_in, stands_in, version, typed(os.path.join(RATCHET, "ratchet.json"))),
                   "init: paste each line as it stands, from its first character. A marker line counts only in a file in "
                   "UTF-8 with LF line endings: the check fails on a file in another encoding, or on a marker line that "
-                  "ends in CRLF"]
+                  "ends in CRLF",
+                  'init: a rule that %s states in its core but not in every clause may be adopted in part: in its row in '
+                  'register.json, give "where": "Not stated here: <clause>; <clause>.", the clauses the wording leaves out, '
+                  'and it is not "built"' % stands_in]
         if REGISTER_ON_TOP in keys:
             lines += ["init: %s fits only where the register, not %s, lists every rule in force and takes precedence: "
                       "leave it out while %s is the file that governs" % (REGISTER_ON_TOP, stands_in, stands_in)]
