@@ -495,8 +495,7 @@
       "enforcement": "enforced",
       "rule": "The project keeps one list of what outside the repo changes state on a date: the end of support of the operating system, the runtime and the frameworks it runs on, and certificates, domains, keys and plans that expire. Each entry has its date and a warning time. A scheduled job reads the list and is red when a date is within its warning time.",
       "ratchet": "Check: a scheduled job reads the dates in the one list against each warning time, posts its result, and is red when a date is within it, as in `ratchet.silence-is-red`. It does not see whether the dates are right, or whether the list is complete",
-      "source": "",
-      "not_used_because": "Ratchet has no runtime and no production. It could keep the list for the Python versions and runner images its own jobs use, but it keeps none yet, so it does not adopt the rule."
+      "source": ""
     },
     {
       "key": "ratchet.dependencies-pinned",
@@ -505,7 +504,7 @@
       "status": "experimental",
       "since": "0.12",
       "enforcement": "enforced",
-      "rule": "Every dependency of the application is pinned to an exact version in a lockfile that the package tool writes, and the lockfile is committed. The required job installs in frozen mode from the lockfile, so a dependency that is not in it, or a lockfile that does not match the manifest, fails the job. A pin moves only in a change of its own, through the same job. Scanning for known vulnerabilities is not what this rule asks for.",
+      "rule": "Every dependency of the application is pinned to an exact version in a lockfile that the package tool writes, and the lockfile is committed. The required job installs in frozen mode from the lockfile, so a dependency that is not in it, or a lockfile that does not match the manifest, fails the job. Scanning for known vulnerabilities is not what this rule asks for.",
       "ratchet": "Check: the required job installs in frozen mode from the lockfile and fails when it cannot. It does not see whether a pinned version is safe, or pins the package tool does not record, and it does not scan for known vulnerabilities",
       "source": "",
       "not_used_because": "Ratchet has no runtime and no dependencies to pin: its checks use the standard library of Python only."

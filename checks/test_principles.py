@@ -167,11 +167,15 @@ class ThisRatchet(unittest.TestCase):
         self.assertEqual(guard[-1], "ratchet.dependencies-pinned")
         parts = dict((part["id"], part["file"]) for part in data["parts"])
         keys = [key for _, _, rules in product for key in rules] + ["ratchet.dependencies-pinned"]
+        # Six of the seven say why Ratchet cannot use them. Ratchet can use ratchet.platform-lifecycle, for the runner
+        # image and the Python its own jobs run on, so its register adopts it and it gives no reason.
+        adopted = set(item["key"] for item in registry.load_json(os.path.join(ROOT, "register.json"))["adopted"])
         for rule in data["rules"]:
             if rule["key"] in keys:
                 with self.subTest(rule=rule["key"]):
                     self.assertEqual((rule["status"], rule["since"], parts[rule["part"]]), ("experimental", "0.12", "PRODUCT.md"))
-                    self.assertIn("not_used_because", rule)
+                    used = rule["key"] == "ratchet.platform-lifecycle"
+                    self.assertEqual(("not_used_because" in rule, rule["key"] in adopted), (not used, used))
         self.assertEqual(sorted(r["key"] for r in data["rules"] if r["part"] == "product"), sorted(keys))
 
     def test_ratchet_md_shows_the_principles_first(self):

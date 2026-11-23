@@ -12,7 +12,7 @@ Added:
 
 - Three principles for an application with users in production, word for word from the decision: "Ship what was tested, and know the way back", "Keep what was accepted" and "Watch production and the ground under the code". Ratchet reads as ten principles: the seven of the core for every project, and these three.
 - `PRODUCT.md`, with the part `product` of `ratchet.json`, and seven experimental rules from 0.12, each naming a check: `ratchet.release-what-was-tested` under principle 8, `ratchet.accepted-by-who-can-judge` and `ratchet.boundaries-have-tests` under principle 9, `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle` under principle 10, and `ratchet.dependencies-pinned` under "Guard the boundaries". With the fixes the decision lists: the smoke test fails the deploy, or raises an alert, when it fails or is missing; a change that no test can catch is recorded as such; and scanning for known vulnerabilities is not what `ratchet.dependencies-pinned` asks for.
-- Each of the seven names in `not_used_because` why Ratchet's own register does not adopt it: Ratchet has no runtime.
+- Six of the seven name in `not_used_because` why Ratchet's own register does not adopt them: Ratchet has no runtime, no production and no lockfile. The seventh, `ratchet.platform-lifecycle`, Ratchet can use, since its own jobs run on a runner image and a Python whose support ends on a date, so `register.json` adopts it as text only for now: no list of those dates and no scheduled job that reads one is built yet.
 
 Changed:
 
