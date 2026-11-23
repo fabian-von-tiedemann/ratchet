@@ -20,6 +20,8 @@ Open a [report](https://github.com/fabian-von-tiedemann/ratchet/issues/new?templ
 - the rules that found a gap
 - what got in the way: Ratchet's own message or step as it stood, with any detail of your repo taken out
 
+Or paste one line to your agent: "Give back to Ratchet as its CONTRIBUTING.md says."
+
 ## Before you send it
 
 This repo is public. The report names no project, customer, company or person, and no internal detail. It holds no code and no secrets from your repo.
