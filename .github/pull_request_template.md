@@ -1,8 +1,8 @@
 ## What you approve
 
-- 
-- 
-- 
+-
+-
+-
 
 ## What changed
 
@@ -12,4 +12,4 @@
 
 <!-- The commands under "Before you say it is done" in AGENTS.md, each with its result (`ratchet.evidence-before-done`). -->
 
-- [ ] This PR names no project, customer, company or person, and holds no secrets.
+- [ ] This PR names no project, customer, company or person from my own work, holds no code from my own repo, and holds no secrets.
