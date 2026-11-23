@@ -1,10 +1,12 @@
 # Changelog
 
-## 0.11 (unreleased)
+## 0.11 (2026-11-23)
 
 <!-- generated:count -->
 Ratchet 0.11, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
+
+This version is the second redraw of Ratchet, steps 1 to 11 of the migration in the decision `D-2026-11-22-second-redraw`. The eleven principles become seven, and every rule stands under one of them. The core goes from 35 rules to 19, of which 13 name a check and 6 are text only, and the experimental rules go from 19 to 10, under a cap of 17 in place of 23. What each rule that leaves or changes loses is a row of the decision's table "What is lost, and what is authorized", and nothing else is lost. A register may adopt a rule by reference: its row points at the project's own wording, with a marker line and the sha256 of the rule and its ratchet, and this is the last change of form of `register.json` before the count toward 1.0. `checks/init.py` adopts a repo that already has an instruction file of its own, and writes only `register.json`. From this version on, a register upgrades in one command, `checks/upgrade.py`, which fetches the tags, moves `.ratchet` to the release and prints the steps; a clone of 0.10 or earlier is moved once by hand. `checks/inventory.py`, new and read only, lists a repo's agent layer as it stands. `checks/README.md` opens with one threat model for every check. The steps follow in order, then the fixes from reviews, and last what `ratchet.si-measure` records for this release.
 
 Step 2 of the migration in the decision `D-2026-11-22-second-redraw`: the clean-out of the control room's experimental rules. Six experimental rules leave, three are changed, and the cap goes from 23 to 17. No core rule changes. What each rule that leaves loses is a row of the table "What is lost, and what is authorized" in that decision, R4 to R8 and R11, and Ratchet's own path list moves out by row M3. Nothing else is lost.
 

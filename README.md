@@ -89,7 +89,7 @@ Run these in the root of your own git repo. If you followed 0.2, read [MIGRATING
 1. Fetch Ratchet at the latest release into `.ratchet`.
 
    ```sh
-   git clone --branch v0.10 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git clone --branch v0.11 https://github.com/fabian-von-tiedemann/ratchet .ratchet
    ```
 
 2. See what it would write. This writes nothing.
