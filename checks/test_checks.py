@@ -1178,7 +1178,8 @@ class RegisterByReference(FixtureTest):
 
 class RegisterInPart(FixtureTest):
     """A row by reference adopted in part: its where lists, in one exact form, the clauses the project's wording does
-    not state yet. The form of register.json is the same: no field is added."""
+    not state yet. No field is added, but the form of register.json changed in 0.12: a row by reference of a rule that
+    is text only may now take a where, and only as that phrase."""
 
     def check(self, name):
         directory = self.fixture_directory("register/" + name)

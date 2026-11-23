@@ -59,8 +59,8 @@ REGISTER_FORM = ('The form of register.json grew in Ratchet 0.10 (D-2026-11-20-g
 
 # What the upgrade says to a register that moves from a version before 0.11 to 0.11 or later (D-2026-11-22-second-redraw).
 REGISTER_FORM_BY_REFERENCE = (
-    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw), the last change of form before the count '
-    'toward 1.0. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
+    'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change of form '
+    'before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", the Markdown '
     'file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its ratchet. Such a row '
     'holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> once. check_register.py sees '
     'that marker, not the words. REGISTER.md may be left out by a register with such rows. A register without them stays '

@@ -12,6 +12,7 @@ what it uses through FixtureTest. Standard library only.
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -46,6 +47,14 @@ FAULTS = {
     "parameters-list": "parameters of pull_request must be an object",
     "allowances-false": "bypass_pull_request_allowances must be an object",
     "toggle-text": "allow_force_pushes must be an object",
+    "branch-rule-without-ruleset-id": "a rule for a branch without ruleset_id",
+    "branch-rule-id-text": "ruleset_id must be a number",
+    "branch-rule-source-number": "ruleset_source must be text",
+    "branch-rule-without-type": "a rule without a type",
+    "branch-rule-checks-text": "required_status_checks must be a list",
+    "branch-rule-parameters-list": "parameters of pull_request must be an object",
+    "branch-rule-not-an-object": "a rule for a branch must be an object",
+    "branch-rule-mixed": "a list that mixes the rules for a branch with a ruleset or a branch protection",
 }
 
 # The modules through which a script could reach the network or run another program.
@@ -631,31 +640,234 @@ class Inventory(FixtureTest):
 
     # --- The review of #119 at d2d3677: one guarded reader for every file, and a workflow reader that fails closed. ---
 
-    def test_an_export_through_a_linked_folder_is_refused(self):
-        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
+    def test_an_export_through_a_linked_folder_is_read(self):
+        # An adoption report on 0.11: an export under a folder from mktemp -d on macOS, which is under /var, a link, was
+        # refused. The path given on the command line is the user's own choice: its folder is resolved through links
+        # once, and the file itself must still be a regular file and no link (fix 1 of the inventory's friction).
+        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"given-through-a-link")
         outside = os.path.realpath(self.scratch())
         self.write("export.json", data, top=outside)
         here = os.path.realpath(self.scratch())
         os.symlink(outside, os.path.join(here, "linked-directory"))
         os.makedirs(os.path.join(here, "real"))
         os.symlink(outside, os.path.join(here, "real", "deeper"))
-        for path, cwd, part in (("linked-directory/export.json", here, "linked-directory"),
-                                (os.path.join(here, "linked-directory", "export.json"), None, "linked-directory"),
-                                ("./real/deeper/export.json", here, "real/deeper"),
-                                ("real/../linked-directory/export.json", here, "linked-directory")):
+        for path, cwd in (("linked-directory/export.json", here), (os.path.join(here, "linked-directory", "export.json"), None),
+                          ("./real/deeper/export.json", here), ("real/../linked-directory/export.json", here)):
             with self.subTest(path=path):
-                code, out, err = self.run_inventory(self.repo, "--ruleset", path, cwd=cwd)
-                self.assertEqual(code, 2, out + err)
-                self.assertEqual(out, "")
-                self.assertIn("%s on its path is a link, not followed" % part, err)
-                # It says how to give the path without the link, as /tmp and /var are on macOS (Gemini and Codex on #119).
-                self.assertIn("Give the path with no link on it: as realpath prints it, or relative from a folder below the link",
-                              err)
-                self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
-        # The same file, given without a link on its path, is read.
-        code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", "export.json", cwd=outside)
+                code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", path, cwd=cwd)
+                self.assertEqual(code, 0, out + err)
+                self.assertEqual(json.loads(out)["rulesets"][0]["name"], "given-through-a-link")
+        # A scratch folder as mktemp makes it, not resolved: on macOS it is under /var, a link to /private/var.
+        unresolved = self.scratch()
+        given = self.write("export.json", data, top=unresolved)
+        code, out, err = self.run_inventory(self.repo, "--json", "--ruleset", given)
         self.assertEqual(code, 0, out + err)
-        self.assertEqual(json.loads(out)["rulesets"][0]["name"], "FIXTURE-SECRET-OUTSIDE")
+        self.assertEqual(json.loads(out)["rulesets"][0]["name"], "given-through-a-link")
+
+    def test_an_export_through_a_linked_folder_is_still_refused_when_the_file_is_not_one(self):
+        # Under a folder reached through a link, the file itself is still refused when it is a link, a FIFO, or named
+        # like a credential, and nothing from it is printed.
+        data = self.fixture_bytes("inventory/ruleset/ruleset.json").replace(b"protect-main", b"FIXTURE-SECRET-OUTSIDE")
+        outside = os.path.realpath(self.scratch())
+        plain = self.write("plain.json", data, top=outside)
+        self.write("secret-token.json", data, top=outside)
+        os.symlink(plain, os.path.join(outside, "linked.json"))
+        os.mkfifo(os.path.join(outside, "pipe.json"))
+        here = os.path.realpath(self.scratch())
+        os.symlink(outside, os.path.join(here, "linked-directory"))
+        for name, message in (("secret-token.json", "looks like a credential, not read"), ("linked.json", "a link, not followed"),
+                              ("pipe.json", "not a regular file, not read")):
+            with self.subTest(name=name):
+                code, out, err = self.run_inventory(self.repo, "--ruleset", "linked-directory/" + name, cwd=here, timeout=20)
+                self.assertEqual(code, 2, out + err)
+                self.assertIn(message, err)
+                self.assertEqual(out, "")
+                self.assertNotIn("FIXTURE-SECRET-OUTSIDE", out + err)
+        code, out, err = self.run_inventory(self.repo, "--ruleset", "linked-directory/linked.json", cwd=here)
+        self.assertIn("Give the file the link points to, not the link", err)
+
+    def test_the_rules_for_a_branch_as_a_reader_without_admin_gets_them(self):
+        # GET /repos/{owner}/{repo}/rules/branches/{branch}: the rules that apply to a branch, each with its ruleset.
+        export = self.fixture_file("inventory/ruleset/branch-rules.json")
+        facts = self.facts("--ruleset", os.path.realpath(export))
+        rules = facts["rulesets"]
+        self.assertEqual([(item["form"], item["name"]) for item in rules],
+                         [("rules for a branch", "Repository fixture-owner/fixture-repo, ruleset 42"),
+                          ("rules for a branch", "Organization fixture-org, ruleset 7")])
+        first, second = rules
+        self.assertEqual((first["target"], first["enforcement"], first["include"], first["bypass"]), ("branch", "active", None, None))
+        self.assertEqual(first["required_checks"], ["checks", "test (3.9)"])
+        self.assertEqual(first["up_to_date"], True)
+        self.assertEqual(first["review"], {"approvals": 1, "code_owner": True, "dismiss_stale": True, "last_push": False,
+                                           "thread_resolution": None})
+        self.assertEqual(first["other_rules"], ["deletion", "non_fast_forward"])
+        self.assertEqual(first["not_read"], ["pull_request.allowed_merge_methods"])
+        self.assertEqual(second["required_checks"], ["deploy/preview"])
+        self.assertEqual(second["not_read"], ["commit_message_pattern"])
+        self.assertEqual([entry["job"] for entry in facts["not_required"]], ["lint"])
+        self.assertEqual(facts["required_without_job"], ["deploy/preview"])
+        out = self.text("--ruleset", os.path.realpath(export))
+        self.assertIn("rules for a branch Repository fixture-owner/fixture-repo, ruleset 42, target branch, enforcement active, "
+                      "the rules GitHub applies to the branch it was asked for\n", out)
+        self.assertIn("bypass: not shown in the export", out)
+        # An empty list is no rule: it says what that means for the rules of a branch.
+        code, out, err = self.run_inventory(self.repo, "--ruleset", self.export([]))
+        self.assertEqual(code, 2)
+        self.assertIn("an empty list of the rules for a branch means no ruleset applies to it", err)
+
+    def test_paths_named_that_are_ignored_branch_names_or_outside_the_root(self):
+        # An adoption report on 0.11 listed as missing: branch prefixes and example branch names in a table of
+        # conventions, generated files that are not committed, a git-ignored folder, and a file in another repo by an
+        # absolute path (fix 3 of the inventory's friction). A path missing in any other way is still named, and so is
+        # one that only a line this reader does not read would ignore.
+        top = os.path.abspath(self.repo)
+        self.write(".gitignore", "# generated\nbuild/\nlogs\n/dist\n*.gen.md\n!keep.gen.md\n\\#odd\n\n")
+        self.write("CLAUDE.md", "\n".join([
+            "| Kind | Branch |",
+            "|---|---|",
+            "| Feature | `feature/` |",
+            "| Example | `docs/new-guide` |",
+            "| Real | `docs/absent.md` |",
+            "Output goes to `build/out.json` and `logs/app.txt`, and `dist/site.json`, and `notes/a.gen.md`.",
+            "Not ignored: `notes/keep.gen.md` and `nested/dist/a.json`, and outside a table `fix/`.",
+            "Elsewhere: `/opt/other/AGENTS.md`, `~/Developer/other/CLAUDE.md`, [x](/srv/x.md) and @~/.claude/x.md.",
+            "Run `/review` or `/help`. Here by its full path: `%s/docs/guide.md` and `%s/docs/gone-too.md`." % (top, top),
+            ""]))
+        facts = self.facts()
+        missing = [(entry["line"], entry["path"]) for entry in facts["missing_paths"] if entry["file"] == "CLAUDE.md"]
+        self.assertEqual(missing, [(5, "docs/absent.md"), (6, "notes/a.gen.md"), (7, "notes/keep.gen.md"),
+                                   (7, "nested/dist/a.json"), (7, "fix/"), (9, "%s/docs/gone-too.md" % top)])
+        others = facts["paths_not_checked"]
+        mine = lambda kind: [(entry["line"], entry["path"]) for entry in others[kind] if entry["file"] == "CLAUDE.md"]
+        self.assertEqual(mine("ignored"), [(6, "build/out.json"), (6, "logs/app.txt"), (6, "dist/site.json")])
+        self.assertEqual(mine("branch_names"), [(3, "feature/"), (4, "docs/new-guide")])
+        # Each line is read for links first, then spans, then imports.
+        self.assertEqual(mine("outside"), [(8, "/srv/x.md"), (8, "/opt/other/AGENTS.md"), (8, "~/Developer/other/CLAUDE.md"),
+                                           (8, "~/.claude/x.md")])
+        self.assertIn(("AGENTS.md", 8, "../outside.md"), [(entry["file"], entry["line"], entry["path"]) for entry in others["outside"]])
+        self.assertEqual(others["gitignore_lines_not_read"], 3)
+        out = self.text()
+        self.assertIn("Paths named and not looked for: 3 ignored by .gitignore, 2 that look like branch names in a table, "
+                      "5 outside the root", out)
+        self.assertIn("  CLAUDE.md:8 names /opt/other/AGENTS.md: outside the root, not checked\n", out)
+        self.assertIn("3 lines of .gitignore not read: this reader reads only a plain path, with no wildcard, ! or "
+                      "backslash, so a path under such a line is named as missing", out)
+
+    # The lines of .gitignore the reader reads, each with paths and whether git ignores them, as `git check-ignore
+    # --no-index` says of a path that does not exist. A path that ends in / is a folder.
+    GITIGNORE_HONORED = [
+        ("build/", [("build", False), ("build/", True), ("build/x", True), ("a/build/x", True), ("a/build/", True),
+                    ("builds/x", False), ("Build/x", False)]),
+        ("build", [("build", True), ("build/", True), ("a/build", True), ("a/b/build/x.js", True), ("builds", False)]),
+        ("/dist", [("dist", True), ("dist/", True), ("dist/x", True), ("nested/dist", False), ("nested/dist/x", False)]),
+        ("/logs/", [("logs", False), ("logs/", True), ("logs/x", True), ("x/logs/y", False)]),
+        ("/a/b", [("a/b", True), ("a/b/c", True), ("a", False), ("a/", False), ("x/a/b", False), ("a/bc", False)]),
+        ("a/b", [("a/b", True), ("a/b/c", True), ("x/a/b", False), ("b", False)]),
+        ("a/b/", [("a/b", False), ("a/b/", True), ("a/b/c", True), ("x/a/b/", False)]),
+        ("docs/keep.md", [("docs/keep.md", True), ("docs/keep.md/x", True), ("docs/other.md", False),
+                          ("x/docs/keep.md", False)]),
+        (".env", [(".env", True), ("a/.env", True), (".envrc", False)]),
+        ("node_modules", [("node_modules/x/y.js", True), ("a/node_modules/", True)]),
+        ("my-notes.v2_1.md", [("my-notes.v2_1.md", True), ("a/my-notes.v2_1.md", True), ("my-notes.v2_1.mdx", False)]),
+        ("...", [("...", True), ("a/.../b", True), ("....", False)]),
+    ]
+
+    # Lines the reader does not read and counts. Both reviewers' cases are here: docs/** with !docs/keep.md (Codex on
+    # edfa236), and docs// and docs//keep.md, which git does not match and an earlier reader did (Codex on c56df58).
+    GITIGNORE_UNREAD = [
+        "docs/**", "!docs/keep.md", "docs//", "docs//keep.md", "//docs", "/", "*.txt", "*", "?.txt", "[ab].txt",
+        "doc]s", "**/build", "/**", "a/**/b", "a**b", "\\#odd", "\\!x", "a\\ ", "build/ ", " build", "\tbuild", "a b",
+        "./docs", "../docs", "a/./b", "a/../b", ".", "..", "café.md", "build\r", "a//b", "  ",
+    ]
+
+    def gitignore_top(self, text):
+        top = os.path.realpath(self.scratch())
+        self.write(".gitignore", text, top=top)
+        return top
+
+    def gitignore_read(self, text):
+        sys.path.insert(0, HERE)
+        import inventory
+        return inventory, inventory.gitignore_rules(inventory.Layer("repo", self.gitignore_top(text), ""))
+
+    def test_each_line_of_gitignore_is_read_as_git_reads_it_or_counted_as_not_read(self):
+        for line, paths in self.GITIGNORE_HONORED:
+            inventory, (rules, not_read) = self.gitignore_read(line + "\n")
+            self.assertEqual((len(rules), not_read), (1, 0), line)
+            for path, expected in paths:
+                with self.subTest(gitignore=line, path=path):
+                    self.assertEqual(inventory.ignored(rules, path), expected)
+        for line in self.GITIGNORE_UNREAD:
+            with self.subTest(gitignore=line):
+                inventory, (rules, not_read) = self.gitignore_read(line + "\n")
+                self.assertEqual((rules, not_read), ([], 1))
+        # A blank line and a comment are no pattern, as in git, and are not counted. A file that is not UTF-8 is read
+        # line by line, and a line with a byte outside the form is counted.
+        inventory, (rules, not_read) = self.gitignore_read("\n# *.txt\n#!x\nbuild/\n\xff\n")
+        self.assertEqual((len(rules), not_read), (1, 1))
+        inventory, (rules, not_read) = self.gitignore_read(b"build/\n\xff\xfe\n/dist\n")
+        self.assertEqual((len(rules), not_read), (2, 1))
+
+    def test_a_path_under_a_line_not_read_is_named_as_missing(self):
+        # Both reviewers' cases: git ignores docs/other.md and not docs/keep.md under docs/** and !docs/keep.md, and
+        # ignores neither under docs// or docs//keep.md. The reader reads none of those lines, so a missing path
+        # under them is named as missing, as it was before the reader of .gitignore.
+        for text, count in (("docs/**\n!docs/keep.md\n", 2), ("docs//\n", 1), ("docs//keep.md\n", 1),
+                            ("docs//\ndocs//keep.md\n!docs/keep.md\n", 3)):
+            with self.subTest(gitignore=text):
+                self.write(".gitignore", text)
+                self.write("CLAUDE.md", "See `docs/keep.md` and `docs/other.md`.\n")
+                facts = self.facts()
+                missing = [entry["path"] for entry in facts["missing_paths"] if entry["file"] == "CLAUDE.md"]
+                self.assertEqual(missing, ["docs/keep.md", "docs/other.md"])
+                self.assertEqual(facts["paths_not_checked"]["ignored"], [])
+                self.assertEqual(facts["paths_not_checked"]["gitignore_lines_not_read"], count)
+
+    def git_environment(self, base):
+        """An environment for git with no configuration of the user's or the system's: every GIT_ variable of base
+        removed, among them GIT_CONFIG_COUNT and its GIT_CONFIG_KEY_ and GIT_CONFIG_VALUE_ pairs, HOME and
+        XDG_CONFIG_HOME an empty folder, and the global and GIT_CONFIG files an empty file."""
+        empty = os.path.realpath(self.scratch())
+        config = os.path.join(os.path.realpath(self.scratch()), "config")
+        with open(config, "wb"):
+            pass
+        environment = {name: value for name, value in base.items() if not name.startswith("GIT_")}
+        environment.update(HOME=empty, XDG_CONFIG_HOME=empty, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=config,
+                           GIT_CONFIG=config, LC_ALL="C")
+        return environment, empty
+
+    def git_ignores(self, environment, template, line, path):
+        top = self.gitignore_top(line + "\n")
+        subprocess.run(["git", "init", "-q", "--template=%s" % template, top], check=True, env=environment)
+        result = subprocess.run(["git", "-c", "core.fsmonitor=false", "-c", "core.ignorecase=false", "check-ignore", "-q",
+                                 "--no-index", path], cwd=top, env=environment)
+        self.assertIn(result.returncode, (0, 1))
+        return result.returncode == 0
+
+    def test_the_lines_the_reader_reads_are_what_git_says(self):
+        # The table of lines read is git's own answer: git check-ignore, with no index, in a repo with no config of
+        # the user's or the system's. Only the lines read are compared; a line not read is counted, never matched.
+        if not shutil.which("git"):
+            self.skipTest("git is not installed")
+        environment, template = self.git_environment(os.environ)
+        for line, paths in self.GITIGNORE_HONORED:
+            for path, expected in paths:
+                with self.subTest(gitignore=line, path=path):
+                    self.assertEqual(self.git_ignores(environment, template, line, path), expected)
+
+    def test_the_environment_for_git_drops_the_config_it_inherits(self):
+        # A reviewer on c56df58: GIT_CONFIG_COUNT in the environment named a core.excludesFile that ignored every path,
+        # and the comparison with git failed. The environment for git drops it, and every other GIT_ variable.
+        if not shutil.which("git"):
+            self.skipTest("git is not installed")
+        everything = self.write("everything", "*\n", top=os.path.realpath(self.scratch()))
+        hostile = dict(os.environ, GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.excludesFile", GIT_CONFIG_VALUE_0=everything,
+                       GIT_CONFIG_PARAMETERS="'core.excludesfile'='%s'" % everything, GIT_DIR=os.devnull)
+        environment, template = self.git_environment(hostile)
+        self.assertFalse([name for name in environment if name.startswith("GIT_") and
+                          name not in ("GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG")])
+        self.assertFalse(self.git_ignores(environment, template, "build/", "docs/keep.md"))
+        self.assertTrue(self.git_ignores(environment, template, "build/", "build/x"))
 
     def test_a_path_named_through_a_link_is_not_looked_at(self):
         outside = self.scratch()

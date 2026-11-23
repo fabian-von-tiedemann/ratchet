@@ -80,6 +80,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
+# sys.path, still finds the modules beside it.
+import os  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import copy
@@ -105,8 +110,8 @@ REGISTER_FORMS = (
              '"instructions", and check_register.py then checks the block of rules it generates into that file. An adopted rule '
              'may carry a "translation", bound to its English rule by a sha256. An own rule may carry "status" and "where". A '
              'register without them stays valid, so none of this is a step.'),
-    ("0.11", 'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw), the last change of form before the '
-             'count toward 1.0. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", '
+    ("0.11", 'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change '
+             'of form before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", '
              'the Markdown file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its '
              'ratchet. Such a row holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> '
              'once. check_register.py sees that marker, not the words. REGISTER.md may be left out by a register with such '
