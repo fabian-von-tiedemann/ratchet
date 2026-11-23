@@ -285,10 +285,75 @@ class RunPinned(unittest.TestCase):
         return (run_pinned.copy_command(objects, self.commit, blob, COPY.replace(os.sep, "/")),
                 run_pinned.run_command(self.commit, blob, COPY.replace(os.sep, "/")))
 
-    def shell(self, command):
-        result = subprocess.run(["sh", "-c", command], cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                universal_newlines=True)
+    def shell(self, command, shell="sh", env=None):
+        result = subprocess.run([shell, "-c", command], cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True, env=env)
         return result.returncode, result.stdout
+
+    def shells(self):
+        """sh, and bash and dash where they are installed: a local check script may run under any of them."""
+        return ["sh"] + [name for name in ("bash", "dash") if shutil.which(name)]
+
+    def test_the_printed_run_line_stops_a_check_script_on_a_runner_that_is_not_the_pinned_one(self):
+        # Codex's and Astra's case: with "<hash check> && <run>" a failing hash check is the left side of &&, which set -e
+        # does not stop on, so a script with set -eu went on and exited 0 with an empty runner.
+        self.clone_store()
+        with open(self.path(COPY), "rb") as handle:
+            whole = handle.read()
+        _, run = self.commands()
+        for name, data in (("empty", b""), ("cut short", whole[:len(whole) // 2]),
+                           ("another", b"print('ANOTHER RUNNER RAN')\n")):
+            with open(self.path(COPY), "wb") as handle:
+                handle.write(data)
+            for shell in self.shells():
+                for start in ("set -eu\n", "set -e\n", ""):
+                    with self.subTest(runner=name, shell=shell, start=start):
+                        code, output = self.shell(start + run + "\necho LATER CHECK PASSED\n", shell)
+                        self.assertNotEqual(code, 0, output)
+                        self.assertNotIn("LATER CHECK PASSED", output)
+                        self.assertNotIn("ANOTHER RUNNER RAN", output)
+                        self.assertIn("is not checks/run_pinned.py of commit %s" % self.commit, output)
+        # The pinned runner passes the line, and the script goes on.
+        with open(self.path(COPY), "wb") as handle:
+            handle.write(whole)
+        for shell in self.shells():
+            with self.subTest(shell=shell):
+                code, output = self.shell("set -eu\n" + run + "\necho LATER CHECK PASSED\n", shell)
+                self.assertEqual(code, 0, output)
+                self.assertIn("LATER CHECK PASSED", output)
+
+    def test_the_copy_command_reads_no_git_variable_of_the_environment(self):
+        # Codex's and Astra's case: GIT_COMMON_DIR was left in effect, so git read the config of a repo it was never
+        # given, here one that no git can read.
+        self.clone_store()
+        os.remove(self.path(COPY))
+        other = os.path.join(os.path.dirname(self.project), "other")
+        subprocess.run(["git", "init", "-q", "--bare", other], check=True)
+        subprocess.run(["git", "config", "--file", os.path.join(other, "config"), "core.repositoryformatversion", "999"],
+                       check=True)
+        # Before the fix, the copy command fails on this store: git refuses a repository format it does not know.
+        failing = subprocess.run(["git", "--git-dir", other, "rev-parse", "--git-dir"], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertNotEqual(failing.returncode, 0, failing.stdout)
+        copy, _ = self.commands()
+        hostile = {"GIT_COMMON_DIR": other, "GIT_DIR": other, "GIT_WORK_TREE": other,
+                   "GIT_OBJECT_DIRECTORY": os.path.join(other, "objects"),
+                   "GIT_ALTERNATE_OBJECT_DIRECTORIES": os.path.join(other, "objects"),
+                   "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.repositoryformatversion",
+                   "GIT_CONFIG_VALUE_0": "999", "GIT_CONFIG_PARAMETERS": "'core.repositoryformatversion'='999'",
+                   "GIT_INDEX_FILE": os.path.join(other, "index"), "GIT_NAMESPACE": "other"}
+        for shell in self.shells():
+            for name, value in sorted(hostile.items()) + [("all", None)]:
+                with self.subTest(shell=shell, variable=name):
+                    env = dict(os.environ, **(hostile if value is None else {name: value}))
+                    code, output = self.shell(copy, shell, env)
+                    self.assertEqual(code, 0, output)
+                    with open(self.path(COPY), "rb") as handle:
+                        copied = handle.read()
+                    self.assertEqual(copied, subprocess.run(
+                        ["git", "-C", self.source, "show", "%s:checks/run_pinned.py" % self.commit],
+                        stdout=subprocess.PIPE, check=True).stdout)
+                    os.remove(self.path(COPY))
 
     def test_the_printed_copy_command_copies_the_pinned_runner_and_the_printed_step_runs_it(self):
         self.clone_store()

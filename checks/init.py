@@ -969,7 +969,8 @@ def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
               "init: add this one step to a job that the protection of main already requires. No workflow and no "
               "required job are added, so no admin is needed. In GitHub Actions, after the checkout:",
               "  - name: Ratchet's register check",
-              "    run: " + run,
+              "    run: |",
+              "      " + run,
               "init: and give that job these, if it does not have them:",
               "  permissions:",
               "    contents: read",

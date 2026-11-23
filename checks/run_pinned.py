@@ -281,16 +281,18 @@ def quoted(path):
 
 def copy_command(objects, commit, blob, target):
     """The sh command, run from the project's root, that copies checks/run_pinned.py of the commit out of the store's
-    object directory to target, and verifies it: git reads the blob through a new, empty git directory, with no config of
-    the store's, the user's or the system's and no lazy fetch, and the copy is kept only when git hash-object gives it
-    the name blob, the one the pinned tree names. Otherwise nothing is left at target, and the command fails."""
+    object directory to target, and verifies it: every git it runs starts under env -i, so no GIT_ variable of the
+    environment (GIT_DIR, GIT_COMMON_DIR, GIT_CONFIG_COUNT and the rest) is in effect, and reads through a new, empty git
+    directory, with no config of the store's, the user's or the system's and no lazy fetch. The copy is kept only when
+    git hash-object gives it the name blob, the one the pinned tree names. Otherwise nothing is left at target, and the
+    command fails."""
     temporary = target + ".new"
-    return ("mkdir -p %s && (unset GIT_DIR GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES "
-            "GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT; t=$(mktemp -d) && trap 'rm -rf \"$t\"' EXIT && "
-            "export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG=/dev/null HOME=\"$t\" "
-            "XDG_CONFIG_HOME=\"$t\" GIT_NO_LAZY_FETCH=1 GIT_NO_REPLACE_OBJECTS=1 GIT_TERMINAL_PROMPT=0 && "
-            "git init -q --bare --template= \"$t/git\" && GIT_DIR=\"$t/git\" GIT_OBJECT_DIRECTORY=%s git "
-            "--no-replace-objects cat-file blob %s > %s && test \"$(git hash-object --no-filters --stdin < %s)\" = %s && "
+    return ("mkdir -p %s && (t=$(mktemp -d) && trap 'rm -rf \"$t\"' EXIT && "
+            "g() { env -i PATH=\"$PATH\" HOME=\"$t\" XDG_CONFIG_HOME=\"$t\" GIT_CONFIG_NOSYSTEM=1 "
+            "GIT_CONFIG_GLOBAL=/dev/null GIT_NO_LAZY_FETCH=1 GIT_NO_REPLACE_OBJECTS=1 GIT_TERMINAL_PROMPT=0 \"$@\"; } && "
+            "g git init -q --bare --template= \"$t/git\" && g GIT_DIR=\"$t/git\" GIT_OBJECT_DIRECTORY=%s git "
+            "--no-replace-objects cat-file blob %s > %s && "
+            "test \"$(g GIT_DIR=\"$t/git\" git hash-object --no-filters --stdin < %s)\" = %s && "
             "mv %s %s) || { rm -f %s; echo 'run_pinned.py was not copied: the store does not hold blob %s of commit %s "
             "as it is' >&2; false; }"
             % (shlex.quote(os.path.dirname(target) or "."), quoted(objects), blob, shlex.quote(temporary),
@@ -300,9 +302,11 @@ def copy_command(objects, commit, blob, target):
 
 def run_command(commit, blob, target):
     """The sh command that runs the copy at target: only when git hash-object gives its bytes the name blob, so a copy
-    that is missing, empty, cut short or not the pinned commit's fails the step rather than passing it."""
-    return ("{ test \"$(git hash-object --no-filters --stdin < %s)\" = %s || { echo '%s is not checks/run_pinned.py of "
-            "commit %s: copy it again' >&2; false; }; } && python3 -I %s %s -- register.json"
+    that is missing, empty, cut short or not the pinned commit's stops the step or the script rather than passing it.
+    The hash check is an if with exit 1, not the left side of &&, which set -e does not stop on: a script with set -e or
+    without it ends there, in sh, bash and dash."""
+    return ("if ! test \"$(git hash-object --no-filters --stdin < %s)\" = %s; then echo '%s is not checks/run_pinned.py "
+            "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- register.json"
             % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit))
 
 

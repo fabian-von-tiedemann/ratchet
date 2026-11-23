@@ -1022,6 +1022,30 @@ os.link = link
         return {entry["key"]: entry for entry in (json.loads(line.strip()) for line in output.split("\n")
                                                     if line.strip().startswith('{"key": "ratchet.'))}
 
+    def assertStepParses(self, output, run):
+        """The printed step is YAML that a workflow can hold: a block scalar, not "run: { ... }", which YAML reads as a
+        flow mapping and refuses. The standard library has no YAML parser, so the shape is pinned exactly, and Ruby's or
+        PyYAML's parser reads it where one is installed."""
+        lines = output.split("\n")
+        at = lines.index("  - name: Ratchet's register check")
+        step = lines[at:at + 3]
+        self.assertEqual(step, ["  - name: Ratchet's register check", "    run: |", "      " + run])
+        self.assertTrue(lines[at + 3].startswith("init:"), lines[at + 3])
+        document = "steps:\n" + "\n".join(step) + "\n"
+        expected = {"steps": [{"name": "Ratchet's register check", "run": run + "\n"}]}
+        parsers = []
+        if shutil.which("ruby"):
+            parsers.append(["ruby", "-ryaml", "-rjson", "-e", "print JSON.generate(YAML.safe_load(STDIN.read))"])
+        if subprocess.run([sys.executable, "-c", "import yaml"], stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode == 0:
+            parsers.append([sys.executable, "-c", "import json, sys, yaml; print(json.dumps(yaml.safe_load(sys.stdin)))"])
+        for parser in parsers:
+            with self.subTest(parser=parser[0]):
+                result = subprocess.run(parser, input=document, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        universal_newlines=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), expected)
+
     def test_a_repo_with_its_own_instruction_file_is_adopted_and_the_file_is_never_written(self):
         import check_register
         ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
@@ -1051,8 +1075,10 @@ os.link = link
                 self.assertIn("\n  %s\n" % run_pinned.copy_command(".ratchet/.git/objects", self.commit, self.runner,
                                                                      ".github/ratchet/run_pinned.py"), output)
                 self.assertIn("it keeps the copy only when its bytes are blob %s" % self.runner, output)
-                self.assertIn("\n    run: %s\n" % run_pinned.run_command(self.commit, self.runner,
-                                                                       ".github/ratchet/run_pinned.py"), output)
+                run = run_pinned.run_command(self.commit, self.runner, ".github/ratchet/run_pinned.py")
+                self.assertNotIn("\n", run)
+                self.assertIn("\n  - name: Ratchet's register check\n    run: |\n      %s\n" % run, output)
+                self.assertStepParses(output, run)
                 self.assertIn("No workflow and no required job are added", output)
                 self.assertIn("python3 .ratchet/checks/inventory.py", output)
                 self.assertNotIn("..", output.replace("...", ""))
