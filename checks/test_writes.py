@@ -46,6 +46,7 @@ WRITERS = {
     "init.py": {"temporary", "write_new", "add_line"},
     "release.py": {"git"},
     "expected_tests.py": {"main"},
+    "from_base.py": {"judge", "placeholders"},
     "suite_runner.py": {"Recorder.__init__", "FixtureTest.scratch", "FixtureTest.fixture_file", "FixtureTest.fixture_directory"},
     # The new directory it makes with tempfile, with the empty git directory, home and config it reads the store
     # through, the pinned commit's tree written into it, and the directory removed.

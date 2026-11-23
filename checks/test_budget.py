@@ -9,6 +9,7 @@ rule that enters in this version is adopted in this repo's register or says why 
 that were merged, removed and moved are gone, and ratchet.root-cause names a check. Standard library only.
 """
 
+import copy
 import json
 import os
 import re
@@ -24,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import check_register  # noqa: E402
+import from_base  # noqa: E402
 import registry  # noqa: E402
 
 # The cap was 25 on the day of D-2026-11-17-pull-and-budget: 20 experimental rules in ratchet.json at the commit on
@@ -106,6 +108,60 @@ FIRST_WORDING = ("Checks, gates and automated reviewers that act outside the rep
 NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
 FORM = "experimental_cap must be a whole number from 0"
+
+# Every entry of this repo's register that is built, with the command of checks/from_base.py that the base branch runs
+# for it (D-2026-11-22-second-redraw, built by enforcement point). An entry marked built that is not here fails.
+ENFORCED = {
+    "ratchet.register-on-top": ("checks/check_register.py", "register.json", "--markdown", "REGISTER.md"),
+    "ratchet.expected-tests-ran": ("checks/expected_tests.py",),
+    "repo.rules-as-data": ("checks/generate.py", "--check"),
+    "repo.checks-fail-on-fixtures": ("checks/expected_tests.py",),
+    "repo.version": ("checks/released_text.py",),
+    "repo.new-rule-used": ("checks/generate.py", "--check"),
+}
+# What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
+POINT = ("Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on ",
+         "and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` "
+         "from the base commit, never from the pull request, and it runs the base branch's ")
+# What the workflow must hold for that to be so: the job base takes from_base.py from the base commit and runs it in
+# isolation, and the job checks waits for it, runs whatever it did, and fails on a pull request unless it passed.
+SHOWN = (
+    "  base:\n    if: github.event_name == 'pull_request'\n",
+    'git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"',
+    'python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"',
+    "  checks:\n    needs: [own, base]\n    if: always()\n",
+    'if [ "$EVENT" = pull_request ] && [ "$BASE" != success ]; then',
+)
+
+
+def register_where(register, key):
+    return {entry["key"]: entry for entry in register["adopted"] + register["own"]}[key]["where"]
+
+
+def enforcement_problems(register, workflow, commands):
+    """Why the entries marked built in a register are not shown to be enforced where they can refuse, each as a line."""
+    problems = []
+    missing = [text for text in SHOWN if text not in workflow]
+    if missing:
+        problems.append("the workflow does not show the job base and the job checks that waits for it: %r is missing" % missing[0])
+    if "pull_request_target" in workflow:
+        problems.append("the workflow names pull_request_target, which runs the base's workflow with the base's rights")
+    for entry in register["adopted"] + register["own"]:
+        if entry.get("status") != "built":
+            continue
+        key, where = entry["key"], entry.get("where", "")
+        if key not in ENFORCED:
+            problems.append("%s is built, and no enforcement point is stated for it in ENFORCED" % key)
+            continue
+        command = ENFORCED[key]
+        if not all(part in where for part in POINT):
+            problems.append("%s: its where does not say where it is enforced and when that was read back" % key)
+        if "`%s" % command[0] not in where:
+            problems.append("%s: its where does not name `%s`" % (key, command[0]))
+        if tuple(command) not in [tuple(each) for each in commands]:
+            problems.append("%s: the base branch does not run %s" % (key, " ".join(command)))
+    return problems
+
 
 # Fixture under budget/ -> what generate.py --check must say when that file is ratchet.json.
 FAILING = {
@@ -388,34 +444,62 @@ class Triage(RepoCopy, unittest.TestCase):
                       "is red when the post is late", "no deploy can run without it", "This is a convention, not something a check verifies"):
             self.assertIn(words, glossary)
 
-    def test_the_seven_checks_that_do_not_run_where_they_can_refuse_are_not_built(self):
-        # D-2026-11-22-second-redraw, built by enforcement point: a merge check is built only when it reads its rules from
-        # the base branch, and a hook only when it runs in every harness the project uses. The job `checks` runs the PR's
-        # own checks and rule data, so six merge checks stay text only for now until it runs the base branch's. The
-        # tripwire of ratchet.irreversible-waits runs as a hook only in Claude Code, and Codex also works on this repo.
-        # Each `where` says what is missing.
+    def test_every_built_entry_names_an_enforcement_point_that_the_repo_shows(self):
+        # D-2026-11-22-second-redraw, built by enforcement point: a merge check is built only when it is required for the
+        # merge and reads its rules from the base branch. Each entry marked built is in ENFORCED, with the command the
+        # base branch runs for it, its `where` names that enforcement point, and the workflow and checks/from_base.py
+        # show it. What is required for the merge is a setting of the host, which no check here can read: the `where`
+        # says when it was read back.
         register = json.loads(read("register.json"))
-        entries = {entry["key"]: entry for entry in register["adopted"] + register["own"]}
-        for key in ("ratchet.register-on-top", "ratchet.expected-tests-ran", "repo.rules-as-data",
-                    "repo.checks-fail-on-fixtures", "repo.version", "repo.new-rule-used"):
-            self.assertEqual(entries[key]["status"], "text only for now", key)
-            for words in ("Not built.", "required for the merge", "the PR's own checks and rule data, not the base branch's"):
-                self.assertIn(words, entries[key]["where"], key)
-        waits = entries["ratchet.irreversible-waits"]
+        problems = enforcement_problems(register, read(".github", "workflows", "checks.yml"), from_base.DATA_COMMANDS + from_base.CODE_COMMANDS)
+        self.assertEqual(problems, [])
+        built = sorted(entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built")
+        self.assertEqual(built, sorted(ENFORCED))
+
+    def test_a_claim_of_built_that_the_repo_does_not_show_fails(self):
+        register = json.loads(read("register.json"))
+        workflow = read(".github", "workflows", "checks.yml")
+        commands = from_base.DATA_COMMANDS + from_base.CODE_COMMANDS
+
+        def with_entry(key, **change):
+            changed = copy.deepcopy(register)
+            for entry in changed["adopted"] + changed["own"]:
+                if entry["key"] == key:
+                    entry.update(change)
+            return changed
+
+        cases = {
+            "a built entry with no enforcement point": (with_entry("ratchet.root-cause", status="built", where="In CI"), workflow, commands,
+                                                        "ratchet.root-cause is built, and no enforcement point is stated for it"),
+            "a where that does not name the point": (with_entry("repo.version", where="`checks/released_text.py` runs in CI"), workflow, commands,
+                                                     "repo.version: its where does not say"),
+            "a where that names another check": (with_entry("repo.version", where=register_where(register, "repo.rules-as-data")), workflow, commands,
+                                                 "repo.version: its where does not name `checks/released_text.py`"),
+            "a workflow with no job base": (register, workflow.replace('git show "HEAD^1:checks/from_base.py"', 'cat checks/from_base.py'), commands,
+                                            "the workflow does not show"),
+            "a job checks that does not wait for base": (register, workflow.replace("needs: [own, base]", "needs: [own]"), commands,
+                                                         "the workflow does not show"),
+            "a base that runs on pull_request_target": (register, workflow + "\n# pull_request_target\n", commands,
+                                                        "pull_request_target"),
+            "a command the base does not run": (register, workflow, [c for c in commands if c[0] != "checks/released_text.py"],
+                                                "repo.version: the base branch does not run checks/released_text.py"),
+        }
+        for name, (changed, text, given, words) in cases.items():
+            with self.subTest(name):
+                problems = enforcement_problems(changed, text, given)
+                self.assertTrue(any(words in problem for problem in problems), problems)
+
+    def test_the_tripwire_is_not_built_since_it_runs_in_one_harness(self):
+        # A hook is built only when it runs in every harness the project uses. The tripwire of ratchet.irreversible-waits
+        # runs as a hook only in Claude Code, and Codex also works on this repo.
+        register = json.loads(read("register.json"))
+        waits = {entry["key"]: entry for entry in register["adopted"]}["ratchet.irreversible-waits"]
         self.assertEqual(waits["status"], "text only for now")
         self.assertTrue(waits["where"].startswith("Not built. "), waits["where"])
         for words in ("runs as a hook only in Claude Code", "`.claude/settings.json`",
                       "Codex and the other harnesses that work on this repo do not run it",
                       "the hook does not run in every harness this repo uses"):
             self.assertIn(words, waits["where"])
-
-    def test_no_entry_of_this_repos_register_claims_built(self):
-        # After step 3 of D-2026-11-22-second-redraw no check of this repo is built by where it is enforced: the six
-        # merge checks run the PR's own checks and rule data, and the tripwire runs in one harness only. An entry that
-        # becomes built again changes this test in the same pull request, with its enforcement point.
-        register = json.loads(read("register.json"))
-        built = [entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built"]
-        self.assertEqual(built, [])
 
     def test_core_batch_a_rules_are_gone_and_stand_where_the_decision_put_them(self):
         # D-2026-11-22-second-redraw, step 8 of the migration: each rule that leaves is gone from ratchet.json, from this
