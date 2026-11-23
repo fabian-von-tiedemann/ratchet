@@ -25,6 +25,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import init  # noqa: E402
+import run_pinned  # noqa: E402
 
 WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore")
 PLACEHOLDER = "<40-character commit sha>"
@@ -156,6 +157,7 @@ class Init(unittest.TestCase):
         git(cls.source, "add", "-A")
         git(cls.source, "commit", "-q", "-m", "Ratchet as it stands")
         cls.commit = git(cls.source, "rev-parse", "HEAD")
+        cls.runner = git(cls.source, "rev-parse", "HEAD:checks/run_pinned.py")
         with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
             cls.version = json.load(handle)["version"]
 
@@ -178,9 +180,11 @@ class Init(unittest.TestCase):
     def init(self, *args, project=None):
         project = project or self.project
         script = os.path.join(self.project if project == self.path(".ratchet") else project, ".ratchet", "checks", "init.py")
+        # PWD as a shell gives it after cd into the project, so the paths init.py prints are the ones the test spelled,
+        # whether or not the temporary directory is reached through a link, such as /var to /private/var on macOS.
         result = subprocess.run([sys.executable, script] + list(args),
                                 cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
-                                env=environment())
+                                env=dict(environment(), PWD=project))
         return result.returncode, result.stdout
 
     def path(self, *parts):
@@ -1008,7 +1012,8 @@ os.link = link
                       "`ratchet.lesson-names-check`, as far as the register that stands after the run adopts them.", readme)
 
     # Adopt mode, step 9b of D-2026-11-22-second-redraw: a repo that already has an instruction file of its own gets only
-    # register.json, with one copied row, and is told the rows by reference and the marker lines to add.
+    # register.json, once it names with --adopt the rules its file states, with those rows by reference and no copied
+    # row, and is told the rows by reference and the marker lines to add.
 
     SWEDISH = "# Arbetsregler\n\nVi gör ändringar via PR, och main är skyddad. Inga hemligheter i repot.\n"
 
@@ -1017,11 +1022,36 @@ os.link = link
         return {entry["key"]: entry for entry in (json.loads(line.strip()) for line in output.split("\n")
                                                     if line.strip().startswith('{"key": "ratchet.'))}
 
+    def assertStepParses(self, output, run):
+        """The printed step is YAML that a workflow can hold: a block scalar, not "run: { ... }", which YAML reads as a
+        flow mapping and refuses. The standard library has no YAML parser, so the shape is pinned exactly, and Ruby's or
+        PyYAML's parser reads it where one is installed."""
+        lines = output.split("\n")
+        at = lines.index("  - name: Ratchet's register check")
+        step = lines[at:at + 3]
+        self.assertEqual(step, ["  - name: Ratchet's register check", "    run: |", "      " + run])
+        self.assertTrue(lines[at + 3].startswith("init:"), lines[at + 3])
+        document = "steps:\n" + "\n".join(step) + "\n"
+        expected = {"steps": [{"name": "Ratchet's register check", "run": run + "\n"}]}
+        parsers = []
+        if shutil.which("ruby"):
+            parsers.append(["ruby", "-ryaml", "-rjson", "-e", "print JSON.generate(YAML.safe_load(STDIN.read))"])
+        if subprocess.run([sys.executable, "-c", "import yaml"], stdout=subprocess.DEVNULL,
+                          stderr=subprocess.DEVNULL).returncode == 0:
+            parsers.append([sys.executable, "-c", "import json, sys, yaml; print(json.dumps(yaml.safe_load(sys.stdin)))"])
+        for parser in parsers:
+            with self.subTest(parser=parser[0]):
+                result = subprocess.run(parser, input=document, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        universal_newlines=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), expected)
+
     def test_a_repo_with_its_own_instruction_file_is_adopted_and_the_file_is_never_written(self):
         import check_register
         ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
         by_key = init.registry.rules_by_key(ratchet)
-        # A file in Swedish, and one that is not UTF-8 at all: adopt mode never reads what the file holds.
+        # A file in Swedish, and one that is not UTF-8 at all: adopt mode never reads what the file holds. The first run
+        # writes nothing: no register.json until the project names the rules its file states.
         for data in (self.SWEDISH.encode("utf-8"), "# R\u00e8gles\n".encode("latin-1")):
             with self.subTest(data=data[:12]):
                 self.project = self.make_project("adopt-%d" % len(os.listdir(self.directory)))
@@ -1030,28 +1060,48 @@ os.link = link
                 code, output = self.init()
                 self.assertEqual(code, 0, output)
                 self.assertIn("init: adopt mode: AGENTS.md is the project's own instruction file", output)
-                self.assertEqual(snapshot(self.project), {"AGENTS.md": data, "register.json": snapshot(self.project)["register.json"]})
-                self.assertRegex(output, r"(?m)^write +register\.json$")
-                register = json.loads(self.text("register.json"))
-                self.assertEqual(register["project"], self.project.rsplit(os.sep, 1)[1])
-                self.assertNotIn("instructions", register)
-                self.assertEqual([rule["key"] for rule in register["adopted"]], ["ratchet.register-on-top"])
-                self.assertEqual(check_register.check(register, ratchet)[0], [])
-                # The rows by reference and their marker lines, for every other rule to start with, pointing at AGENTS.md.
+                self.assertEqual(snapshot(self.project), {"AGENTS.md": data})
+                self.assertRegex(output, r"(?m)^not yet +register\.json: it is written once you name with --adopt")
+                self.assertIn("init: there is no register.json yet, so there is no register to check", output)
+                # The rows by reference and their marker lines, for every rule to start with, pointing at AGENTS.md.
                 entries = self.adopt_entries(output)
-                self.assertEqual(sorted(entries), sorted(key for key in ratchet["start"] if key != "ratchet.register-on-top"))
+                self.assertEqual(sorted(entries), sorted(ratchet["start"]))
                 for key, entry in entries.items():
                     self.assertEqual(entry["stands_in"], "AGENTS.md")
                     self.assertEqual(entry["sha256"], check_register.reference_sha256(by_key[key]))
                     self.assertIn("\n<!-- ratchet:rule %s -->\n" % key, output)
-                # The one step to add to a job already required, pinned to the commit, and no workflow or admin.
-                self.assertIn("git clone --quiet --no-checkout %s .ratchet && git -C .ratchet checkout --quiet %s && "
-                              "python3 .ratchet/checks/check_register.py register.json" % (init.REPOSITORY, self.commit), output)
+                # The copy of run_pinned.py and the one step that runs it, pinned to the commit, and no workflow or admin.
+                # The copy is kept only when it hashes to the blob the pinned tree names, and the step hashes it again.
+                self.assertIn("\n  %s\n" % run_pinned.copy_command(".ratchet/.git/objects", self.commit, self.runner,
+                                                                     ".github/ratchet/run_pinned.py"), output)
+                self.assertIn("it keeps the copy only when its bytes are blob %s" % self.runner, output)
+                run = run_pinned.run_command(self.commit, self.runner, ".github/ratchet/run_pinned.py")
+                self.assertNotIn("\n", run)
+                self.assertIn("\n  - name: Ratchet's register check\n    run: |\n      %s\n" % run, output)
+                self.assertStepParses(output, run)
                 self.assertIn("No workflow and no required job are added", output)
+                # One line names adoption in part, and its exact form.
+                self.assertEqual(output.count("adopted in part"), 1, output)
+                self.assertIn('may be adopted in part: in its row in register.json, give "where": "Not stated here: <clause>; '
+                              '<clause>."', output)
                 self.assertIn("python3 .ratchet/checks/inventory.py", output)
-                self.assertIn("init: python3 .ratchet/checks/check_register.py register.json\n", output)
                 self.assertNotIn("..", output.replace("...", ""))
                 self.assertNotIn("would write", output)
+        # With the marker of a rule in the file, --adopt writes register.json with that row by reference and no other:
+        # no copied row, and no instructions.
+        self.project = self.make_project("adopt-with-marker")
+        self.write("AGENTS.md", self.SWEDISH + "<!-- ratchet:rule ratchet.protected-main -->\n")
+        code, output = self.init("--adopt", "ratchet.protected-main")
+        self.assertEqual(code, 0, output)
+        self.assertRegex(output, r"(?m)^write +register\.json$")
+        register = json.loads(self.text("register.json"))
+        self.assertEqual(register["project"], self.project.rsplit(os.sep, 1)[1])
+        self.assertNotIn("instructions", register)
+        self.assertEqual(register["adopted"], [self.adopt_entries(output).get("ratchet.protected-main") or
+                                               init.reference_row("ratchet.protected-main", "AGENTS.md", ratchet)])
+        self.assertEqual(check_register.check(register, ratchet)[0], [])
+        self.assertIn("init: python3 .ratchet/checks/check_register.py register.json\n", output)
+        self.assertNotIn(":rule ratchet.protected-main -->", output)
 
     def test_adopt_check_and_a_real_run_agree(self):
         self.write("AGENTS.md", self.SWEDISH)
@@ -1060,51 +1110,76 @@ os.link = link
         self.assertEqual(code, 0, output)
         self.assertEqual(snapshot(self.project), before)
         self.assertIn("adopt mode", output)
-        self.assertRegex(output, r"(?m)^would write +register\.json$")
-        self.assertIn("the register it would leave passes", output)
+        self.assertRegex(output, r"(?m)^not yet +register\.json")
         checked = output
         code, output = self.init()
         self.assertEqual(code, 0, output)
+        self.assertEqual(snapshot(self.project), before)
         self.assertEqual(self.adopt_entries(checked), self.adopt_entries(output))
-        # A row by reference in the project's register whose marker is not in AGENTS.md: both exit 1 and write nothing.
-        register = json.loads(self.text("register.json"))
-        register["adopted"].append(self.adopt_entries(output)["ratchet.no-secrets"])
-        self.write("register.json", json.dumps(register, indent=2) + "\n")
-        before = snapshot(self.project)
-        checked, check_output = self.init("--check")
-        code, output = self.init()
+        # --adopt a rule whose marker is not in AGENTS.md: both exit 1, write nothing and name the missing marker.
+        checked, check_output = self.init("--check", "--adopt", "ratchet.no-secrets")
+        code, output = self.init("--adopt", "ratchet.no-secrets")
         self.assertEqual((checked, code), (1, 1), check_output + output)
         self.assertEqual(snapshot(self.project), before)
         for said in (check_output, output):
             self.assertIn("AGENTS.md: holds no marker for ratchet.no-secrets", said)
-            self.assertIn("adopt mode", said)
-        self.assertIn("the register it would leave does not pass", check_output)
+            self.assertRegex(said, r"(?m)^skip +register\.json: the register would not pass check_register\.py, so it "
+                                   r"is not written")
+        self.assertIn("init: register.json would be not written", check_output)
+        self.assertIn("init: register.json was not written", output)
+        # With the marker: --check says it would write it and that it passes, and the real run writes it.
+        with open(self.path("AGENTS.md"), "a", encoding="utf-8") as handle:
+            handle.write("<!-- ratchet:rule ratchet.no-secrets -->\n")
+        checked, check_output = self.init("--check", "--adopt", "ratchet.no-secrets")
+        self.assertEqual(checked, 0, check_output)
+        self.assertRegex(check_output, r"(?m)^would write +register\.json$")
+        self.assertIn("the register it would leave passes", check_output)
+        self.assertFalse(os.path.lexists(self.path("register.json")))
+        code, output = self.init("--adopt", "ratchet.no-secrets")
+        self.assertEqual(code, 0, output)
+        register = json.loads(self.text("register.json"))
         # A register.json that is a link: not a plain file, so both exit 1.
         os.remove(self.path("register.json"))
         self.write("ours.json", json.dumps(register, indent=2) + "\n")
         os.symlink("ours.json", self.path("register.json"))
-        checked, check_output = self.init("--check")
-        code, output = self.init()
-        self.assertEqual((checked, code), (1, 1), check_output + output)
-        self.assertRegex(check_output, r"(?m)^skip +register\.json: it exists and is not a plain file")
-        # A run that cannot run, cannot in both.
+        for args in (("--check",), (), ("--adopt", "ratchet.no-secrets")):
+            code, output = self.init(*args)
+            self.assertEqual(code, 1, output)
+            self.assertRegex(output, r"(?m)^skip +register\.json: it exists and is not a plain file")
+        # A run that cannot run, cannot in both: a bad name, a rule that is not Ratchet's, a rule named twice.
         os.remove(self.path("register.json"))
-        for args in (("--check",), ()):
-            code, output = self.init("--name", "not a name!", *args)
-            self.assertEqual(code, 2, output)
+        for bad in (("--name", "not a name!"), ("--adopt", "ratchet.no-such-rule"),
+                    ("--adopt", "ratchet.no-secrets", "--adopt", "ratchet.no-secrets")):
+            for args in (("--check",), ()):
+                code, output = self.init(*(bad + args))
+                self.assertEqual(code, 2, output)
         self.assertFalse(os.path.lexists(self.path("register.json")))
 
+    def test_adopt_is_refused_in_a_start(self):
+        for args in (("--check",), ()):
+            code, output = self.init("--adopt", "ratchet.no-secrets", *args)
+            self.assertEqual(code, 2, output)
+            self.assertIn("--adopt is for adopt mode", output)
+            self.assertEqual(snapshot(self.project), {})
+
     def test_a_second_adopt_run_changes_nothing(self):
-        self.write("CLAUDE.md", self.SWEDISH)
-        code, output = self.init()
+        self.write("CLAUDE.md", self.SWEDISH + "<!-- ratchet:rule ratchet.no-secrets -->\n")
+        code, output = self.init("--adopt", "ratchet.no-secrets")
         self.assertEqual(code, 0, output)
         before = snapshot(self.project)
-        code, output = self.init()
+        code, output = self.init("--adopt", "ratchet.no-secrets")
         self.assertEqual(code, 0, output)
         self.assertEqual(snapshot(self.project), before)
         self.assertIn("adopt mode", output)
         self.assertRegex(output, r"(?m)^unchanged +register\.json$")
         self.assertIn("Nothing changed", output)
+        self.assertIn("init: done. Nothing to commit", output)
+        # Without --adopt, the register that stands is the project's, and is checked as it stands.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(snapshot(self.project), before)
+        self.assertRegex(output, r"(?m)^skip +register\.json: it is the project's own\. It was left as it is, and is "
+                                 r"checked as it stands$")
         self.assertIn("init: done. Nothing to commit", output)
 
     def check_register(self):
@@ -1113,49 +1188,51 @@ os.link = link
         return result.returncode, result.stdout
 
     def test_an_adoption_end_to_end_add_the_markers_and_the_check_passes(self):
-        # What README says to do after an adopt run: put a marker line by the project's own wording of a rule, paste the
-        # row printed for it into register.json, and the check passes, labeling the row as the weaker mode. A run after
-        # it stays in adopt mode, keeps the register and no longer prints that row.
+        # What README says to do after an adopt run: put a marker line by the project's own wording of a rule, and name
+        # it with --adopt. The check passes, labeling each row as the weaker mode. A run after it stays in adopt mode,
+        # keeps the register and no longer prints those rows.
         self.write("AGENTS.md", self.SWEDISH)
         code, output = self.init()
         self.assertEqual(code, 0, output)
-        entries = self.adopt_entries(output)
-        register = json.loads(self.text("register.json"))
         with open(self.path("AGENTS.md"), "a", encoding="utf-8") as handle:
             for key in ("ratchet.protected-main", "ratchet.no-secrets"):
                 handle.write("<!-- ratchet:rule %s -->\n" % key)
-                register["adopted"].append(entries[key])
-        self.write("register.json", json.dumps(register, indent=2) + "\n")
+        code, output = self.init("--adopt", "ratchet.protected-main", "--adopt", "ratchet.no-secrets")
+        self.assertEqual(code, 0, output)
         code, said = self.check_register()
         self.assertEqual(code, 0, said)
         self.assertIn("2 rules are adopted by reference", said)
+        self.assertIn("0 rules match Ratchet", said)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertIn("adopt mode", output)
-        self.assertRegex(output, r"(?m)^skip +register\.json: it exists and differs from what init.py writes\. It was left "
-                                 r"as it is, and is checked as it stands$")
+        self.assertRegex(output, r"(?m)^skip +register\.json: it is the project's own")
         self.assertNotIn("ratchet:rule ratchet.no-secrets", output)
         self.assertIn("ratchet:rule ratchet.decision-as-file", output)
+        self.assertIn("init: paste the row of each rule whose marker you put in AGENTS.md into adopted", output)
 
     def test_an_adoption_pasted_verbatim_from_what_init_prints_passes(self):
-        # Review of 58ca014: the marker lines and the rows, taken from the printed output as they stand and pasted
-        # unchanged, every one of them, make check_register.py pass. A marker starts at column zero, so one printed with
-        # an indent fails. A finished adoption run again changes nothing and says only what applies.
+        # Review of 58ca014: the marker lines, taken from the printed output as they stand and pasted unchanged, every
+        # one of them, make check_register.py pass once --adopt names them, and the rows it writes are the rows printed.
+        # A marker starts at column zero, so one printed with an indent fails. A finished adoption run again changes
+        # nothing and says only what applies.
         self.write("AGENTS.md", self.SWEDISH)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         lines = output.split("\n")
         markers = [line for line in lines if "<!-- ratchet:rule " in line]
-        rows = [line for line in lines if '{"key": "ratchet.' in line]
+        rows = self.adopt_entries(output)
         ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
-        self.assertEqual(len(markers), len(ratchet["start"]) - 1, output)
+        self.assertEqual(len(markers), len(ratchet["start"]), output)
         self.assertEqual(len(rows), len(markers), output)
         with open(self.path("AGENTS.md"), "a", encoding="utf-8", newline="") as handle:
             handle.write("\n" + "\n".join(markers) + "\n")
-        text = self.text("register.json")
-        self.assertEqual(text.count("\n  ]"), 1, text)  # the end of adopted, the one list that is not empty
-        at = text.index("\n  ]")
-        self.write("register.json", text[:at] + ",\n" + ",\n".join(rows) + text[at:])
+        adopt = []
+        for key in ratchet["start"]:
+            adopt += ["--adopt", key]
+        code, output = self.init(*adopt)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(json.loads(self.text("register.json"))["adopted"], [rows[key] for key in ratchet["start"]])
         code, said = self.check_register()
         self.assertEqual(code, 0, said)
         self.assertIn("%d rules are adopted by reference" % len(rows), said)
@@ -1201,11 +1278,11 @@ os.link = link
                               ("directory", lambda: os.mkdir(self.path("REGISTER.md")))):
             with self.subTest(kind=kind):
                 self.project = self.make_project("register-md-%s" % kind)
-                self.write("AGENTS.md", self.SWEDISH)
+                self.write("AGENTS.md", self.SWEDISH + "<!-- ratchet:rule ratchet.no-secrets -->\n")
                 prepare()
-                checked, check_output = self.init("--check")
+                checked, check_output = self.init("--check", "--adopt", "ratchet.no-secrets")
                 self.assertFalse(os.path.lexists(self.path("register.json")), check_output)
-                code, output = self.init()
+                code, output = self.init("--adopt", "ratchet.no-secrets")
                 self.assertEqual((checked, code), (0, 0), check_output + output)
                 for said in (check_output, output):
                     self.assertIn("init: REGISTER.md is left as it is and not checked in adopt mode", said)
@@ -1243,24 +1320,33 @@ os.link = link
             self.assertEqual(code, 1, output)
             self.assertIn("ratchet.register-on-top", self.adopt_entries(output))
 
-    def test_the_floor_of_adopt_mode_is_refused_when_it_would_not_pass(self):
+    def test_the_register_of_adopt_mode_holds_only_the_rows_named_and_no_copied_row(self):
+        # Finding from a real adoption: a copied ratchet.register-on-top says the register lists every rule in force and
+        # takes precedence, which is false where the project's own instruction file governs. Adopt mode copies no row.
         ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
-        template = json.loads(init.register_text("demo", ratchet))
-        without = dict(template, adopted=[rule for rule in template["adopted"] if rule["key"] != init.ADOPT_COPIED])
-        with unittest.mock.patch.object(init, "register_text", lambda name, ratchet: json.dumps(without)):
-            with self.assertRaisesRegex(init.InitError, "templates/register.json does not adopt it"):
-                init.adopt_register_text("demo", ratchet)
-        with unittest.mock.patch.object(init, "register_text", lambda name, ratchet: json.dumps(template)), \
-                unittest.mock.patch.object(init.check_register, "check", lambda register, ratchet: (["a problem"], "")):
-            with self.assertRaisesRegex(init.InitError, "with ratchet.register-on-top alone, does not pass: a problem"):
-                init.adopt_register_text("demo", ratchet)
-        self.assertEqual([rule["key"] for rule in json.loads(init.adopt_register_text("demo", ratchet))["adopted"]],
-                         [init.ADOPT_COPIED])
+        register = json.loads(init.adopt_register_text("demo", ratchet, ["ratchet.protected-main"], "CLAUDE.md"))
+        self.assertEqual(register["adopted"], [init.reference_row("ratchet.protected-main", "CLAUDE.md", ratchet)])
+        self.assertFalse(any("rule" in row for row in register["adopted"]))
+        for keys, said in ((["ratchet.no-such-rule"], "there is no rule ratchet.no-such-rule in Ratchet"),
+                           (["ratchet.no-secrets", "ratchet.no-secrets"], "--adopt names a rule twice")):
+            with self.assertRaisesRegex(init.InitError, said):
+                init.adopt_register_text("demo", ratchet, keys, "AGENTS.md")
+        real = init.check_register.check
+
+        def check(register, ratchet):
+            if any("stands_in" in row for row in register["adopted"]):
+                return ["a problem"], ""
+            return real(register, ratchet)
+
+        with unittest.mock.patch.object(init.check_register, "check", check):
+            with self.assertRaisesRegex(init.InitError, "the register for adopt mode does not pass: a problem"):
+                init.adopt_register_text("demo", ratchet, ["ratchet.no-secrets"], "AGENTS.md")
+        self.assertFalse(hasattr(init, "ADOPT_COPIED"))
 
     def test_what_adopt_mode_prints_around_the_rows(self):
-        # Review of 58ca014: each line adopt mode prints beside the rows, pinned.
-        self.write("AGENTS.md", self.SWEDISH)
-        code, output = self.init("--check")
+        # Review of 58ca014, and the findings from a real adoption: each line adopt mode prints beside the rows, pinned.
+        self.write("AGENTS.md", self.SWEDISH + "<!-- ratchet:rule ratchet.protected-main -->\n")
+        code, output = self.init("--check", "--adopt", "ratchet.protected-main")
         self.assertEqual(code, 0, output)
         self.assertNotIn("--solo changes nothing", output)
         # No .gitignore: the advice to add the line, and no .gitignore written.
@@ -1269,19 +1355,59 @@ os.link = link
         self.assertIn("A marker line counts only in a file in UTF-8 with LF line endings", output)
         # The inventory names the required jobs, given the exported ruleset.
         self.assertIn("python3 .ratchet/checks/inventory.py --ruleset <file>", output)
-        # No remote: the floor waits for one.
+        # No remote: the rule adopted waits for one.
         self.assertIn("init: the repo's git config names no remote, so these adopted rules wait for one:\n"
-                      "  ratchet.register-on-top: its check runs in CI on the host\n", output)
+                      "  ratchet.protected-main: the protection of main is a setting of the host\n", output)
+        # The job's token only reads, the checkout leaves no token, each with why; the line for a local check script.
+        run = run_pinned.run_command(self.commit, self.runner, ".github/ratchet/run_pinned.py")
+        self.assertIn("init: and give that job these, if it does not have them:\n  permissions:\n    contents: read\n"
+                      "init:   the job's token can then only read the repo, so no step in the job can push or approve "
+                      "with it\n", output)
+        self.assertIn("    with:\n      persist-credentials: false\ninit:   the checkout then leaves no token in "
+                      ".git/config, where a later step could read it\n", output)
+        self.assertIn("a local check script that CI runs, put the command in it as a line of its own, in place of the "
+                      "step:\n  %s\n" % run, output)
+        # How to record a rule as built, by where it is enforced, without saying that it is.
+        self.assertIn('"status": "built", with "where" naming the enforcement point and when it was read back: for '
+                      "ratchet.protected-main, the ruleset or branch protection of main at the host", output)
+        self.assertIn("init.py cannot see what the host enforces, and does not say", output)
+        self.assertIn('"key": "ratchet.decision-as-file", "stands_in": "AGENTS.md", "sha256": ', output)
+        self.assertNotIn('"status": "built"}', output)
+        # ratchet.register-on-top is offered with the caution that it fits only a register that governs.
+        self.assertIn("init: ratchet.register-on-top fits only where the register, not AGENTS.md, lists every rule in "
+                      "force and takes precedence", output)
         code, output = self.init("--solo")
         self.assertEqual(code, 0, output)
         self.assertIn("init: --solo changes nothing in adopt mode, which writes no instruction file", output)
+        self.assertIn("such as python3 .ratchet/checks/init.py --adopt ratchet.protected-main.", output)
         self.assertFalse(os.path.lexists(self.path(".gitignore")))
         self.write(".gitignore", "/.ratchet/\n")
         git(self.project, "remote", "add", "origin", "https://example.invalid/demo.git")
-        code, output = self.init()
+        code, output = self.init("--adopt", "ratchet.protected-main")
         self.assertEqual(code, 0, output)
         self.assertNotIn(".gitignore does not ignore", output)
         self.assertNotIn("wait for one", output)
+
+    def test_the_project_name_comes_from_the_git_remote_and_says_where_from(self):
+        # Finding from a real adoption: in a worktree whose folder a tool named, the name was the folder's. The repo's
+        # name in the url of the remote origin, or else the first remote, comes first, and the run says which it took.
+        code, output = self.init("--check")
+        self.assertIn('init: project name "demo-project", the folder\'s name, since the repo\'s git config names no '
+                      "remote with a url\n", output)
+        git(self.project, "remote", "add", "upstream", "https://example.invalid/team/upstream-name")
+        git(self.project, "remote", "add", "origin", "git@example.invalid:team/my-app.git")
+        code, output = self.init("--check")
+        self.assertEqual(code, 0, output)
+        self.assertIn('init: project name "my-app", the repo\'s name in the url of the git remote origin\n', output)
+        code, output = self.init("--check", "--name", "Given")
+        self.assertIn('init: project name "Given", given with --name\n', output)
+        git(self.project, "remote", "remove", "origin")
+        self.assertEqual(init.remote_repo(self.project), ("upstream", "upstream-name"))
+        git(self.project, "remote", "set-url", "upstream", "https://example.invalid/team/www.bad")
+        code, output = self.init("--check")
+        self.assertEqual(code, 0, output)
+        self.assertIn('init: project name "demo-project", the folder\'s name, since the repo\'s name in the url of the '
+                      'git remote upstream, "www.bad", cannot be one: it would be shown as a link\n', output)
 
     def test_the_instruction_files_that_switch_to_adopt_mode(self):
         # .claude/CLAUDE.md alone counts; AGENTS.md is named before CLAUDE.md; a file reached through a link in a parent
@@ -1366,6 +1492,21 @@ init.write_new = write_new""")
 
     def test_the_repository_of_the_printed_step_is_the_one_the_template_fetches(self):
         self.assertIn("repository: %s\n" % init.REPOSITORY.split("github.com/", 1)[1], read_template("ratchet-checks.yml"))
+
+    def test_the_workflow_template_reads_only_and_leaves_no_token(self):
+        # Finding from a real adoption: every job's token only reads, and no checkout leaves the token in .git/config.
+        text = read_template("ratchet-checks.yml")
+        self.assertIn("\npermissions:\n  contents: read\n", text)
+        jobs = "\n" + text.split("\njobs:\n", 1)[1]
+        for job in init.JOBS:
+            with self.subTest(job=job):
+                block = jobs.split("\n  %s:\n" % job, 1)[1].split("\n  project-checks:\n", 1)[0]
+                self.assertIn("\n    permissions:\n      contents: read\n    steps:\n", "\n" + block)
+        checkouts = re.findall(r"uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\n(?: +#.*\n)*?((?: +\S.*\n)*?) +with:\n((?: {10}.*\n)+)",
+                               text)
+        self.assertEqual(len(checkouts), text.count("uses: actions/checkout@"))
+        for _, options in checkouts:
+            self.assertIn("persist-credentials: false\n", options)
 
     def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
         keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]

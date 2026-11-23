@@ -2,15 +2,35 @@
 
 ## 0.12 (unreleased)
 
-In short: the README and the landing page are much shorter, and the steps after `init.py` have a document of their own. No rule changes, so an upgrade changes only the version your register states.
+In short: Ratchet gets an opt-in product module for an application with users in production, a rule may be adopted by reference in part, and the README and the landing page are much shorter. No core rule changes, and a register of 0.11 stays valid. If your repo has an instruction file of its own and you started on 0.11, replace the CI step and take out one copied row, as two bullets below say.
 
+- New: the product module, [PRODUCT.md](PRODUCT.md), with seven experimental rules for an application with users in production, each naming a check: `ratchet.release-what-was-tested`, `ratchet.accepted-by-who-can-judge`, `ratchet.boundaries-have-tests`, `ratchet.production-health`, `ratchet.measure-real-use`, `ratchet.platform-lifecycle` and `ratchet.dependencies-pinned`. They are opt-in and stand in the new part `product` of `ratchet.json`. The experimental rules go from 10 to 17, which is the cap ([#132](https://github.com/fabian-von-tiedemann/ratchet/pull/132)).
+- Three principles stand over the module: "Ship what was tested, and know the way back", "Keep what was accepted" and "Watch production and the ground under the code". Ratchet now has ten principles: seven for every project, and these three ([D-2026-11-22-second-redraw](decisions/D-2026-11-22-second-redraw.md), [#132](https://github.com/fabian-von-tiedemann/ratchet/pull/132)).
+- Ratchet's own register adopts one of the seven, `ratchet.platform-lifecycle`, as text only for now. The other six say why Ratchet cannot use them: it has no runtime, no production and no lockfile ([#132](https://github.com/fabian-von-tiedemann/ratchet/pull/132)).
+- A rule may be adopted by reference in part, when your own wording states its core but not every clause. The row lists the clauses left out, `REGISTER.md` labels it "Adopted in part", and it cannot be `built` until your wording states them. The check sees the list, not whether it names the real gaps ([#133](https://github.com/fabian-von-tiedemann/ratchet/pull/133)).
+- In a repo with an instruction file of its own, `init.py` no longer copies a rule into the register. The first run writes nothing and prints a marker line for each rule. `init.py --adopt <key>`, for each rule whose marker you put in your file, then writes `register.json` ([D-2026-11-23-adopt-mode-no-copied-row](decisions/D-2026-11-23-adopt-mode-no-copied-row.md), [#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- To do, if adopt mode wrote your register in 0.11: it holds a copied `ratchet.register-on-top`. Where your own file governs, take that row out once the register holds a row by reference ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- New: `checks/run_pinned.py` runs the register check from the files of the pinned commit, so an edit in `.ratchet` never runs. Adopt mode prints the command that copies it into your repo and the CI step that runs it ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- To do, if you added the CI step that adopt mode printed in 0.11: replace it with the one it prints now ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- Adopt mode says how to record a rule as `built` once your host enforces it ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- `init.py` takes the project's name from the url of the git remote, or else from the folder, and says which ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- `templates/ratchet-checks.yml` gives each job `permissions: contents: read` of its own ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- Every script in `checks/` runs under `python3 -I` ([#135](https://github.com/fabian-von-tiedemann/ratchet/pull/135)).
+- `inventory.py --ruleset` reads a file in a folder that is reached through a link, such as one from `mktemp -d` on macOS ([#134](https://github.com/fabian-von-tiedemann/ratchet/pull/134)).
+- `inventory.py --ruleset` reads the rules for a branch, the export that an account without admin rights can get ([#134](https://github.com/fabian-von-tiedemann/ratchet/pull/134)).
+- `inventory.py` names fewer paths as missing that are not: a path that `.gitignore` ignores, a branch name in a table and a path outside the repo are counted apart ([#134](https://github.com/fabian-von-tiedemann/ratchet/pull/134)).
 - The README is less than half its length: what Ratchet is, when to use it, the three commands that start it, what you get, the limits, and where to read more. What left it stands in the document it belongs to ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
 - New: [STARTING.md](STARTING.md) holds every step after `init.py`, for a new repo and for one with an instruction file of its own, and the list of the rules to start with ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
 - The landing page is one short page: what Ratchet is, why, how it works in three steps, the principles and the three commands. Its one figure shows the ratchet as a staircase: each failure becomes a check, one notch tighter, and cannot slip back ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
 - From this version on, an entry of this changelog opens with "In short" and has one bullet for each change, with its pull request. The detail is in the pull request ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
+- This repo's own jobs `checks` and `release` have 30 minutes, from 15. Nothing changes for a project that uses Ratchet ([#136](https://github.com/fabian-von-tiedemann/ratchet/pull/136)).
+
+Changes of form:
+
+- `register.json`: a row by reference may take a `where` that is exactly `Not stated here: <clause>; <clause>.`, the clauses your wording does not hold yet. A register of 0.11 stays valid, so there is nothing to do. The count toward 1.0 starts again from 0.12 ([D-2026-11-23-partial-adoption-form](decisions/D-2026-11-23-partial-adoption-form.md), [#133](https://github.com/fabian-von-tiedemann/ratchet/pull/133)).
 
 <!-- generated:count -->
-Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 0.11 (2026-11-23)

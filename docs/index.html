@@ -243,7 +243,7 @@ footer p + p {
 </section>
 <section>
 <h2 id="the-principles">The principles</h2>
-<p>Each is a question to ask when no rule fits. The rules stand under them. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">Read them in full</a></p>
+<p>Each is a question to ask when no rule fits. The rules stand under them. The last three are for applications in production. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">Read them in full</a></p>
 <ol id="principles">
 <li>Keep one place</li>
 <li>Make the gate independent of the author</li>
@@ -252,6 +252,9 @@ footer p + p {
 <li>Make checks that can fail, and turn failures into checks</li>
 <li>Guard the boundaries</li>
 <li>Subtract first</li>
+<li>Ship what was tested, and know the way back</li>
+<li>Keep what was accepted</li>
+<li>Watch production and the ground under the code</li>
 </ol>
 </section>
 <section>
@@ -270,7 +273,7 @@ footer p + p {
 </ol>
 <ul class="paths">
 <li><strong>In a new repo,</strong> it writes <code>AGENTS.md</code>, <code>register.json</code> with the rules to start with, the generated <code>REGISTER.md</code>, and a workflow that checks the register on every pull request.</li>
-<li><strong>In a repo with an instruction file of its own,</strong> such as <code>AGENTS.md</code> or <code>CLAUDE.md</code>, it writes only <code>register.json</code> and never changes your file.</li>
+<li><strong>In a repo with an instruction file of its own,</strong> such as <code>AGENTS.md</code> or <code>CLAUDE.md</code>, it never changes your file. It prints a marker line for each rule, and <code>init.py --adopt</code> then writes <code>register.json</code>.</li>
 </ul>
 <p class="next">It never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
 </section>

@@ -11,7 +11,7 @@ Each rule has a **key**, a **ratchet** and a **source**.
 
 The rules live in [ratchet.json](ratchet.json). The tables in this file are generated from it, and a check fails if a table is edited by hand. The words this file uses are defined in [GLOSSARY.md](GLOSSARY.md).
 
-A project's register is a data file, `register.json`. It holds the rules the project adopts and states which version of Ratchet they come from. A rule is copied verbatim, or, in a weaker mode, adopted by reference: the row names the rule, the file where the project's own wording of it stands, and the sha256 of the rule and its ratchet, and the check sees a marker line in that file, not the words. The project chooses which rules it takes. It never rewrites a copied one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. [STARTING.md](STARTING.md#the-rules-to-start-with) names ten rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
+A project's register is a data file, `register.json`. It holds the rules the project adopts and states which version of Ratchet they come from. A rule is copied verbatim, or, in a weaker mode, adopted by reference: the row names the rule, the file where the project's own wording of it stands, and the sha256 of the rule and its ratchet, and the check sees a marker line in that file, not the words. The project chooses which rules it takes. It never rewrites a copied one. Its own rules stand in a list of their own, under its own prefix. `REGISTER.md`, the register that people read, is generated from the data file. The [README](README.md#start-here) names ten rows to start with. A rule whose check the project has not built yet is text only in that project, and the register says so.
 
 Ratchet ships a reference check for some of the rules, listed in [checks/README.md](checks/README.md). For every other rule, "Check:" says what the project's check must do.
 
@@ -19,7 +19,7 @@ The name comes from the tool: a ratchet turns one way. Protection only gets tigh
 
 ## The principles
 
-Ratchet reads as seven principles, with every rule under one of them. A principle is a question to ask when no rule fits, or an aim. It is guidance and text only: it names no check and claims no protection. What is checked is the rules under it, each with its own ratchet, and a project's register adopts rules, not principles, with the status of each. The principles stand in [ratchet.json](ratchet.json), and this section is generated from it (`D-2026-11-20-principles-and-obligations`, `D-2026-11-22-second-redraw`). The six parts below are unchanged, and a rule is listed in its part as before.
+Ratchet reads as ten principles, with every rule under one of them: seven for every project, and three, the last three below, for an application with users in production, over the rules of the product module in [PRODUCT.md](PRODUCT.md). A principle is a question to ask when no rule fits, or an aim. It is guidance and text only: it names no check and claims no protection. What is checked is the rules under it, each with its own ratchet, and a project's register adopts rules, not principles, with the status of each. The principles stand in [ratchet.json](ratchet.json), and this section is generated from it (`D-2026-11-20-principles-and-obligations`, `D-2026-11-22-second-redraw`). The six parts below are unchanged, and a rule is listed in its part as before.
 
 <!-- generated:principles -->
 ### Keep one place
@@ -56,23 +56,41 @@ Guidance, text only. Rules under it: `ratchet.root-cause` (names a check), `ratc
 
 What crosses a boundary here\: a secret going out\, outside text or code coming in\, or a right wider than the work needs\?
 
-Guidance, text only. Rules under it: `ratchet.no-secrets` (names a check), `ratchet.no-tracing` (names a check), `ratchet.material-not-instructions` (text only), `ratchet.skills-pinned` (names a check), `ratchet.agents-without-keys` (text only)
+Guidance, text only. Rules under it: `ratchet.no-secrets` (names a check), `ratchet.no-tracing` (names a check), `ratchet.material-not-instructions` (text only), `ratchet.skills-pinned` (names a check), `ratchet.agents-without-keys` (text only), `ratchet.dependencies-pinned` (experimental, names a check)
 
 ### Subtract first
 
 What is the simplest thing that meets the requirement\, what can be removed\, and is the project getting tighter or only heavier\?
 
 Guidance, text only. Rules under it: `ratchet.simplest` (text only), `ratchet.si-measure` (experimental, names a check)
+
+### Ship what was tested\, and know the way back
+
+Is what runs in production the exact build that passed\, and have I tried the way back\?
+
+Guidance, text only. Rules under it: `ratchet.release-what-was-tested` (experimental, names a check)
+
+### Keep what was accepted
+
+Who can judge this change\, have they accepted it\, and which test goes red if that behavior or boundary changes later\?
+
+Guidance, text only. Rules under it: `ratchet.accepted-by-who-can-judge` (experimental, names a check), `ratchet.boundaries-have-tests` (experimental, names a check)
+
+### Watch production and the ground under the code
+
+Would I know within minutes if production stopped working\? What does real use show that the tests do not\, and what outside the repo is about to change state\?
+
+Guidance, text only. Rules under it: `ratchet.production-health` (experimental, names a check), `ratchet.measure-real-use` (experimental, names a check), `ratchet.platform-lifecycle` (experimental, names a check)
 <!-- /generated -->
 
 ## The core is frozen
 
 The six parts below are the core. From version 0.3 the core is frozen: no rule is added to it or removed from it without a decision by Ratchet's maintainer. A new rule starts as experimental, outside the core. It moves in by a decision that cites the criteria in [Rules promoted from projects](SELF-IMPROVEMENT.md#rules-promoted-from-projects), and from 1.0 only in a major version: see [What 1.0 promises](SELF-IMPROVEMENT.md#what-10-promises). The wording of a core rule changes only to correct an error or to make a rule and its ratchet say the same thing, and the changelog lists every such change. A ratchet may go from text only to a check in any version: that is the direction a ratchet turns.
 
-[CONTROL-ROOM.md](CONTROL-ROOM.md) and [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
+[CONTROL-ROOM.md](CONTROL-ROOM.md), [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md) and [PRODUCT.md](PRODUCT.md) are experimental. Their rules may change in any version, and they are not counted in the share of rules that are text only.
 
 <!-- generated:count -->
-Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 ## 1. Source of truth and decisions
@@ -162,7 +180,6 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 - **The project's phase, approvals, cost caps and gates.** The form can be reused, but the content is the project's.
 - **The project's checks and tools.** Ratchet says what a check must do. Its reference checks show one way to write one, and a project may replace them with its own.
 - **Which models and accounts.** Ratchet says only that author and reviewer come from different model families.
-- **Skills.** Ratchet cites its sources and does not ship or install any skill from them. A project that wants one copies it at a pinned commit, tied to a named situation (`ratchet.skills-pinned`).
 
 ## Sources
 
@@ -175,11 +192,4 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
 <!-- /generated -->
 
-The table is generated from [sources.json](sources.json), and a rule cites a source by its name there. Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. A project that wants a skill copies it from the source itself, together with its license. What Ratchet takes from each:
-
-- **google/elephant-goldfish-model**: the fresh context. A reviewer starts in a new thread, without the author's account of what was fixed.
-- **mattpocock/skills**: looking facts up instead of asking, a run that reproduces a bug before any guess, red before green, work cut into vertical slices, and a way to mark review findings.
-- **pstack**, by Lauren Tan: the idea that a lesson belongs in structure and not in words, which is what each ratchet does. Also: question the premise after failures in a row, fix the root cause, subtract before you add, and ask whether a finding is proven.
-- **obra/superpowers**: evidence before "done", and checking each review finding against the code before acting on it.
-
-The field is followed once, here, instead of once per repo. Each source is pinned at a commit in [sources.json](sources.json). A scheduled workflow compares each pin with the head of its source every day and opens an issue when one has moved, and the maintainer judges each move before the pin follows ([checks/README.md](checks/README.md#watch_sourcespy)). The maintainer also reads more widely, and what holds up comes in as a proposal.
+The table is generated from [sources.json](sources.json), and a rule cites a source by its name there. Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. A project that wants a skill copies it from the source itself, together with its license.

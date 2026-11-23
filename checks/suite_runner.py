@@ -43,6 +43,8 @@ sys.dont_write_bytecode = True
 import os  # noqa: E402
 
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+# Its own directory on the path, named explicitly, so that python3 -I still finds expected_tests beside it.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import json

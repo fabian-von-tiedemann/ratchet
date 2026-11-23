@@ -1320,14 +1320,16 @@ class PagePrinciples(RepoCopy, unittest.TestCase):
         problems = principle_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_list_names_the_seven_principles_in_order(self):
+    def test_the_list_names_the_ten_principles_in_order(self):
         self.assertEqual(principle_problems(ROOT), [])
         self.assertEqual(principle_problems(self.copy), [])
         reader = ListReader()
         reader.feed(self.page())
-        self.assertEqual(len(reader.items), 7)
+        # Seven for every project, then the three of the product module, as the README lists them.
+        self.assertEqual(len(reader.items), 10)
         self.assertEqual(reader.items[0], "Keep one place")
-        self.assertEqual(reader.items[-1], "Subtract first")
+        self.assertEqual(reader.items[6], "Subtract first")
+        self.assertEqual(reader.items[-1], "Watch production and the ground under the code")
 
     def test_a_principle_renamed_in_ratchet_json_fails_until_generate_moves_the_page(self):
         before = self.page()
@@ -1399,7 +1401,7 @@ class PagePrinciples(RepoCopy, unittest.TestCase):
                                   ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep\none place</li>", None),
                                   # Without the line that closes the list, the next </ol> on the page is not its end: what
                                   # stands before it is not an item, and nothing is written over.
-                                  ("<li>Subtract first</li>\n</ol>", "<li>Subtract first</li>", None)):
+                                  ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>", None)):
             with self.subTest(new=new):
                 self.setUp()
                 before = self.page().replace(old, new, 1)
@@ -1425,7 +1427,7 @@ class PagePrinciples(RepoCopy, unittest.TestCase):
         # Words straight in the <ol> show on the page as part of the list, and are not an item the test compares.
         for old, new in (("<li>Keep one place</li>", "<li>Keep one place</li>\nand one more"),
                          ('<ol id="principles">', '<ol id="principles">Ship it'),
-                         ("<li>Subtract first</li>\n</ol>", "<li>Subtract first</li>\n&#83;hip it</ol>")):
+                         ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>\n&#83;hip it</ol>")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
@@ -1451,7 +1453,7 @@ class PagePrinciples(RepoCopy, unittest.TestCase):
         reader = ListReader()
         reader.feed(self.page())
         self.assertEqual(reader.in_list, 0)
-        self.assertEqual(len(reader.items), 7)
+        self.assertEqual(len(reader.items), 10)
 
 
 class PageMotion(RepoCopy, unittest.TestCase):

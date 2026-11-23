@@ -12,19 +12,21 @@ it names the kind and the harnesses that load it, from the table KINDS below. It
 - with --uses, the files that no harness in use loads, such as a session prompt for a harness the project left
 - files that look unused: a hook no settings file names, a skill folder without SKILL.md, an empty file, a file in
   a harness's folder of a kind this inventory does not know
-- the paths an instruction file names that do not exist
-- the jobs of each workflow, and, given the exported ruleset or branch protection with --ruleset, the jobs that run
-  on a pull request and are not required, the required checks no job names, and what the export says of required
-  review and bypass
+- the paths an instruction file names that do not exist, and apart from them the ones the .gitignore at the root
+  ignores, the ones in a table that look like branch names, and the ones outside the root, which are not looked for
+- the jobs of each workflow, and, given the exported ruleset, branch protection or rules for a branch with --ruleset,
+  the jobs that run on a pull request and are not required, the required checks no job names, and what the export
+  says of required review and bypass
 - the lines of the code owners file beside the files the register names, for the owner to compare
 
 It writes nothing, reaches no network and runs no program. It reads only under the paths it is given, through one
-guarded reader that refuses a link at any part of a path below its starting point, follows no link and reports each
-one, and does not read a file whose name looks like a credential: it names it as skipped. Its workflow reader reads a
+guarded reader that refuses a link at any part of a path below its starting point, follows no link there and reports
+each one, and does not read a file whose name looks like a credential: it names it as skipped. Its workflow reader reads a
 subset of YAML and names a workflow outside it as not read, with its jobs under a heading of their own. It
 prints names and short facts, never what a file holds: from settings and MCP config only the names of hook events
 and servers. Judging what each part means is the agent's job, on this output, and its result is a proposal to the
-owner (D-2026-11-21-inventory-and-easy-upgrade, D-2026-11-22-second-redraw).
+owner (D-2026-11-21-inventory-and-easy-upgrade, D-2026-11-22-second-redraw). The starting point for --ruleset is the
+folder of the path the user typed, resolved through its links once.
 
 Exit code 0 when it ran, 2 when it could not. Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -33,6 +35,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
+# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
+# sys.path, still finds the modules beside it.
+import os  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import errno
@@ -237,10 +244,11 @@ def looks_like_credential(name, kind=None):
 
 # --- The guarded reader: the only place that opens, lists or looks at a file. ---
 #
-# Every path is read from a starting point, the root, the home folder, or for --ruleset the current folder or / , one
-# part at a time: each part is looked at without following it, refused when it is a link, and opened under the folder
-# before it with O_NOFOLLOW. A file is opened with O_NOFOLLOW and O_NONBLOCK and read only when it is a regular file.
-# The starting point itself is the one path that may pass through a link, as /tmp does on macOS. test_inventory.py
+# Every path is read from a starting point, the root, the home folder, or for --ruleset the folder of the file given,
+# one part at a time: each part is looked at without following it, refused when it is a link, and opened under the
+# folder before it with O_NOFOLLOW. A file is opened with O_NOFOLLOW and O_NONBLOCK and read only when it is a regular
+# file. The starting point itself is the one path that may pass through a link, as /tmp and /var do on macOS: for
+# --ruleset that is the folder of the path the user typed, resolved once, and never the file itself. test_inventory.py
 # fails on any open, walk, listing or look at a path outside the functions named guarded_.
 
 NOT_REGULAR = "not a regular file, not read"
@@ -262,6 +270,16 @@ def guarded_start(start):
         return os.open(start, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError as error:
         raise Refused("could not be read: %s" % (error.strerror or error), missing=True)
+
+
+def guarded_given(path):
+    """The folder of a file given on the command line, resolved through any link once, and its name as typed.
+
+    The path the user typed is their own choice of input, so a link above the file, such as /var on macOS, where
+    mktemp -d puts files, is followed. The file itself is read through the guarded reader from that folder: it is
+    refused when it is a link, and read only when it is a regular file."""
+    folder, name = os.path.split(path)
+    return os.path.realpath(folder or "."), name
 
 
 def guarded_step(folder, part, shown_part, last, directory):
@@ -610,7 +628,11 @@ def candidate(raw, kind):
     value = raw.strip()
     if kind == "import":
         value = value.rstrip(TRAILING)
-    if not value or URL.match(value) or value.startswith(("#", "<", "$", "/", "~", "-")):
+    if not value or URL.match(value) or value.startswith(("#", "<", "$", "-", "//")):
+        return None
+    # An absolute path, from / or from ~/, is a path of its own; ~alice or ~ alone is not.
+    absolute = value.startswith(("/", "~/"))
+    if value.startswith("~") and not absolute:
         return None
     value = value.split("#", 1)[0].split("?", 1)[0]
     value = LINE_SUFFIX.sub("", value)
@@ -618,6 +640,10 @@ def candidate(raw, kind):
         return None
     last = value.rstrip("/").rsplit("/", 1)[-1]
     extension = last.rsplit(".", 1)[-1].lower() if "." in last.strip(".") else ""
+    if absolute:
+        # /review is a command, as /help is: an absolute path has two parts or an extension this inventory knows.
+        inner = value[1:].strip("/")
+        return value if "/" in inner or extension in EXTENSIONS else None
     if kind == "link":
         return value
     if kind == "import":
@@ -632,15 +658,63 @@ def candidate(raw, kind):
 
 
 def named_paths(text):
-    """Each (line, kind, path) an instruction file names."""
+    """Each (line, kind, path, whether the line is a row of a table) an instruction file names."""
     found = []
     for number, line in enumerate(text.split("\n"), 1):
+        in_table = line.lstrip().startswith("|")
         for kind, pattern in (("link", LINK), ("span", SPAN), ("import", IMPORT)):
             for match in pattern.finditer(line):
                 value = candidate(match.group(1), kind)
                 if value is not None:
-                    found.append((number, kind, value))
+                    found.append((number, kind, value, in_table))
     return found
+
+
+def branch_like(value, kind, in_table):
+    """Whether a path that does not exist looks like a branch name in a table of conventions, such as `feature/` or
+    `feature/login`: a span in a row of a table whose last part has no extension this inventory knows."""
+    return kind == "span" and in_table and (value.startswith("?") or value.endswith("/"))
+
+
+# The one form of a line of .gitignore this reader reads: a plain path of letters, digits, ".", "-" and "_", its parts
+# separated by single slashes, with at most one / before it and one after it. Every other line is not read and is
+# counted, so a path under it is named as missing: a guess at git's patterns never hides one (review of c56df58).
+GITIGNORE_LINE = re.compile(rb"(/?)([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*)(/?)")
+
+
+def gitignore_rules(layer):
+    """The lines of the .gitignore at the root that this reader reads, through the guarded reader: ([(from the root,
+    folder only, parts)], the number of lines not read). A blank line and one that starts with # are no pattern, as in
+    git. A line read is a plain path, GITIGNORE_LINE, with no part . or ..; any other line is counted as not read."""
+    data, why = guarded_read(layer.top, [".gitignore"])
+    if why is not None:
+        return [], 0
+    rules, not_read = [], 0
+    for line in data.split(b"\n"):
+        if not line or line.startswith(b"#"):
+            continue
+        match = GITIGNORE_LINE.fullmatch(line)
+        parts = match.group(2).decode("ascii").split("/") if match else []
+        if not match or "." in parts or ".." in parts:
+            not_read += 1
+            continue
+        # A path with a / at its start or before its end is read from the root; a name alone matches at any depth.
+        rules.append((bool(match.group(1)) or len(parts) > 1, bool(match.group(3)), parts))
+    return rules, not_read
+
+
+def ignored(rules, rel):
+    """Whether a path from the root is ignored by the lines read: when it, or a folder above it, matches one. Every
+    part but the last is a folder, and the last one is when the path ends in /. With no ! read, any match decides."""
+    parts = parts_of(rel)
+    for end in range(1, len(parts) + 1):
+        folder = end < len(parts) or rel.endswith("/")
+        for from_root, folder_only, pattern in rules:
+            if folder_only and not folder:
+                continue
+            if (parts[:end] == pattern) if from_root else (parts[end - 1] == pattern[0]):
+                return True
+    return False
 
 
 def within(top, path):
@@ -649,7 +723,14 @@ def within(top, path):
 
 
 def resolve_named(layer, rel, kind, value):
-    """(exists, [full paths it may mean]) for a path an instruction file names, or None when it is not looked at."""
+    """(exists, [full paths it may mean]) for a path an instruction file names, ("outside", []) for one outside the
+    top of its layer, which is not looked at, or None when it is not looked at for another reason."""
+    if value.startswith(("/", "~/")):
+        full = os.path.normpath(os.path.expanduser(value))
+        if not within(layer.top, full):
+            return "outside", []
+        found = exists_in(layer, full)
+        return None if found is None else (found, [full])
     tentative = value.startswith("?")
     value = value.lstrip("?")
     folder = os.path.dirname(os.path.join(layer.top, *rel.split("/")))
@@ -660,10 +741,10 @@ def resolve_named(layer, rel, kind, value):
         first = value.split("/", 1)[0]
         bases = [base for base in bases if within(layer.top, os.path.join(base, first))
                  and exists_in(layer, os.path.join(base, first)) is True]
-    places = [os.path.normpath(os.path.join(base, *value.split("/"))) for base in bases]
-    places = [place for place in places if within(layer.top, place)]
+    every = [os.path.normpath(os.path.join(base, *value.split("/"))) for base in bases]
+    places = [place for place in every if within(layer.top, place)]
     if not places:
-        return None
+        return ("outside", []) if every else None
     found = [exists_in(layer, place) for place in places]
     if True in found:
         return True, places
@@ -688,6 +769,8 @@ def inspect(inventory, layers):
     """Facts read from the files: names in settings, paths in instruction files, which files instruction files name."""
     missing = []
     named_by = {}
+    others = {"ignored": [], "branch_names": [], "outside": []}
+    rules, others["gitignore_lines_not_read"] = gitignore_rules(layers["repo"])
     for entry in inventory.files:
         data = inventory.data.get(entry["path"])
         if data is None:
@@ -703,20 +786,30 @@ def inspect(inventory, layers):
             entry["facts"].append("not UTF-8 at byte %d: the paths it names are not read" % error.start)
             continue
         seen = set()
-        for number, kind, value in named_paths(text):
+        for number, kind, value, in_table in named_paths(text):
             result = resolve_named(layer, entry["rel"], kind, value)
             if result is None:
                 continue
             exists, places = result
             for place in places:
                 named_by.setdefault(os.path.normpath(place), set()).add(entry["path"])
-            if not exists and (number, value.lstrip("?")) not in seen:
-                seen.add((number, value.lstrip("?")))
-                missing.append({"file": entry["path"], "line": number, "path": value.lstrip("?")})
+            if exists is True or (number, value.lstrip("?")) in seen:
+                continue
+            seen.add((number, value.lstrip("?")))
+            item = {"file": entry["path"], "line": number, "path": value.lstrip("?")}
+            if exists == "outside":
+                others["outside"].append(item)
+            elif branch_like(value, kind, in_table):
+                others["branch_names"].append(item)
+            elif layer.name == "repo" and any(ignored(rules, os.path.relpath(place, layer.top).replace(os.sep, "/") +
+                                                      ("/" if value.endswith("/") else "")) for place in places):
+                others["ignored"].append(item)
+            else:
+                missing.append(item)
         count = len([item for item in missing if item["file"] == entry["path"]])
         if count:
             entry["facts"].append("names %d path%s that do%s not exist" % (count, "" if count == 1 else "s", "es" if count == 1 else ""))
-    return missing, named_by
+    return missing, named_by, others
 
 
 def same_content(inventory):
@@ -1077,16 +1170,18 @@ def needed(item, key, kinds, form, what=None):
     return expect(item[key], kinds, what or key)
 
 
-# What a refusal for a link on the path of an export adds: how to give it without one (review of #119).
-NO_LINK = ("Give the path with no link on it: as realpath prints it, or relative from a folder below the link, such as "
-           "/private/tmp on macOS in place of /tmp")
+# What a refusal for an export that is a link adds: how to give it (review of #119).
+NO_LINK = "Give the file the link points to, not the link"
+
+# The fields of one rule in the rules for a branch, GET /repos/{owner}/{repo}/rules/branches/{branch}, beside its type
+# and parameters: the ruleset it comes from.
+BRANCH_RULE_SOURCE = ("ruleset_source_type", "ruleset_source", "ruleset_id")
 
 
 def read_ruleset(path):
-    """The facts of each ruleset or branch protection in an exported file, read as every other file is."""
-    # Read from the current folder, or from / for an absolute path, one part at a time, refused at any part that is a
-    # link: a folder given through a link is refused as a file that is one.
-    absolute = path.startswith("/")
+    """The facts of each ruleset, branch protection or rule for a branch in an exported file."""
+    # The folder of the path given is resolved once, through any link, as the user typed it; the file is read from it
+    # through the guarded reader, refused when it is a link and read only when it is a regular file.
     parts = [part for part in path.split("/") if part not in ("", ".")]
     # The name is the last part that names something, so secret-token.json/ or secret-token.json/. is a credential too,
     # and the name after normalizing, so x/secret-token.json/.. is (review of #119).
@@ -1096,9 +1191,10 @@ def read_ruleset(path):
     # A path that ends in "/", "/." or "/.." names a folder.
     if not parts or path.split("/")[-1] in ("", ".", ".."):
         raise Fault("%s: names a folder, not a file" % path)
-    data, why = guarded_read("/" if absolute else ".", parts, prefix="/" if absolute else "")
+    folder, name = guarded_given(path)
+    data, why = guarded_read(folder, [name])
     if why is not None:
-        if "is a link, not followed" in why or why == "a link, not followed":
+        if why == "a link, not followed":
             why += ". " + NO_LINK
         raise Fault("%s: %s" % (path, why))
     try:
@@ -1107,7 +1203,13 @@ def read_ruleset(path):
         raise Fault("%s: %s" % (path, error))
     items = value if isinstance(value, list) else [value]
     if not items:
-        raise Fault("%s: the export holds no ruleset and no branch protection" % path)
+        raise Fault("%s: the export holds no ruleset and no branch protection; an empty list of the rules for a branch "
+                    "means no ruleset applies to it" % path)
+    if isinstance(value, list) and any(is_branch_rule(item) for item in items):
+        try:
+            return branch_rules_facts(items)
+        except Fault as error:
+            raise Fault("%s: %s" % (path, error))
     result = []
     for item in items:
         try:
@@ -1119,6 +1221,44 @@ def read_ruleset(path):
                 raise Fault("neither a ruleset nor a branch protection, as GitHub exports them")
         except Fault as error:
             raise Fault("%s: %s" % (path, error))
+    return result
+
+
+def is_branch_rule(item):
+    """Whether an item of a list is one rule of the rules for a branch: a type or the ruleset it comes from, no rules."""
+    return isinstance(item, dict) and "rules" not in item and ("type" in item or bool(set(item) & set(BRANCH_RULE_SOURCE)))
+
+
+def branch_rules_facts(items):
+    """The facts of the rules for a branch, one entry for each ruleset they come from, in the order they appear.
+
+    GitHub returns only the rules of rulesets that are active, from the repository and the organization, to an
+    account that can read the repository; it shows no bypass actors."""
+    groups, order = {}, []
+    for item in items:
+        if not is_branch_rule(item):
+            if isinstance(item, dict) and ("rules" in item or set(item) & {"required_status_checks", "required_pull_request_reviews",
+                                                                          "enforce_admins"}):
+                raise Fault("a list that mixes the rules for a branch with a ruleset or a branch protection")
+            raise Fault("a rule for a branch must be an object with its type and the ruleset it comes from")
+        source = tuple(needed(item, field, int if field == "ruleset_id" else str, "rule for a branch")
+                       for field in BRANCH_RULE_SOURCE)
+        if source not in groups:
+            groups[source] = []
+            order.append(source)
+        groups[source].append(item)
+    result = []
+    for source in order:
+        source_type, name, number = source
+        facts = empty_facts("rules for a branch")
+        facts["name"] = "%s %s, ruleset %d" % (source_type, name, number)
+        facts["include"] = None
+        facts["bypass"] = None
+        rule_facts(groups[source], facts)
+        for item in groups[source]:
+            for field in sorted(set(item) - {"type", "parameters"} - set(BRANCH_RULE_SOURCE)):
+                facts["not_read"].append("%s.%s" % (item["type"], field))
+        result.append(facts)
     return result
 
 
@@ -1164,7 +1304,22 @@ def ruleset_facts(item):
         else:
             names = optional(ref_name, field, list, "conditions.ref_name.%s" % field) or []
             facts[field] = [expect(name, str, "conditions.ref_name.%s" % field) for name in names]
-    for rule in expect(item["rules"], list, "rules"):
+    rule_facts(expect(item["rules"], list, "rules"), facts)
+    actors = optional(item, "bypass_actors", list)
+    # GitHub leaves bypass_actors out of what it shows an account without admin rights: then it is not known.
+    facts["bypass"] = None if actors is None else []
+    for actor in actors or []:
+        actor = expect(actor, dict, "a bypass actor")
+        actor_id = optional(actor, "actor_id", int)
+        facts["bypass"].append("%s %s (%s)" % (needed(actor, "actor_type", str, "bypass actor"),
+                                               "-" if actor_id is None else actor_id,
+                                               needed(actor, "bypass_mode", str, "bypass actor")))
+    return facts
+
+
+def rule_facts(rules, facts):
+    """The facts of each rule of a ruleset, or of the rules for a branch from one ruleset, added to facts."""
+    for rule in rules:
         rule = expect(rule, dict, "a rule")
         if rule.get("type") is None:
             raise Fault("a rule without a type")
@@ -1185,16 +1340,6 @@ def ruleset_facts(item):
             facts["other_rules"].append(kind)
         else:
             facts["not_read"].append(kind)
-    actors = optional(item, "bypass_actors", list)
-    # GitHub leaves bypass_actors out of what it shows an account without admin rights: then it is not known.
-    facts["bypass"] = None if actors is None else []
-    for actor in actors or []:
-        actor = expect(actor, dict, "a bypass actor")
-        actor_id = optional(actor, "actor_id", int)
-        facts["bypass"].append("%s %s (%s)" % (needed(actor, "actor_type", str, "bypass actor"),
-                                               "-" if actor_id is None else actor_id,
-                                               needed(actor, "bypass_mode", str, "bypass actor")))
-    return facts
 
 
 def protection_facts(item):
@@ -1301,7 +1446,8 @@ def code_owners(inventory, layer):
                     if isinstance(row.get("where"), str):
                         for match in SPAN.finditer(row["where"]):
                             value = candidate(match.group(1), "span")
-                            if value is None:
+                            # An absolute path is not a file of the repo, and is not looked at here.
+                            if value is None or value.startswith(("/", "~/")):
                                 continue
                             # A word such as owner/repo is a path only when its first part exists, as in a file.
                             if value.startswith("?"):
@@ -1352,7 +1498,7 @@ def build(args):
         inventory.walk_global(layers["global"])
     inventory.files.sort(key=lambda entry: (entry["layer"] != "repo", entry["path"]))
 
-    missing, named_by = inspect(inventory, layers)
+    missing, named_by, not_checked = inspect(inventory, layers)
     workflows = []
     required = required_names(rulesets)
     not_required = [] if rulesets else None
@@ -1403,6 +1549,7 @@ def build(args):
         "not_loaded": None if uses is None else not_loaded(inventory, uses, named_by, layers),
         "look_unused": look_unused(inventory),
         "missing_paths": missing,
+        "paths_not_checked": not_checked,
         "workflows": workflows,
         "rulesets": rulesets,
         "not_required": not_required,
@@ -1472,6 +1619,17 @@ def text_report(facts):
     section("Look unused", ["%s: %s" % (shown(item["path"]), item["why"]) for item in facts["look_unused"]])
     section("Paths named that do not exist", ["%s:%d names %s" % (shown(item["file"]), item["line"], shown(item["path"]))
                                               for item in facts["missing_paths"]])
+    others = facts["paths_not_checked"]
+    reasons = (("ignored", "ignored by .gitignore", "ignored by .gitignore"),
+               ("branch_names", "that look like branch names in a table", "looks like a branch name in a table"),
+               ("outside", "outside the root", "outside the root, not checked"))
+    section("Paths named and not looked for: " + ", ".join("%d %s" % (len(others[key]), label) for key, label, _ in reasons),
+            ["%s:%d names %s: %s" % (shown(item["file"]), item["line"], shown(item["path"]), why)
+             for key, _, why in reasons for item in others[key]] +
+            (["%d line%s of .gitignore not read: this reader reads only a plain path, with no wildcard, ! or backslash, "
+              "so a path under such a line is named as missing" %
+              (others["gitignore_lines_not_read"], "" if others["gitignore_lines_not_read"] == 1 else "s")]
+             if others["gitignore_lines_not_read"] else []))
     add("")
     add("Workflows")
     if not facts["workflows"]:
@@ -1495,7 +1653,7 @@ def text_report(facts):
              for item in facts["not_known"]])
     if facts["not_required"] is None:
         add("")
-        add("Required checks: give --ruleset with the exported ruleset or branch protection of the default branch to see which jobs are required")
+        add("Required checks: give --ruleset with the exported ruleset, branch protection or rules for the default branch to see which jobs are required")
     else:
         section("Jobs that run on a pull request and are not required: they look like a gate and are not",
                 ["%s: %s" % (shown(item["path"]), shown(item["job"]) + (' ("%s")' % shown(item["name"]) if item["name"] else ""))
@@ -1506,7 +1664,9 @@ def text_report(facts):
         for item in facts["rulesets"]:
             title = "  %s%s, target %s, enforcement %s" % (item["form"], " " + shown(item["name"]) if item["name"] else "",
                                                           shown(item["target"]), shown(item["enforcement"]))
-            if item["include"] is None:
+            if item["form"] == "rules for a branch":
+                title += ", the rules GitHub applies to the branch it was asked for"
+            elif item["include"] is None:
                 title += ", branches not in the export"
             elif item["include"]:
                 title += ", on " + ", ".join(shown(name) for name in item["include"])
@@ -1550,7 +1710,7 @@ def main(argv=None):
     parser.add_argument("--global", dest="use_global", action="store_true", help="also list the user's global layer under the home folder")
     parser.add_argument("--home", help="the home folder for --global, in place of HOME")
     parser.add_argument("--uses", help="the harnesses the project uses, separated by commas: %s" % ", ".join(HARNESSES))
-    parser.add_argument("--ruleset", action="append", help="a ruleset or branch protection exported from the host, as JSON; may be given more than once")
+    parser.add_argument("--ruleset", action="append", help="a ruleset, branch protection or rules for a branch exported from the host, as JSON; may be given more than once")
     parser.add_argument("--json", action="store_true", help="print JSON in place of text")
     args = parser.parse_args(argv)
     try:

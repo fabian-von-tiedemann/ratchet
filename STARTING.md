@@ -15,7 +15,7 @@ Every step after the three commands under [Start here](README.md#start-here) in 
 
 | Option | What it does |
 |---|---|
-| `--name` | Sets the project's name. Without it, the name is the folder's name. |
+| `--name` | Sets the project's name. Without it, the name is the repo's name in the url of its git remote, or else the folder's name, and `init.py` says which. |
 | `--solo` | For one agent and no control room. Leaves the control room and the skills out of `AGENTS.md`. |
 
 Then it names what is left: the placeholders in `AGENTS.md`, the jobs to require in the protection of `main`, and, when the repo has no remote yet, the adopted rules that wait for one. Last it runs the register check. See [checks/README.md](checks/README.md#initpy).
@@ -31,15 +31,21 @@ What is left for you:
 
 ## A repo with an instruction file of its own
 
-`init.py` runs in adopt mode. Run `python3 .ratchet/checks/inventory.py` first to see what your agent layer holds. `init.py` writes only `register.json`, with one rule copied, `ratchet.register-on-top`, and never changes your file. It writes no `AGENTS.md` to fill in, no `REGISTER.md`, and no workflow, so there are no jobs `ratchet` or `project-checks` to require.
+`init.py` runs in adopt mode. Run `python3 .ratchet/checks/inventory.py` first to see what your agent layer holds. `init.py` never changes your file, and writes no `AGENTS.md`, no `REGISTER.md` and no workflow, so there are no jobs `ratchet` or `project-checks` to require. The first run writes nothing at all.
 
 What is left for you:
 
-1. For each other rule to start with, `init.py` prints the rule, a marker line and a row by reference. Where your file states the rule in your own words, put the marker line there, alone on a line, and paste the row into `adopted` in `register.json`, each as printed, from its first character. Leave out a rule your file does not state, or state it there first. A marker counts only in a file in UTF-8 with LF line endings.
-2. Add the one step it prints to a job that the protection of your `main` already requires, and commit `register.json` and your file. It adds no workflow and no required job, so you need no admin. `python3 .ratchet/checks/inventory.py --ruleset <file>`, given the ruleset or branch protection of `main` exported from your host, names which jobs are required. Add `/.ratchet/` to `.gitignore` if `init.py` says it is missing.
-3. [Add a rule](#add-a-rule) when a failure shows you need it, with the rows you add.
+1. For each rule to start with, `init.py` prints the rule, a marker line and a row by reference. Where your file states the rule in your own words, put the marker line there, alone on a line, as printed, from its first character. Leave out a rule your file does not state, or state it there first. A marker counts only in a file in UTF-8 with LF line endings. Leave out `ratchet.register-on-top` while your own file is the one that governs.
+2. Run `init.py` again with `--adopt <key>` for each rule whose marker you put in. It writes `register.json` with those rows and no other, and only when the register passes. No row is copied: a copied `ratchet.register-on-top` would say that the register lists every rule in force and takes precedence, which is not so while your file governs.
+3. Copy `checks/run_pinned.py` into your repo from the pinned commit, with the command `init.py` prints, and add the one step it prints to a job that the protection of your `main` already requires, or the same command to the local check script that CI runs. The copy is kept only when it is the pinned commit's file, and the step checks that again before it runs it. It runs the register check from the pinned commit's own files, read with no git config, so an edit in `.ratchet` never runs. Give the job `permissions: contents: read` and its checkout `persist-credentials: false`, as printed. Commit `register.json`, the copy and your file. No workflow and no required job are added, so you need no admin. `python3 .ratchet/checks/inventory.py --ruleset <file>`, given the ruleset or branch protection of `main` exported from your host, names which jobs are required. Add `/.ratchet/` to `.gitignore` if `init.py` says it is missing. See [checks/README.md](checks/README.md#run_pinnedpy).
+4. A row whose rule names a check starts as `text only for now`. When your host enforces it, such as the protection of `main`, set `status` to `built` and say in `where` where it is enforced and when you read it back.
+5. [Add a rule](#add-a-rule) when a failure shows you need it, with the rows you add.
 
 A row by reference is the weaker mode: the check sees the marker, not your words.
+
+### If your file states a rule only in part
+
+When your wording holds a rule's core but not every clause, you may still adopt it by reference, in part: put the marker line by your wording, and in the row's `where` list what it leaves out, exactly as `"where": "Not stated here: <clause>; <clause>."`. The row is then labeled "adopted in part" with those clauses, and it cannot be `built` until your wording states them and the phrase is gone. The check sees the phrase, not whether the clauses you list are the real gaps. The details are in [checks/README.md](checks/README.md#check_registerpy).
 
 ## Add a rule
 
