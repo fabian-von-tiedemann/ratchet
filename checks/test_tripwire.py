@@ -470,8 +470,9 @@ class Rule(FixtureTest):
             self.assertIn(words, rule["ratchet"])
         # 23 when it was added in 0.7. 0.10 adds ratchet.review-by-risk (D-2026-11-19-review-by-risk) and
         # ratchet.one-exact-form, and takes six out (D-2026-11-20-proposal-triage): 19. 0.11 takes six more out, step 2
-        # of D-2026-11-22-second-redraw: 13. Step 3 takes three more out: 10.
-        self.assertEqual(registry.counts(data)["experimental"]["rules"], 10)
+        # of D-2026-11-22-second-redraw: 13. Step 3 takes three more out: 10. Step 12 adds the seven rules of the
+        # product module: 17.
+        self.assertEqual(registry.counts(data)["experimental"]["rules"], 17)
 
     def test_this_repo_adopts_it_as_not_built_and_says_what_is_locked_and_what_only_the_tripwire_catches(self):
         # Built from 2026-11-19, when the maintainer applied the tag ruleset and the control room read it back

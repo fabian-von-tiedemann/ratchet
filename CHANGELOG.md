@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+Step 12 of the migration in the decision `D-2026-11-22-second-redraw`: the product module. Principles 8 to 10 and seven experimental rules enter, in a new file, [PRODUCT.md](PRODUCT.md). The rules are opt-in, and stay experimental until a second project has used them. The experimental rules go from 10 to 17, at the cap of 17. No core rule changes, and nothing is lost.
+
+Added:
+
+- Three principles for an application with users in production, word for word from the decision: "Ship what was tested, and know the way back", "Keep what was accepted" and "Watch production and the ground under the code". Ratchet reads as ten principles: the seven of the core for every project, and these three.
+- `PRODUCT.md`, with the part `product` of `ratchet.json`, and seven experimental rules from 0.12, each naming a check: `ratchet.release-what-was-tested` under principle 8, `ratchet.accepted-by-who-can-judge` and `ratchet.boundaries-have-tests` under principle 9, `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle` under principle 10, and `ratchet.dependencies-pinned` under "Guard the boundaries". With the fixes the decision lists: the smoke test fails the deploy, or raises an alert, when it fails or is missing; a change that no test can catch is recorded as such; and scanning for known vulnerabilities is not what `ratchet.dependencies-pinned` asks for.
+- Six of the seven name in `not_used_because` why Ratchet's own register does not adopt them: Ratchet has no runtime, no production and no lockfile. The seventh, `ratchet.platform-lifecycle`, Ratchet can use, since its own jobs run on a runner image and a Python whose support ends on a date, so `register.json` adopts it as text only for now: no list of those dates and no scheduled job that reads one is built yet.
+
+Changed:
+
+- `RATCHET.md`, `README.md` and the landing page say that the principles are seven for every project and three for an application in production. The dial on the landing page stays at the seven of the core, which `checks/test_pages.py` reads as the principles with a core rule under them.
+- The tests that pinned the count of principles, of experimental rules or of the product rules count again: `checks/test_principles.py`, `checks/test_budget.py` and `checks/test_pages.py`.
+
 ## 0.11 (2026-11-23)
 
 <!-- generated:count -->

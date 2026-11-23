@@ -20,9 +20,12 @@ Ratchet turns each rule into a check that fails when the rule is broken, or says
 - Make checks that can fail\, and turn failures into checks
 - Guard the boundaries
 - Subtract first
+- Ship what was tested\, and know the way back
+- Keep what was accepted
+- Watch production and the ground under the code
 <!-- /generated -->
 
-Each is a question to ask when no rule fits, or an aim: guidance, text only. What is checked is the rules under them in [RATCHET.md](RATCHET.md#the-principles), each with its own ratchet, check or text only.
+The first seven are for every project. The last three are for an application with users in production, over the product module in [PRODUCT.md](PRODUCT.md), which is opt-in. Each is a question to ask when no rule fits, or an aim: guidance, text only. What is checked is the rules under them in [RATCHET.md](RATCHET.md#the-principles), each with its own ratchet, check or text only.
 
 ## Why Ratchet exists
 
@@ -65,7 +68,7 @@ Ratchet follows its own rules, and this repo is where they are tried first. Its 
 ## The honest limits
 
 <!-- generated:count -->
-Ratchet 0.11, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
 <!-- /generated -->
 
 - **Most of the core is still text.** The share is stated with every version in the [changelog](CHANGELOG.md), and the work between versions is to bring it down. Ratchet ships a reference check for the rules below, each run in this repo's CI with a fixture it fails on. For every other rule, the ratchet column says what a check must do, and your project builds it with the tools it already has. Until it does, the rule is text only in your project, and your register says so.
@@ -149,6 +152,7 @@ Experimental, outside the core:
 
 - [CONTROL-ROOM.md](CONTROL-ROOM.md): rules for running several agents at once, with one coordinating session and short-lived workspaces.
 - [SELF-IMPROVEMENT.md](SELF-IMPROVEMENT.md): rules for how a lesson becomes a check, and how lessons travel back here.
+- [PRODUCT.md](PRODUCT.md): rules for an application with users that runs in production: what is deployed, what was accepted, and watching production.
 
 ## Whose rules these are
 
