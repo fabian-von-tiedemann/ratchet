@@ -148,8 +148,10 @@ def entry(rule, old_entry=None):
     """A rule as it stands in a register, keeping the status, the place of the check and the translation that still hold.
 
     A translation is kept when the English text it is bound to did not change, and is left out when it did. A row
-    adopted by reference stays one: its key, its file, and the sha256 of the rule and its ratchet in this version.
+    adopted by reference stays one: its key, its file, and the sha256 of the rule and its ratchet in this version. A row
+    adopted in part keeps its "where", the clauses its wording does not state, whether the rule names a check or not.
     """
+    part = old_entry is not None and check_register.is_reference(old_entry) and check_register.holds_part(old_entry)
     if old_entry is not None and check_register.is_reference(old_entry):
         result = {"key": rule["key"], check_register.STANDS_IN: old_entry[check_register.STANDS_IN],
                   check_register.SHA: check_register.reference_sha256(rule)}
@@ -162,6 +164,10 @@ def entry(rule, old_entry=None):
                 result["where"] = old_entry["where"]
         else:
             result["status"] = "text only for now"
+            if part:
+                result["where"] = old_entry["where"]
+    elif part:
+        result["where"] = old_entry["where"]
     if old_entry is not None and check_register.TRANSLATION in old_entry and old_entry["rule"] == rule["rule"]:
         result[check_register.TRANSLATION] = copy.deepcopy(old_entry[check_register.TRANSLATION])
     return result
@@ -195,7 +201,9 @@ def own_entry(rule, before, prefix, taken):
         key = "%s.%s-%d" % (prefix, name, number)
     fields = [("key", key)] + [(field, rule[field]) for field in check_register.RULE_FIELDS if field != "key"]
     if rule["ratchet"].startswith("Check: "):
-        fields += [(field, before[field]) for field in check_register.STATUS_FIELDS if field in before]
+        # Not the "where" of a row adopted in part: the own rule holds Ratchet's whole text, and is never in part.
+        fields += [(field, before[field]) for field in check_register.STATUS_FIELDS
+                   if field in before and not (field == "where" and check_register.holds_part(before))]
     return dict(fields)
 
 
@@ -235,7 +243,9 @@ def reference_text(before, rule):
     return ("It is adopted by reference, and its rule or its ratchet changed, so its sha256 no longer matches: the new sha256 "
             "is %s. Read the project's own wording in %s again against the new rule, and change it where it no longer says "
             "what the rule says. check_register.py fails from when \"ratchet_version\" is moved until sha256 is set to the "
-            "new one, and not before." % (new, before[check_register.STANDS_IN]))
+            "new one, and not before.%s" % (new, before[check_register.STANDS_IN],
+                                            " It is adopted in part: read the clauses its \"where\" lists against the new rule "
+                                            "too." if check_register.holds_part(before) else ""))
 
 
 def joined(names):
@@ -268,7 +278,9 @@ def plan(register, old, new):
             if rule["enforcement"] == "enforced" and "status" not in before:
                 text.append('Its ratchet now names a check, so the entry has a status: "text only for now" until the project has built the check.')
             elif rule["enforcement"] != "enforced" and "status" in before:
-                text.append('It is text only now, so the entry has no status and no "where".')
+                text.append('It is text only now, so the entry has no status%s.' % (
+                    ', and keeps the "where" that lists the clauses its wording does not state' if "where" in step["entry"]
+                    else ' and no "where"'))
             elif step["entry"].get("status") == "built" and old_by[key]["ratchet"] != rule["ratchet"]:
                 text.append('It keeps the status "built". Its ratchet changed: check that the check in "where" still does what '
                             'the ratchet says, or set the status to "text only for now".')

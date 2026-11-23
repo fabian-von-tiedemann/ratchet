@@ -19,7 +19,13 @@ register itself copies the row of ratchet.owner-paths, not by reference, with th
 status "built". stands_in has the
 path form of "instructions", is checked on its path the same way, and is never the
 instruction file. A row by reference has no translation, and an own rule is never
-one. REGISTER.md may be left out by a register with rows by reference: with
+one. From 0.12 a row by reference may be adopted in part: its "where" is then
+exactly "Not stated here: <clause>; <clause>.", the clauses the project's wording
+does not state. Such a row is never "built", may stand on a rule that is text only,
+and is labeled "Adopted in part" with its clauses. "not stated here" in a "where" in
+any other form, an empty list, an empty or doubled clause, and the phrase on a
+copied row or an own rule fail. The check sees the phrase, not whether the clauses
+are the true gaps. REGISTER.md may be left out by a register with rows by reference: with
 --markdown, a file that is not there is then not a failure. Where it is there, it is
 what the register generates, and the rows by reference stand in a table of their own,
 with their label and no rule text, there and in the block.
@@ -148,6 +154,19 @@ RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
 LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
          "sees a marker, not the words. Protection against a softened wording: %s.")
 OWNER_PATHS = "ratchet.owner-paths"
+# A row by reference adopted in part, from 0.12: the project's wording states the rule's core but not every clause. Its
+# "where" is then exactly PART, the clauses the wording does not state joined by "; ", and one ".". No field is added
+# to the form of register.json. The words "not stated here" anywhere else in a "where", in any case and with any space,
+# are a broken phrase. A clause is not empty, holds a letter or a digit, has no space at its ends, holds no ";" and no
+# ". ", so no sentence follows the list, does not end in ".", and no clause stands twice. Such a row is never "built", and may stand on a rule that is text
+# only, whose row has no "where" otherwise. The check sees the phrase, not whether the clauses are the true gaps.
+PART = "Not stated here: "
+PART_SEPARATOR = "; "
+PART_WORDS = re.compile(r"not\s*stated\s*here", re.I)
+PART_LABEL = "Adopted in part. Not stated in the project's wording: %s. "
+PART_FORM = ('%s: where holds the words "not stated here", so the row is adopted in part, and then where must be exactly '
+             '"Not stated here: <clause>; <clause>.": the clauses that the project\'s wording does not state, each joined to '
+             'the next by a semicolon and one space, after the colon and one space, and one period at the end')
 
 INTRO = (
     "Every rule in force in this project. This file takes precedence over all other text in the repo. "
@@ -231,7 +250,7 @@ def check(register, ratchet):
 
     by_key = registry.rules_by_key(ratchet)
     seen = set()
-    built = needs = core = translated = referenced = referenced_core = 0
+    built = needs = core = translated = referenced = referenced_core = in_part = 0
     for number, entry in enumerate(register["adopted"], 1):
         name = "adopted rule %d" % number
         if not isinstance(entry, dict):
@@ -285,17 +304,31 @@ def check(register, ratchet):
                     continue
                 translated += 1
         core += rule["status"] == "core"
+        part = holds_part(entry)
+        if part and not is_reference(entry):
+            problems.append("%s: only a row adopted by reference is adopted in part. A copied row holds the whole rule; to say "
+                            "that the project's wording leaves out a clause, adopt the rule by reference" % name)
+            continue
+        if part and part_problem(name, entry["where"]):
+            problems.append(part_problem(name, entry["where"]))
+            continue
         if rule["enforcement"] != "enforced":
-            if "status" in entry or "where" in entry:
+            if "status" in entry or ("where" in entry and not part):
                 problems.append("%s is text only in Ratchet. It cannot have a status or a place where its check lives" % name)
+                continue
+            in_part += part
             continue
         needs += 1
         if "status" not in entry:
             problems.append('%s names a check, so it needs a status: "built" or "text only for now"' % name)
         elif status_problem(name, entry):
             problems.append(status_problem(name, entry))
+        elif part and entry["status"] == "built":
+            problems.append('%s is adopted in part, so it cannot be built: its where lists clauses that the project\'s wording '
+                            'does not state. Give it the status "text only for now", or state the clauses and take the phrase out' % name)
         else:
             built += entry["status"] == "built"
+            in_part += part
 
     own = set()
     own_status = own_built = 0
@@ -314,6 +347,9 @@ def check(register, ratchet):
         elif STANDS_IN in unknown or SHA in unknown:
             problems.append("%s: an own rule is not adopted by reference. stands_in and sha256 stand for a rule of Ratchet; "
                             "the project's own rules stand in the register in full" % name)
+        elif holds_part(entry):
+            problems.append("%s: an own rule is not adopted in part. Only a row adopted by reference lists the clauses its "
+                            "wording does not state; the project's own rules stand in the register in full" % name)
         elif missing or unknown:
             problems += ["%s: missing field %r" % (name, field) for field in missing]
             problems += ["%s: unknown field %r" % (name, field) for field in unknown]
@@ -355,6 +391,9 @@ def check(register, ratchet):
         summary += (" %d rules are adopted by reference, the weaker mode (%d core, %d experimental): each names a rule of "
                     "Ratchet %s with the sha256 of its rule and ratchet, and the check sees a marker, not the words." % (
                         referenced, referenced_core, referenced - referenced_core, version))
+    if in_part:
+        summary += (" %d of them adopted in part: the check sees the clauses listed, not whether they are the ones the "
+                    "wording leaves out." % in_part)
     summary += " %d name a check: %d built, %d text only for now." % (needs, built, needs - built)
     if translated:
         summary += " %d translated." % translated
@@ -396,6 +435,47 @@ def instructions_problem(value, field=INSTRUCTIONS):
     return None
 
 
+def holds_part(entry):
+    """Whether a row's "where" holds the words of the phrase of a row adopted in part, in any form."""
+    return isinstance(entry.get("where"), str) and bool(PART_WORDS.search(entry["where"]))
+
+
+def part_clauses(where):
+    """The clauses that a "where" in the one exact form of a row adopted in part lists, in order, or None when it is not
+    in that form. The list may come back empty, for "Not stated here: .", which part_problem refuses."""
+    if not isinstance(where, str) or not where.startswith(PART) or not where.endswith("."):
+        return None
+    body = where[len(PART):-1]
+    if not body:
+        return []
+    clauses = body.split(PART_SEPARATOR)
+    for clause in clauses:
+        if clause and (clause != clause.strip() or ";" in clause or ". " in clause or clause.endswith(".")
+                       or PART_WORDS.search(clause)):
+            return None
+    return clauses
+
+
+def part_problem(name, where):
+    """Why a "where" that holds the words of the phrase is not a valid list of clauses not stated, or None."""
+    if registry.text_problem(where):
+        return "%s: where %s" % (name, registry.text_problem(where))
+    clauses = part_clauses(where)
+    if clauses is None:
+        return PART_FORM % name
+    if not clauses:
+        return "%s: where says Not stated here and lists no clause. List the clauses the wording does not state, or take the phrase out" % name
+    if any(not clause for clause in clauses):
+        return "%s: where lists an empty clause, between two semicolons or at an end" % name
+    for clause in clauses:
+        if not registry.WORD.search(clause):
+            return "%s: where lists a clause with no letter or digit: %s" % (name, clause)
+    for number, clause in enumerate(clauses):
+        if clause in clauses[:number]:
+            return "%s: where lists the clause %s twice" % (name, clause)
+    return None
+
+
 def is_reference(entry):
     """Whether an adopted row is meant to be adopted by reference: it has stands_in or sha256."""
     return STANDS_IN in entry or SHA in entry
@@ -418,6 +498,12 @@ def protection(register):
 def label(register):
     """The label of every row by reference in this register, word for word as the decision has it."""
     return LABEL % protection(register)
+
+
+def row_label(register, entry):
+    """The label of one row by reference: that of every row, after the clauses not stated for a row adopted in part."""
+    clauses = part_clauses(entry.get("where"))
+    return (PART_LABEL % PART_SEPARATOR.join(clauses) if clauses else "") + label(register)
 
 
 def reference_sha256(rule):
@@ -516,7 +602,7 @@ def sections(register, level):
     if referenced:
         lines += [level + " Rules adopted by reference", "", REFERENCED % register["ratchet_version"], "",
                   "| Key | Stands in | Mode |", "|---|---|---|"]
-        lines += ["| %s | `%s` | %s |" % (entry["key"], entry[STANDS_IN], registry.cell(label(register))) for entry in referenced]
+        lines += ["| %s | `%s` | %s |" % (entry["key"], entry[STANDS_IN], registry.cell(row_label(register, entry))) for entry in referenced]
         lines += [""]
     if translations:
         lines += [level + " Translations", "", TRANSLATIONS, "", "| Key | Language | Translation |", "|---|---|---|"]
@@ -948,7 +1034,7 @@ def main(argv=None):
         return 1
     print("%s: %s" % (args.register, summary))
     for entry in references(register):
-        print("%s: %s stands in %s. %s" % (args.register, entry["key"], entry[STANDS_IN], label(register)))
+        print("%s: %s stands in %s. %s" % (args.register, entry["key"], entry[STANDS_IN], row_label(register, entry)))
     for path, keys in reference_files(args.register, register)[1]:
         print("%s: holds the marker line of %s once each, and nothing else in it is read" % (path, ", ".join(keys)))
     if args.markdown and references(register) and not os.path.lexists(args.markdown):

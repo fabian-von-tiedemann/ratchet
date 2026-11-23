@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12 (unreleased)
+
+<!-- generated:count -->
+Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
+A rule adopted by reference may be adopted in part.
+
+Added:
+
+- A row adopted by reference may be adopted in part, when the project's own wording states the rule's core but not every clause. Its `where` is then exactly `Not stated here: <clause>; <clause>.`, the clauses the wording does not hold yet. The form of `register.json` is the same: no field is added. `checks/check_register.py` refuses such a row with the status `built`, a `where` that holds the words "not stated here" in any other form, an empty list, an empty or doubled clause, and the phrase on a copied row or a rule of the project's own. It labels the row "Adopted in part" with the clauses listed, in its output and in `REGISTER.md`. The phrase may stand on a row by reference of a text-only rule, which otherwise has no `where`. The check sees the phrase, not whether the clauses listed are the true gaps. `checks/upgrade.py` keeps the phrase, and `checks/init.py` in adopt mode names the option in one line.
+
 ## 0.11 (2026-11-23)
 
 <!-- generated:count -->

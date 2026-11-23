@@ -1048,6 +1048,9 @@ os.link = link
                 self.assertIn("git clone --quiet --no-checkout %s .ratchet && git -C .ratchet checkout --quiet %s && "
                               "python3 .ratchet/checks/check_register.py register.json" % (init.REPOSITORY, self.commit), output)
                 self.assertIn("No workflow and no required job are added", output)
+                # One line names adoption in part, and its exact form.
+                self.assertEqual(output.count("adopted in part"), 1, output)
+                self.assertIn('may be adopted in part: give its row "where": "Not stated here: <clause>; <clause>."', output)
                 self.assertIn("python3 .ratchet/checks/inventory.py", output)
                 self.assertIn("init: python3 .ratchet/checks/check_register.py register.json\n", output)
                 self.assertNotIn("..", output.replace("...", ""))

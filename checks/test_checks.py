@@ -44,6 +44,16 @@ RULE_MARKER_LINE = "RULES.md: the line that holds ratchet:rule, line "
 # The label of every row by reference, word for word as D-2026-11-22-second-redraw has it.
 LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
          "sees a marker, not the words. Protection against a softened wording: %s.")
+# A row by reference adopted in part: its where is exactly this phrase with the clauses the project's wording does not
+# state, and its label says so before the label of every row by reference.
+PART = "Not stated here: %s."
+PART_LABEL = "Adopted in part. Not stated in the project's wording: %s. " + LABEL
+PART_FORM = ('%s: where holds the words "not stated here", so the row is adopted in part, and then where must be exactly '
+             '"Not stated here: <clause>; <clause>."')
+# The clauses of the passing fixtures adopted in part.
+PART_ONE = ("a change to the register is reviewed before it is merged",)
+PART_SEVERAL = ("a subagent's done is checked independently", "every finding is marked proven by a run or unproven",
+                "`checks/` is read by the receiver")
 # Prose in Japanese, Chinese and Korean that names Ratchet: the word, then letters of a script with no spaces between
 # words, with and without a full-width colon. None of it is a marker word in disguise (review of step 9a).
 CJK_PROSE = ("ratchet\u306e\u30eb\u30fc\u30eb\u3092\u5b88\u308b\u3002", "Ratchet\uff1a\u898f\u5247\u306f\u3053\u3053\u306b\u3042\u308b\u3002",
@@ -221,6 +231,24 @@ FAILING_DATA = {
     "ref-status-missing": "ratchet.fresh-context names a check, so it needs a status",
     "ref-status-on-text-only": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status",
     "ref-built-nowhere": "ratchet.fresh-context is marked built but does not say where the check lives",
+    # A row by reference adopted in part: its where lists the clauses its wording does not state, in one exact form.
+    "ref-part-built": "ratchet.fresh-context is adopted in part, so it cannot be built",
+    "ref-part-case": PART_FORM % "ratchet.fresh-context",
+    "ref-part-no-space": PART_FORM % "ratchet.fresh-context",
+    "ref-part-no-period": PART_FORM % "ratchet.fresh-context",
+    "ref-part-text-before": PART_FORM % "ratchet.fresh-context",
+    "ref-part-text-after": PART_FORM % "ratchet.fresh-context",
+    "ref-part-comma": PART_FORM % "ratchet.fresh-context",
+    "ref-part-no-space-after-semicolon": PART_FORM % "ratchet.fresh-context",
+    "ref-part-two-spaces": PART_FORM % "ratchet.fresh-context",
+    "ref-part-empty": "ratchet.fresh-context: where says Not stated here and lists no clause",
+    "ref-part-empty-clause": "ratchet.fresh-context: where lists an empty clause",
+    "ref-part-clause-twice": "ratchet.fresh-context: where lists the clause a change to the register is reviewed before it is merged twice",
+    "ref-part-text-only-malformed": PART_FORM % "ratchet.evidence-before-done",
+    "ref-part-text-only-status": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status",
+    "ref-part-where-on-text-only": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status or a place where its check lives",
+    "ref-part-copied": "ratchet.root-cause: only a row adopted by reference is adopted in part",
+    "ref-part-own": "example.changelog: an own rule is not adopted in part",
 }
 
 # Fixtures with a clean register.json that names AGENTS.md, and an AGENTS.md whose block is not what it generates,
@@ -318,7 +346,7 @@ FAILING_REFERENCE = {
 }
 # Fixtures with rows by reference that pass, with --markdown REGISTER.md.
 PASSING_REFERENCE = ("ref-clean", "ref-no-markdown", "ref-crlf-outside", "ref-in-code-block", "ref-only", "ref-owner-built", "ref-block",
-                     "ref-cjk-prose")
+                     "ref-cjk-prose", "ref-part-one", "ref-part-several")
 
 # Fixtures with a clean register.json and a REGISTER.md that is not what it generates.
 FAILING_MARKDOWN = (
@@ -892,7 +920,11 @@ class RegisterByReference(FixtureTest):
                 self.assertTrue(rows)
                 said = LABEL % ("built" if name == "ref-owner-built" else "not built")
                 for entry in rows:
-                    self.assertIn("register.json: %s stands in %s. %s\n" % (entry["key"], entry["stands_in"], said), output)
+                    if "where" in entry and entry["where"].startswith("Not stated here: "):
+                        line = PART_LABEL % (entry["where"][len("Not stated here: "):-1], "not built")
+                    else:
+                        line = said
+                    self.assertIn("register.json: %s stands in %s. %s\n" % (entry["key"], entry["stands_in"], line), output)
                 self.assertIn("%d rules are adopted by reference, the weaker mode" % len(rows), output)
                 self.assertIn("RULES.md: holds the marker line of ", output)
         self.assertIn("REGISTER.md: not there, which a register with rows adopted by reference may leave out",
@@ -1106,6 +1138,84 @@ class RegisterByReference(FixtureTest):
         self.assertEqual(code, 0, output)
         self.assertIn("1 rules match Ratchet 9.9 (1 core, 0 experimental). 1 rules are adopted by reference", output)
         self.assertIn("ratchet.example-two stands in RULES.md. " + LABEL % "not built", output)
+
+
+class RegisterInPart(FixtureTest):
+    """A row by reference adopted in part: its where lists, in one exact form, the clauses the project's wording does
+    not state yet. The form of register.json is the same: no field is added."""
+
+    def check(self, name):
+        directory = self.fixture_directory("register/" + name)
+        return run("check_register.py", os.path.join(directory, "register.json"), "--markdown", os.path.join(directory, "REGISTER.md"))
+
+    def module(self):
+        sys.path.insert(0, HERE)
+        import check_register
+        return check_register
+
+    def test_the_one_exact_form_gives_the_clauses_and_nothing_else_does(self):
+        check_register = self.module()
+        self.assertEqual(check_register.part_clauses(PART % "one"), ["one"])
+        self.assertEqual(check_register.part_clauses(PART % "one; two; `a.b`"), ["one", "two", "`a.b`"])
+        for where in ("Not stated here: one", "not stated here: one.", "Not stated here:one.", "Not stated here : one.",
+                      "We say: Not stated here: one.", "Not stated here: one. And more.", "Not stated here: one;two.",
+                      "Not stated here: one;  two.", "Not stated here:  one.", "Not stated here: one, two", "built",
+                      "`.github/CODEOWNERS`", ""):
+            with self.subTest(where=where):
+                self.assertIsNone(check_register.part_clauses(where))
+
+    def test_the_label_says_adopted_in_part_and_lists_the_clauses_in_the_output_and_in_register_md(self):
+        check_register = self.module()
+        for name, key, clauses in (("ref-part-one", "ratchet.fresh-context", PART_ONE),
+                                   ("ref-part-several", "ratchet.evidence-before-done", PART_SEVERAL)):
+            with self.subTest(fixture=name):
+                register = json.loads(self.fixture_text("register/%s/register.json" % name))
+                entry = next(row for row in register["adopted"] if row["key"] == key)
+                self.assertEqual(entry["where"], PART % "; ".join(clauses))
+                self.assertEqual(sorted(entry), sorted(["key", "stands_in", "sha256", "where"] + (["status"] if "status" in entry else [])),
+                                 "no field is added")
+                code, output = self.check(name)
+                self.assertEqual(code, 0, output)
+                label = PART_LABEL % ("; ".join(clauses), "not built")
+                self.assertEqual(check_register.row_label(register, entry), label)
+                self.assertIn("register.json: %s stands in RULES.md. %s\n" % (key, label), output)
+                self.assertIn("1 of them adopted in part: the check sees the clauses listed, not whether they are the ones the wording leaves out", output)
+                markdown = self.fixture_text("register/%s/REGISTER.md" % name)
+                self.assertIn("| %s | `RULES.md` | %s |" % (key, check_register.registry.cell(label)), markdown)
+                # The other row by reference keeps the label of a whole rule.
+                other = next(row for row in register["adopted"] if "stands_in" in row and row["key"] != key)
+                self.assertIn("register.json: %s stands in RULES.md. %s\n" % (other["key"], LABEL % "not built"), output)
+        # A register with no row in part says nothing of it.
+        self.assertNotIn("adopted in part", self.check("ref-clean")[1])
+
+    def test_a_text_only_rule_takes_where_only_as_the_phrase(self):
+        register = json.loads(self.fixture_text("register/ref-part-several/register.json"))
+        entry = next(row for row in register["adopted"] if row["key"] == "ratchet.evidence-before-done")
+        self.assertNotIn("status", entry, "a text-only rule has no status, in part or whole")
+
+    def test_upgrade_keeps_the_phrase_and_an_own_rule_never_takes_it(self):
+        sys.path.insert(0, HERE)
+        import upgrade
+        check_register = self.module()
+        rules = dict((rule["key"], rule) for rule in json.loads(read("ratchet.json"))["rules"])
+        register = json.loads(self.fixture_text("register/ref-part-one/register.json"))
+        fresh = next(row for row in register["adopted"] if row["key"] == "ratchet.fresh-context")
+        self.assertEqual(upgrade.entry(rules["ratchet.fresh-context"], fresh)["where"], fresh["where"])
+        several = json.loads(self.fixture_text("register/ref-part-several/register.json"))
+        done = next(row for row in several["adopted"] if row["key"] == "ratchet.evidence-before-done")
+        kept = upgrade.entry(rules["ratchet.evidence-before-done"], done)
+        self.assertEqual(kept["where"], done["where"])
+        self.assertNotIn("status", kept)
+        # A rule that comes to name a check keeps the phrase beside its new status; one that comes to be text only keeps it alone.
+        named = dict(rules["ratchet.evidence-before-done"], enforcement="enforced", ratchet="Check: a made-up check")
+        self.assertEqual(upgrade.entry(named, done), dict(kept, sha256=check_register.reference_sha256(named), status="text only for now"))
+        plain = dict(rules["ratchet.fresh-context"], enforcement="text-only", ratchet="A made-up ratchet")
+        self.assertEqual(upgrade.entry(plain, fresh)["where"], fresh["where"])
+        self.assertNotIn("status", upgrade.entry(plain, fresh))
+        # A removed rule becomes an own rule in full, with Ratchet's text, so it does not take the phrase.
+        own = upgrade.own_entry(rules["ratchet.fresh-context"], fresh, "example", set())
+        self.assertNotIn("where", own)
+        self.assertEqual(check_register.part_clauses(own.get("where", "")), None)
 
 
 class RepoCopy:
