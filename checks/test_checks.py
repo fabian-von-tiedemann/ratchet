@@ -1472,7 +1472,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("the link to checks/does-not-exist.py leads nowhere")
 
     def test_the_links_to_the_reference_checks_lead_somewhere(self):
-        for name in ("README.md", os.path.join("checks", "README.md")):
+        # The table stands in checks/README.md alone, which the README links to, so each link is relative to checks/.
+        for name in (os.path.join("checks", "README.md"),):
             text = read(name)
             block = text[text.index("<!-- generated:reference-checks -->"):]
             block = block[:block.index("<!-- /generated -->")]

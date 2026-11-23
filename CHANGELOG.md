@@ -2,9 +2,9 @@
 
 ## 0.12 (unreleased)
 
-In short: the README and the landing page are much shorter, and the steps after `init.py` have a document of their own. No rule changes, so your register needs no change.
+In short: the README and the landing page are much shorter, and the steps after `init.py` have a document of their own. No rule changes, so an upgrade changes only the version your register states.
 
-- The README is a quarter of its length: what Ratchet is, when to use it, the three commands that start it, what you get, the limits, and where to read more. What left it stands in the document it belongs to (#PR).
+- The README is less than half its length: what Ratchet is, when to use it, the three commands that start it, what you get, the limits, and where to read more. What left it stands in the document it belongs to (#PR).
 - New: [STARTING.md](STARTING.md) holds every step after `init.py`, for a new repo and for one with an instruction file of its own, and the list of the rules to start with (#PR).
 - The landing page is one short page: what Ratchet is, why, how it works in three steps, the principles and the three commands. It holds no figure (#PR).
 - From this version on, an entry of this changelog opens with "In short" and has one bullet for each change, with its pull request. The detail is in the pull request (#PR).
