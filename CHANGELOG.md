@@ -4,10 +4,10 @@
 
 In short: the README and the landing page are much shorter, and the steps after `init.py` have a document of their own. No rule changes, so an upgrade changes only the version your register states.
 
-- The README is less than half its length: what Ratchet is, when to use it, the three commands that start it, what you get, the limits, and where to read more. What left it stands in the document it belongs to (#PR).
-- New: [STARTING.md](STARTING.md) holds every step after `init.py`, for a new repo and for one with an instruction file of its own, and the list of the rules to start with (#PR).
-- The landing page is one short page: what Ratchet is, why, how it works in three steps, the principles and the three commands. It holds no figure (#PR).
-- From this version on, an entry of this changelog opens with "In short" and has one bullet for each change, with its pull request. The detail is in the pull request (#PR).
+- The README is less than half its length: what Ratchet is, when to use it, the three commands that start it, what you get, the limits, and where to read more. What left it stands in the document it belongs to ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
+- New: [STARTING.md](STARTING.md) holds every step after `init.py`, for a new repo and for one with an instruction file of its own, and the list of the rules to start with ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
+- The landing page is one short page: what Ratchet is, why, how it works in three steps, the principles and the three commands. It holds no figure ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
+- From this version on, an entry of this changelog opens with "In short" and has one bullet for each change, with its pull request. The detail is in the pull request ([#131](https://github.com/fabian-von-tiedemann/ratchet/pull/131)).
 
 <!-- generated:count -->
 Ratchet 0.12, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 10 experimental rules, under a cap of 17: 7 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
