@@ -121,6 +121,7 @@ REPOSITORY = "https://github.com/fabian-von-tiedemann/ratchet"
 WAIT_FOR_REMOTE = {
     "ratchet.register-on-top": "its check runs in CI on the host",
     "ratchet.protected-main": "the protection of main is a setting of the host",
+    "ratchet.owner-paths": "the owner's required review on the owner's paths is a setting of the host",
     "ratchet.no-secrets": "its scan runs in CI on the host",
     "ratchet.lesson-names-check": "the lesson template is an issue template of the host",
 }

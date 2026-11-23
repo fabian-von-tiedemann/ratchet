@@ -351,7 +351,10 @@ class Init(unittest.TestCase):
         self.assertEqual(init.team_parts("a\n<!-- team -->\nb\n<!-- /team -->\nc\n", True), "a\nc\n")
 
     def test_without_a_remote_it_names_the_rules_that_wait_for_one(self):
-        waiting = ("ratchet.register-on-top", "ratchet.protected-main", "ratchet.no-secrets", "ratchet.lesson-names-check")
+        # ratchet.owner-paths, like ratchet.protected-main, is checked by a setting of the host (the review of step 8).
+        waiting = ("ratchet.register-on-top", "ratchet.protected-main", "ratchet.owner-paths", "ratchet.no-secrets",
+                   "ratchet.lesson-names-check")
+        self.assertEqual(list(init.WAIT_FOR_REMOTE), list(waiting))
         for args in ((), ("--check",)):
             with self.subTest(args=args):
                 code, output = self.init(*args)
@@ -359,6 +362,7 @@ class Init(unittest.TestCase):
                 self.assertIn("names no remote", output)
                 for key in waiting:
                     self.assertIn(key, output)
+                    self.assertIn("  %s: %s\n" % (key, init.WAIT_FOR_REMOTE[key]), output)
                 for key in ("ratchet.decision-as-file", "ratchet.root-cause"):
                     self.assertNotIn(key, output)
         git(self.project, "remote", "add", "origin", "https://example.invalid/demo.git")
@@ -983,6 +987,25 @@ os.link = link
             with self.subTest(outer=outer):
                 edited = filled_in(text.replace(outer, outer[1:-1].replace(inner, "INNER-LEFT"))).replace("INNER-LEFT", inner)
                 self.assertEqual(check_register.placeholders(edited), [inner])
+
+    def test_the_reasons_for_waiting_and_the_case_table_are_pinned(self):
+        # The review at 18d1ce8: the small texts of the fix that named ratchet.owner-paths among the rules that wait for
+        # a remote. Each reason word for word, and checks/README.md counts and names the five.
+        self.assertEqual(init.WAIT_FOR_REMOTE, {
+            "ratchet.register-on-top": "its check runs in CI on the host",
+            "ratchet.protected-main": "the protection of main is a setting of the host",
+            "ratchet.owner-paths": "the owner's required review on the owner's paths is a setting of the host",
+            "ratchet.no-secrets": "its scan runs in CI on the host",
+            "ratchet.lesson-names-check": "the lesson template is an issue template of the host",
+        })
+        with open(os.path.join(ROOT, "checks", "README.md"), encoding="utf-8") as handle:
+            readme = handle.read()
+        self.assertEqual(len(init.WAIT_FOR_REMOTE), 5)
+        self.assertIn("| No remote in the git config, with and without `--check` | The five rules that wait for one are "
+                      "named, and no other; after `git remote add`, none |\n", readme)
+        self.assertIn("the adopted rules whose check cannot run before it has one, with why: `ratchet.register-on-top`, "
+                      "`ratchet.protected-main`, `ratchet.owner-paths`, `ratchet.no-secrets` and "
+                      "`ratchet.lesson-names-check`, as far as the register that stands after the run adopts them.", readme)
 
     # Adopt mode, step 9b of D-2026-11-22-second-redraw: a repo that already has an instruction file of its own gets only
     # register.json, with one copied row, and is told the rows by reference and the marker lines to add.

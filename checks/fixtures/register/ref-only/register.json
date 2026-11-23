@@ -17,13 +17,13 @@
     {
       "key": "ratchet.decision-as-file",
       "stands_in": "RULES.md",
-      "sha256": "789ae1d9924827e2b610a51aa941fa33e75f38939e6b6d280c079910384905c0",
+      "sha256": "558f7a9eb4966b90f57dcf48f2a52d82b51db355d1117de6af9b4b3e298f503b",
       "status": "text only for now"
     },
     {
       "key": "ratchet.owner-paths",
       "stands_in": "RULES.md",
-      "sha256": "de5ecc63ceff42c8d67bc2362c6d277b031a3ea94279d43b80f93edb7e509c5e",
+      "sha256": "9cdcda27edccffa58cd8243468106fa6441c763cb66a50ae681b4012b6ef1028",
       "status": "text only for now"
     },
     {
