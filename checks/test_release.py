@@ -2007,14 +2007,14 @@ class Workflow(unittest.TestCase):
                 self.assertIn("U+%04X" % ord(character), str(caught.exception))
         # The reviewer's file, byte for byte: "# review marker", a lone CR, then "if: false" on the job.
         with self.assertRaises(ValueError):
-            workflow_text(live.replace(b"    timeout-minutes: 15\n", b"    timeout-minutes: 15\n    # review marker\r    if: false\n"))
+            workflow_text(live.replace(b"    timeout-minutes: 30\n", b"    timeout-minutes: 30\n    # review marker\r    if: false\n"))
         with self.assertRaises(UnicodeDecodeError):
             workflow_text(live.replace(b"name: release", b"name: release\xff"))
 
     def test_the_reading_that_the_comparison_uses_refuses_the_reviewers_file(self):
         # The same lines() that every test of the workflow reads, given the reviewer's file instead of the live one.
         live = self.data()
-        hostile = live.replace(b"    timeout-minutes: 15\n", b"    timeout-minutes: 15\n    # review marker\r    if: false\n")
+        hostile = live.replace(b"    timeout-minutes: 30\n", b"    timeout-minutes: 30\n    # review marker\r    if: false\n")
         directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, directory)
         path = os.path.join(directory, "release.yml")
@@ -2039,7 +2039,7 @@ class Workflow(unittest.TestCase):
         self.assertFalse([l for l in lines if "inputs:" in l])
         self.assertEqual([l for l in lines if "contents: write" in l], ["      contents: write"])
         self.assertEqual([l.strip(" ") for l in lines if "runs-on:" in l], ["runs-on: ubuntu-24.04"])
-        self.assertEqual([l.strip(" ") for l in lines if "timeout-minutes:" in l], ["timeout-minutes: 15"])
+        self.assertEqual([l.strip(" ") for l in lines if "timeout-minutes:" in l], ["timeout-minutes: 30"])
         uses = [l.strip(" ") for l in lines if "uses:" in l]
         self.assertEqual(len(uses), 1)
         self.assertRegex(uses[0], r"^- uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\Z")
@@ -2116,7 +2116,7 @@ class Workflow(unittest.TestCase):
         self.assertEqual([l for l in self.code() if "fetch-depth" in l or "filter:" in l or "sparse" in l], ["          fetch-depth: 0"])
 
     def test_a_run_has_a_time_limit(self):
-        self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 15"])
+        self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 30"])
 
     def test_the_three_checks_run_in_order_before_the_one_step_that_writes(self):
         steps = self.block("    steps:")
@@ -2148,7 +2148,7 @@ class Workflow(unittest.TestCase):
             "jobs:",
             "  release:",
             "    runs-on: ubuntu-24.04",
-            "    timeout-minutes: 15",
+            "    timeout-minutes: 30",
             "    permissions:",
             "      contents: write",
             "    env:",

@@ -858,7 +858,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 | The permissions | `contents: read` at the top and `contents: write` on the job, and no other |
 | The triggers | A push to `main`, `workflow_dispatch` and `schedule`, and no `if:` that could skip the job |
 | The schedule | One cron line, `23 4 * * *`: a fixed minute and hour, and every day of the month, every month and every day of the week. A weekly line fails |
-| `timeout-minutes: 15` on the job | Exactly that, once |
+| `timeout-minutes: 30` on the job | Exactly that, once |
 | The steps | The three checks in order, then the script. No `continue-on-error`, `always()` or `failure()` |
 | The whole workflow, without its comments | The reviewed form line for line, and nothing else. The checkout may move to another pinned commit |
 | A no-break space, an em space, an ideographic space, U+2028 or a tab before `#`, or alone on a line | Kept as code, not read as a comment or a blank line |
