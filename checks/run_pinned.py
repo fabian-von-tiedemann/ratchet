@@ -324,24 +324,25 @@ def copy_command(objects, commit, blob, target):
                blob, commit))
 
 
-def run_command(commit, blob, target, register="register.json"):
+def run_command(commit, blob, target, register="register.json", markdown=False):
     """The sh command that runs the copy at target, on the register at the path register from where it runs: only when git hash-object gives its bytes the name blob, so a copy
     that is missing, empty, cut short or not the pinned commit's stops the step or the script rather than passing it.
     The hash check is an if with exit 1, not the left side of &&, which set -e does not stop on: a script with set -e or
     without it ends there, in sh, bash and dash."""
     return ("if ! test \"$(git hash-object --no-filters --stdin < %s)\" = %s; then echo '%s is not checks/run_pinned.py "
-            "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- %s"
+            "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- %s%s"
             % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit,
                # A name that starts with - would be read as an option by the check after the runner's --.
-               shlex.quote("./" + register if register.startswith("-") else register)))
+               shlex.quote("./" + register if register.startswith("-") else register),
+               " --markdown REGISTER.md" if markdown else ""))
 
 
-def local_line(commit, blob, target, register="register.json"):
+def local_line(commit, blob, target, register="register.json", markdown=False):
     """The line for a local check script: run_command in a subshell, and exit 1 when it fails. A script without set -e
     goes on after a command that fails, so a register that fails the check, or a runner that is not the pinned one,
     would be followed by the rest of the script, to "all green". The subshell's own exit and the || exit 1 stop the
     script in sh, bash and dash, with set -e or without it."""
-    return "( %s ) || exit 1" % run_command(commit, blob, target, register)
+    return "( %s ) || exit 1" % run_command(commit, blob, target, register, markdown)
 
 
 def entries(tree, body):

@@ -712,16 +712,8 @@ def one_command(args, out):
         # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
         project = os.getcwd()
         if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
-            if os.path.dirname(args.register) not in ("", "."):
-                # The commands are printed only for a register named alone, in the folder this runs in, as the docs
-                # show it: there the register, REGISTER.md beside it and the store are named the same way by every
-                # command. A path in another folder is left out rather than rewritten (rounds 2 and 3 of #140).
-                print("The commands that run the check are printed for a register named alone, in the folder upgrade.py "
-                      "runs in. Run it again from the folder that holds %s, naming the register alone, to get them."
-                      % args.register, file=out)
-            else:
-                for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
-                    print(line, file=out)
+            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register)):
+                print(line, file=out)
         else:
             print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
     return code
@@ -740,7 +732,9 @@ def pinned_run(root, shown, project, tag, commit, register="register.json"):
     if not os.path.isabs(shown):
         objects = os.path.relpath(os.path.abspath(objects), project)
     # The register by its own name, as the project's root sees it: the commands run from there.
-    run = run_pinned.run_command(commit, blob, run_pinned.COPY, register)
+    # A REGISTER.md beside the register is checked too, as the check command above does (round 4 of #140).
+    markdown = os.path.lexists(os.path.join(project, "REGISTER.md"))
+    run = run_pinned.run_command(commit, blob, run_pinned.COPY, register, markdown)
     return ["The check runs from the pinned commit with %s. To move it to the commit of %s, %s, run these from the "
             "project's root. Copy the runner again from that commit:" % (run_pinned.COPY, tag, commit),
             "",
@@ -748,7 +742,7 @@ def pinned_run(root, shown, project, tag, commit, register="register.json"):
             "",
             "Then put this line in the local check script, in place of the one there:",
             "",
-            "    " + run_pinned.local_line(commit, blob, run_pinned.COPY, register),
+            "    " + run_pinned.local_line(commit, blob, run_pinned.COPY, register, markdown),
             "",
             "or this in the step of the job that runs the check:",
             "",
@@ -771,6 +765,12 @@ def main(argv=None, out=None):
         parser.error("--from compares two files and fetches nothing: leave out --to and --no-fetch, or --from")
     if args.older is None and args.source is not None:
         parser.error("--source is the newer file of --from, and is given only with it")
+    if args.older is None and os.path.dirname(args.register) not in ("", "."):
+        # The one command names the register, REGISTER.md and the store from the folder it runs in, and prints commands
+        # that run there: a register in another folder would be named one way here and another there (rounds 2 to 4 of
+        # #140). So it takes a register named alone.
+        parser.error("name the register alone, from the folder that holds it, such as: python3 .ratchet/checks/upgrade.py "
+                     "register.json (not %s)" % args.register)
     try:
         if args.older is None:
             return one_command(args, out)

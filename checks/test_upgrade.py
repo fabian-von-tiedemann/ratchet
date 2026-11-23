@@ -809,21 +809,38 @@ class OneCommand(FixtureTest):
             self.assertIn("\n    %s\n" % line, output + "\n")
         self.assertNotIn("-- register.json", output)
 
-    def test_a_register_by_reference_in_another_folder_gets_no_commands_and_is_told_where_to_run(self):
-        # Rounds 2 and 3 of #140: for policy/adoption.json, policy/../register.json and a REGISTER.md beside it, the
-        # printed commands named another file than the one upgraded. They are printed only for a register named alone.
+    def test_the_one_command_refuses_a_register_in_another_folder_before_it_runs(self):
+        # Rounds 2 to 4 of #140: for policy/adoption.json, policy/../register.json and a REGISTER.md beside such a
+        # register, printed commands named another file than the one upgraded. The one command takes a register named
+        # alone, and refuses any other before it moves .ratchet or prints a command.
         project = self.project()
         self.by_reference(project)
         os.makedirs(os.path.join(project, "policy"))
         os.rename(os.path.join(project, "register.json"), os.path.join(project, "policy", "adoption.json"))
+        before = self.head(project)
         for name in ("policy/adoption.json", "policy/../policy/adoption.json"):
             with self.subTest(register=name):
                 code, output = in_project(project, ".ratchet/checks/upgrade.py", name, "--to", "9.9")
-                self.assertEqual(code, 0, output)
-                self.assertIn("Run it again from the folder that holds %s, naming the register alone" % name, output)
-                self.assertNotIn("run_pinned.py", output.split("Then check it:")[-1].split("Run it again")[0])
-                self.assertNotIn("|| exit 1", output)
-                git(os.path.join(project, ".ratchet"), "checkout", "--quiet", "--detach", self.tag("v9.8"))
+                self.assertEqual(code, 2, output)
+                self.assertIn("name the register alone, from the folder that holds it", output)
+                self.assertNotIn("check_register.py", output)
+                self.assertEqual(self.head(project), before, ".ratchet did not move")
+
+    def test_a_register_md_beside_the_register_is_checked_by_the_printed_commands(self):
+        # Round 4 of #140: with a REGISTER.md beside the register, the pinned commands checked the register alone, so a
+        # stale REGISTER.md passed them.
+        project = self.project()
+        self.by_reference(project)
+        with open(os.path.join(project, "REGISTER.md"), "w", encoding="utf-8") as handle:
+            handle.write("# stale\n")
+        code, output = self.upgrade(project, "--to", "9.9")
+        self.assertEqual(code, 0, output)
+        commit = self.tag("v9.9")
+        blob = git(self.origin, "rev-parse", "v9.9:checks/run_pinned.py")
+        for line in (run_pinned.local_line(commit, blob, run_pinned.COPY, "register.json", True),
+                     run_pinned.run_command(commit, blob, run_pinned.COPY, "register.json", True)):
+            self.assertIn("\n    %s\n" % line, output + "\n")
+            self.assertTrue(line.replace(" ) || exit 1", "").endswith("-- register.json --markdown REGISTER.md"), line)
 
     def test_a_register_whose_name_starts_with_a_dash_is_not_read_as_an_option(self):
         step = run_pinned.run_command("0" * 40, "1" * 40, run_pinned.COPY, "-register.json")
