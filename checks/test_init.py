@@ -1365,8 +1365,11 @@ os.link = link
                       "with it\n", output)
         self.assertIn("    with:\n      persist-credentials: false\ninit:   the checkout then leaves no token in "
                       ".git/config, where a later step could read it\n", output)
-        self.assertIn("a local check script that CI runs, put the command in it as a line of its own, in place of the "
-                      "step:\n  %s\n" % run, output)
+        # An adoption report on 0.12: the line assumed set -e, so a script without it went on after a failing check.
+        local = run_pinned.local_line(self.commit, self.runner, ".github/ratchet/run_pinned.py")
+        self.assertEqual(local, "( %s ) || exit 1" % run)
+        self.assertIn("a local check script that CI runs, put this line in it, in place of the step. It stops the script "
+                      "when the check fails, with set -e or without it:\n  %s\n" % local, output)
         # How to record a rule as built, by where it is enforced, without saying that it is.
         self.assertIn('"status": "built", with "where" naming the enforcement point and when it was read back: for '
                       "ratchet.protected-main, the ruleset or branch protection of main at the host", output)

@@ -60,8 +60,7 @@ Ratchet is built for one person who decides, several coding agents, and a repo t
 | A repo whose rules stand in another form, such as `.cursor/rules` | `init.py` does not see them and would write the files of a new repo. Take the inventory-first path in [TRYING.md](TRYING.md) instead. |
 | One agent and no control room | Run the same three commands, with `--solo` on `init.py`. |
 | One agent on a short project | Ratchet is more than you need. Read [the rules to start with](STARTING.md#the-rules-to-start-with) and stop. |
-| A register that follows 0.3 or later | [UPGRADING.md](UPGRADING.md): one command moves `.ratchet` to this version and prints the edits your register needs. |
-| A register written for 0.2 | [MIGRATING.md](MIGRATING.md) first. |
+| A `register.json` that follows an earlier version | [UPGRADING.md](UPGRADING.md): one command moves `.ratchet` to this version and prints the edits your register needs. |
 | A rule that does not fit your project | Open an issue with the [proposal form](https://github.com/fabian-von-tiedemann/ratchet/issues/new?template=proposal.yml). That is what Ratchet improves from. |
 
 ## Start here

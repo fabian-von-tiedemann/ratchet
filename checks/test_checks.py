@@ -41,9 +41,10 @@ REFUSED = "Replace each link with a regular file"
 STANDS_IN_FORM = "ratchet.fresh-context: stands_in must be the path of a Markdown file in the repo"
 BY_REFERENCE_TEXT = "%s: a row adopted by reference holds no rule text"
 RULE_MARKER_LINE = "RULES.md: the line that holds ratchet:rule, line "
-# The label of every row by reference, word for word as D-2026-11-22-second-redraw has it.
+# The label of every row by reference, as D-2026-11-22-second-redraw has it, with "guarded" for its "built"
+# (D-2026-11-23-new-rules-first).
 LABEL = ("Adopted by reference, the weaker mode. The wording in force is the project's own, in the file named. The check "
-         "sees a marker, not the words. Protection against a softened wording: %s.")
+         "sees a marker, not the words. The wording is %s against softening.")
 # A row by reference adopted in part: its where is exactly this phrase with the clauses the project's wording does not
 # state, and its label says so before the label of every row by reference.
 PART = "Not stated here: %s."
@@ -954,10 +955,10 @@ class RegisterByReference(FixtureTest):
                 register = json.loads(self.fixture_text("register/%s/register.json" % name))
                 rows = [entry for entry in register["adopted"] if "stands_in" in entry]
                 self.assertTrue(rows)
-                said = LABEL % ("built" if name == "ref-owner-built" else "not built")
+                said = LABEL % ("guarded" if name == "ref-owner-built" else "not guarded")
                 for entry in rows:
                     if "where" in entry and entry["where"].startswith("Not stated here: "):
-                        line = PART_LABEL % (entry["where"][len("Not stated here: "):-1], "not built")
+                        line = PART_LABEL % (entry["where"][len("Not stated here: "):-1], "not guarded")
                     else:
                         line = said
                     self.assertIn("register.json: %s stands in %s. %s\n" % (entry["key"], entry["stands_in"], line), output)
@@ -986,23 +987,27 @@ class RegisterByReference(FixtureTest):
         register = json.loads(self.fixture_text("register/ref-clean/register.json"))
         owner = next(entry for entry in register["adopted"] if entry["key"] == "ratchet.owner-paths")
         self.assertEqual(owner["status"], "text only for now")
-        self.assertEqual(check_register.label(register), LABEL % "not built")
+        self.assertEqual(check_register.label(register), LABEL % "not guarded")
         owner.update(status="built", where="`.github/CODEOWNERS`")
-        self.assertEqual(check_register.label(register), LABEL % "built")
+        self.assertEqual(check_register.label(register), LABEL % "guarded")
         # Adopted by reference with the status "built", it does not count: the project's own wording of the rule that
         # protects the wording is the one the check does not see (review of step 9a).
         index = register["adopted"].index(owner)
         register["adopted"][index] = {"key": "ratchet.owner-paths", "stands_in": "RULES.md", "sha256": "0" * 64,
                                       "status": "built", "where": "`.github/CODEOWNERS`"}
-        self.assertEqual(check_register.label(register), LABEL % "not built", "owner-paths by reference")
+        self.assertEqual(check_register.label(register), LABEL % "not guarded", "owner-paths by reference")
         register["adopted"][index] = owner
         register["adopted"].remove(owner)
-        self.assertEqual(check_register.label(register), LABEL % "not built", "a register that does not adopt it")
+        self.assertEqual(check_register.label(register), LABEL % "not guarded", "a register that does not adopt it")
         built = self.fixture_text("register/ref-owner-built/REGISTER.md")
-        self.assertIn(check_register.registry.cell(LABEL % "built"), built)
-        self.assertNotIn("not built", built)
+        self.assertIn(check_register.registry.cell(LABEL % "guarded"), built)
+        self.assertNotIn("not guarded", built)
+        # An adoption report on 0.12: "built" meant two things on one screen. The label never says it, so "built" means
+        # only a rule's enforcement.
+        for word in ("guarded", "not guarded"):
+            self.assertNotIn("built", LABEL % word)
         clean = self.fixture_text("register/ref-clean/REGISTER.md")
-        self.assertEqual(clean.count(check_register.registry.cell(LABEL % "not built")), 2, "each row is labeled")
+        self.assertEqual(clean.count(check_register.registry.cell(LABEL % "not guarded")), 2, "each row is labeled")
 
     def test_the_rows_by_reference_stand_in_a_table_of_their_own_with_no_rule_text(self):
         sys.path.insert(0, HERE)
@@ -1173,7 +1178,7 @@ class RegisterByReference(FixtureTest):
                            "--markdown", os.path.join(handwritten, "reference", "REGISTER.md"))
         self.assertEqual(code, 0, output)
         self.assertIn("1 rules match Ratchet 9.9 (1 core, 0 experimental). 1 rules are adopted by reference", output)
-        self.assertIn("ratchet.example-two stands in RULES.md. " + LABEL % "not built", output)
+        self.assertIn("ratchet.example-two stands in RULES.md. " + LABEL % "not guarded", output)
 
 
 class RegisterInPart(FixtureTest):
@@ -1213,7 +1218,7 @@ class RegisterInPart(FixtureTest):
                                  "no field is added")
                 code, output = self.check(name)
                 self.assertEqual(code, 0, output)
-                label = PART_LABEL % ("; ".join(clauses), "not built")
+                label = PART_LABEL % ("; ".join(clauses), "not guarded")
                 self.assertEqual(check_register.row_label(register, entry), label)
                 self.assertIn("register.json: %s stands in RULES.md. %s\n" % (key, label), output)
                 self.assertIn("1 of them adopted in part: the check sees the clauses listed, not whether they are the ones the wording leaves out", output)
@@ -1221,7 +1226,7 @@ class RegisterInPart(FixtureTest):
                 self.assertIn("| %s | `RULES.md` | %s |" % (key, check_register.registry.cell(label)), markdown)
                 # The other row by reference keeps the label of a whole rule.
                 other = next(row for row in register["adopted"] if "stands_in" in row and row["key"] != key)
-                self.assertIn("register.json: %s stands in RULES.md. %s\n" % (other["key"], LABEL % "not built"), output)
+                self.assertIn("register.json: %s stands in RULES.md. %s\n" % (other["key"], LABEL % "not guarded"), output)
         # A register with no row in part says nothing of it.
         self.assertNotIn("adopted in part", self.check("ref-clean")[1])
 
@@ -1279,6 +1284,26 @@ class RegisterInPart(FixtureTest):
         own = upgrade.own_entry(rules["ratchet.fresh-context"], fresh, "example", set())
         self.assertNotIn("where", own)
         self.assertEqual(check_register.part_clauses(own.get("where", "")), None)
+
+
+class AdoptGuidance(unittest.TestCase):
+    """What STARTING.md tells a project that adopts by reference, from an adoption report on 0.12
+    (D-2026-11-23-new-rules-first). The words are text only; these tests keep them from being dropped."""
+
+    def setUp(self):
+        self.text = " ".join(read("STARTING.md").split())
+
+    def test_the_pinned_step_may_run_in_a_job_that_is_not_required_and_never_passes_when_ratchet_is_out_of_reach(self):
+        self.assertIn("The step may run in a job that the protection of `main` does not require", self.text)
+        self.assertIn("it fails, and never passes, when it cannot reach Ratchet", self.text)
+
+    def test_a_sentence_with_any_part_not_stated_is_listed_whole(self):
+        self.assertIn("When your wording leaves out any part of a sentence of the rule, list that whole sentence as one "
+                      "clause", self.text)
+
+    def test_a_marker_stands_outside_a_markdown_list(self):
+        self.assertIn("Put it outside a Markdown list, before or after it: a marker between two list items ends the list.",
+                      self.text)
 
 
 class RepoCopy:
@@ -1981,18 +2006,8 @@ class StartPath(unittest.TestCase):
         for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
             self.assertTrue(os.path.isfile(os.path.join(self.project, name)), name)
 
-    def test_every_command_in_the_migration_runs_from_the_root_of_a_project(self):
-        self.assertIn("cp .ratchet/templates/register.json register.json", read("MIGRATING.md"))
-        shutil.copyfile(os.path.join(ROOT, "templates", "register.json"), os.path.join(self.project, "register.json"))
-        commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
-        self.assertEqual(len(commands), 3)
-        for command in commands:
-            with self.subTest(command=command):
-                code, output = self.run_in_project(command)
-                self.assertEqual(code, 0, output)
-
     def test_no_instruction_tells_the_reader_to_leave_the_root(self):
-        for name in ("README.md", "STARTING.md", "MIGRATING.md", "UPGRADING.md"):
+        for name in ("README.md", "STARTING.md", "UPGRADING.md"):
             with self.subTest(document=name):
                 text = read(name)
                 self.assertIsNone(re.search(r"(?m)^\s*cd ", text))

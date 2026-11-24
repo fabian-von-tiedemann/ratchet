@@ -92,8 +92,8 @@ CORE_BATCH_C_OUT = {
     "ratchet.nightly-visible": "renamed ratchet.silence-is-red and widened (T1)",
 }
 # Where a rule of core batch A, B or C could still be cited. The changelog and the decisions keep the old keys as history.
-CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "MIGRATING.md", "PRODUCT.md",
-          "RATCHET.md", "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "STARTING.md", "UPGRADING.md",
+CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "PRODUCT.md", "RATCHET.md",
+          "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "STARTING.md", "UPGRADING.md",
           os.path.join("checks", "README.md"),
           os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
           os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
@@ -173,72 +173,6 @@ FAILING = {
     "cap-negative": FORM,
     "cap-twice": "the field 'experimental_cap' appears twice in one object",
 }
-
-
-# Where each rule of 0.2 that is no longer in Ratchet from 0.11 went, as the 0.11 entry of the changelog says: the key
-# without the prefix -> the head of its bullet in MIGRATING.md, and the rules of Ratchet named in its own clause of that
-# bullet, so that a composite bullet pins each rule's place one by one (the review at 3abb0d4).
-OWNER_PATHS = "into `ratchet.owner-paths`, which keeps the owner's required review through code ownership"
-ASK = "into `ratchet.ask-the-owner`"
-FRESH = "into `ratchet.fresh-context`"
-EVIDENCE = "into `ratchet.evidence-before-done`"
-SIMPLEST = "into `ratchet.simplest`"
-OTHER = "into another rule that stays"
-OWN = "into Ratchet's own register"
-CONTRIBUTING = "into `CONTRIBUTING.md`, as an invitation"
-HANDBOOK = "into a line of the control room's handbook template"
-RENAMED = "renamed and widened"
-DUPLICATE = "removed as a duplicate of `ratchet.evidence-before-done`"
-MIGRATED_0_11 = {
-    "one-approver": (OWNER_PATHS, ()),
-    "checks-owner-read": (OWNER_PATHS, ()),
-    "one-channel": (ASK, ()),
-    "five-choices": (ASK, ()),
-    "look-up-facts": (ASK, ()),
-    "experiment-plan": (ASK, ()),
-    "once-per-version": (FRESH, ()),
-    "register-review-first": (FRESH, ()),
-    "verify-findings": (EVIDENCE, ()),
-    "findings-marked": (EVIDENCE, ()),
-    "reuse-first": (SIMPLEST, ()),
-    "slices": (SIMPLEST, ()),
-    "cr-next-task": (OTHER, ("ratchet.cr-wake",)),
-    "si-repeat-is-signal": (OTHER, ("ratchet.si-harden",)),
-    "test-first": (OTHER, ("ratchet.test-can-fail",)),
-    "lesson-loop": (OTHER, ("ratchet.lesson-names-check",)),
-    "glossary": (OWN, ()),
-    "kinds-apart": (OWN, ()),
-    "si-subtract": (OWN, ()),
-    "si-promote": (CONTRIBUTING, ()),
-    "cr-does-not-build": (HANDBOOK, ()),
-    "cr-analysis-model": (HANDBOOK, ("ratchet.review-by-risk",)),
-    "cr-quiet-hours": (HANDBOOK, ()),
-    "grill-first": (HANDBOOK, ()),
-    "run-early": (HANDBOOK, ()),
-    "nightly-visible": (RENAMED, ("ratchet.silence-is-red",)),
-    "cr-verify-reports": (DUPLICATE, ()),
-}
-
-
-def migrating_destinations(text):
-    """The list in MIGRATING.md of the rules of 0.2 no longer in Ratchet from 0.11: each key it names without the prefix
-    -> the head of its bullet and the rules of Ratchet named after it and before the next key, in order. A key named
-    twice, or a rule of Ratchet named before any key of its bullet, fails."""
-    block = text.split("Twenty-seven more are no longer in Ratchet from 0.11", 1)[1].split("\n\n", 1)[0]
-    found = {}
-    for line in block.split("\n")[1:]:
-        assert line.startswith("  - "), line
-        head, names = line[len("  - "):].split(": ", 1)
-        key = None
-        for name in re.findall(r"`([^`]+)`", names):
-            if name.startswith("ratchet."):
-                assert key is not None, line
-                found[key] = (head, found[key][1] + (name,))
-            else:
-                assert name not in found, name
-                key = name
-                found[key] = (head, ())
-    return found
 
 
 def decision_name_problems(folder):
@@ -549,69 +483,18 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertIn("records in the new version's entry of the changelog the steps and minutes to adopt Ratchet in an empty "
                       "repo and to upgrade by one version (`ratchet.si-measure`, ", read("AGENTS.md"))
 
-    def test_migrating_names_every_rule_of_0_2_that_is_no_longer_in_ratchet(self):
-        # The review of step 8: MIGRATING.md counted nine rules that leave in 0.11. Read from v0.2's tables, which the
-        # fixture of 0.3 holds key for key, and from ratchet.json as it stands, six left in 0.10 and, after step 11, 27 in
-        # 0.11. A later step that takes out another rule of 0.2 makes this fail until MIGRATING.md names it.
+    def test_every_rule_of_0_2_that_is_no_longer_in_ratchet_left_in_a_named_step(self):
+        # Read from v0.2's tables, which the fixture of 0.3 holds key for key, and from ratchet.json as it stands, six left
+        # in 0.10 and, after step 11, 27 in 0.11. A rule of 0.2 that leaves outside the steps named here makes this fail.
         then = set(registry.rules_by_key(registry.parse_json(self.released("0.3"))))
         tenth = then - set(GONE)
         gone = sorted(tenth - set(self.by_key))
         self.assertEqual(sorted(then - set(self.by_key) - set(gone)), sorted(GONE))
         self.assertEqual(len(gone), 27)
-        text = read("MIGRATING.md")
         # Step 2 took out six, of which ratchet.phases entered in 0.6, step 3 three, step 8 nine, step 10 five and step
         # 11 five.
         self.assertEqual(gone, sorted(set(CLEANED_OUT) - {"ratchet.phases"} | set(LOOP_CLEANED_OUT) | set(CORE_BATCH_A_OUT)
                                       | set(CORE_BATCH_B_OUT) | set(CORE_BATCH_C_OUT)))
-        # Named without the prefix, since generate.py --check refuses a key that is not a rule.
-        for key in gone:
-            self.assertIn("`%s`" % key[len("ratchet."):], text)
-        self.assertIn("Twenty-seven more are no longer in Ratchet from 0.11", text)
-        self.assertNotIn("Nine more", text)
-        self.assertNotIn("Twenty-two more", text)
-        # Where each went (the reviews at 18d1ce8 and 3abb0d4): the list in MIGRATING.md names each of the 27 once,
-        # under the place the 0.11 entry of the changelog gives it, and with the rule of Ratchet its own clause names.
-        self.assertEqual(migrating_destinations(text), MIGRATED_0_11)
-        self.assertEqual(sorted("ratchet." + name for name in MIGRATED_0_11), gone)
-        # Each rule of Ratchet named as a place is a rule as it stands.
-        for head, names in MIGRATED_0_11.values():
-            for name in names + tuple(re.findall(r"`(ratchet\.[^`]+)`", head)):
-                self.assertIn(name, self.by_key)
-
-    def test_a_rule_named_under_another_place_in_migrating_fails(self):
-        text = read("MIGRATING.md")
-        moved = text.replace("Ratchet's own register: `glossary`, `kinds-apart` and `si-subtract`",
-                             "Ratchet's own register: `glossary` and `kinds-apart`").replace(
-                             "as an invitation: `si-promote`", "as an invitation: `si-promote` and `si-subtract`")
-        self.assertNotEqual(moved, text)
-        self.assertNotEqual(migrating_destinations(moved), MIGRATED_0_11)
-        twice = text.replace("as an invitation: `si-promote`", "as an invitation: `si-promote` and `glossary`")
-        with self.assertRaises(AssertionError):
-            migrating_destinations(twice)
-
-    def test_a_swap_inside_a_composite_bullet_in_migrating_fails(self):
-        # The review at 3abb0d4: swapping the rules that two keys of one bullet went into left the test green.
-        text = read("MIGRATING.md")
-        swaps = (
-            ("`cr-next-task` into `ratchet.cr-wake`, `si-repeat-is-signal` into `ratchet.si-harden`",
-             "`cr-next-task` into `ratchet.si-harden`, `si-repeat-is-signal` into `ratchet.cr-wake`"),
-            ("`test-first` into `ratchet.test-can-fail`, and `lesson-loop` into `ratchet.lesson-names-check`",
-             "`test-first` into `ratchet.lesson-names-check`, and `lesson-loop` into `ratchet.test-can-fail`"),
-            ("`cr-does-not-build`, `cr-analysis-model`, two of whose clauses went into `ratchet.review-by-risk`, "
-             "`cr-quiet-hours`",
-             "`cr-does-not-build`, `cr-analysis-model`, `cr-quiet-hours`, two of whose clauses went into "
-             "`ratchet.review-by-risk`"),
-            ("`nightly-visible`, now `ratchet.silence-is-red`", "`nightly-visible`, now `ratchet.simplest`"),
-        )
-        for old, new in swaps:
-            with self.subTest(old):
-                swapped = text.replace(old, new)
-                self.assertNotEqual(swapped, text)
-                self.assertNotEqual(migrating_destinations(swapped), MIGRATED_0_11)
-        # A rule of Ratchet before any key of its bullet is refused.
-        with self.assertRaises(AssertionError):
-            migrating_destinations(text.replace("as an invitation: `si-promote`",
-                                                "as an invitation: `ratchet.cr-wake` and `si-promote`"))
 
     def test_core_batch_b_rules_are_gone_and_stand_where_the_decision_put_them(self):
         # D-2026-11-22-second-redraw, step 10 of the migration: each rule that leaves is gone from ratchet.json, from this

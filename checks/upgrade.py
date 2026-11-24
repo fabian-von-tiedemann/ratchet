@@ -14,8 +14,11 @@ compares it with the release asked for with --to, or else the latest release tag
 number, and says how many releases behind the register is. When the register passes
 against the version it states, it moves the clone to the release, detached, and runs
 the upgrade.py there, which prints the steps below, the commands to run after, and
-the commit to pin the workflow to. It does not move a clone with changes to files git
-tracks in it, or one on a branch, and it says how to move the clone back. A version
+the commit to pin the workflow to. A register with rows by reference in a project
+with no .github/workflows/ratchet.yml, which adopt mode never writes, is told instead
+how to copy checks/run_pinned.py again from the new commit, with the line for a
+local check script and for the CI step, as init.py prints them. It does not move a
+clone with changes to files git tracks in it, or one on a branch, and it says how to move the clone back. A version
 with no tag, a shallow clone that lacks the tag, a tag asked for that does not exist,
 a fetch that fails and a release before 0.11, whose upgrade.py does not do this,
 each stop it, with what to do.
@@ -56,7 +59,8 @@ Either way the script compares the two versions, rule by rule, and prints:
   phrase of a row adopted in part, which came in 0.12, may too, so none of it is a step.
 - the commands that print REGISTER.md and the instruction file again and check them,
   with the options first and the register's path after "--". A register with rows by
-  reference after the steps and no REGISTER.md beside it is not told to print one.
+  reference after the steps and no REGISTER.md beside it is not told to print one, and
+  its check command has no --markdown REGISTER.md.
 
 It writes no file of the project. Only the one command changes anything: the tags
 and the checkout of .ratchet, through git. Before it prints a
@@ -96,6 +100,7 @@ import subprocess
 
 import check_register
 import registry
+import run_pinned
 
 # The fields of a rule that the comparison reads, in the order a change names them.
 COMPARED = (("status", "the status"), ("enforcement", "the enforcement"), ("rule", "the rule"),
@@ -124,6 +129,8 @@ REGISTER_FORMS = (
 )
 
 
+# The workflow init.py writes for a new repo. Adopt mode writes none, and runs the check with run_pinned.py instead.
+WORKFLOW = ".github/workflows/ratchet.yml"
 # A release: a major and a minor version, as a tag names it after its "v".
 RELEASE = re.compile(r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 # The first version whose upgrade.py fetches and compares the tags itself (D-2026-11-22-second-redraw, step 6). The one
@@ -517,7 +524,10 @@ def report(path, register, old, new, out, script):
         print("    %s" % put_in_place(script, path, "--print-markdown", "REGISTER.md"), file=out)
     if instructions is not None:
         print("    %s" % put_in_place(script, path, "--print-instructions", instructions), file=out)
-    print("    python3 %s --markdown REGISTER.md -- %s" % (shlex.quote(script), shlex.quote(path)), file=out)
+    # The check reads REGISTER.md only where the register has it or must have it: an adoption report on 0.12 found a
+    # --markdown REGISTER.md printed for a file that was not there.
+    print("    python3 %s%s -- %s" % (shlex.quote(script), " --markdown REGISTER.md" if markdown else "", shlex.quote(path)),
+          file=out)
     print("", file=out)
     if not must_adopt:
         adopting = "no new rule adopted"
@@ -699,8 +709,48 @@ def one_command(args, out):
     code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"))
     if code == 0 and behind:
         print("", file=out)
-        print("Then pin .github/workflows/ratchet.yml to the commit of %s: %s." % (known[target], commit), file=out)
+        # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
+        project = os.getcwd()
+        if check_register.references(register) and not os.path.lexists(os.path.join(project, WORKFLOW)):
+            # REGISTER.md as the report decided it, on the register with the steps done: there, or required once no
+            # row by reference is left (round 5 of #140).
+            _, after = plan(register, old, new)
+            markdown = (not check_register.references(after)
+                        or os.path.lexists(os.path.join(project, "REGISTER.md")))
+            for line in pinned_run(root, shown, project, known[target], commit, os.path.basename(args.register),
+                                   markdown):
+                print(line, file=out)
+        else:
+            print("Then pin %s to the commit of %s: %s." % (WORKFLOW, known[target], commit), file=out)
     return code
+
+
+def pinned_run(root, shown, project, tag, commit, register="register.json", markdown=False):
+    """What a register with rows by reference, in a project with no workflow of Ratchet's, is told to do with the commit:
+    adopt mode wrote no workflow, and its check runs from checks/run_pinned.py, copied from the pinned commit. The same
+    copy command and lines that init.py prints, with the new commit: the copy, the line of the local check script, and
+    the CI step."""
+    try:
+        objects = run_pinned.objects_of(root)
+        blob = run_pinned.stored_blob(root, commit, run_pinned.SELF)
+    except (run_pinned.Refused, OSError) as error:
+        raise UpgradeError("cannot read %s of %s from %s: %s" % (run_pinned.SELF, tag, shown, error))
+    if not os.path.isabs(shown):
+        objects = os.path.relpath(os.path.abspath(objects), project)
+    # The register by its own name, as the project's root sees it: the commands run from there.
+    run = run_pinned.run_command(commit, blob, run_pinned.COPY, register, markdown)
+    return ["The check runs from the pinned commit with %s. To move it to the commit of %s, %s, run these from the "
+            "project's root. Copy the runner again from that commit:" % (run_pinned.COPY, tag, commit),
+            "",
+            "    " + run_pinned.copy_command(objects, commit, blob, run_pinned.COPY),
+            "",
+            "Then put this line in the local check script, in place of the one there:",
+            "",
+            "    " + run_pinned.local_line(commit, blob, run_pinned.COPY, register, markdown),
+            "",
+            "or this in the step of the job that runs the check:",
+            "",
+            "    " + run]
 
 
 def main(argv=None, out=None):
@@ -719,6 +769,12 @@ def main(argv=None, out=None):
         parser.error("--from compares two files and fetches nothing: leave out --to and --no-fetch, or --from")
     if args.older is None and args.source is not None:
         parser.error("--source is the newer file of --from, and is given only with it")
+    if args.older is None and os.path.dirname(args.register) not in ("", "."):
+        # The one command names the register, REGISTER.md and the store from the folder it runs in, and prints commands
+        # that run there: a register in another folder would be named one way here and another there (rounds 2 to 4 of
+        # #140). So it takes a register named alone.
+        parser.error("name the register alone, from the folder that holds it, such as: python3 .ratchet/checks/upgrade.py "
+                     "register.json (not %s)" % args.register)
     try:
         if args.older is None:
             return one_command(args, out)

@@ -11,8 +11,11 @@ only when git hash-object gives it that name, and the step runs the copy only wh
 missing, empty, cut short or not the pinned commit's fails the step.
 
 It uses the Ratchet clone, .ratchet unless --store names another, only as a store of git objects. When there is none
-it clones one from the repository, Ratchet's on GitHub unless --repository names another, with no checkout. When the
-commit is not in it, it fetches the commit, from that repository only. It never reads the clone's working tree, so an
+it makes one, empty, and fetches the pinned commit alone into it, shallow and by its id, from the repository, Ratchet's
+on GitHub unless --repository names another. When the repository does not give a commit by its id, it fetches the
+repository's branches and tags into it, what a clone fetches, as 0.12 did. When the commit is not in a store that was there, it fetches the commit, from
+that repository only. When the repository cannot be reached and the store lacks the commit, it refuses: it never
+passes without the pinned commit. It never reads the clone's working tree, so an
 edit there, one that git status does not show because of git update-index --assume-unchanged included, and a file
 beside the check that is not Ratchet's, such as a checks/argparse.py, are never run.
 
@@ -20,10 +23,12 @@ git never reads a config of the store's, the user's or the system's, and never f
 new, empty git directory, with the store's object directory as GIT_OBJECT_DIRECTORY, GIT_CONFIG_NOSYSTEM, the global
 config an empty file, HOME in a new directory, every GIT_ variable of the environment dropped, and no lazy fetch (see
 Git). So a core.sshCommand, core.fsmonitor, hook, credential helper, url rewrite or upload-pack of the store's config,
-or of the user's, never runs, also not for a partial clone that misses an object. The clone of a missing store and
-the fetch of a missing commit are the only steps that reach the network, each explicit and with the same isolation.
+or of the user's, never runs, also not for a partial clone that misses an object. The fetches into a missing
+store and the fetch of a missing commit are the only steps that reach the network, each explicit and with the same
+isolation.
 
-It reads the commit, its tree and every blob under it with git cat-file, with replace objects off, and hashes each
+It reads the commit, its tree and every blob under it with git cat-file, and no other object of the store, the trees
+one level at a time and the blobs together, with replace objects off, and hashes each
 object itself: an object whose bytes do not give its name is refused, so a corrupt or swapped object, or one that a
 replace ref would put in its place, is never run. It reads raw objects rather than git archive's output, which applies
 attributes and filters. It writes the tree into a new directory from tempfile, which it removes at the end, and runs
@@ -78,6 +83,8 @@ import tempfile
 # The repository a missing store is cloned from, and a missing commit fetched from: the one init.py prints.
 REPOSITORY = "https://github.com/fabian-von-tiedemann/ratchet"
 STORE = ".ratchet"
+# Where adopt mode says to copy this file to, in the project's repo, from the pinned commit.
+COPY = ".github/ratchet/run_pinned.py"
 CHECK = ("checks", "check_register.py")
 SELF = "checks/run_pinned.py"
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
@@ -178,20 +185,37 @@ class Git:
 
 
 def store_with(git, store, commit, repository):
-    """The object directory of the store, cloned when it is missing, and holding the commit, fetched when it does not.
-    The clone and the fetch are the only steps that reach the network, each explicit, from the repository named alone,
-    and with the same isolation as every read: the fetch runs in the empty git directory, writing into the store's
-    object directory, so not even the store's remotes or url rewrites are read."""
-    if not os.path.lexists(store):
-        code, _, error = git.run(None, "clone", "--quiet", "--no-checkout", "--template=", repository,
-                                 os.path.abspath(store))
+    """The object directory of the store, made when it is missing, and holding the commit, fetched when it does not.
+    A missing store is made empty, with no checkout, and the pinned commit alone fetched into it, shallow and by its id,
+    so neither the history nor any other commit is fetched and indexed. When the repository does not give a commit by
+    its id, the branches and tags of the repository are fetched into the store, which is what a clone fetches, as
+    0.12 did. A store that was there and lacks the commit fetches it by its id, with the same fall back. The fetches are the only
+    steps that reach the network, each explicit, from the repository named alone, and with the same isolation as every
+    read: a fetch runs in the empty git directory, writing into the store's object directory, so not even the store's
+    remotes or url rewrites are read. Nothing is removed. When none of them gives the commit, it is refused: the check
+    never runs, and never passes, without the pinned commit."""
+    made = not os.path.lexists(store)
+    if made:
+        code, _, error = git.run(None, "init", "--quiet", "--template=", os.path.abspath(store))
         if code != 0:
-            raise Refused("cannot clone %s into %s: %s" % (repository, store, error))
+            raise Refused("cannot make a store at %s: %s" % (store, error))
     objects = objects_of(store)
     if git.kind(objects, commit) is None:
-        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository, commit)
-        if code != 0:
-            raise Refused("commit %s is not in %s, and cannot be fetched from %s: %s" % (commit, store, repository, error))
+        # A store made now gets the commit alone, shallow. One that was there, perhaps left empty by a run that could
+        # not reach the host, fetches it by its id, with its history (round 2 of #140).
+        shallow = ["--depth=1"] if made else []
+        code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", *shallow,
+                                 repository, commit)
+        if code != 0 or git.kind(objects, commit) != "commit":
+            # The host does not give a commit by its id, or this id is not one: fetch what a clone would.
+            by_id = error
+            code, _, error = git.run(objects, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", repository,
+                                     "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*")
+            if code != 0 and made:
+                raise Refused("cannot fetch %s into %s: %s" % (repository, store, error))
+            if code != 0 or git.kind(objects, commit) is None:
+                raise Refused("commit %s is not in %s, and cannot be fetched from %s: %s"
+                              % (commit, store, repository, error or by_id or "it is in none of its branches or tags"))
     found = git.kind(objects, commit)
     if found != "commit":
         raise Refused("%s is not a commit in %s%s" % (commit, store, ", it is a %s" % found if found else ""))
@@ -300,14 +324,25 @@ def copy_command(objects, commit, blob, target):
                blob, commit))
 
 
-def run_command(commit, blob, target):
-    """The sh command that runs the copy at target: only when git hash-object gives its bytes the name blob, so a copy
+def run_command(commit, blob, target, register="register.json", markdown=False):
+    """The sh command that runs the copy at target, on the register at the path register from where it runs: only when git hash-object gives its bytes the name blob, so a copy
     that is missing, empty, cut short or not the pinned commit's stops the step or the script rather than passing it.
     The hash check is an if with exit 1, not the left side of &&, which set -e does not stop on: a script with set -e or
     without it ends there, in sh, bash and dash."""
     return ("if ! test \"$(git hash-object --no-filters --stdin < %s)\" = %s; then echo '%s is not checks/run_pinned.py "
-            "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- register.json"
-            % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit))
+            "of commit %s: copy it again' >&2; exit 1; fi; python3 -I %s %s -- %s%s"
+            % (shlex.quote(target), blob, target, commit, shlex.quote(target), commit,
+               # A name that starts with - would be read as an option by the check after the runner's --.
+               shlex.quote("./" + register if register.startswith("-") else register),
+               " --markdown REGISTER.md" if markdown else ""))
+
+
+def local_line(commit, blob, target, register="register.json", markdown=False):
+    """The line for a local check script: run_command in a subshell, and exit 1 when it fails. A script without set -e
+    goes on after a command that fails, so a register that fails the check, or a runner that is not the pinned one,
+    would be followed by the rest of the script, to "all green". The subshell's own exit and the || exit 1 stop the
+    script in sh, bash and dash, with set -e or without it."""
+    return "( %s ) || exit 1" % run_command(commit, blob, target, register, markdown)
 
 
 def entries(tree, body):
@@ -327,32 +362,38 @@ def entries(tree, body):
 
 def export(objects, tree, directory):
     """Write the tree, read and hashed object by object, into directory, which is new and empty. Returns the bytes of
-    checks/run_pinned.py in it, or None."""
-    pending, own = [(tree, directory, "")], None
-    while pending:
-        name, path, shown = pending.pop()
-        kind_, body = objects.read([name])[name]
-        if kind_ != "tree":
-            raise Refused("%s is not a tree" % name)
-        listed = entries(name, body)
-        blobs = objects.read([oid for mode, _, oid in listed if mode in FILE_MODES]) if listed else {}
-        for mode, part, oid in listed:
-            target = os.path.join(path, os.fsdecode(part))
-            relative = shown + part.decode("utf-8", "replace")
-            if mode == DIRECTORY:
-                os.mkdir(target, 0o755)
-                pending.append((oid, target, relative + "/"))
-            elif mode in FILE_MODES:
-                blob_kind, data = blobs[oid]
-                if blob_kind != "blob":
-                    raise Refused("%s is not a blob" % relative)
-                descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, FILE_MODES[mode])
-                with os.fdopen(descriptor, "wb") as handle:
-                    handle.write(data)
-                if relative == SELF:
-                    own = data
-            elif mode not in SKIPPED:
-                raise Refused("%s has a mode this does not know: %s" % (relative, mode.decode("ascii", "replace")))
+    checks/run_pinned.py in it, or None. Only the objects reachable from the tree are read: the trees one level at a
+    time, each level in one read, and then every blob in one read, so the number of reads follows the depth of the
+    tree and not the number of its directories."""
+    level, files, own = [(tree, directory, "")], [], None
+    while level:
+        trees = objects.read(sorted(set(name for name, _, _ in level)))
+        following = []
+        for name, path, shown in level:
+            kind_, body = trees[name]
+            if kind_ != "tree":
+                raise Refused("%s is not a tree" % name)
+            for mode, part, oid in entries(name, body):
+                target = os.path.join(path, os.fsdecode(part))
+                relative = shown + part.decode("utf-8", "replace")
+                if mode == DIRECTORY:
+                    os.mkdir(target, 0o755)
+                    following.append((oid, target, relative + "/"))
+                elif mode in FILE_MODES:
+                    files.append((mode, oid, target, relative))
+                elif mode not in SKIPPED:
+                    raise Refused("%s has a mode this does not know: %s" % (relative, mode.decode("ascii", "replace")))
+        level = following
+    blobs = objects.read(sorted(set(oid for _, oid, _, _ in files))) if files else {}
+    for mode, oid, target, relative in files:
+        blob_kind, data = blobs[oid]
+        if blob_kind != "blob":
+            raise Refused("%s is not a blob" % relative)
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, FILE_MODES[mode])
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+        if relative == SELF:
+            own = data
     return own
 
 

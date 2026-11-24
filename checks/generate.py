@@ -776,10 +776,10 @@ def reference_fixtures(data, clean, sourced, plain, soft):
         result["%s/REGISTER.md" % name] = markdown
         if value is not None:
             result["%s/RULES.md" % name] = value
-    # REGISTER.md, where it is there, is what the register generates: here the label claims the protection is built.
+    # REGISTER.md, where it is there, is what the register generates: here the label claims the wording is guarded.
     result["ref-md-edited/register.json"] = text
     result["ref-md-edited/RULES.md"] = rules_md
-    result["ref-md-edited/REGISTER.md"] = markdown.replace("softened wording\\: not built\\.", "softened wording\\: built\\.")
+    result["ref-md-edited/REGISTER.md"] = markdown.replace("is not guarded against softening\\.", "is guarded against softening\\.")
 
     # Faults in the data, each a register.json alone.
     def changed(mutate):
