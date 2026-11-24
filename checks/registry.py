@@ -936,8 +936,6 @@ def values_file_problems(data):
 def values_text_problem(text):
     """Why a text cannot stand in values.json, or None. generate.py uses it to tell a line of the landing page that
     the generator could write from one it could not."""
-    if not isinstance(text, str):
-        return "must be a string"
     problem = text_problem(text)
     if problem:
         return problem
