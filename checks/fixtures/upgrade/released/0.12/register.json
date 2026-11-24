@@ -1,0 +1,18 @@
+{
+  "project": "An example project",
+  "ratchet_version": "0.12",
+  "adopted": [
+    {
+      "key": "ratchet.no-secrets",
+      "stands_in": "AGENTS.md",
+      "sha256": "0d7dd10012046c88ca3b0c719cdae2234b0f678aa167533faf33bdf724c1d13a",
+      "status": "text only for now"
+    },
+    {
+      "key": "ratchet.review-by-risk",
+      "stands_in": "AGENTS.md",
+      "sha256": "b2fd30e7cc79db4c4a2fffd25d9a415d92d8c67ed63184961de495b0ead2b1b0"
+    }
+  ],
+  "own": []
+}
