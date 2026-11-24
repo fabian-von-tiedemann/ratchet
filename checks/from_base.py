@@ -17,8 +17,10 @@ directory of its own. It then:
   generate.py --check, check_register.py on register.json and REGISTER.md, and released_text.py there. So the base's
   scripts read the pull request's ratchet.json, register.json, generated text and changelog.
 - makes the tree of the code: the base commit, with the pull request's code of the checks, but the base's tests and
-  the base's runner of the suite. It runs the base's expected_tests.py there. So the base's tests and fixtures,
-  under the base's runner, judge the pull request's checks, on the base's data.
+  the base's runner of the suite. It runs the base's expected_tests.py there, and then the base's
+  test_released_text.py --released-copy, which takes a copy of that tree through the release steps and runs the
+  base's suite on it once more (D-2026-11-24-faster-suite). So the base's tests and fixtures, under the base's
+  runner, judge the pull request's checks, on the base's data, before and after a release.
 
 The code of the checks is every file directly under checks/ whose name ends in .py, and every file in a directory
 under checks/ other than fixtures/. The tests are checks/test_*.py, and the runner is checks/expected_tests.py and
@@ -48,8 +50,10 @@ import tempfile
 WORKFLOW = ".github/workflows/checks.yml"
 RUNNER = ("checks/expected_tests.py", "checks/suite_runner.py")
 SHA = re.compile(r"^[0-9a-f]{40}\Z")
-# What the base runs in each tree, from the top of the tree. Each is a command the job `own` also runs on the
-# pull request's own checks.
+# What the base runs in each tree, from the top of the tree. Each is a command that the job `own`, or the job
+# `released`, also runs on the pull request's own checks. The suite on a released copy runs in the tree of the code,
+# so that the base's tests judge the pull request's checks after a release too, as they did when that run was a
+# part of ReleaseSteps in the suite (D-2026-11-24-faster-suite).
 DATA_COMMANDS = (
     ("checks/generate.py", "--check"),
     ("checks/check_register.py", "register.json", "--markdown", "REGISTER.md"),
@@ -57,6 +61,7 @@ DATA_COMMANDS = (
 )
 CODE_COMMANDS = (
     ("checks/expected_tests.py",),
+    ("checks/test_released_text.py", "--released-copy"),
 )
 WHY = ("The base branch's checks judge a pull request: its scripts read the pull request's data, and its tests and "
        "runner judge the pull request's checks. A pull request that changes a check, the job that runs it, or the form "

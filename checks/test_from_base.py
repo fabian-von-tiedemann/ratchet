@@ -51,6 +51,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.exit(subprocess.call([sys.executable, "-B", "-m", "unittest", "discover", "-q", "-s", HERE]))
 '''
 PASS = "import sys\nsys.exit(0)\n"
+# The base's run of its suite on a released copy, a stand-in for test_released_text.py --released-copy: it runs the
+# base's runner once more, with RELEASED set as a copy after the release steps would be. It holds no test of its own.
+RELEASED = '''import os, subprocess, sys
+HERE = os.path.dirname(os.path.abspath(__file__))
+if __name__ == "__main__" and sys.argv[1:] == ["--released-copy"]:
+    sys.exit(subprocess.call([sys.executable, "-B", os.path.join(HERE, "expected_tests.py")], env=dict(os.environ, RELEASED="1")))
+'''
 WORKFLOW = "name: checks\non: [pull_request]\njobs: {}\n"
 BASE = {
     ".github/workflows/checks.yml": WORKFLOW,
@@ -63,6 +70,7 @@ BASE = {
     "checks/released_text.py": PASS,
     "checks/expected_tests.py": RUNNER,
     "checks/test_generate.py": TEST,
+    "checks/test_released_text.py": RELEASED,
     "checks/fixtures/big.json": '{"value": 5}\n',
     "checks/fixtures/small.json": '{"value": 3}\n',
 }
@@ -158,6 +166,7 @@ class DryRun(unittest.TestCase):
         output = self.assertPasses(head)
         self.assertIn("in the tree of the data: python3 checks/generate.py --check", output)
         self.assertIn("in the tree of the code: python3 checks/expected_tests.py", output)
+        self.assertIn("in the tree of the code: python3 checks/test_released_text.py --released-copy", output)
         # The work trees are gone after the run.
         self.assertEqual(self.git("worktree", "list", "--porcelain").count("worktree "), 1)
 
@@ -179,6 +188,17 @@ class DryRun(unittest.TestCase):
         output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code")
         self.assertIn("test_fails_on_a_value_above_the_limit", output)
         self.assertNotIn("in the tree of the data, with exit status", output)
+
+    def test_a_check_that_fails_only_after_a_release_fails_in_the_tree_of_the_code(self):
+        # Round 1 of #147: a fault in the pull request's code of the checks that shows only on a released copy. The base's
+        # tests pass it in the tree as it is, and fail it in the base's run of the suite on a released copy of that tree.
+        softened = GENERATE.replace("LIMIT = 3", "import os\nLIMIT = 9 if os.environ.get('RELEASED') else 3")
+        head = self.pull_request({"checks/generate.py": softened})
+        self.assertEqual(self.own("checks/expected_tests.py"), 0)
+        output = self.assertFails(head, "the base's `python3 checks/test_released_text.py --released-copy` failed in the tree of the code",
+                                  "the base judges by: checks/generate.py")
+        self.assertIn("test_fails_on_a_value_above_the_limit", output)
+        self.assertNotIn("the base's `python3 checks/expected_tests.py` failed", output)
 
     def test_a_check_softened_with_its_runner_fails_in_the_tree_of_the_code(self):
         # The pull request softens the check and makes its runner pass whatever happens. The base's runner runs.
@@ -286,11 +306,17 @@ class Paths(unittest.TestCase):
         self.assertFalse(from_base.is_test("checks/tool/test_x.py"))
         self.assertTrue(from_base.judged_by(".github/workflows/checks.yml"))
 
-    def test_the_commands_are_the_ones_the_job_own_runs(self):
+    def test_the_commands_are_the_ones_the_jobs_own_and_released_run(self):
         with open(os.path.join(os.path.dirname(HERE), ".github", "workflows", "checks.yml"), encoding="utf-8") as handle:
             workflow = handle.read()
         for command in from_base.DATA_COMMANDS + from_base.CODE_COMMANDS:
             self.assertIn("run: python3 %s\n" % " ".join(command), workflow)
+
+    def test_the_suite_on_a_released_copy_runs_in_the_tree_of_the_code_after_the_suite(self):
+        # Round 1 of #147: the base's tests judge the pull request's checks after a release too, as ReleaseSteps did.
+        released = ("checks/test_released_text.py", "--released-copy")
+        self.assertEqual(from_base.CODE_COMMANDS, (("checks/expected_tests.py",), released))
+        self.assertNotIn(released, from_base.DATA_COMMANDS)
 
 
 if __name__ == "__main__":
