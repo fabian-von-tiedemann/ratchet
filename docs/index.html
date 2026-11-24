@@ -151,16 +151,33 @@ section p + p {
   margin-top: 0.75rem;
 }
 
+/* The one example: an instruction beside the check that catches what it only warns about. */
+.example {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  list-style: none;
+}
+.example li {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--box);
+}
+.example .caught {
+  border-left: 4px solid var(--accent);
+}
+
 /* The one figure: the ratchet as a staircase. It is a file of its own, with the colors of this page. */
 .notch {
   display: block;
   width: 100%;
   max-width: 30rem;
   height: auto;
-  margin-bottom: 1.25rem;
+  margin: 2rem 0 1.25rem;
 }
 
-/* The numbered lists: the three steps of how it works, and the three commands. */
+/* The numbered lists: the four steps of how it works, and the three commands. */
 ol {
   padding-left: 1.75rem;
 }
@@ -217,6 +234,9 @@ footer p + p {
   h1 {
     font-size: 3.5rem;
   }
+  .example {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 </style>
 </head>
@@ -243,22 +263,30 @@ footer p + p {
 <main>
 <section>
 <h2 id="how-it-works">How it works</h2>
+<p><strong>Instructions are not enough.</strong></p>
+<ul class="example">
+<li><strong>An instruction:</strong> <code>AGENTS.md</code> says “Never commit secrets.” An agent commits a key anyway.</li>
+<li class="caught"><strong>A check:</strong> <code>ratchet.no-secrets</code> names a secret scan in every pull request. Made required, it fails the pull request, and the key never reaches <code>main</code>.</li>
+</ul>
+<p class="next">Ratchet ships no scanner: you build or adopt it.</p>
 <img class="notch" src="ratchet-notch.svg" width="400" height="256" alt="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
 <ol class="flow">
-<li><strong>A rule describes a check that you build,</strong> or says “text only” and why it stays an instruction. Copied rules keep their wording, and the register check that Ratchet ships compares them with the version you state. “Decisions belong to the owner” is text only: a check cannot tell a fact from a decision. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
-<li><strong>Your repo keeps a register.</strong> One file lists every rule in force, the ones you copy and your own, and records which checks you have built. Ratchet ships only a few reference checks itself. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
-<li><strong>It turns one way.</strong> When an agent errs, you add a check that fails on it. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
+<li><strong>A rule goes in your register,</strong> copied from Ratchet or your own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
+<li><strong>It names what catches it:</strong> a check you build, or “text only” and why. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
+<li><strong>When something slips, a built check catches it</strong> before <code>main</code>. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md">The reference checks</a></li>
+<li><strong>Each failure turns it one notch tighter:</strong> a new check or fixture. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
 </ol>
 <p id="count" class="count"><strong>Ratchet today:</strong> the core has 19 rules. 13 describe a check and 6 are text only. Ratchet ships a reference check for 1 of the 13, and you build the others.</p>
+<p id="sources" class="count"><strong>Kept current:</strong> <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">5 pinned sources</a>, google/elephant-goldfish-model (Apache-2.0), mattpocock/skills (MIT), pstack (MIT), obra/superpowers (MIT) and sprocketlab/slop-code-bench (MIT). Each pin is a commit. A daily watch opens an issue when one moves.</p>
 </section>
 <section>
 <h2 id="start-here">Start here</h2>
-<p>In the root of your git repo:</p>
+<p>In your git repo’s root:</p>
 <ol class="steps">
 <li>Fetch Ratchet.
 <pre><code>git clone --branch v0.13 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
 </li>
-<li>See what it would write. This writes nothing.
+<li>See what it writes. This writes nothing.
 <pre><code>python3 .ratchet/checks/init.py --check</code></pre>
 </li>
 <li>Write it.
@@ -267,13 +295,12 @@ footer p + p {
 </ol>
 <ul class="paths">
 <li><strong>A new repo:</strong> <code>init.py</code> writes <code>AGENTS.md</code>, your register and a workflow that checks it on every pull request.</li>
-<li><strong>A repo with <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>GEMINI.md</code>, <code>.github/copilot-instructions.md</code> or <code>.claude/CLAUDE.md</code>:</strong> <code>init.py</code> runs in adopt mode, never changes that file, and with <code>--adopt</code> writes a register that points at your wording. Rules in another form, such as <code>.cursor/rules</code>, get the new repo's files, so <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">take inventory first</a>.</li>
+<li><strong>A repo with <code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>GEMINI.md</code>, <code>.github/copilot-instructions.md</code> or <code>.claude/CLAUDE.md</code>:</strong> with <code>--adopt</code>, <code>init.py</code> writes a register that points at your wording, and never changes that file. Rules in another form, such as <code>.cursor/rules</code>: <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">take inventory first</a>.</li>
 </ul>
-<p class="next">You turn on branch protection on your host, so that the check is required. <code>init.py</code> never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
+<p class="next">Require the check with branch protection on your host. <code>init.py</code> never overwrites a file. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/STARTING.md">What to do next</a></p>
 </section>
 </main>
 <footer>
-<p>Open source. Ideas from public sources, in Ratchet's own words and <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">credited rule by rule</a>.</p>
 <p><a href="https://github.com/fabian-von-tiedemann/ratchet/releases/latest">Latest release</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT license</a></p>
 </footer>
 </body>

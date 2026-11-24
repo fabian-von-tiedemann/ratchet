@@ -37,15 +37,21 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
 - every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md
 - each step of how Ratchet works, an item of the one <ol class="flow">, links to where the repo shows it
+- what the one example says of its rule is what ratchet.json holds: each key the page names in <code> is a rule, the
+  rule of the example names a secret scan in every PR, and while the page says Ratchet ships no scanner, the rule has
+  no reference check
+- the watch that the line of the sources calls daily is one schedule of one run a day in
+  .github/workflows/watch-sources.yml, which runs checks/watch_sources.py on sources.json
 - the story and the values, the one <section id="values">, show the story, the line that leads to the values, each
   value and the line that weighs them, as values.json holds them, in order, with the part each marks. The test reads
   the section itself, and does not ask generate.py.
 
-Three parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
+Four parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
 the newest version with a date in CHANGELOG.md, as the command in README.md does; the line that counts the rules
-of the core, from ratchet.json; and the story and the values, from values.json. So a release that moves the README,
-a rule that changes kind, and a value that is changed each move the page when generate.py is run, and
-generate.py --check fails until it is. The tests of all three are here too, and they read each line as generate.py
+of the core, from ratchet.json; the story and the values, from values.json; and the line that names the pinned
+sources, from sources.json. So a release that moves the README, a rule that changes kind, a value that is changed
+and a source that is added each move the page when generate.py is run, and generate.py --check fails until it is.
+The tests of all four are here too, and they read each line as generate.py
 does, after the spaces that indent it. The principles are a link to RATCHET.md, not a list on the page
 (D-2026-11-23-values-and-principles).
 
@@ -137,6 +143,17 @@ PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("cod
          ("link", "box"), ("accent", "bg"), ("accent", "box"))
 # The pairs in the figure: its labels on its own background and on the body of the staircase.
 FIGURE_PAIRS = (("fg", "box"), ("fg", "code-bg"), ("muted", "box"), ("accent", "box"))
+# The one example on the page: the rule it names, the start of that rule's ratchet in ratchet.json, which the example
+# says in its own words, and the line that says Ratchet ships no check for it, which holds while the rule has no
+# reference check.
+EXAMPLE_KEY = "ratchet.no-secrets"
+EXAMPLE_CHECK = "Check: a secret scan in every PR"
+EXAMPLE_NOT_SHIPPED = "Ratchet ships no scanner"
+PAGE_KEY = re.compile(r"<code>(ratchet\.[a-z0-9-]+)</code>")
+# The watch that the line of the sources calls daily: one schedule of one run a day, which runs the watch on sources.json.
+WATCH = ".github/workflows/watch-sources.yml"
+WATCH_CRON = re.compile(r'    - cron: "(?:[0-9]|[1-5][0-9]) (?:[0-9]|1[0-9]|2[0-3]) \* \* \*"\Z')
+WATCH_RUN = "        run: python3 checks/watch_sources.py --data sources.json"
 # The list whose items the test reads one by one: the steps of how Ratchet works.
 ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5
@@ -513,6 +530,8 @@ def page_problems(root):
                          % (name, item["where"]))
     found += ["%s: %s" % (name, problem) for problem in css_problems("".join(reader.styles))]
     found += figure_problems(root, "".join(reader.styles))
+    found += ["%s: %s" % (name, problem) for problem in example_problems(root, text)]
+    found += ["%s: %s" % (name, problem) for problem in watch_problems(root)]
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
         allowed = readme_commands(handle.read())
@@ -522,6 +541,43 @@ def page_problems(root):
     if not reader.commands:
         found.append("%s: holds no command" % name)
     return problems + found
+
+
+def example_problems(root, text):
+    """Why what the page says of a rule is not what ratchet.json holds, as messages, or nothing.
+
+    Each key the page names in <code> is a rule. The rule of the example names a check, its ratchet starts with
+    EXAMPLE_CHECK, and while the page says EXAMPLE_NOT_SHIPPED, the rule has no reference check that Ratchet ships.
+    """
+    with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
+        rules = dict((rule["key"], rule) for rule in json.load(handle)["rules"])
+    problems = ["names %s, which is not a rule in ratchet.json" % key for key in PAGE_KEY.findall(text) if key not in rules]
+    rule = rules.get(EXAMPLE_KEY)
+    if EXAMPLE_KEY in text and rule is not None:
+        if rule["enforcement"] != "enforced" or not rule["ratchet"].startswith(EXAMPLE_CHECK):
+            problems.append('the example says %s names a secret scan in every pull request, and its ratchet in ratchet.json does '
+                            'not start "%s"' % (EXAMPLE_KEY, EXAMPLE_CHECK))
+        if EXAMPLE_NOT_SHIPPED in text and rule.get("reference_check"):
+            problems.append('says "%s", and %s has a reference check in ratchet.json' % (EXAMPLE_NOT_SHIPPED, EXAMPLE_KEY))
+    return problems
+
+
+def watch_problems(root):
+    """Why the watch is not the daily one the page names, as messages, or nothing: the workflow holds one cron line, of
+    one run a day at a fixed minute and hour, and the line that runs the watch on sources.json, once."""
+    path = os.path.join(root, *WATCH.split("/"))
+    if os.path.islink(path) or not os.path.isfile(path):
+        return ["the line of the sources names a daily watch, and %s is not there" % WATCH]
+    with open(path, encoding="utf-8", errors="strict") as handle:
+        lines = handle.read().split("\n")
+    crons = [line for line in lines if "cron" in line]
+    runs = [line for line in lines if line == WATCH_RUN]
+    if len(crons) != 1 or not WATCH_CRON.match(crons[0]) or len(runs) != 1:
+        return ['the line of the sources names a daily watch, and %s must hold one line of the form - cron: "M H * * *" and '
+                'the line "%s", once each. Found %d lines that hold cron, %s, and that line %d times'
+                % (WATCH, WATCH_RUN.strip(), len(crons), "of that form" if len(crons) == 1 and WATCH_CRON.match(crons[0])
+                   else "not one of that form", len(runs))]
+    return []
 
 
 def link_problem(root, value, ids):
@@ -597,7 +653,9 @@ class Page(RepoCopy, unittest.TestCase):
                       "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<section id="values" class="values">',
                       '<h2 id="how-it-works">How it works</h2>', REPO + "/blob/main/RATCHET.md#the-principles",
                       REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md", REPO + "/blob/main/TRYING.md",
-                      '<a class="button" href="#start-here">Start here</a>'):
+                      '<a class="button" href="#start-here">Start here</a>',
+                      "<code>ratchet.no-secrets</code> names a secret scan in every pull request", EXAMPLE_NOT_SHIPPED,
+                      'id="sources"'):
             self.assertIn(words, text)
 
     def test_the_page_is_short(self):
@@ -1203,12 +1261,12 @@ class PageSteps(RepoCopy, unittest.TestCase):
     def assert_fails(self, *message):
         Page.assert_fails(self, *message)
 
-    def test_there_is_one_list_of_three_steps_that_each_link_into_the_repo(self):
+    def test_there_is_one_list_of_four_steps_that_each_link_into_the_repo(self):
         reader = PageReader()
         reader.feed(self.page())
         steps = [item for item in reader.items if item["list"] == "flow"]
         self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 1)
-        self.assertEqual(len(steps), 3)
+        self.assertEqual(len(steps), 4)
         self.assertTrue(all(any(into_repo(href) for href, _ in item["links"]) for item in steps))
 
     def test_the_list_is_counted_by_its_class_in_any_order(self):
@@ -1217,7 +1275,7 @@ class PageSteps(RepoCopy, unittest.TestCase):
         reader = PageReader()
         reader.feed(self.page())
         self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 1)
-        self.assertEqual(len([item for item in reader.items if item["list"] == "flow"]), 3)
+        self.assertEqual(len([item for item in reader.items if item["list"] == "flow"]), 4)
         self.assertEqual(page_problems(self.copy), [])
 
     def test_a_step_without_a_link_fails(self):
@@ -1231,6 +1289,176 @@ class PageSteps(RepoCopy, unittest.TestCase):
                     '<a href="#start-here">Start here</a>')
         self.assert_fails("a step that links nowhere in this repo")
         self.assertEqual(len(page_problems(self.copy)), 1)
+
+
+# The line on the page that names the pinned sources, as the test expects it, spelled out here and filled from
+# sources.json below, not taken from generate.py.
+SOURCES_LINE = ('<p id="sources" class="count"><strong>Kept current:</strong> <a href="https://github.com/fabian-von-tiedemann/'
+                'ratchet/blob/main/RATCHET.md#sources">%d pinned %s</a>, %s. Each pin is a commit. A daily watch opens an issue '
+                'when one moves.</p>')
+
+
+def sources_line(root):
+    with open(os.path.join(root, "sources.json"), encoding="utf-8") as handle:
+        sources = json.load(handle)["sources"]
+    names = ["%s (%s)" % (source["name"], source["license"]) for source in sources]
+    listed = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return SOURCES_LINE % (len(names), "source" if len(names) == 1 else "sources", listed)
+
+
+def rewrite_sources(root, change):
+    """Change sources.json in a copy of the repo, as data, and read it back as every check reads it."""
+    path = os.path.join(root, "sources.json")
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    change(data["sources"])
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle.write("\n")
+    registry.load_sources(path)
+
+
+class PageSources(RepoCopy, unittest.TestCase):
+    """generate.py writes the line on the page that names the pinned sources, and --check fails when it is stale."""
+
+    stale = "docs/index.html: generated text is out of date or was edited by hand"
+    form = "docs/index.html: the pinned sources must be one line"
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def write_page(self, text):
+        with open(os.path.join(self.copy, DOCS, PAGE), "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+
+    def test_the_page_names_the_sources_of_sources_json(self):
+        self.assertEqual(lines_that_hold(self.page(), 'id="sources"'), [sources_line(self.copy)])
+        self.assertIn(">5 pinned sources</a>, google/elephant-goldfish-model (Apache-2.0), mattpocock/skills (MIT), pstack (MIT), "
+                      "obra/superpowers (MIT) and sprocketlab/slop-code-bench (MIT).", sources_line(self.copy))
+
+    def test_a_source_added_fails_until_generate_moves_the_page(self):
+        before = self.page()
+        old = sources_line(self.copy)
+        rewrite_sources(self.copy, lambda sources: sources.append(
+            {"name": "example/more", "repo": "https://github.com/example/more", "commit": "0" * 40, "license": "BSD-3-Clause"}))
+        new = sources_line(self.copy)
+        self.assertIn(">6 pinned sources</a>, ", new)
+        self.assertIn("obra/superpowers (MIT), sprocketlab/slop-code-bench (MIT) and example/more (BSD-3-Clause).", new)
+        self.assert_check_fails(self.stale)
+        code, output = run("generate.py", root=self.copy, cwd=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertIn("wrote docs/index.html", output)
+        self.assertEqual(self.page(), before.replace(old, new))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+        self.assertEqual(page_problems(self.copy), [])
+
+    def test_a_name_a_license_or_the_number_edited_by_hand_fails(self):
+        line = sources_line(self.copy)
+        for old, new in (("pstack (MIT)", "pstack (Apache-2.0)"), ("obra/superpowers", "obra/powers"),
+                         (">5 pinned", ">6 pinned"), (" and sprocketlab/slop-code-bench (MIT)", ""),
+                         ("pstack (MIT), obra/superpowers (MIT)", "obra/superpowers (MIT), pstack (MIT)")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.write_page(self.page().replace(line, line.replace(old, new, 1), 1))
+                self.assert_check_fails(self.stale)
+
+    def test_an_indented_sources_line_passes(self):
+        line = sources_line(self.copy)
+        self.write_page(self.page().replace(line, "  " + line, 1))
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 0, output)
+
+    def test_a_sources_line_of_another_form_fails_and_generate_writes_nothing(self):
+        line = sources_line(self.copy)
+        for new in ("", line + "\n" + line, line + " And more.", line.replace("Kept current:", "Always current:", 1),
+                    line.replace('<p id="sources" class="count">', '<p class="count">\n<span id="sources"></span>', 1),
+                    line + '\n<p id="sources">3 sources</p>',
+                    line.replace(">5 pinned", ">five pinned"), line.replace(" pinned sources<", " pinned repos<"),
+                    line.replace("A daily watch", "An hourly watch"),
+                    # A name linked out of the repo, markup in the list, a reference and a character the generator
+                    # never writes.
+                    line.replace("pstack (MIT)", '<a href="https://github.com/cursor/plugins">pstack</a> (MIT)'),
+                    line.replace("pstack (MIT)", "<em>pstack</em> (MIT)"),
+                    line.replace("pstack (MIT)", "pstack (MIT) &copy; them"),
+                    line.replace("pstack (MIT)", "pstack (MIT) \u00a9 them")):
+            with self.subTest(new=new):
+                self.setUp()
+                before = self.page().replace(line, new, 1)
+                self.write_page(before)
+                self.assert_check_fails(self.form)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("wrote docs/index.html", output)
+                self.assertEqual(self.page(), before)
+
+    def test_no_source_fails(self):
+        rewrite_sources(self.copy, lambda sources: sources.clear())
+        self.assert_check_fails("docs/index.html: the page names the pinned sources, and sources.json holds none")
+
+    def test_one_source_is_named_in_the_singular_and_a_license_is_written_as_text(self):
+        line = generate.page_sources([{"name": "x", "license": "A & <B>"}])
+        self.assertIn(">1 pinned source</a>, x (A &amp; &lt;B&gt;). Each pin", line)
+        self.assertTrue(generate.page_sources_line(line))
+        two = generate.page_sources([{"name": "x", "license": "MIT"}, {"name": "y", "license": "MIT"}])
+        self.assertIn(">2 pinned sources</a>, x (MIT) and y (MIT). Each pin", two)
+
+
+class PageExample(RepoCopy, unittest.TestCase):
+    """What the example says of its rule, and the line of the sources of the watch, are what the repo holds."""
+
+    def page(self):
+        return Page.page(self)
+
+    def change(self, old, new):
+        Page.change(self, old, new)
+
+    def assert_fails(self, *message):
+        Page.assert_fails(self, *message)
+
+    def test_the_example_and_the_watch_as_they_stand_pass(self):
+        self.assertEqual(example_problems(self.copy, self.page()), [])
+        self.assertEqual(watch_problems(self.copy), [])
+
+    def test_the_rule_of_the_example_changed_in_ratchet_json_fails(self):
+        def text_only(rule):
+            rule["enforcement"], rule["ratchet"] = "text-only", "Text only: a test made this up"
+
+        def other_check(rule):
+            rule["ratchet"] = "Check: a scan once a year"
+
+        def shipped(rule):
+            rule["reference_check"] = "checks/check_register.py"
+        for change, message in ((text_only, "and its ratchet in ratchet.json does not start"),
+                                (other_check, "and its ratchet in ratchet.json does not start"),
+                                (shipped, 'says "Ratchet ships no scanner", and ratchet.no-secrets has a reference check')):
+            with self.subTest(change=change.__name__):
+                self.setUp()
+                path = os.path.join(self.copy, "ratchet.json")
+                with open(path, encoding="utf-8") as handle:
+                    data = json.load(handle)
+                change(next(rule for rule in data["rules"] if rule["key"] == EXAMPLE_KEY))
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(data, handle, indent=2, ensure_ascii=False)
+                self.assert_fails("docs/index.html: ", message)
+
+    def test_a_key_on_the_page_that_is_not_a_rule_fails(self):
+        self.change("<code>ratchet.no-secrets</code>", "<code>ratchet.no-secret</code>")
+        self.assert_fails("docs/index.html: names ratchet.no-secret, which is not a rule in ratchet.json")
+
+    def test_a_watch_that_is_not_daily_or_not_there_fails(self):
+        cron = '    - cron: "17 6 * * *"'
+        for old, new in ((cron, '    - cron: "17 6 * * 1"'), (cron, '    - cron: "17 */6 * * *"'), (cron, cron + "\n" + cron),
+                         (cron, '    - cron: "17 6 * * *" # daily'), (cron, ""),
+                         (WATCH_RUN, WATCH_RUN.replace("watch_sources.py", "tripwire.py")), (WATCH_RUN, WATCH_RUN + "\n" + WATCH_RUN)):
+            with self.subTest(new=new):
+                self.setUp()
+                self.edit(WATCH, old, new)
+                self.assert_fails("docs/index.html: the line of the sources names a daily watch")
+        self.setUp()
+        os.remove(os.path.join(self.copy, *WATCH.split("/")))
+        self.assert_fails("docs/index.html: the line of the sources names a daily watch, and %s is not there" % WATCH)
 
 
 # The story and the values: the one <section> with this id. Each paragraph and item in it is read as text, with the

@@ -33,9 +33,10 @@ block marked sh, and names the newest version with a date. That version's tag is
 the release run after the merge, so for the minutes that run takes the command names a tag
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
-version in it, so the page fetches what README.md fetches. It writes two more parts of the page
-from ratchet.json: the line that counts the rules of the core, and from values.json the story and
-the values, which stand on the page between two lines of their own.
+version in it, so the page fetches what README.md fetches. It writes three more parts of the page:
+from ratchet.json the line that counts the rules of the core, from values.json the story and
+the values, which stand on the page between two lines of their own, and from sources.json the
+line that names the pinned sources.
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
@@ -86,6 +87,16 @@ PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://
 PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d describe a check '
                    'and %d are text only. Ratchet ships a reference check for %d of the %d, and you build the others.</p>')
 PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\Z")
+# The page's one line that names the pinned sources, which the generator writes from sources.json: how many there are,
+# then each name with its license, as text. The watch it names is .github/workflows/watch-sources.yml, which runs
+# checks/watch_sources.py once a day; checks/test_pages.py holds that schedule to one run a day. No name is linked: the
+# page links to nothing outside the repo, so the count links to the table of sources in RATCHET.md.
+PAGE_SOURCES_LINE = ('<p id="sources" class="count"><strong>Kept current:</strong> '
+                     '<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">%d pinned %s</a>, '
+                     '%s. Each pin is a commit. A daily watch opens an issue when one moves.</p>')
+# Any number, either word, and a list that holds no "<" or ">", which page_sources_line then reads as text.
+PAGE_SOURCES = re.compile(re.escape(PAGE_SOURCES_LINE).replace("%d", "[0-9]+").replace("%s", "(?:sources|source)", 1)
+                          .replace("%s", "([^<>]+)", 1) + r"\Z")
 # The page's story and values, from values.json: this line, the lines the generator writes, and the line that closes
 # them. Every line between the two is of one of the forms PAGE_VALUE_LINE, exactly as page_values writes them, with
 # text that holds no "<" or ">", since html.escape writes those as references. So the generator never writes over
@@ -1012,7 +1023,7 @@ def expected_files(data, root, context):
     if current is None:
         problems.append("%s: the file is missing. It is the landing page, and holds the command that fetches Ratchet" % PAGE)
     elif context["released"] is not None:
-        expected, found = page_text(current, context["released"], data, context["values"])
+        expected, found = page_text(current, context["released"], data, context["values"], context["sources"])
         if found:
             problems += found
         else:
@@ -1058,7 +1069,25 @@ def page_values(values):
     return lines + ["</ul>", '<p class="balance">%s</p>' % text(values["balance"])]
 
 
-def page_text(text, released, data, values):
+def page_sources(sources):
+    """The line of the landing page that names the pinned sources, each name with its license, written as text."""
+    names = ["%s (%s)" % (source["name"], source["license"]) for source in sources]
+    listed = names[0] if len(names) == 1 else "%s and %s" % (", ".join(names[:-1]), names[-1])
+    return PAGE_SOURCES_LINE % (len(sources), "source" if len(sources) == 1 else "sources", html.escape(listed, quote=False))
+
+
+def page_sources_line(line):
+    """Whether a line is one the generator can write for the sources: of the form PAGE_SOURCES, with a list that
+    html.escape writes as it stands and that a data file may hold as text. So a reference such as "&copy;", or a
+    character outside the fixed list, makes a line one it does not write, as for the values."""
+    found = PAGE_SOURCES.match(line)
+    if not found:
+        return False
+    text = html.unescape(found.group(1))
+    return html.escape(text, quote=False) == found.group(1) and registry.text_problem(text) is None
+
+
+def page_text(text, released, data, values, sources):
     """(the landing page with its generated parts written, or None, and the problems, if any).
 
     Two parts are one line each, after the spaces that indent it, of a fixed form with any numbers: the command that
@@ -1069,14 +1098,21 @@ def page_text(text, released, data, values):
     The third is the story and the values: the line PAGE_VALUES, once, and every line from it to the next line
     PAGE_VALUES_END, which the generator writes from values.json. Every line between the two is of one of the forms
     PAGE_VALUE_LINE, so the generator never writes over anything else, and no other line may hold 'id="values"'.
+
+    The fourth is one line, of the form PAGE_SOURCES, that names the pinned sources from sources.json, with their count
+    and their licenses. No other line may hold 'id="sources"'. sources.json must hold a source, since the line names them.
     """
     lines = text.split("\n")
     problems = []
     fetch = "<pre><code>%s</code></pre>" % (FETCH % released)
+    if not sources:
+        problems.append("%s: the page names the pinned sources, and sources.json holds none" % PAGE)
     for pattern, marker, line, what, form in (
-            (PAGE_FETCH, "git clone", fetch, "the command that fetches Ratchet", "with any version"),
-            (PAGE_COUNT, 'id="count"', page_count(data), "the count of rules", "with any numbers")):
-        found = [number for number, each in enumerate(lines) if pattern.match(each.lstrip(" "))]
+            (PAGE_FETCH.match, "git clone", fetch, "the command that fetches Ratchet", "with any version"),
+            (PAGE_COUNT.match, 'id="count"', page_count(data), "the count of rules", "with any numbers"),
+            (page_sources_line, 'id="sources"', page_sources(sources) if sources else "", "the pinned sources",
+             "with any number and any list of names as text")):
+        found = [number for number, each in enumerate(lines) if pattern(each.lstrip(" "))]
         others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
         if (len(found), others) != (1, 0):
             problems.append('%s: %s must be one line "%s", once, and no other line may hold %s. Found that line %d times, %s, '
