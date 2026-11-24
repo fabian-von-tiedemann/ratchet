@@ -1373,7 +1373,9 @@ class PageValues(RepoCopy, unittest.TestCase):
                          # A list item without " over ", which the generator never writes (round 2 of #143).
                          ("</ul>", "<li><strong>Handwritten note</strong></li>\n</ul>"),
                          # A line of a form the generator writes, with a reference it never writes (round 3 of #143).
-                         ("</ul>", "</ul>\n<p class=\"balance\">Copyright &copy; contributors</p>")):
+                         ("</ul>", "</ul>\n<p class=\"balance\">Copyright &copy; contributors</p>"),
+                         # The same with a character values.json refuses, which the generator never writes (round 4).
+                         ("</ul>", "</ul>\n<p class=\"balance\">Copyright \u00a9 contributors</p>")):
             with self.subTest(new=new):
                 self.setUp()
                 before = self.page().replace(old, new, 1)

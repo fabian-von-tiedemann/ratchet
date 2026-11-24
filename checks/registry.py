@@ -927,14 +927,25 @@ def values_file_problems(data):
             continue
         texts += [("value %d: %s" % (number, field), value[field]) for field in VALUE_FIELDS]
     for field, text in texts:
-        problem = text_problem(text)
+        problem = values_text_problem(text)
         if problem:
             problems.append("%s %s" % (field, problem))
-        elif not WORD.search(text):
-            problems.append("%s holds no words" % field)
-        elif "`" in text:
-            problems.append("%s holds code. A value here is text only, written as text on the page as well" % field)
     return problems
+
+
+def values_text_problem(text):
+    """Why a text cannot stand in values.json, or None. generate.py uses it to tell a line of the landing page that
+    the generator could write from one it could not."""
+    if not isinstance(text, str):
+        return "must be a string"
+    problem = text_problem(text)
+    if problem:
+        return problem
+    if not WORD.search(text):
+        return "holds no words"
+    if "`" in text:
+        return "holds code. A value here is text only, written as text on the page as well"
+    return None
 
 
 def citation_problems(data, sources):

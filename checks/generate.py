@@ -1026,14 +1026,26 @@ def page_count(data):
     return PAGE_COUNT_LINE % (core["rules"], core["enforced"], core["text_only"], core["reference_checks"], core["enforced"])
 
 
+# Each form of PAGE_VALUE_LINE with its texts as groups, to check each text as values.json's texts are checked.
+PAGE_VALUE_TEXTS = (re.compile(r'<p class="story"><em>([^<>]*)</em></p>\Z'), re.compile(r'<p class="lead"><strong>([^<>]*)</strong></p>\Z'),
+                    re.compile(r'<p class="balance">([^<>]*)</p>\Z'), re.compile(r'<li><strong>([^<>]+)</strong> over ([^<>]+)</li>\Z'))
+
+
 def page_value_line(line):
-    """Whether a line is one the generator can write between the markers: of one of the forms PAGE_VALUE_LINE, and with
-    text that html.escape writes as it stands, so that a reference such as "&copy;", which the generator never writes,
-    makes a line one it does not write (round 3 of #143)."""
+    """Whether a line is one the generator can write between the markers: of one of the forms PAGE_VALUE_LINE, and each
+    of its texts one that html.escape writes as it stands and that values.json may hold. So a reference such as
+    "&copy;", which the generator never writes, and a character values.json refuses, such as one outside the fixed list,
+    make a line one it does not write (rounds 3 and 4 of #143)."""
     if not PAGE_VALUE_LINE.match(line):
         return False
-    text = re.sub(r"<[^<>]*>", "\n", line)
-    return all(html.escape(html.unescape(part), quote=False) == part for part in text.split("\n"))
+    for form in PAGE_VALUE_TEXTS:
+        found = form.match(line)
+        if found:
+            for part in found.groups():
+                text = html.unescape(part)
+                if html.escape(text, quote=False) != part or registry.values_text_problem(text):
+                    return False
+    return True
 
 
 def page_values(values):
