@@ -52,7 +52,7 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   (the test is in test_init.py); while the page says "Before 1.0", the version of ratchet.json is below 1.0; and
   while it says the license is MIT, LICENSE starts "MIT License"
 - the figure moves only as the page may: its animation stands in the query for no preference, so it is still for a
-  visitor who asked for less motion, and the pawl steps once for each principle, at the angle between two notches
+  visitor who asked for less motion, and the wheel turns one tooth for each principle, at the angle of one tooth
 - the page is short: under 780 words outside the CSS, with one h1 and four h2, and one link of the class button
 - the principles, the one <section id="principles">, are the titles of the principles of ratchet.json, in order, in
   lists numbered from 1 on, with the two lines values.json gives around them, and the figure has one numbered tooth
@@ -162,7 +162,7 @@ MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+
 # and bg, turned around, with the same ratio. --shadow is the shadow of the button, and no text stands on it.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
          ("link", "box"), ("accent", "bg"), ("accent", "box"))
-# The pairs in the figure: its labels on its own background, and the pawl on the wheel, --ink on --signal, two colors
+# The pairs in the figure: its labels on its own background, and the numbers on the wheel, --ink on --signal, two colors
 # the page's palette holds for the figure. The figure does not use the accent, which stands only on what is clicked.
 FIGURE_PAIRS = (("fg", "box"), ("muted", "box"), ("ink", "signal"))
 # The one example on the page: the rule it names, the start of that rule's ratchet in ratchet.json, which the example
@@ -1083,13 +1083,14 @@ class Figure(RepoCopy, unittest.TestCase):
         self.write('<text class="tooth n10"', '<text class="note"')
         self.assertIn("a tooth for each principle", " ".join(principles_problems(self.copy)))
 
-    def test_a_pawl_that_does_not_step_once_for_each_principle_fails(self):
-        # The pawl clicks from notch to notch: a stop of its turn for each principle, and the angle between two.
-        for old, new in (("  9.0909% { rotate: 32.727deg; }\n", ""), ("  89%, 100% { rotate: 32.727deg; }", "  89%, 100% { rotate: 30deg; }"),
-                         ("  .n10 { animation-delay: -1.554s; }\n", "")):
+    def test_a_wheel_that_does_not_turn_one_tooth_for_each_principle_fails(self):
+        # The wheel turns a tooth at a time: a stop of its turn for each principle, the angle of one tooth where it rests,
+        # the same turned back for the numbers, and a delay for each number.
+        for old, new in (("  9.0909% { rotate: 32.727deg; }\n", ""), ("  90%, 100% { rotate: 32.727deg; }", "  90%, 100% { rotate: 30deg; }"),
+                         ("  9.0909% { rotate: -32.727deg; }\n", ""), ("  .n10 { animation-delay: -2.720s; }\n", "")):
             with self.subTest(old=old):
                 self.write(old, new)
-                self.assertIn("the pawl steps once for each principle", " ".join(principles_problems(self.copy)))
+                self.assertIn("the wheel turns one tooth for each principle", " ".join(principles_problems(self.copy)))
 
     def test_a_figure_that_no_image_loads_or_that_is_loaded_twice_fails(self):
         image = '<img class="notch" src="ratchet-notch.svg"'
@@ -1160,7 +1161,7 @@ class Figure(RepoCopy, unittest.TestCase):
         self.assert_fails("docs/ratchet-notch.svg: <svg> may not have the attribute onload")
 
     def test_a_value_that_is_not_numbers_and_words_fails(self):
-        for old, new in (('class="pivot"', 'class="url(#x)"'), ('class="pivot"', 'class=""'), ('r="15.6"', 'r="calc(1px)"'),
+        for old, new in (('class="pivot"', 'class="url(#x)"'), ('class="pivot"', 'class=""'), ('r="8.5"', 'r="calc(1px)"'),
                          ('<path class="pawl" d="M', '<path class="pawl" d="M1 1; M'), ('text-anchor="end">can', 'text-anchor="javascript:x">can'),
                          ('aria-label="A ratchet wheel', 'aria-label="https://example.invalid/ A ratchet wheel')):
             with self.subTest(new=new):
@@ -1762,13 +1763,18 @@ def figure_teeth(root):
 
 
 def figure_steps(principles):
-    """The lines of the figure's CSS that depend on the number of principles: a stop of the pawl's turn for each, the
-    angle between two where its click settles, and the delay that lights each number, at 1.4 seconds a notch."""
-    angle, period = 360 / principles, 1.4
+    """The lines of the figure's CSS that depend on the number of principles: a stop of the wheel's turn for each tooth,
+    the same stop turned back, which keeps each number upright, the angle of one tooth where the wheel comes to rest
+    against the pawl, and the delay that marks each number when the pawl drops behind its tooth, at 2 seconds a tooth
+    and 0.64 of the way through each."""
+    angle, period, click = 360 / principles, 2.0, 0.64
     lines = set("  %.4f%% { rotate: %.3fdeg; }" % (100 * number / principles, number * angle) for number in range(principles))
-    lines |= set("  .n%d { animation-delay: -%.3fs; }" % (number, (period * principles - (number * period - 0.154)) % (period * principles))
+    lines |= set("  %.4f%% { rotate: -%.3fdeg; }" % (100 * number / principles, number * angle) for number in range(principles))
+    lines |= set("  .n%d { animation-delay: -%.3fs; }" % (number, (period * principles - (number - 1 + click) * period) % (period * principles))
                  for number in range(principles))
-    return lines | {"  89%%, 100%% { rotate: %.3fdeg; }" % angle, "  .step { animation: step %.1fs step-end infinite; }" % (period * principles)}
+    return lines | {"  90%%, 100%% { rotate: %.3fdeg; }" % angle, "  90%%, 100%% { rotate: -%.3fdeg; }" % angle,
+                    "  .step { animation: step %.1fs step-end infinite; }" % (period * principles),
+                    "  .unstep { animation: unstep %.1fs step-end infinite; }" % (period * principles)}
 
 
 def principles_problems(root):
@@ -1810,11 +1816,10 @@ def principles_problems(root):
         with open(os.path.join(root, DOCS, FIGURE), encoding="utf-8") as handle:
             lines = handle.read().split("\n")
         missing = sorted(figure_steps(len(numbers)) - set(lines))
-        stops = [line for line in lines if re.match(r"  [0-9.]+% \{ rotate: [0-9.]+deg; \}\Z", line)]
         delays = [line for line in lines if re.match(r"  \.n[0-9]+ \{ animation-delay: ", line)]
-        if missing or len(stops) != len(numbers) + 1 or len(delays) != len(numbers):
-            problems.append("the pawl steps once for each principle: the figure's CSS lacks %r, and has %d stops and %d delays for %d principles"
-                            % (missing, len(stops), len(delays), len(numbers)))
+        if missing or len(delays) != len(numbers):
+            problems.append("the wheel turns one tooth for each principle: the figure's CSS lacks %r, and has %d delays for %d principles"
+                            % (missing, len(delays), len(numbers)))
     return problems
 
 
