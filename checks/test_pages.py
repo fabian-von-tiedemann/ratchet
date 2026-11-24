@@ -11,12 +11,16 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   have, each once; every element that is opened is closed, in order; a void element is never closed; there is no
   comment, no processing instruction and no other declaration. There is no script, no frame, no form, no base,
   no style attribute and no event handler, because none of them is an element or an attribute the page may hold
-- the page holds no inline SVG: an <svg>, and every element of SVG, is not an element the page may hold, so nothing
+- the page holds one inline SVG, the mark in the link to the repo: an <svg> that holds <path> and nothing else, no
+  text, no other element of SVG and no element of the page, with only the attributes listed, whose values are numbers
+  and words. So there is no script, use, image, foreignObject or animate in it, no href, no style attribute and no
+  event handler. A <path> stands directly in an <svg> and nowhere else. Every other element of SVG is not an element
+  the page may hold, so nothing
   comes in through one. The only <title> is the one in <head>
 - the one figure is a file of its own, docs/ratchet-notch.svg, which one <img> loads, once, with alt text. The test
   reads that file as strictly as the page: strict UTF-8, no hidden character, no doctype, comment, processing
-  instruction or reference, well-formed XML of six elements of SVG, svg, style, rect, path, circle and text, each
-  directly in the <svg> and with only the attributes it may have, whose values are numbers and words. So there is
+  instruction or reference, well-formed XML of seven elements of SVG, svg, style, g, rect, path, circle and text, each
+  directly in the <svg> or in a <g>, and with only the attributes it may have, whose values are numbers and words. So there is
   no script, use, image, link or foreignObject in it, no href, no style attribute and no event handler. Its one
   <style> follows the rules of the page's CSS, and each color in it is the page's color of the same name
 - nothing is loaded from another origin: what an element loads (img src, source srcset, link href) is the name of
@@ -47,6 +51,8 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   <pre class="sample">, is the command of README.md and lines that checks/init.py --check prints in an empty repo
   (the test is in test_init.py); while the page says "Before 1.0", the version of ratchet.json is below 1.0; and
   while it says the license is MIT, LICENSE starts "MIT License"
+- the figure moves only as the page may: its animation stands in the query for no preference, so it is still for a
+  visitor who asked for less motion, and the pawl steps once for each principle, at the angle between two notches
 - the page is short: under 780 words outside the CSS, with one h1 and four h2, and one link of the class button
 - the principles, the one <section id="principles">, are the titles of the principles of ratchet.json, in order, in
   lists numbered from 1 on, with the two lines values.json gives around them, and the figure has one numbered tooth
@@ -97,13 +103,13 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 FILES = (".nojekyll", "index.html", "ratchet-dark.svg", "ratchet-light.svg", "ratchet-notch.svg")
 LOGOS = ("ratchet-dark.svg", "ratchet-light.svg")
 # The one figure, which one <img> on the page loads, and every element it may hold, with the attributes it may have.
-# Each stands directly in the <svg>. There is no id, no href, no style attribute and no attribute of a color: the
+# Each stands directly in the <svg> or in a <g>, which groups what the animation turns. There is no id, no href, no style attribute and no attribute of a color: the
 # colors are in the one <style>. A value is numbers and words, so it calls no function and names no file.
 FIGURE = "ratchet-notch.svg"
 SVG = "http://www.w3.org/2000/svg"
 FIGURE_ELEMENTS = {
     "svg": {"viewBox", "width", "height", "role", "aria-label"}, "style": set(),
-    "rect": {"class", "x", "y", "width", "height", "rx"}, "path": {"class", "d"}, "circle": {"class", "cx", "cy", "r"},
+    "g": {"class"}, "rect": {"class", "x", "y", "width", "height", "rx"}, "path": {"class", "d"}, "circle": {"class", "cx", "cy", "r"},
     "text": {"class", "x", "y", "text-anchor"},
 }
 FIGURE_VALUE = re.compile(r"[A-Za-z0-9 .,-]+\Z")
@@ -119,7 +125,13 @@ ELEMENTS = {
     "h1": set(), "h2": set(), "h3": set(), "p": set(), "ul": set(), "ol": {"start"}, "li": set(), "a": {"href"},
     "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(), "span": set(),
     "picture": set(), "source": {"media", "srcset"}, "img": {"src", "width", "height", "alt"},
+    "svg": {"viewbox", "width", "height", "aria-hidden"}, "path": {"d"},
 }
+# The inline SVG of the page, the mark in the link to the repo: an <svg> holds only these elements, each directly in
+# it, and they stand nowhere else. html.parser gives the names of elements and attributes in lower case. A value of
+# an attribute in an <svg> is numbers and words, as in the figure. The page holds INLINE of them.
+SVG_INNER = {"path"}
+INLINE = 1
 # What an element loads: the attribute that names a file.
 LOADS = {("img", "src"), ("source", "srcset"), ("link", "href")}
 META = {"viewport", "description", "color-scheme"}
@@ -150,9 +162,9 @@ MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+
 # and bg, turned around, with the same ratio. --shadow is the shadow of the button, and no text stands on it.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
          ("link", "box"), ("accent", "bg"), ("accent", "box"))
-# The pairs in the figure: its labels on its own background and on the body of the wheel. The figure does not use the
-# accent, which stands only on what is clicked.
-FIGURE_PAIRS = (("fg", "box"), ("fg", "code-bg"), ("muted", "box"))
+# The pairs in the figure: its labels on its own background, and the pawl on the wheel, --ink on --signal, two colors
+# the page's palette holds for the figure. The figure does not use the accent, which stands only on what is clicked.
+FIGURE_PAIRS = (("fg", "box"), ("muted", "box"), ("ink", "signal"))
 # The one example on the page: the rule it names, the start of that rule's ratchet in ratchet.json, which the example
 # says in its own words, and the line that says Ratchet ships no check for it, which holds while the rule has no
 # reference check.
@@ -218,6 +230,16 @@ class PageReader(html.parser.HTMLParser):
         table = ELEMENTS
         if tag not in table:
             self.problems.append("%s: <%s> is not an element this page may hold" % (self.where(), tag))
+        inside = "svg" in self.stack
+        if tag in SVG_INNER and self.stack[-1:] != ["svg"]:
+            self.problems.append("%s: <%s> stands directly in an <svg>, and nowhere else" % (self.where(), tag))
+        elif inside and tag not in SVG_INNER:
+            self.problems.append("%s: an <svg> holds only %s, found <%s>"
+                                 % (self.where(), ", ".join("<%s>" % each for each in sorted(SVG_INNER)), tag))
+        if tag == "svg" or inside:
+            for name, value in attrs:
+                if value is not None and not FIGURE_VALUE.match(value):
+                    self.problems.append("%s: <%s> has %s=%r, and a value in an <svg> is numbers and words" % (self.where(), tag, name, value))
         if closed and tag not in VOID:
             self.problems.append("%s: <%s/> is not closed by its slash, only a void element may end so" % (self.where(), tag))
         self.counts[tag] = self.counts.get(tag, 0) + 1
@@ -303,6 +325,8 @@ class PageReader(html.parser.HTMLParser):
     def handle_data(self, data):
         if data.strip():
             self.started = True
+            if "svg" in self.stack:
+                self.problems.append("%s: text in an <svg>, which holds no text" % self.where())
         for capture in self.captures:
             capture[3].append(data)
         if self.text_in is not None:
@@ -442,8 +466,8 @@ def figure_problems(root, page_css):
                 problems.append("%s: <%s> may not have the attribute %s" % (name, tag, attribute))
             elif not FIGURE_VALUE.match(value):
                 problems.append("%s: <%s> has %s=%r, and a value in the figure is numbers and words" % (name, tag, attribute, value))
-        if element is not tree and len(element):
-            problems.append("%s: <%s> holds an element, and each element stands directly in the <svg>" % (name, tag))
+        if element is not tree and tag != "g" and len(element):
+            problems.append("%s: <%s> holds an element, and only the <svg> and a <g> hold elements" % (name, tag))
         words = [element.tail] + ([] if tag in ("style", "text") else [element.text])
         if any(each and each.strip() for each in words):
             problems.append("%s: text in or after <%s>, and the figure holds text only in <text> and <style>" % (name, tag))
@@ -519,6 +543,9 @@ def page_problems(root):
     for tag in ("html", "head", "body", "main", "h1", "style"):
         if reader.counts.get(tag, 0) != 1:
             found.append("%s: holds <%s> %d times, and must hold it once" % (name, tag, reader.counts.get(tag, 0)))
+    if reader.counts.get("svg", 0) != INLINE:
+        found.append("%s: holds <svg> %d times, and must hold it %d times: the mark in the link to the repo"
+                     % (name, reader.counts.get("svg", 0), INLINE))
     if reader.head_titles != 1:
         found.append("%s: holds <title> %d times in <head>, and must hold it once" % (name, reader.head_titles))
     level = 0
@@ -727,7 +754,8 @@ class Page(RepoCopy, unittest.TestCase):
                       "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<section id="values" class="values">',
                       '<h2 id="how-it-works">How it works</h2>', REPO + "/blob/main/RATCHET.md#the-principles",
                       REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md", REPO + "/blob/main/TRYING.md",
-                      '<a class="repo" href="%s">GitHub</a>' % REPO, '<h2 id="the-principles">The principles</h2>',
+                      '<a class="repo" href="%s"><svg class="mark" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true">' % REPO,
+                      "</path></svg> GitHub</a>", '<h2 id="the-principles">The principles</h2>',
                       BUTTON, "<strong>Beta.</strong> " + BEFORE_ONE, REPO + "/blob/main/CHANGELOG.md", LICENSED,
                       'href="%s/issues"' % REPO, REPO + "/blob/main/SECURITY.md", "<strong>Planned:</strong>",
                       "<strong>Maintainer:</strong> one person, <code>fabian-von-tiedemann</code> on GitHub",
@@ -807,14 +835,41 @@ class Page(RepoCopy, unittest.TestCase):
                        '<object data="https://example.invalid/x"></object>', '<embed src="https://example.invalid/x">',
                        '<base href="https://example.invalid/">', '<form action="https://example.invalid/"></form>',
                        '<svg><image href="https://example.invalid/x.png"></image></svg>', '<audio src="x.mp3"></audio>',
-                       # The page holds no inline SVG, so an <svg> fails whole, and so does an element of SVG outside one.
-                       '<svg viewBox="0 0 1 1" role="img" aria-labelledby="t"><title id="t">x</title></svg>',
-                       '<svg onload="alert(1)"></svg>', '<path d="M0 0 L1 1"></path>', '<use href="#why"></use>',
-                       "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"></animate>'):
+                       '<svg><script>alert(1)</script></svg>', '<svg><use href="#why"></use></svg>',
+                       "<svg><foreignObject><p>x</p></foreignObject></svg>", '<svg><animate attributeName="x"></animate></svg>',
+                       '<svg><set attributeName="x"></set></svg>', '<svg><g></g></svg>', '<svg><circle r="1"></circle></svg>',
+                       '<use href="#why"></use>', "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"></animate>'):
             with self.subTest(script=script):
                 self.setUp()
                 self.change("</main>", script + "\n</main>")
                 self.assert_fails("is not an element this page may hold")
+
+    def test_an_inline_svg_that_is_more_than_the_mark_fails(self):
+        mark = '<svg class="mark" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path d="M8 0'
+        for old, new, message in (
+                (mark, mark.replace('<svg class="mark"', '<svg class="mark" onload="alert(1)"'), "<svg> may not have the attribute onload"),
+                (mark, mark.replace('<svg class="mark"', '<svg class="mark" style="fill: red"'), "<svg> may not have the attribute style"),
+                (mark, mark.replace('<svg class="mark"', '<svg class="mark" role="img" aria-labelledby="t"'), "<svg> may not have the attribute role"),
+                (mark, mark.replace("<path d=", '<path onclick="x" d='), "<path> may not have the attribute onclick"),
+                (mark, mark.replace("<path d=", '<path href="https://example.invalid/" d='), "<path> may not have the attribute href"),
+                (mark, mark.replace("<path d=", '<path xlink:href="#x" d='), "<path> may not have the attribute xlink:href"),
+                (mark, mark.replace("<path d=", '<path fill="url(#g)" d='), "<path> may not have the attribute fill"),
+                (mark, mark.replace('<path d="M8 0', '<path d="M8 0; url(x) '), "and a value in an <svg> is numbers and words"),
+                (mark, mark.replace('viewBox="0 0 16 16"', 'viewBox="javascript:x"'), "and a value in an <svg> is numbers and words"),
+                (mark, mark.replace('class="mark"', 'class="url(#x)"'), "and a value in an <svg> is numbers and words"),
+                (mark, mark.replace("<path d=", "<title>x</title><path d="), "an <svg> holds only <path>, found <title>"),
+                (mark, mark.replace("<path d=", '<a href="%s">x</a><path d=' % REPO), "an <svg> holds only <path>, found <a>"),
+                (mark, mark.replace("<path d=", "<p>x</p><path d="), "an <svg> holds only <path>, found <p>"),
+                (mark, mark.replace("<path d=", '<svg viewBox="0 0 1 1"></svg><path d='), "an <svg> holds only <path>, found <svg>"),
+                (mark, mark.replace("<path d=", "words <path d="), "text in an <svg>, which holds no text"),
+                ("</main>", '<path d="M0 0 L1 1"></path>\n</main>', "<path> stands directly in an <svg>, and nowhere else"),
+                ("</main>", '<svg viewBox="0 0 1 1" width="1" height="1" aria-hidden="true"><path d="M0 0"></path></svg>\n</main>',
+                 "holds <svg> 2 times, and must hold it 1 times"),
+                (mark, '<path d="M8 0', "<path> stands directly in an <svg>, and nowhere else")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails(message)
 
     def test_an_event_handler_or_a_style_attribute_fails(self):
         for attribute, name in (('onload="x()"', "onload"), ('style="background: url(https://example.invalid/x.png)"', "style"),
@@ -1018,15 +1073,23 @@ class Figure(RepoCopy, unittest.TestCase):
         labels = [element.text for element in tree.iter("{%s}text" % SVG)]
         with open(os.path.join(self.copy, "ratchet.json"), encoding="utf-8") as handle:
             principles = len(json.load(handle)["principles"])
-        self.assertEqual(labels, [str(number) for number in range(1, principles + 1)]
-                         + ["failure \u2192 check", "one notch tighter", "can\u2019t slip back"])
+        self.assertEqual(labels, [str(number) for number in range(1, principles + 1)] + ["one notch tighter", "can\u2019t slip back"])
+        self.assertEqual(figure_steps(principles) - set(self.figure.split("\n")), set())
         self.assertEqual(figure_teeth(self.copy), [str(number) for number in range(1, principles + 1)])
 
     def test_a_tooth_too_few_or_a_tooth_numbered_twice_fails(self):
         self.write('text-anchor="middle">11</text>', 'text-anchor="middle">10</text>')
         self.assertIn("a tooth for each principle", " ".join(principles_problems(self.copy)))
-        self.write('<text class="tooth"', '<text class="step"')
+        self.write('<text class="tooth n10"', '<text class="note"')
         self.assertIn("a tooth for each principle", " ".join(principles_problems(self.copy)))
+
+    def test_a_pawl_that_does_not_step_once_for_each_principle_fails(self):
+        # The pawl clicks from notch to notch: a stop of its turn for each principle, and the angle between two.
+        for old, new in (("  9.0909% { rotate: 32.727deg; }\n", ""), ("  89%, 100% { rotate: 32.727deg; }", "  89%, 100% { rotate: 30deg; }"),
+                         ("  .n10 { animation-delay: -1.554s; }\n", "")):
+            with self.subTest(old=old):
+                self.write(old, new)
+                self.assertIn("the pawl steps once for each principle", " ".join(principles_problems(self.copy)))
 
     def test_a_figure_that_no_image_loads_or_that_is_loaded_twice_fails(self):
         image = '<img class="notch" src="ratchet-notch.svg"'
@@ -1039,7 +1102,7 @@ class Figure(RepoCopy, unittest.TestCase):
                 self.assert_fails("the figure ratchet-notch.svg is loaded by %s, and one <img> loads it, once" % by)
 
     def test_a_figure_without_alt_text_fails(self):
-        self.write('height="352" alt="A ratchet wheel', 'height="352" alt=" " title="A ratchet wheel', PAGE)
+        self.write('height="344" alt="A ratchet wheel', 'height="344" alt=" " title="A ratchet wheel', PAGE)
         self.assert_fails("an <img> without alt text")
 
     def test_no_figure_or_a_link_in_its_place_fails(self):
@@ -1078,7 +1141,7 @@ class Figure(RepoCopy, unittest.TestCase):
         for element in ("<script>alert(1)</script>", '<script href="https://example.invalid/t.js"/>', '<use href="#x"/>',
                         '<image href="https://example.invalid/x.png"/>', '<a href="https://example.invalid/"><text>x</text></a>',
                         "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"/>', '<set attributeName="x"/>',
-                        "<g><circle/></g>", "<title>x</title>", "<svg/>", '<svg xmlns="http://www.w3.org/2000/svg"/>',
+                        "<title>x</title>", "<defs/>", "<g><use/></g>", "<svg/>", '<svg xmlns="http://www.w3.org/2000/svg"/>',
                         '<circle xmlns="http://www.w3.org/1999/xhtml"/>', '<x:script xmlns:x="http://www.w3.org/1999/xhtml">1</x:script>'):
             with self.subTest(element=element):
                 self.write("</style>", "</style>\n" + element)
@@ -1097,7 +1160,7 @@ class Figure(RepoCopy, unittest.TestCase):
         self.assert_fails("docs/ratchet-notch.svg: <svg> may not have the attribute onload")
 
     def test_a_value_that_is_not_numbers_and_words_fails(self):
-        for old, new in (('class="pivot"', 'class="url(#x)"'), ('class="pivot"', 'class=""'), ('r="10.5"', 'r="calc(1px)"'),
+        for old, new in (('class="pivot"', 'class="url(#x)"'), ('class="pivot"', 'class=""'), ('r="15.6"', 'r="calc(1px)"'),
                          ('<path class="pawl" d="M', '<path class="pawl" d="M1 1; M'), ('text-anchor="end">can', 'text-anchor="javascript:x">can'),
                          ('aria-label="A ratchet wheel', 'aria-label="https://example.invalid/ A ratchet wheel')):
             with self.subTest(new=new):
@@ -1106,7 +1169,9 @@ class Figure(RepoCopy, unittest.TestCase):
 
     def test_an_element_or_text_out_of_place_fails(self):
         self.write(">one notch tighter<", '>one <circle class="ball" cx="1" cy="1" r="1"/><')
-        self.assert_fails("docs/ratchet-notch.svg: <text> holds an element, and each element stands directly in the <svg>")
+        self.assert_fails("docs/ratchet-notch.svg: <text> holds an element, and only the <svg> and a <g> hold elements")
+        self.write('<g class="tick">', '<g class="tick" id="x">')
+        self.assert_fails("docs/ratchet-notch.svg: <g> may not have the attribute id")
         for old, new in (("</style>", "</style>\nfailure"), ('rx="8"/>', 'rx="8">failure</rect>'), ("</svg>", "failure</svg>")):
             with self.subTest(new=new):
                 self.write(old, new)
@@ -1140,7 +1205,7 @@ class Figure(RepoCopy, unittest.TestCase):
         light, dark = palettes(self.figure)
         for scheme, palette, key, faint in (("light", light, "muted", "#aaaaaa"),
                                             ("dark", dark, "fg", "#3a3a3a"), ("dark", dark, "box", "#9a9a9a"),
-                                            ("light", light, "code-bg", "#555555")):
+                                            ("light", light, "signal", "#222222")):
             with self.subTest(scheme=scheme, key=key):
                 self.write("--%s: %s;" % (key, palette[key]), "--%s: %s;" % (key, faint))
                 self.assert_fails("docs/ratchet-notch.svg: in the %s palette" % scheme, "--%s" % key, "under 4.5")
@@ -1693,7 +1758,17 @@ def figure_teeth(root):
         tree = xml.etree.ElementTree.parse(os.path.join(root, DOCS, FIGURE)).getroot()
     except (OSError, ValueError, xml.etree.ElementTree.ParseError):
         return None
-    return [element.text for element in tree.iter("{%s}text" % SVG) if element.get("class") == "tooth"]
+    return [element.text for element in tree.iter("{%s}text" % SVG) if "tooth" in (element.get("class") or "").split()]
+
+
+def figure_steps(principles):
+    """The lines of the figure's CSS that depend on the number of principles: a stop of the pawl's turn for each, the
+    angle between two where its click settles, and the delay that lights each number, at 1.4 seconds a notch."""
+    angle, period = 360 / principles, 1.4
+    lines = set("  %.4f%% { rotate: %.3fdeg; }" % (100 * number / principles, number * angle) for number in range(principles))
+    lines |= set("  .n%d { animation-delay: -%.3fs; }" % (number, (period * principles - (number * period - 0.154)) % (period * principles))
+                 for number in range(principles))
+    return lines | {"  89%%, 100%% { rotate: %.3fdeg; }" % angle, "  .step { animation: step %.1fs step-end infinite; }" % (period * principles)}
 
 
 def principles_problems(root):
@@ -1731,6 +1806,15 @@ def principles_problems(root):
     teeth = figure_teeth(root)
     if teeth is not None and teeth != numbers:
         problems.append("the figure has the teeth %r, and a tooth for each principle is %r" % (teeth, numbers))
+    if teeth is not None:
+        with open(os.path.join(root, DOCS, FIGURE), encoding="utf-8") as handle:
+            lines = handle.read().split("\n")
+        missing = sorted(figure_steps(len(numbers)) - set(lines))
+        stops = [line for line in lines if re.match(r"  [0-9.]+% \{ rotate: [0-9.]+deg; \}\Z", line)]
+        delays = [line for line in lines if re.match(r"  \.n[0-9]+ \{ animation-delay: ", line)]
+        if missing or len(stops) != len(numbers) + 1 or len(delays) != len(numbers):
+            problems.append("the pawl steps once for each principle: the figure's CSS lacks %r, and has %d stops and %d delays for %d principles"
+                            % (missing, len(stops), len(delays), len(numbers)))
     return problems
 
 

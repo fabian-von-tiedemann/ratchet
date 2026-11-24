@@ -1,52 +1,113 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 352" width="400" height="352" role="img" aria-label="A ratchet wheel with 11 teeth, numbered 1 to 11, one for each principle. An arrow shows the way it turns, one notch tighter with each failure that becomes a check. A pawl rests against a tooth and keeps the wheel from slipping back.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 344" width="340" height="344" role="img" aria-label="A ratchet wheel with 11 notches, numbered 1 to 11, one for each principle. A pawl clicks from notch to notch, one at a time and never back, one notch tighter with each failure that becomes a check.">
 <style>
 :root {
   --fg: #15140f;
   --muted: #56524a;
   --box: #fbf9f3;
-  --code-bg: #e8e3d5;
   --edge: #cfc8b5;
+  --signal: #f26a1b;
+  --ink: #15140f;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --fg: #edeadf;
     --muted: #a6a192;
     --box: #1a1813;
-    --code-bg: #23201a;
     --edge: #37342a;
+    --signal: #ff9648;
+    --ink: #15140f;
   }
 }
 text {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 18px;
-  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 16px;
 }
 .panel { fill: var(--box); stroke: var(--edge); }
-.wheel { fill: var(--code-bg); stroke: var(--fg); stroke-width: 3; stroke-linejoin: round; }
-.tooth { fill: var(--fg); font-size: 17px; }
-.step { fill: var(--fg); }
-.pawl { fill: var(--fg); }
-.pivot { fill: var(--fg); }
-.note { fill: var(--muted); font-size: 17px; font-weight: 400; }
-.rise { fill: none; stroke: var(--muted); stroke-width: 2; }
+.dial { fill: var(--signal); stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; }
+.ring { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.pawl { fill: var(--ink); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.pivot { fill: var(--box); stroke: var(--ink); stroke-width: 2; }
+.dot { fill: var(--edge); }
+.tooth { fill: var(--muted); font-weight: 400; }
+.dot.n0 { fill: var(--signal); }
+.tooth.n0 { fill: var(--fg); font-weight: 700; }
+.note { fill: var(--muted); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-size: 15px; }
+.step, .tick { transform-origin: 170px 172px; }
+@media (prefers-reduced-motion: no-preference) {
+  .step { animation: step 15.4s step-end infinite; }
+  .tick { animation: tick 1.4s linear infinite; }
+  .tooth { animation: lit 15.4s step-end infinite; }
+  .dot { animation: dot 15.4s step-end infinite; }
+  .n0 { animation-delay: -0.154s; }
+  .n1 { animation-delay: -14.154s; }
+  .n2 { animation-delay: -12.754s; }
+  .n3 { animation-delay: -11.354s; }
+  .n4 { animation-delay: -9.954s; }
+  .n5 { animation-delay: -8.554s; }
+  .n6 { animation-delay: -7.154s; }
+  .n7 { animation-delay: -5.754s; }
+  .n8 { animation-delay: -4.354s; }
+  .n9 { animation-delay: -2.954s; }
+  .n10 { animation-delay: -1.554s; }
+}
+@keyframes step {
+  0.0000% { rotate: 0.000deg; }
+  9.0909% { rotate: 32.727deg; }
+  18.1818% { rotate: 65.455deg; }
+  27.2727% { rotate: 98.182deg; }
+  36.3636% { rotate: 130.909deg; }
+  45.4545% { rotate: 163.636deg; }
+  54.5455% { rotate: 196.364deg; }
+  63.6364% { rotate: 229.091deg; }
+  72.7273% { rotate: 261.818deg; }
+  81.8182% { rotate: 294.545deg; }
+  90.9091% { rotate: 327.273deg; }
+}
+@keyframes tick {
+  0%, 80% { rotate: 0deg; }
+  86.5% { rotate: 36.000deg; }
+  89%, 100% { rotate: 32.727deg; }
+}
+@keyframes lit {
+  0% { fill: var(--fg); font-weight: 700; }
+  9.0909% { fill: var(--muted); font-weight: 400; }
+}
+@keyframes dot {
+  0% { fill: var(--signal); }
+  9.0909% { fill: var(--edge); }
+}
 </style>
-<rect class="panel" x="0.5" y="0.5" width="399" height="351" rx="8"/>
-<path class="wheel" d="M262.0 114.2 L323.7 158.4 L296.9 166.7 L324.9 237.3 L298.0 229.8 L283.3 304.3 L264.7 283.5 L212.1 338.2 L207.7 310.6 L133.9 328.3 L145.1 302.6 L73.4 277.5 L96.8 262.0 L50.0 202.2 L78.0 201.8 L71.0 126.2 L94.8 141.0 L129.8 73.6 L141.9 98.9 L207.7 61.1 L204.2 88.9 L280.0 92.8 L262.0 114.2 Z"/>
-<text class="tooth" x="264.9" y="156.1" text-anchor="middle">1</text>
-<text class="tooth" x="280.0" y="204.6" text-anchor="middle">2</text>
-<text class="tooth" x="266.5" y="253.5" text-anchor="middle">3</text>
-<text class="tooth" x="228.7" y="287.3" text-anchor="middle">4</text>
-<text class="tooth" x="178.6" y="295.3" text-anchor="middle">5</text>
-<text class="tooth" x="132.1" y="274.9" text-anchor="middle">6</text>
-<text class="tooth" x="104.1" y="232.7" text-anchor="middle">7</text>
-<text class="tooth" x="103.3" y="182.0" text-anchor="middle">8</text>
-<text class="tooth" x="130.0" y="138.9" text-anchor="middle">9</text>
-<text class="tooth" x="175.8" y="117.1" text-anchor="middle">10</text>
-<text class="tooth" x="226.1" y="123.6" text-anchor="middle">11</text>
-<text class="step" x="190" y="206" text-anchor="middle">failure → check</text>
-<text class="note" x="16" y="34">one notch tighter</text>
-<path class="rise" d="M162.6 44.4 A158 158 0 0 0 65.5 102.7 M78.5 99.7 L65.5 102.7 L69.5 89.7"/>
-<path class="pawl" d="M360.9 150.3 L267.6 113.8 L352.9 166.4 Z"/>
-<circle class="pivot" cx="356.9" cy="158.4" r="10.5"/>
-<text class="note" x="386" y="72" text-anchor="end">can’t slip back</text>
+<rect class="panel" x="0.5" y="0.5" width="339" height="343" rx="8"/>
+<path class="dial" d="M170.0 68.0 A104 104 0 0 1 213.5 77.5 L218.9 95.9 L226.2 84.5 A104 104 0 0 1 257.7 116.1 L252.3 134.4 L264.6 128.8 A104 104 0 0 1 274.0 172.3 L259.6 184.9 L272.9 186.8 A104 104 0 0 1 257.3 228.5 L238.4 231.3 L248.6 240.1 A104 104 0 0 1 212.9 266.7 L195.5 258.8 L199.3 271.8 A104 104 0 0 1 154.9 274.9 L144.5 258.8 L140.7 271.8 A104 104 0 0 1 101.6 250.4 L101.6 231.3 L91.4 240.1 A104 104 0 0 1 70.1 201.0 L80.4 184.9 L67.1 186.8 A104 104 0 0 1 70.3 142.4 L87.7 134.4 L75.4 128.8 A104 104 0 0 1 102.1 93.2 L121.1 95.9 L113.8 84.5 A104 104 0 0 1 155.5 69.0 L170.0 81.5 L170.0 68.0 Z"/>
+<circle class="ring" cx="170" cy="172" r="68.6"/>
+<g class="step">
+<g class="tick">
+<path class="pawl" d="M160.6 151.2 L170 95 L179.4 151.2 Z"/>
+</g>
+</g>
+<circle class="pivot" cx="170" cy="172" r="15.6"/>
+<circle class="dot n0" cx="170.0" cy="53.0" r="3.2"/>
+<circle class="dot n1" cx="234.3" cy="71.9" r="3.2"/>
+<circle class="dot n2" cx="278.2" cy="122.6" r="3.2"/>
+<circle class="dot n3" cx="287.8" cy="188.9" r="3.2"/>
+<circle class="dot n4" cx="259.9" cy="249.9" r="3.2"/>
+<circle class="dot n5" cx="203.5" cy="286.2" r="3.2"/>
+<circle class="dot n6" cx="136.5" cy="286.2" r="3.2"/>
+<circle class="dot n7" cx="80.1" cy="249.9" r="3.2"/>
+<circle class="dot n8" cx="52.2" cy="188.9" r="3.2"/>
+<circle class="dot n9" cx="61.8" cy="122.6" r="3.2"/>
+<circle class="dot n10" cx="105.7" cy="71.9" r="3.2"/>
+<text class="tooth n0" x="170.0" y="37.5" text-anchor="middle">1</text>
+<text class="tooth n1" x="245.7" y="59.7" text-anchor="middle">2</text>
+<text class="tooth n2" x="297.3" y="119.3" text-anchor="middle">3</text>
+<text class="tooth n3" x="308.6" y="197.4" text-anchor="middle">4</text>
+<text class="tooth n4" x="275.8" y="269.2" text-anchor="middle">5</text>
+<text class="tooth n5" x="209.4" y="311.8" text-anchor="middle">6</text>
+<text class="tooth n6" x="130.6" y="311.8" text-anchor="middle">7</text>
+<text class="tooth n7" x="64.2" y="269.2" text-anchor="middle">8</text>
+<text class="tooth n8" x="31.4" y="197.4" text-anchor="middle">9</text>
+<text class="tooth n9" x="42.7" y="119.3" text-anchor="middle">10</text>
+<text class="tooth n10" x="94.3" y="59.7" text-anchor="middle">11</text>
+<text class="note" x="14" y="26">one notch tighter</text>
+<text class="note" x="326" y="330" text-anchor="end">can’t slip back</text>
 </svg>
