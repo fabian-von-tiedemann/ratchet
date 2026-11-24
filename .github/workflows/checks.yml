@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  # The pull request's own checks, on its own data. On a push to main, the only checks that run.
+  # The pull request's own checks, on its own data. On a push to main, they run with the job released, and base does not.
   own:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -25,12 +25,26 @@ jobs:
         run: python3 checks/generate.py --check
       - name: This repo's own register has not drifted
         run: python3 checks/check_register.py register.json --markdown REGISTER.md
-      - name: Every check fails on the fixtures it claims to catch
-        run: python3 -m unittest discover -s checks -v
       - name: Released text is as it stood at its tag
         run: python3 checks/released_text.py
+      # The suite step: every check fails on the fixtures it claims to catch, and every expected test ran and passed.
       - name: Every expected test ran and passed, in a process of its own
         run: python3 checks/expected_tests.py
+
+  # The full suite once more, on a copy of this repo taken through the release steps, with the version dated and
+  # tagged. It runs once per pull request and push to main, beside own, and not inside own's suite
+  # (D-2026-11-24-faster-suite). See checks/README.md, "released_text.py".
+  released:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The full suite passes on a released copy of this repo
+        run: python3 checks/test_released_text.py --released-copy
 
   # The base branch's checks judge the pull request: checks/from_base.py, taken from the base commit, never from the
   # pull request. See checks/README.md, "from_base.py".
@@ -58,23 +72,29 @@ jobs:
           git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"
           python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
-  # The status that the ruleset on main requires. It passes only when the pull request's own checks passed and, on a
-  # pull request, the base branch's too. It runs whatever they did, so that it is never skipped.
+  # The status that the ruleset on main requires. It passes only when the pull request's own checks and the suite on a
+  # released copy passed and, on a pull request, the base branch's checks too. It runs whatever they did, so that it is
+  # never skipped.
   checks:
-    needs: [own, base]
+    needs: [own, base, released]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       OWN: ${{ needs.own.result }}
       BASE: ${{ needs.base.result }}
+      RELEASED: ${{ needs.released.result }}
       EVENT: ${{ github.event_name }}
     steps:
-      - name: The pull request's own checks and the base branch's passed
+      - name: The pull request's own checks, the suite on a released copy and the base branch's checks passed
         run: |
-          echo "own: $OWN, base: $BASE, event: $EVENT"
+          echo "own: $OWN, base: $BASE, released: $RELEASED, event: $EVENT"
           if [ "$OWN" != success ]; then
             echo "The pull request's own checks, the job own, did not pass."
+            exit 1
+          fi
+          if [ "$RELEASED" != success ]; then
+            echo "The full suite on a released copy of this repo, the job released, did not pass."
             exit 1
           fi
           if [ "$EVENT" = pull_request ] && [ "$BASE" != success ]; then

@@ -2050,12 +2050,13 @@ class Workflow(unittest.TestCase):
             "run: python3 checks/generate.py --check",
             "run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "run: python3 -m unittest discover -s checks",
+            "run: python3 checks/test_released_text.py --released-copy",
             "run: python3 checks/release.py publish",
         ])
         self.assertFalse([l for l in lines if "run:" in l and "${{" in l])
         self.assertEqual([l.strip(" ") for l in lines if "${{" in l], ["GITHUB_TOKEN: ${{ github.token }}"])
         self.assertLess(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 checks/release.py publish"))
-        self.assertGreater(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 -m unittest discover -s checks"))
+        self.assertGreater(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 checks/test_released_text.py --released-copy"))
 
     # Round 1 of the new approach, finding 2: each part of the workflow that the design leans on has a test of
     # its own, and the whole file, without its comments, is the reviewed form and holds nothing else.
@@ -2118,13 +2119,14 @@ class Workflow(unittest.TestCase):
     def test_a_run_has_a_time_limit(self):
         self.assertEqual([l for l in self.code() if "timeout-minutes" in l], ["    timeout-minutes: 30"])
 
-    def test_the_three_checks_run_in_order_before_the_one_step_that_writes(self):
+    def test_the_checks_run_in_order_before_the_one_step_that_writes(self):
         steps = self.block("    steps:")
         runs = [l.strip(" ") for l in steps if l.strip(" ").startswith(("run:", "- run:"))]
         self.assertEqual(runs, [
             "run: python3 checks/generate.py --check",
             "run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "run: python3 -m unittest discover -s checks",
+            "run: python3 checks/test_released_text.py --released-copy",
             "run: python3 checks/release.py publish",
         ])
         self.assertFalse([l for l in self.code() if "continue-on-error" in l or "always()" in l or "failure()" in l])
@@ -2164,6 +2166,8 @@ class Workflow(unittest.TestCase):
             "        run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "      - name: Every check fails on the fixtures it claims to catch",
             "        run: python3 -m unittest discover -s checks",
+            "      - name: The full suite passes on a released copy of this repo",
+            "        run: python3 checks/test_released_text.py --released-copy",
             "      - name: Tag and release the version in ratchet.json, if it is new",
             "        env:",
             "          GITHUB_TOKEN: ${{ github.token }}",
