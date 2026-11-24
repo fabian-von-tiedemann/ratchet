@@ -368,11 +368,15 @@ class Triage(RepoCopy, FixtureTest):
                       "a scheduled check posts its result and is red when the post is late",
                       "no deploy can run without a deploy check",
                       "When a failure class comes back after a lesson, the lesson's ratchet was too weak.",
-                      "Strengthen the ratchet.", "Rewording the rule does not count."):
+                      "Strengthen the ratchet.", "Rewording the rule does not count.",
+                      # D-2026-11-24-recurring-finding-is-a-failure-class: the clause, word for word as approved.
+                      "A review finding that recurs is a failure class: it becomes a check, for code usually a rule of the "
+                      "project's linter in the required job, with a fixture it fails on."):
             self.assertIn(words, harden["rule"])
         for words in ("Check: the periodic count of rules by kind of ratchet", "and of repeated failure classes", "a convention"):
             self.assertIn(words, harden["ratchet"])
-        self.assertEqual(harden["source"], "pstack `principle-encode-lessons-in-structure`")
+        self.assertEqual(harden["source"], "pstack `principle-encode-lessons-in-structure`; "
+                                           "sprocketlab/slop-code-bench, which measures how agent-written code erodes across iterations")
         glossary = read("GLOSSARY.md")
         self.assertIn("| built | ", glossary)
         for words in ("required for the merge and reads its rules from the base branch", "runs in every harness the project uses",
