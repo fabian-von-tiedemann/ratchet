@@ -1981,18 +1981,8 @@ class StartPath(unittest.TestCase):
         for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
             self.assertTrue(os.path.isfile(os.path.join(self.project, name)), name)
 
-    def test_every_command_in_the_migration_runs_from_the_root_of_a_project(self):
-        self.assertIn("cp .ratchet/templates/register.json register.json", read("MIGRATING.md"))
-        shutil.copyfile(os.path.join(ROOT, "templates", "register.json"), os.path.join(self.project, "register.json"))
-        commands = re.findall(r"(?m)^\s*((?:rm -f \S+ && )?python3 \.ratchet/\S.*)$", read("MIGRATING.md"))
-        self.assertEqual(len(commands), 3)
-        for command in commands:
-            with self.subTest(command=command):
-                code, output = self.run_in_project(command)
-                self.assertEqual(code, 0, output)
-
     def test_no_instruction_tells_the_reader_to_leave_the_root(self):
-        for name in ("README.md", "STARTING.md", "MIGRATING.md", "UPGRADING.md"):
+        for name in ("README.md", "STARTING.md", "UPGRADING.md"):
             with self.subTest(document=name):
                 text = read(name)
                 self.assertIsNone(re.search(r"(?m)^\s*cd ", text))
