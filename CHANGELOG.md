@@ -2,7 +2,7 @@
 
 ## 0.14 (unreleased)
 
-In short: no rule and no form changes for a project that uses Ratchet, and it has nothing to do beyond the version that an upgrade always sets. This repo's own CI runs its suite once in each pass, and runs the suite on a released copy of the repo once, in a job of its own, so a pull request's checks take less time.
+In short: no rule and no form changes for a project that uses Ratchet, and it has nothing to do beyond the version that an upgrade always sets. This repo's own CI runs its suite once in each pass, and runs the suite on a released copy of the repo in jobs apart from that pass: in a job of its own and, on a pull request, after the base branch's suite in the job `base`, so a pull request's checks take less time.
 
 - This repo's `.github/workflows/checks.yml`: the job `own` runs the suite once, with `checks/expected_tests.py`, and no longer runs `unittest discover` before it. The full suite on a released copy of the repo, which ran inside `test_released_text.ReleaseSteps` and so inside every run of the suite, is a job of its own, `released`, which the job `checks` needs and fails without. On a pull request, the job `base` runs the base branch's copy of it on the base's tests with the pull request's checks, and the release workflow runs it before it tags ([D-2026-11-24-faster-suite](decisions/D-2026-11-24-faster-suite.md), [#147](https://github.com/fabian-von-tiedemann/ratchet/pull/147)).
 
