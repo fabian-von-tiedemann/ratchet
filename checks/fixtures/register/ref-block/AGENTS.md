@@ -24,8 +24,8 @@ Ratchet version: 0.13. Each row below names a rule of Ratchet at that version an
 
 | Key | Stands in | Mode |
 |---|---|---|
-| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.evidence-before-done | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
+| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.evidence-before-done | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
 
 ### Where each check stands
 

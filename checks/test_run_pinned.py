@@ -322,6 +322,144 @@ class RunPinned(unittest.TestCase):
                 self.assertEqual(code, 0, output)
                 self.assertIn("LATER CHECK PASSED", output)
 
+    def test_the_printed_local_line_stops_a_check_script_with_set_e_or_without(self):
+        # An adoption report on 0.12: the line for a local check script assumed set -e, so in a script without it a
+        # register that fails the check went on to the rest of the script, to "all green".
+        self.clone_store()
+        self.failing()
+        blob = git(self.source, "rev-parse", "%s:checks/run_pinned.py" % self.commit)
+        _, run = self.commands()
+        local = run_pinned.local_line(self.commit, blob, COPY.replace(os.sep, "/"))
+        for shell in self.shells():
+            with self.subTest(shell=shell, line="the step's"):
+                # The step's line alone does not stop a script without set -e: this is what the local line is for.
+                code, output = self.shell(run + "\necho ALL GREEN\n", shell)
+                self.assertEqual(code, 0, output)
+                self.assertIn("ALL GREEN", output)
+            for start in ("set -eu\n", "set -e\n", ""):
+                with self.subTest(shell=shell, start=start):
+                    code, output = self.shell(start + local + "\necho ALL GREEN\n", shell)
+                    self.assertEqual(code, 1, output)
+                    self.assertIn("no rules from Ratchet", output)
+                    self.assertNotIn("ALL GREEN", output)
+        # A runner that is not the pinned one stops it too, and a register that passes goes on.
+        with open(self.path(COPY), "wb") as handle:
+            handle.write(b"print('ANOTHER RUNNER RAN')\n")
+        for shell in self.shells():
+            with self.subTest(shell=shell, runner="another"):
+                code, output = self.shell(local + "\necho ALL GREEN\n", shell)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("ANOTHER RUNNER RAN", output)
+                self.assertNotIn("ALL GREEN", output)
+        with open(self.path(COPY), "wb") as handle:
+            handle.write(subprocess.run(["git", "-C", self.source, "show", "%s:checks/run_pinned.py" % self.commit],
+                                        stdout=subprocess.PIPE, check=True).stdout)
+        with open(os.path.join(ROOT, "templates", "register.json"), encoding="utf-8") as handle:
+            register = json.load(handle)
+        register["project"] = "demo"
+        self.register(register)
+        for shell in self.shells():
+            for start in ("set -eu\n", ""):
+                with self.subTest(shell=shell, start=start, register="passes"):
+                    code, output = self.shell(start + local + "\necho ALL GREEN\n", shell)
+                    self.assertEqual(code, 0, output)
+                    self.assertIn("ALL GREEN", output)
+
+    def later(self):
+        """A copy of the source with a second commit on top, which changes no check: (its path, the new commit, its
+        parent). The runner of the project is the same file in both."""
+        later = os.path.join(os.path.dirname(self.project), "later")
+        git(os.path.dirname(self.project), "clone", "-q", self.source, later)
+        with open(os.path.join(later, "README.md"), "a", encoding="utf-8") as handle:
+            handle.write("\nA second commit.\n")
+        git(later, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-am", "Later")
+        return later, git(later, "rev-parse", "HEAD"), git(later, "rev-parse", "HEAD^")
+
+    def test_a_missing_store_gets_the_pinned_commit_alone(self):
+        # An adoption report on 0.12: every run in CI cloned the whole history. Only the pinned commit and its tree are
+        # fetched now, so the parent commit is not in the store.
+        later, commit, parent = self.later()
+        command = [sys.executable, "-I", COPY, commit, "--repository", later, "--", "register.json"]
+        result = subprocess.run(command, cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        store = self.path(".ratchet")
+        self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
+        missing = subprocess.run(["git", "-C", store, "cat-file", "-e", parent], stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+        self.assertNotEqual(missing.returncode, 0, "the parent of the pinned commit was fetched")
+        self.assertFalse(os.path.exists(os.path.join(store, "checks")), "the store has no checkout")
+        # A second run reads the store it made, with no fetch.
+        result = subprocess.run(command[:4] + ["--repository", os.path.join(self.project, "nowhere")] + command[6:],
+                                cwd=self.project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_a_host_that_does_not_give_a_commit_by_its_id_is_cloned_whole(self):
+        # The fall back: when the shallow fetch by id fails, the branches and tags of the repository are fetched into the
+        # store made for it, what a clone fetches, as 0.12 did. Nothing is removed.
+        later, commit, parent = self.later()
+        scratch = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, scratch)
+        refused = []
+
+        class NoFetchById(run_pinned.Git):
+            def run(self, objects, *args, data=None):
+                if "--depth=1" in args:
+                    refused.append(args)
+                    return 128, b"", "Server does not allow request for unadvertised object"
+                return run_pinned.Git.run(self, objects, *args, data=data)
+
+        store = self.path(".ratchet")
+        objects = run_pinned.store_with(NoFetchById(scratch), store, commit, later)
+        self.assertEqual(len(refused), 1)
+        self.assertEqual(objects, os.path.abspath(os.path.join(store, ".git", "objects")))
+        self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
+        self.assertEqual(git(store, "cat-file", "-t", parent), "commit", "the whole repository was fetched")
+
+    def test_a_store_left_empty_by_an_outage_gets_the_commit_once_the_host_answers(self):
+        # Round 2 of #140: a first run that could not reach the host left an empty store, and a retry against a host that
+        # gives branches and tags but no commit by its id was refused, though a fresh store would have passed.
+        later, commit, parent = self.later()
+        scratch = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, scratch)
+
+        class Outage(run_pinned.Git):
+            def run(self, objects, *args, data=None):
+                if "fetch" in args:
+                    return 128, b"", "Could not resolve host"
+                return run_pinned.Git.run(self, objects, *args, data=data)
+
+        class NoFetchById(run_pinned.Git):
+            def run(self, objects, *args, data=None):
+                if "fetch" in args and args[-1] == commit:
+                    return 128, b"", "Server does not allow request for unadvertised object"
+                return run_pinned.Git.run(self, objects, *args, data=data)
+
+        store = self.path(".ratchet")
+        with self.assertRaises(run_pinned.Refused):
+            run_pinned.store_with(Outage(scratch), store, commit, later)
+        self.assertTrue(os.path.isdir(store), "the first run left its store")
+        again = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, again)
+        objects = run_pinned.store_with(NoFetchById(again), store, commit, later)
+        self.assertEqual(git(store, "cat-file", "-t", commit), "commit")
+        self.assertEqual(objects, os.path.abspath(os.path.join(store, ".git", "objects")))
+
+    def test_a_repository_that_cannot_be_reached_never_passes(self):
+        # With no store and no repository to fetch from, the check does not run, and a second run, with the store the
+        # first one made, does not either.
+        for name in ("no-such-repository", "file:///no/such/repository"):
+            with self.subTest(repository=name):
+                for run in ("first", "second"):
+                    result = subprocess.run([sys.executable, "-I", COPY, self.commit, "--repository", name, "--",
+                                             "register.json"], cwd=self.project, stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, universal_newlines=True)
+                    self.assertEqual(result.returncode, 2, (run, result.stdout))
+                    self.assertIn("cannot be fetched" if run == "second" else "cannot fetch", result.stdout)
+                    self.assertIn("run_pinned: the check did not run", result.stdout)
+                self.assertNotIn("Ratchet at", result.stdout)
+            shutil.rmtree(self.path(".ratchet"))
+
     def test_the_copy_command_reads_no_git_variable_of_the_environment(self):
         # Codex's and Astra's case: GIT_COMMON_DIR was left in effect, so git read the config of a repo it was never
         # given, here one that no git can read.

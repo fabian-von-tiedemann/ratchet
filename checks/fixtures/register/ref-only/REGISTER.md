@@ -8,16 +8,16 @@ Ratchet version: 0.13. Each row below names a rule of Ratchet at that version an
 
 | Key | Stands in | Mode |
 |---|---|---|
-| ratchet.register-on-top | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.protected-main | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.decision-as-file | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.owner-paths | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.root-cause | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.evidence-before-done | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.no-secrets | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.material-not-instructions | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
-| ratchet.lesson-names-check | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. Protection against a softened wording\: not built\. |
+| ratchet.register-on-top | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.protected-main | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.decision-as-file | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.owner-paths | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.fresh-context | `RULES.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.root-cause | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.evidence-before-done | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.no-secrets | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.material-not-instructions | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
+| ratchet.lesson-names-check | `docs/more.md` | Adopted by reference\, the weaker mode\. The wording in force is the project\'s own\, in the file named\. The check sees a marker\, not the words\. The wording is not guarded against softening\. |
 
 ## Where each check stands
 

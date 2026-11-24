@@ -135,7 +135,7 @@ REPOSITORY = "https://github.com/fabian-von-tiedemann/ratchet"
 # The rule that a register adopted by reference, with the project's own instruction file canonical, does not meet.
 REGISTER_ON_TOP = "ratchet.register-on-top"
 # Where adopt mode says to copy checks/run_pinned.py to, in the project's repo, from the pinned commit.
-RUNNER = ".github/ratchet/run_pinned.py"
+RUNNER = run_pinned.COPY
 # The rules of the starter register whose check cannot run before the repo has a remote, and why.
 WAIT_FOR_REMOTE = {
     "ratchet.register-on-top": "its check runs in CI on the host",
@@ -982,9 +982,9 @@ def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
               "    with:",
               "      persist-credentials: false",
               "init:   the checkout then leaves no token in .git/config, where a later step could read it",
-              "init: where the project's definition of done is a local check script that CI runs, put the command in it as "
-              "a line of its own, in place of the step:",
-              "  " + run,
+              "init: where the project's definition of done is a local check script that CI runs, put this line in it, "
+              "in place of the step. It stops the script when the check fails, with set -e or without it:",
+              "  " + run_pinned.local_line(commit, blob, RUNNER),
               "init: to see which jobs main requires, export its ruleset or branch protection from the host and give it "
               "to the inventory, which marks each job required or not: python3 %s --ruleset <file>"
               % typed(os.path.join(RATCHET, "checks", "inventory.py"))]
