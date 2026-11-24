@@ -89,10 +89,12 @@ PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\
 # The page's story and values, from values.json: this line, the lines the generator writes, and the line that closes
 # them. Every line between the two is of one of the forms PAGE_VALUE_LINE, exactly as page_values writes them, with
 # text that holds no "<" or ">", since html.escape writes those as references. So the generator never writes over
-# anything else: a link or a second paragraph added to a line is not of these forms.
+# anything else: a link or a second paragraph added to a line is not of these forms, and a value is written
+# with " over " between its two sides, so a list item without it is not either (round 2 of #143). A line added in one
+# of these exact forms is generated text and is written over, as the block's markers say.
 PAGE_VALUES, PAGE_VALUES_END = '<section id="values" class="values">', "</section>"
 PAGE_VALUE_LINE = re.compile(r'(?:<p class="story"><em>[^<>]*</em></p>|<p class="lead"><strong>[^<>]*</strong></p>'
-                             r'|<p class="balance">[^<>]*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]*</strong>[^<>]*</li>)\Z')
+                             r'|<p class="balance">[^<>]*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]+</strong> over [^<>]+</li>)\Z')
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")

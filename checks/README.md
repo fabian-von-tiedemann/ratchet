@@ -1151,7 +1151,8 @@ The cases are in [test_issue_form.py](test_issue_form.py). Each is the form with
 | The story and the values as they stand: the story, "We value:", the four values in order and the line that weighs them | Passes |
 | A value changed in values.json, before `generate.py` is run | The test fails, `generate.py --check` fails on `docs/index.html`, `README.md` and `RATCHET.md`, and `generate.py` writes them |
 | A value edited or left out on the page, a second line that weighs them, or the story changed | The test fails, and `generate.py --check` fails |
-| The section with another id, with a class beside its own, twice, with a `p` in it, with a value over two lines or split into two `strong`, another element with its id, a link added inside the line that weighs the values, a second paragraph after the story on its line, an `em` added to the lead, or without the line that closes it | `generate.py --check` fails, and `generate.py` writes nothing to the page |
+| The section with another id, with a class beside its own, twice, with a `p` in it, with a value over two lines or split into two `strong`, another element with its id, a link added inside the line that weighs the values, a second paragraph after the story on its line, an `em` added to the lead, a list item without " over ", or without the line that closes it | `generate.py --check` fails, and `generate.py` writes nothing to the page |
+| A line added between the markers in one of the exact forms the generator writes, such as a fifth value | `generate.py --check` fails; `generate.py` writes the block from `values.json`, as for any generated block. Outside the claim: the block is generated text |
 | The section indented by two spaces | Passes |
 | A value with `&` or `<` in it | Written as `&amp;` and `&lt;` |
 | The count of the rules of the core as it stands, counted in the test from `ratchet.json` | Passes |

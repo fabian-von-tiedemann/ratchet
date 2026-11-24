@@ -1369,7 +1369,9 @@ class PageValues(RepoCopy, unittest.TestCase):
                           "The left is for when it doesn't. <a href=\"https://github.com/fabian-von-tiedemann/ratchet\">More</a></p>"),
                          ("with confidence.</em></p>", "with confidence.</em></p><p>KEEP THIS</p>"),
                          ("<strong>We value:</strong></p>", "<strong>We value:</strong> <em>all of it</em></p>"),
-                         ("<li><strong>Written decisions</strong>", "<li><strong>Written</strong> <strong>decisions</strong>")):
+                         ("<li><strong>Written decisions</strong>", "<li><strong>Written</strong> <strong>decisions</strong>"),
+                         # A list item without " over ", which the generator never writes (round 2 of #143).
+                         ("</ul>", "<li><strong>Handwritten note</strong></li>\n</ul>")):
             with self.subTest(new=new):
                 self.setUp()
                 before = self.page().replace(old, new, 1)
