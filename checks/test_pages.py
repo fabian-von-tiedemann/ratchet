@@ -26,7 +26,8 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   transition or scroll-behavior, also with a vendor prefix such as -webkit-, stands in that query, or in a
   @keyframes. A prefixed at-rule, such as @-webkit-keyframes, is not an at-rule the CSS may hold
 - a link (a href) goes to a file in docs/, to an id on the page, or into the repo on GitHub: the repo itself, a
-  file or a directory on main that exists in this checkout, a pull request, an issue, or the latest release.
+  file or a directory on main that exists in this checkout, a pull request, an issue, the list of issues, where a
+  question is asked, or the latest release.
   Nothing links out of the repo to another site. A fragment on a link to the page, "#..." or "index.html#...", is
   an id on the page, and the ids on the page stand once each. A link to a logo has no fragment. A link into the
   repo may end in a fragment of the form of an id, and whether GitHub shows that id is not checked
@@ -42,6 +43,11 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   no reference check
 - the watch that the line of the sources calls daily is one schedule of one run a day in
   .github/workflows/watch-sources.yml, which runs checks/watch_sources.py on sources.json
+- what the top of the page says of the project is what the repo holds: the sample of the dry run, the one
+  <pre class="sample">, is the command of README.md and lines that checks/init.py --check prints in an empty repo
+  (the test is in test_init.py); while the page says "Before 1.0", the version of ratchet.json is below 1.0; and
+  while it says the license is MIT, LICENSE starts "MIT License"
+- the page is short: under 560 words outside the CSS, with one h1 and three h2, and one link of the class button
 - the story and the values, the one <section id="values">, show the story, the line that leads to the values, each
   value and the line that weighs them, as values.json holds them, in order, with the part each marks. The test reads
   the section itself, and does not ask generate.py.
@@ -119,7 +125,7 @@ FRAGMENT = re.compile(r"#[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 # A path on main: parts that may start with one dot, as .github does, so no part is "." or "..".
 REPO_PATH = re.compile(r"(?:\.?[A-Za-z0-9_][A-Za-z0-9_.-]*/)*\.?[A-Za-z0-9_][A-Za-z0-9_.-]*")
 REPO_LINK = re.compile(
-    r"(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/(?:pull|issues)/[1-9][0-9]*|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?\Z"
+    r"(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/(?:pull|issues)/[1-9][0-9]*|/issues|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?\Z"
     % REPO_PATH.pattern
 )
 # Characters the page may not hold: controls but the newline, and the ones that reorder or hide text.
@@ -137,8 +143,8 @@ AT_RULES = {"media", "keyframes"}
 # between dashes before the name counts as one. A prefixed at-rule, such as @-webkit-keyframes, is not in AT_RULES.
 MOTION = re.compile(r"(?:-[a-z]+-)?(?:animation(?:-[a-z]+)*|transition(?:-[a-z]+)*|scroll-behavior)\Z")
 # Pairs of text and background in the palette, each to have a contrast ratio of at least 4.5. The button is the
-# background on the text color, and on the accent when the pointer is over it: the pairs of fg and bg, and of accent
-# and bg, turned around, with the same ratio.
+# background on the accent, and on the text color when the pointer is over it: the pairs of accent and bg, and of fg
+# and bg, turned around, with the same ratio. --shadow is the shadow of the button, and no text stands on it.
 PAIRS = (("fg", "bg"), ("muted", "bg"), ("link", "bg"), ("fg", "code-bg"), ("code-fg", "code-bg"), ("fg", "box"), ("muted", "box"),
          ("link", "box"), ("accent", "bg"), ("accent", "box"))
 # The pairs in the figure: its labels on its own background and on the body of the staircase.
@@ -157,6 +163,15 @@ WATCH_RUN = "        run: python3 checks/watch_sources.py --data sources.json"
 # The list whose items the test reads one by one: the steps of how Ratchet works.
 ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5
+# The page is short: fewer words than this outside the CSS, these headings, and one link of the class button, the one
+# thing to do (D-2026-11-24-landing-page-pass). The cap was 450, then 400.
+WORDS = 560
+HEADINGS = [1, 2, 2, 2]
+BUTTON = '<a class="button" href="#start-here">Try it on your repo</a>'
+# What the top of the page says of the project, each tied to what the repo holds.
+BEFORE_ONE = "Before 1.0"
+LICENSED = '<strong>License:</strong> <a href="%s/blob/main/LICENSE">MIT</a>.' % REPO
+SAMPLE = re.compile(r'<pre class="sample">([^<>]*)</pre>')
 
 
 class PageReader(html.parser.HTMLParser):
@@ -532,6 +547,7 @@ def page_problems(root):
     found += figure_problems(root, "".join(reader.styles))
     found += ["%s: %s" % (name, problem) for problem in example_problems(root, text)]
     found += ["%s: %s" % (name, problem) for problem in watch_problems(root)]
+    found += ["%s: %s" % (name, problem) for problem in short_problems(text) + top_problems(root, text)]
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
         allowed = readme_commands(handle.read())
@@ -559,6 +575,57 @@ def example_problems(root, text):
                             'not start "%s"' % (EXAMPLE_KEY, EXAMPLE_CHECK))
         if EXAMPLE_NOT_SHIPPED in text and rule.get("reference_check"):
             problems.append('says "%s", and %s has a reference check in ratchet.json' % (EXAMPLE_NOT_SHIPPED, EXAMPLE_KEY))
+    return problems
+
+
+def short_problems(text):
+    """Why the page is not short, as messages, or nothing: WORDS words or more outside its CSS, headings other than
+    HEADINGS, or a number of links of the class button other than one. That the one is BUTTON is a test of its own."""
+    problems = []
+    words = len(re.sub(r"<[^>]+>", " ", text[text.index("</style>"):]).split())
+    if words >= WORDS:
+        problems.append("the page has %d words outside its CSS, and must have under %d" % (words, WORDS))
+    reader = PageReader()
+    reader.feed(text)
+    levels = [level for _, level in reader.headings]
+    if levels != HEADINGS:
+        problems.append("its headings are %r, and must be %r" % (levels, HEADINGS))
+    buttons = len(re.findall(r'class="[^"]*\bbutton\b[^"]*"', text))
+    if buttons != 1:
+        problems.append("the page holds %d links of the class button, and must hold one, the one thing to do" % buttons)
+    return problems
+
+
+def page_sample(text):
+    """The lines of the one sample of the dry run on the page, or None when it does not stand there once."""
+    found = SAMPLE.findall(text)
+    return html.unescape(found[0]).split("\n") if len(found) == 1 and text.count('class="sample"') == 1 else None
+
+
+def top_problems(root, text):
+    """Why what the top of the page says of the project is not what the repo holds, as messages, or nothing.
+
+    While the page says BEFORE_ONE, the version of ratchet.json is below 1.0. While it says the license is MIT, LICENSE
+    starts "MIT License". The sample of the dry run stands once, and its first line is "$ " and a command of README.md.
+    That its other lines are lines checks/init.py --check prints is a test of test_init.py, which runs it.
+    """
+    problems = []
+    with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
+        version = json.load(handle)["version"]
+    if BEFORE_ONE in text and not re.match(r"0\.[0-9]+\Z", version):
+        problems.append('says "%s", and the version of ratchet.json is %s' % (BEFORE_ONE, version))
+    with open(os.path.join(root, "LICENSE"), encoding="utf-8") as handle:
+        license_text = handle.read()
+    if LICENSED in text and not license_text.startswith("MIT License\n"):
+        problems.append('says the license is MIT, and LICENSE does not start "MIT License"')
+    sample = page_sample(text)
+    if sample is None or len(sample) < 2:
+        return problems + ['holds one sample of the dry run, a <pre class="sample"> of text only, with the command and what it prints']
+    with open(os.path.join(root, "README.md"), encoding="utf-8", errors="strict") as handle:
+        allowed = readme_commands(handle.read())
+    if not sample[0].startswith("$ ") or sample[0][2:] not in allowed:
+        problems.append("the first line of the sample, %r, is not \"$ \" and a command: %r is not a line of a code block marked sh in "
+                        "README.md" % (sample[0], sample[0][2:]))
     return problems
 
 
@@ -590,8 +657,8 @@ def link_problem(root, value, ids):
     if value.startswith(REPO):
         match = REPO_LINK.match(value[len(REPO):])
         if not match:
-            return ("goes into the repo, but not to the repo, a file or directory on main, a pull request, an issue or the "
-                    "latest release")
+            return ("goes into the repo, but not to the repo, a file or directory on main, a pull request, an issue, the list "
+                    "of issues or the latest release")
         if match.group("kind"):
             target = os.path.join(root, *match.group("path").split("/"))
             if match.group("kind") == "blob" and not os.path.isfile(target):
@@ -653,20 +720,41 @@ class Page(RepoCopy, unittest.TestCase):
                       "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<section id="values" class="values">',
                       '<h2 id="how-it-works">How it works</h2>', REPO + "/blob/main/RATCHET.md#the-principles",
                       REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md", REPO + "/blob/main/TRYING.md",
-                      '<a class="button" href="#start-here">Start here</a>',
+                      BUTTON, "<strong>Beta.</strong> " + BEFORE_ONE, REPO + "/blob/main/CHANGELOG.md", LICENSED,
+                      'href="%s/issues"' % REPO, REPO + "/blob/main/SECURITY.md", "<strong>Planned:</strong>",
+                      "<strong>Maintainer:</strong> one person, <code>fabian-von-tiedemann</code> on GitHub",
                       "<code>ratchet.no-secrets</code> names a secret scan in every pull request", EXAMPLE_NOT_SHIPPED,
                       'id="sources"'):
             self.assertIn(words, text)
 
     def test_the_page_is_short(self):
-        # One page a newcomer reads in a minute: under 400 words outside the CSS, and three headings. The cap was 450
-        # before the page was rewritten short (D-2026-11-23-values-and-principles).
-        text = self.page()
-        body = re.sub(r"<[^>]+>", " ", text[text.index("</style>"):])
-        self.assertLess(len(body.split()), 400)
-        reader = PageReader()
-        reader.feed(text)
-        self.assertEqual([level for _, level in reader.headings], [1, 2, 2])
+        self.assertEqual(short_problems(self.page()), [])
+
+    def test_a_page_that_is_long_or_has_other_headings_or_a_second_button_fails(self):
+        for old, new, message in (("<h1>Ratchet</h1>", "<h1>Ratchet</h1>" + "<p>%s</p>" % " ".join(["word"] * 12), "words outside its CSS"),
+                                  ('<h2 id="behind-it">Who is behind it</h2>', "<p>Who is behind it</p>", "its headings are"),
+                                  ("</main>", "<section><h2>One more</h2></section></main>", "its headings are"),
+                                  ('<a href="%s">Star' % REPO, '<a class="button" href="%s">Star' % REPO, "of the class button"),
+                                  (BUTTON, '<a href="#start-here">Try it on your repo</a>', "of the class button")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                problems = short_problems(self.page())
+                self.assertTrue(any(message in problem for problem in problems), problems)
+
+    def test_what_the_top_says_of_the_project_is_what_the_repo_holds(self):
+        self.assertEqual(top_problems(self.copy, self.page()), [])
+        self.edit("ratchet.json", '"version": "0.', '"version": "1.')
+        self.assertIn('says "Before 1.0"', " ".join(top_problems(self.copy, self.page())))
+        self.setUp()
+        self.edit("LICENSE", "MIT License", "Another License")
+        self.assertIn("says the license is MIT", " ".join(top_problems(self.copy, self.page())))
+        self.setUp()
+        self.change('<pre class="sample">$ python3', '<pre class="sample">$ sudo python3')
+        self.assertIn("is not a line of a code block marked sh in README.md", " ".join(top_problems(self.copy, self.page())))
+        self.setUp()
+        self.change('<pre class="sample">', '<pre class="other">')
+        self.assertIn("one sample of the dry run", " ".join(top_problems(self.copy, self.page())))
 
     def test_no_page_fails(self):
         shutil.rmtree(os.path.join(self.copy, DOCS))
@@ -783,12 +871,12 @@ class Page(RepoCopy, unittest.TestCase):
                 self.assert_fails(message)
 
     def test_a_link_to_a_pull_request_or_an_issue_passes_and_one_of_another_form_fails(self):
-        for target in ("/issues/49", "/pull/42", "/releases/latest"):
+        for target in ("/issues/49", "/pull/42", "/releases/latest", "/issues"):
             with self.subTest(target=target):
                 self.setUp()
                 self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
                 self.assertEqual(page_problems(self.copy), [])
-        for target in ("/issues/0", "/issues/49/../../x", "/issues", "/issues/new", "/pull/0", "/pulls"):
+        for target in ("/issues/0", "/issues/49/../../x", "/issues/", "/issues/new", "/issues?q=x", "/pull/0", "/pulls"):
             with self.subTest(target=target):
                 self.setUp()
                 self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))

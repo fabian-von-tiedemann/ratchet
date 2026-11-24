@@ -402,6 +402,20 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertNotIn("names no remote", output)
 
+    def test_the_sample_on_the_landing_page_is_what_the_dry_run_prints_in_an_empty_repo(self):
+        # The landing page shows the dry run: after its first line, the command, each line is one --check prints here.
+        with open(os.path.join(ROOT, "docs", "index.html"), encoding="utf-8") as handle:
+            found = re.findall(r'<pre class="sample">([^<>]*)</pre>', handle.read())
+        self.assertEqual(len(found), 1)
+        sample = found[0].split("\n")
+        self.assertEqual(sample[0], "$ python3 .ratchet/checks/init.py --check")
+        code, output = self.init("--check")
+        self.assertEqual(code, 0, output)
+        printed = output.split("\n")
+        self.assertGreater(len(sample), 2)
+        for line in sample[1:]:
+            self.assertIn(line, printed)
+
     def test_the_workflow_has_a_job_for_the_projects_own_checks_and_init_names_the_jobs_to_require(self):
         code, output = self.init()
         self.assertEqual(code, 0, output)
