@@ -26,11 +26,8 @@ It writes what README's "Start here" sets up:
 A repo that already has an instruction file of its own, a plain file at one of INSTRUCTION_FILES, such as AGENTS.md or
 CLAUDE.md, is adopted, in adopt mode (step 9b of D-2026-11-22-second-redraw), unless .github/workflows/ratchet.yml
 exists, which init.py writes first in a start, or a register.json names an instruction file in instructions. It says
-so, and suggests running inventory.py first. In adopt mode it never writes or changes the instruction file, and does
-not read it to choose adopt mode or the rules and rows it prints. It reads AGENTS.md once, as bytes, only to say when it
-is, below its title, the file init.py writes: a start before 0.11 wrote AGENTS.md first, and one that stopped before
-the workflow is taken for adopt mode now. The register check at the end reads the files that rows by reference name, for
-their marker lines. Its first run writes nothing: no register.json until the project names, with --adopt, once for
+so, and suggests running inventory.py first. In adopt mode it never writes, changes or reads the instruction file. The
+register check at the end reads the files that rows by reference name, for their marker lines. Its first run writes nothing: no register.json until the project names, with --adopt, once for
 each, the rules whose marker line it has put in its file. Then it writes register.json alone, the template's with a row
 by reference for each rule named and no other, and only when that register passes check_register.py: a copied
 ratchet.register-on-top, which an earlier adopt mode wrote as the floor, says that the register lists every rule in
@@ -422,23 +419,6 @@ def adopt_mode(root):
     if os.path.lexists(os.path.join(root, WORKFLOW)) or names_instructions(root):
         return []
     return own_instructions(root)
-
-
-def written_by_init(root, name):
-    """Whether the instruction file name is, below its title line, byte for byte the AGENTS.md that init.py writes, with
-    or without --solo: what a start before 0.11, which wrote AGENTS.md first, left when it stopped before the workflow.
-    The one read of an instruction file in adopt mode, as bytes, and only for this note: it chooses nothing else."""
-    if name != "AGENTS.md":
-        return False
-    bodies = [agents_text("x", solo).split("\n", 1)[1].encode("utf-8") for solo in (False, True)]
-    title = (AGENTS_TITLE % "").encode("utf-8")
-    try:
-        with open(os.path.join(root, name), "rb") as handle:
-            data = handle.read(len(title) + NAME_LENGTH + max(len(body) for body in bodies) + 2)
-    except OSError:
-        return False
-    first, _, rest = data.partition(b"\n")
-    return first.startswith(title) and rest in bodies
 
 
 def workflow_text_from(text, commit):
@@ -915,8 +895,7 @@ def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
     --adopt writes it; how to record a rule as built; the copy of checks/run_pinned.py, which keeps the copy only when it
     is the blob runner names, and the one step that runs it after hashing it the same way, with
     the job's permissions and the checkout's credentials, or the line for a local check script; and the line for
-    .gitignore when it does not ignore .ratchet. It reads no instruction file for any of it: only written_by_init reads
-    AGENTS.md, for its own note (review of 58ca014)."""
+    .gitignore when it does not ignore .ratchet. It reads no instruction file for any of it."""
     stands_in, version = files[0], ratchet["version"]
     adopted = adopted_keys(standing) or []
     keys = [key for key in ratchet["start"] if key not in adopted]
@@ -991,10 +970,6 @@ def adopt_notes(root, files, standing, ratchet, commit, missing, runner):
     if os.path.lexists(os.path.join(root, "REGISTER.md")):
         lines += ["", "init: REGISTER.md is left as it is and not checked in adopt mode: the check the step runs, "
                       "check_register.py register.json, does not read it"]
-    if written_by_init(root, stands_in):
-        lines += ["", "init: AGENTS.md is, below its title, the file init.py writes. A start before Ratchet 0.11 wrote it "
-                      "first, and one that stopped before the workflow is taken for adopt mode now. If that is how it "
-                      "came, delete AGENTS.md and register.json and run init.py again for the start"]
     action = gitignore_plan(os.path.join(root, ".gitignore"))[0]
     if action != "unchanged":
         lines += ["", "init: .gitignore does not ignore .ratchet. Add the line %s to it, so the clone is not committed" % IGNORE]

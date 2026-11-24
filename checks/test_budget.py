@@ -265,7 +265,7 @@ class RepoBudget(RepoCopy, unittest.TestCase):
                 self.assertIn("Outside the core there are %d experimental rules, under a cap of %d" % (count, CAP), read(name))
 
 
-class Triage(RepoCopy, unittest.TestCase):
+class Triage(RepoCopy, FixtureTest):
     """D-2026-11-20-proposal-triage, choices 4 and 5, as they stand in ratchet.json and in this repo's register."""
 
     def setUp(self):
@@ -296,9 +296,10 @@ class Triage(RepoCopy, unittest.TestCase):
         self.assertTrue(own["repo.version"]["ratchet"].startswith("Check: `checks/released_text.py`"))
 
     def released(self, version):
-        """The bytes of ratchet.json as it stood at the tag of version, from the fixtures of upgrade.py."""
-        with open(os.path.join(ROOT, "checks", "fixtures", "upgrade", "released", version, "ratchet.json"), "rb") as handle:
-            return handle.read()
+        """The bytes of ratchet.json as it stood at the tag of version, 0.3 or 0.9, kept under the fixtures of upgrade.py
+        for these tests when its registers of 0.3 to 0.9 left (D-2026-11-23-support-from-0-12). Loaded as a fixture, so
+        that expected_tests.py sees that a test uses it."""
+        return self.fixture_bytes("upgrade/released/%s/ratchet.json" % version)
 
     def test_the_control_rooms_cleaned_out_rules_are_gone_and_their_lines_stand_in_the_handbook(self):
         # D-2026-11-22-second-redraw, step 2 of the migration: a handbook line is added in the PR in which its rule leaves.

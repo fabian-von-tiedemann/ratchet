@@ -70,11 +70,11 @@ class AgeForm(FixtureTest):
                 self.assertTrue(output.startswith("generate: "), "the data file fails before anything is generated: %s" % output)
                 self.assertNotIn("Traceback", output)
 
-    def test_an_older_ratchet_json_may_lack_since(self):
-        # The ratchet.json of a version before 0.10, which checks/upgrade.py reads, has no since.
+    def test_an_older_ratchet_json_must_have_since(self):
+        # Every version from 0.12 on gives each experimental rule since, so the reader of an older ratchet.json, which
+        # checks/upgrade.py reads, fails without it as this one does (D-2026-11-23-support-from-0-12).
         data = registry.parse_json(self.fixture_bytes("age/form/since-missing.json"))
-        self.assertEqual(registry.validate(data, None, older=True), [])
-        self.assertTrue(registry.validate(data, None))
+        self.assertIn(FAILING["since-missing"], registry.validate(data, None, older=True))
 
 
 class Age(FixtureTest):
