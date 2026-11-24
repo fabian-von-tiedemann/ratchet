@@ -7,7 +7,8 @@ Every step after the three commands under [Start here](README.md#start-here) in 
 | Your repo | Path |
 |---|---|
 | Has no instruction file | [A new repo](#a-new-repo) |
-| Has an instruction file of its own, such as `AGENTS.md` or `CLAUDE.md` | [A repo with an instruction file of its own](#a-repo-with-an-instruction-file-of-its-own) |
+| Has an instruction file of its own: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md` or `.claude/CLAUDE.md` | [A repo with an instruction file of its own](#a-repo-with-an-instruction-file-of-its-own) |
+| Has rules in another form, such as `.cursor/rules` | Not `init.py` yet: [TRYING.md](TRYING.md) |
 
 ## A new repo
 

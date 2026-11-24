@@ -1606,7 +1606,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
 
     def test_a_block_that_the_readme_no_longer_holds_fails_there(self):
         self.append("README.md", "\n<!-- generated:count -->\n<!-- /generated -->\n")
-        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: principle-list. Missing: none. "
+        self.assert_check_fails("README.md: must hold exactly these generated blocks, once each: principle-list, values. Missing: none. "
                                 "Not expected: count")
 
     def test_a_block_added_twice_fails(self):

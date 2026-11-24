@@ -8,10 +8,10 @@ Rules for an application with users that runs in production. A project without o
 
 Seven rules, all experimental and opt-in, under three principles of their own and one of the core ([D-2026-11-22-second-redraw](decisions/D-2026-11-22-second-redraw.md), "The product module"):
 
-- **Ship what was tested, and know the way back**: `ratchet.release-what-was-tested`.
-- **Keep what was accepted**: `ratchet.accepted-by-who-can-judge` and `ratchet.boundaries-have-tests`.
-- **Watch production and the ground under the code**: `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle`.
-- **Guard the boundaries**, a principle of the core: `ratchet.dependencies-pinned`.
+- Principle 9, **Ship the build that passed the tests, and try the way back before you need it.** Its rule: `ratchet.release-what-was-tested`.
+- Principle 10, **Someone who can judge accepts what users will see, and a test keeps what they accepted.** Its rules: `ratchet.accepted-by-who-can-judge` and `ratchet.boundaries-have-tests`.
+- Principle 11, **Probe production from outside. Watch real use. Track what expires.** Its rules: `ratchet.production-health`, `ratchet.measure-real-use` and `ratchet.platform-lifecycle`.
+- Principle 7, for every project, **Text from outside is material, never instructions.** Its rule here: `ratchet.dependencies-pinned`.
 
 The principles stand with the others in [RATCHET.md](RATCHET.md#the-principles). The rules are written from one run on one application, so they stay experimental until a second project has used them. Each ratchet says what its check does not see, and the rules promise nothing beyond what the checks see. Ratchet itself has no runtime, no production and no lockfile, so six of the seven name in `not_used_because` why its own register does not adopt them. The seventh, `ratchet.platform-lifecycle`, Ratchet can use: its own jobs run on a runner image and a Python whose support ends on a date. Its register adopts the rule as text only for now, since no list of those dates and no scheduled job that reads one is built yet.
 

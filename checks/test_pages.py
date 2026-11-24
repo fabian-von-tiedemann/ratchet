@@ -37,15 +37,17 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   background in it has a contrast ratio of at least 4.5 (WCAG 2, level AA). No other hex color is written.
 - every command on the page, a line of a <pre><code> block, is a line of a code block marked sh in README.md
 - each step of how Ratchet works, an item of the one <ol class="flow">, links to where the repo shows it
-- the list of the principles, the one <ol id="principles">, holds the titles of the principles in ratchet.json, in
-  order, as items that hold only text. The test reads the list itself, and does not ask generate.py.
+- the story and the values, the one <section id="values">, show the story, the line that leads to the values, each
+  value and the line that weighs them, as values.json holds them, in order, with the part each marks. The test reads
+  the section itself, and does not ask generate.py.
 
 Three parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
 the newest version with a date in CHANGELOG.md, as the command in README.md does; the line that counts the rules
-of the core, from ratchet.json; and the items of the list of the principles, from ratchet.json. So a release that
-moves the README, a rule that changes kind, and a principle that is added, removed, moved or renamed each move the
-page when generate.py is run, and generate.py --check fails until it is. The tests of all three are here too, and
-they read each line as generate.py does, after the spaces that indent it.
+of the core, from ratchet.json; and the story and the values, from values.json. So a release that moves the README,
+a rule that changes kind, and a value that is changed each move the page when generate.py is run, and
+generate.py --check fails until it is. The tests of all three are here too, and they read each line as generate.py
+does, after the spaces that indent it. The principles are a link to RATCHET.md, not a list on the page
+(D-2026-11-23-values-and-principles).
 
 What the test does not claim: that a browser shows the page or the figure as intended, that the figure's labels fit
 where they are drawn or that each lies on the background it is checked against, that a named color is legible (it
@@ -592,20 +594,21 @@ class Page(RepoCopy, unittest.TestCase):
         released = generate.changelog_context(self.copy)[1]
         for words in (FETCH % released, "python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py</code>",
                       REPO + "/releases/latest", REPO + "/blob/main/LICENSE", 'href="%s"' % REPO,
-                      "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<h2 id="why">Why it exists</h2>',
-                      '<h2 id="how-it-works">How it works</h2>', '<h2 id="the-principles">The principles</h2>',
-                      REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md",
+                      "<h2 id=\"start-here\">Start here</h2>", "prefers-color-scheme: dark", '<section id="values" class="values">',
+                      '<h2 id="how-it-works">How it works</h2>', REPO + "/blob/main/RATCHET.md#the-principles",
+                      REPO + "/blob/main/README.md", REPO + "/blob/main/STARTING.md", REPO + "/blob/main/TRYING.md",
                       '<a class="button" href="#start-here">Start here</a>'):
             self.assertIn(words, text)
 
     def test_the_page_is_short(self):
-        # One page a newcomer reads in a minute: under 450 words outside the CSS, and five headings.
+        # One page a newcomer reads in a minute: under 400 words outside the CSS, and three headings. The cap was 450
+        # before the page was rewritten short (D-2026-11-23-values-and-principles).
         text = self.page()
         body = re.sub(r"<[^>]+>", " ", text[text.index("</style>"):])
-        self.assertLess(len(body.split()), 450)
+        self.assertLess(len(body.split()), 400)
         reader = PageReader()
         reader.feed(text)
-        self.assertEqual([level for _, level in reader.headings], [1, 2, 2, 2, 2])
+        self.assertEqual([level for _, level in reader.headings], [1, 2, 2])
 
     def test_no_page_fails(self):
         shutil.rmtree(os.path.join(self.copy, DOCS))
@@ -758,7 +761,7 @@ class Page(RepoCopy, unittest.TestCase):
 
     def test_an_id_twice_on_the_page_fails(self):
         # The second start-here is one a link names, so the link would lead to either.
-        self.change('<h2 id="why">', '<h2 id="start-here">')
+        self.change('<h2 id="how-it-works">', '<h2 id="start-here">')
         self.assert_fails("ids that stand more than once: start-here")
 
     def test_an_element_left_open_or_closed_out_of_order_fails(self):
@@ -1092,8 +1095,8 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
 
 # The line on the page that counts the rules of the core, as the test expects it. It is spelled out here and counted
 # from ratchet.json below, not taken from generate.py, so the test does not compute it the way the generator does.
-COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d name a check and '
-              '%d are text only.</p>')
+COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> the core has %d rules. %d describe a check '
+              'and %d are text only. Ratchet ships a reference check for %d of the %d, and you build the others.</p>')
 
 
 def count_line(root):
@@ -1101,7 +1104,8 @@ def count_line(root):
         data = json.load(handle)
     core = [rule for rule in data["rules"] if rule["status"] == "core"]
     enforced = [rule for rule in core if rule["enforcement"] == "enforced"]
-    return COUNT_LINE % (len(core), len(enforced), len(core) - len(enforced))
+    shipped = [rule for rule in enforced if rule.get("reference_check")]
+    return COUNT_LINE % (len(core), len(enforced), len(core) - len(enforced), len(shipped), len(enforced))
 
 
 def rewrite_ratchet(root, change):
@@ -1129,7 +1133,8 @@ class PageCount(RepoCopy, unittest.TestCase):
 
     def test_the_page_gives_the_count_of_ratchet_json(self):
         self.assertEqual(lines_that_hold(self.page(), 'id="count"'), [count_line(self.copy)])
-        self.assertIn("the core has 19 rules. 13 name a check and 6 are text only.", count_line(self.copy))
+        self.assertIn("the core has 19 rules. 13 describe a check and 6 are text only. Ratchet ships a reference check for 1 "
+                      "of the 13, and you build the others.", count_line(self.copy))
 
     def test_a_rule_that_gets_a_check_fails_until_generate_moves_the_page(self):
         before = self.page()
@@ -1145,7 +1150,7 @@ class PageCount(RepoCopy, unittest.TestCase):
         rewrite_ratchet(self.copy, give_a_check)
         new = count_line(self.copy)
         self.assertNotEqual(old, new)
-        self.assertIn("14 name a check and 5 are text only.", new)
+        self.assertIn("14 describe a check and 5 are text only. Ratchet ships a reference check for 1 of the 14,", new)
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
         code, output = run("generate.py", root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
@@ -1157,7 +1162,7 @@ class PageCount(RepoCopy, unittest.TestCase):
 
     def test_a_number_edited_by_hand_fails(self):
         line = count_line(self.copy)
-        self.write_page(self.page().replace(line, line.replace("13 name a check", "19 name a check"), 1))
+        self.write_page(self.page().replace(line, line.replace("13 describe a check", "19 describe a check"), 1))
         self.assert_check_fails("docs/index.html: generated text is out of date or was edited by hand")
 
     def test_an_indented_count_line_passes(self):
@@ -1171,7 +1176,8 @@ class PageCount(RepoCopy, unittest.TestCase):
         for new in ("", line + "\n" + line, line + " And more.", line.replace("<strong>", "<strong>about ", 1),
                     line.replace('<p id="count" class="count">', '<p class="count">\n<span id="count"></span>', 1),
                     line + '\n<p id="count">23 rules</p>',
-                    line.replace("13 name a check", "thirteen name a check")):
+                    line.replace("13 describe a check", "thirteen describe a check"),
+                    line.replace(" of the 13,", " of the 13 checks,")):
             with self.subTest(new=new):
                 self.setUp()
                 self.write_page(self.page().replace(line, new, 1))
@@ -1222,92 +1228,81 @@ class PageSteps(RepoCopy, unittest.TestCase):
     def test_a_step_whose_only_link_leads_to_the_page_fails(self):
         # A link to an id on the page is allowed, but it does not show where this repo does the step.
         self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet\'s own register</a>',
-                    '<a href="#why">Why</a>')
+                    '<a href="#start-here">Start here</a>')
         self.assert_fails("a step that links nowhere in this repo")
         self.assertEqual(len(page_problems(self.copy)), 1)
 
 
-# The list of the principles: the one <ol> with this id, whose items are the titles of the principles, as text.
-PRINCIPLES = "principles"
-# Every void element of HTML. One has no end tag, so the reader counts none of them as opening or closing the list.
-HTML_VOID = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"))
+# The story and the values: the one <section> with this id. Each paragraph and item in it is read as text, with the
+# part of it that stands in <strong> or <em>.
+VALUES = "values"
 
 
-class ListReader(html.parser.HTMLParser):
-    """Reads the list of the principles: each item of it, and what is wrong with its form."""
+class ValuesReader(html.parser.HTMLParser):
+    """Reads the story and the values: each <p> and <li> in the one <section id="values">, as (tag, class, text,
+    [(mark, text)]), where a mark is a <strong> or an <em> in it. The text is the words joined by single spaces."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.lists, self.items, self.in_list, self.problems, self.text = 0, [], 0, [], None
+        self.sections, self.depth, self.blocks, self.block, self.marks = 0, 0, [], None, []
 
     def handle_starttag(self, tag, attrs):
-        if self.in_list:
-            if tag in HTML_VOID:
-                self.problems.append("line %d: the list of the principles holds a <%s>, a void element, and its items hold only"
-                                     " text" % (self.getpos()[0], tag))
-                return
-            self.in_list += 1
-            if tag == "li" and self.in_list == 2:
-                self.text = []
-            elif self.in_list == 2:
-                self.problems.append("line %d: the list of the principles holds a <%s>, and holds only <li>" % (self.getpos()[0], tag))
-            else:
-                self.problems.append("line %d: an item of the list of the principles holds a <%s>, and holds only text"
-                                     % (self.getpos()[0], tag))
-        elif tag == "ol" and dict(attrs).get("id") == PRINCIPLES:
-            self.lists, self.in_list = self.lists + 1, 1
+        if self.depth:
+            self.depth += 1
+            if tag in ("p", "li"):
+                self.block = [tag, dict(attrs).get("class"), [], []]
+            elif tag in ("strong", "em") and self.block is not None:
+                self.marks.append([tag, []])
+        elif tag == "section" and dict(attrs).get("id") == VALUES:
+            self.sections, self.depth = self.sections + 1, 1
 
     def handle_endtag(self, tag):
-        if not self.in_list:
+        if not self.depth:
             return
-        if tag in HTML_VOID:
-            self.problems.append("line %d: the list of the principles holds a </%s>, which a browser reads as a void element,"
-                                 " and its items hold only text" % (self.getpos()[0], tag))
-            return
-        self.in_list -= 1
-        if tag == "li" and self.in_list == 1 and self.text is not None:
-            self.items.append(" ".join("".join(self.text).split()))
-            self.text = None
-
-    def handle_startendtag(self, tag, attrs):
-        # <br/> is one problem, not two: in the list, a void element is neither opened nor closed.
-        self.handle_starttag(tag, attrs)
-        if not (self.in_list and tag in HTML_VOID):
-            self.handle_endtag(tag)
+        self.depth -= 1
+        if tag in ("strong", "em") and self.marks:
+            mark, text = self.marks.pop()
+            self.block[3].append((mark, " ".join("".join(text).split())))
+        elif tag in ("p", "li") and self.block is not None:
+            tag, name, text, marks = self.block
+            self.blocks.append((tag, name, " ".join("".join(text).split()), marks))
+            self.block = None
 
     def handle_data(self, data):
-        if self.in_list == 1 and data.strip():
-            self.problems.append("line %d: the list of the principles holds text outside an <li>, and holds only <li>"
-                                 % self.getpos()[0])
-        if self.text is not None:
-            self.text.append(data)
+        if self.block is not None:
+            self.block[2].append(data)
+        for mark in self.marks:
+            mark[1].append(data)
 
 
-def principle_problems(root):
-    """Why the list of the principles on the page does not name the principles in ratchet.json, in order.
+def values_problems(root):
+    """Why the story and the values on the page are not those of values.json, in order.
 
-    The page holds one <ol id="principles">, of <li> only, and its items, which hold only text, are the titles, in
-    order. So a principle that is added, removed, moved or renamed in ratchet.json fails until the list follows, and
-    an item edited by hand fails as well. generate.py writes the items, and this reads them without asking it.
+    The page holds one <section id="values">. In it stand the story, in <em>, the line that leads to the values, in
+    <strong>, each value with the side it prefers in <strong> and " over " the other, and the line that weighs them.
+    So a value that is changed in values.json fails until the page follows, and a line edited by hand fails as well.
+    generate.py writes the section, and this reads it without asking it.
     """
     with open(os.path.join(root, DOCS, PAGE), encoding="utf-8") as handle:
-        reader = ListReader()
+        reader = ValuesReader()
         reader.feed(handle.read())
-    if reader.lists != 1:
-        return ['the page holds %d lists of the principles, an <ol id="%s">, and must hold one' % (reader.lists, PRINCIPLES)]
-    if reader.problems:
-        return reader.problems
-    titles = [principle["title"] for principle in registry.load(os.path.join(root, "ratchet.json"))["principles"]]
-    if reader.items != titles:
-        return ["the list of the principles is %r, and the principles in ratchet.json, in order, are %r" % (reader.items, titles)]
+    if reader.sections != 1:
+        return ['the page holds %d sections of the story and the values, a <section id="%s">, and must hold one' % (reader.sections, VALUES)]
+    with open(os.path.join(root, "values.json"), encoding="utf-8") as handle:
+        data = json.load(handle)
+    expected = [("p", "story", data["story"], [("em", data["story"])]), ("p", "lead", data["lead"], [("strong", data["lead"])])]
+    expected += [("li", None, "%s over %s" % (value["prefer"], value["over"]), [("strong", value["prefer"])]) for value in data["values"]]
+    expected.append(("p", "balance", data["balance"], []))
+    if reader.blocks != expected:
+        return ["the story and the values on the page are %r, and values.json, in order, gives %r" % (reader.blocks, expected)]
     return []
 
 
-class PagePrinciples(RepoCopy, unittest.TestCase):
-    """The list of the principles names the principles in ratchet.json, one per item, in order, and generate.py writes it."""
+class PageValues(RepoCopy, unittest.TestCase):
+    """The story and the values on the page are those of values.json, in order, and generate.py writes them."""
 
     stale = "docs/index.html: generated text is out of date or was edited by hand"
-    form = "docs/index.html: the list of the principles must be the line"
+    form = "docs/index.html: the story and the values must be the line"
 
     def page(self):
         with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
@@ -1316,144 +1311,103 @@ class PagePrinciples(RepoCopy, unittest.TestCase):
     def change(self, old, new):
         Page.change(self, old, new)
 
-    def assert_list_fails(self, *message):
-        problems = principle_problems(self.copy)
+    def assert_values_fail(self, *message):
+        problems = values_problems(self.copy)
         self.assertTrue(any(all(part in problem for part in message) for problem in problems), "%r not in %r" % (message, problems))
 
-    def test_the_list_names_the_ten_principles_in_order(self):
-        self.assertEqual(principle_problems(ROOT), [])
-        self.assertEqual(principle_problems(self.copy), [])
-        reader = ListReader()
+    def test_the_page_shows_the_four_values_in_order(self):
+        self.assertEqual(values_problems(ROOT), [])
+        self.assertEqual(values_problems(self.copy), [])
+        reader = ValuesReader()
         reader.feed(self.page())
-        # Seven for every project, then the three of the product module, as the README lists them.
-        self.assertEqual(len(reader.items), 10)
-        self.assertEqual(reader.items[0], "Keep one place")
-        self.assertEqual(reader.items[6], "Subtract first")
-        self.assertEqual(reader.items[-1], "Watch production and the ground under the code")
+        # D-2026-11-23-values-and-principles: the story, "We value:", four values and the line that weighs them.
+        self.assertEqual([block[2] for block in reader.blocks][1:6], [
+            "We value:", "Checks that catch mistakes over instructions that warn about them",
+            "Written decisions over remembered conversations", "Shown results over reported success",
+            "Independent review over self-review"])
+        self.assertTrue(reader.blocks[0][2].startswith("Agile was written for a team of people."))
 
-    def test_a_principle_renamed_in_ratchet_json_fails_until_generate_moves_the_page(self):
+    def test_a_value_changed_in_values_json_fails_until_generate_moves_the_page(self):
         before = self.page()
-        self.edit("ratchet.json", '"title": "Subtract first"', '"title": "Subtract before you add"')
-        self.assert_list_fails("the list of the principles is")
-        self.assert_check_fails(self.stale)
+        self.edit("values.json", '"prefer": "Shown results"', '"prefer": "Shown runs"')
+        self.assert_values_fail("the story and the values on the page are")
+        code, output = run("generate.py", "--check", root=self.copy)
+        self.assertEqual(code, 1, output)
+        for name in ("docs/index.html", "README.md", "RATCHET.md"):
+            self.assertIn("%s: generated text is out of date or was edited by hand" % name, output)
         code, output = run("generate.py", root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
         self.assertIn("wrote docs/index.html", output)
-        self.assertEqual(self.page(), before.replace("<li>Subtract first</li>", "<li>Subtract before you add</li>"))
-        self.assertEqual(principle_problems(self.copy), [])
+        self.assertEqual(self.page(), before.replace("<li><strong>Shown results</strong>", "<li><strong>Shown runs</strong>"))
+        self.assertEqual(values_problems(self.copy), [])
         self.assertEqual(page_problems(self.copy), [])
 
-    def test_a_title_is_written_as_text(self):
-        # A title holds no "<", by the characters a value may hold. An "&" is written as a character reference.
-        import generate as generator
-        data = {"principles": [{"title": "Keep one place & no other"}]}
-        self.assertEqual(generator.page_principles(data), ["<li>Keep one place &amp; no other</li>"])
-
-    def test_a_principle_added_to_ratchet_json_fails(self):
-        def add(data):
-            # A principle stands over at least one rule, so a rule moves under it from a principle that keeps another.
-            keys = [rule["principle"] for rule in data["rules"]]
-            rule = next(rule for rule in data["rules"] if keys.count(rule["principle"]) > 1)
-            rule["principle"] = "principle.example"
-            data["principles"].append({"key": "principle.example", "title": "An example", "text": "Is this an example?"})
-        rewrite_ratchet(self.copy, add)
-        self.assert_list_fails("the list of the principles is")
-        self.assert_check_fails(self.stale)
-
-    def test_a_principle_removed_from_ratchet_json_fails(self):
-        def remove(data):
-            # Every rule names a principle, so the rules under the last one move under the first.
-            gone = data["principles"].pop()
-            for rule in data["rules"]:
-                if rule["principle"] == gone["key"]:
-                    rule["principle"] = data["principles"][0]["key"]
-        rewrite_ratchet(self.copy, remove)
-        self.assert_list_fails("the list of the principles is")
-        self.assert_check_fails(self.stale)
-
-    def test_two_principles_swapped_in_ratchet_json_fail(self):
-        def swap(data):
-            data["principles"][0], data["principles"][1] = data["principles"][1], data["principles"][0]
-        rewrite_ratchet(self.copy, swap)
-        self.assert_list_fails("the list of the principles is")
-        self.assert_check_fails(self.stale)
-
-    def test_an_item_of_the_list_edited_moved_or_left_out_fails(self):
-        for old, new in (("<li>Subtract first</li>", "<li>Add more</li>"), ("<li>Subtract first</li>\n", ""),
-                         ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep one place</li>"),
-                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries, mostly</li>")):
+    def test_a_line_edited_moved_or_left_out_on_the_page_fails(self):
+        for old, new in (("<strong>Shown results</strong>", "<strong>Shown logs</strong>"),
+                         ("<li><strong>Shown results</strong> over reported success</li>\n", ""),
+                         ("</ul>\n<p class=\"balance\">", "</ul>\n<p class=\"balance\">x</p>\n<p class=\"balance\">"),
+                         ("<em>Agile was written", "<em>Scrum was written")):
             with self.subTest(new=new):
                 self.setUp()
                 self.change(old, new)
-                self.assert_list_fails("the list of the principles is")
+                self.assert_values_fail("the story and the values on the page are")
                 self.assert_check_fails(self.stale)
 
-    def test_an_item_that_holds_more_than_text_fails(self):
-        self.change("<li>Guard the boundaries</li>", "<li>Guard <em>the</em> boundaries</li>")
-        self.assert_list_fails("an item of the list of the principles holds a <em>, and holds only text")
-        self.assert_check_fails(self.form)
-
-    def test_a_list_of_another_form_fails_and_generate_writes_nothing(self):
-        for old, new, message in (('<ol id="principles">', '<ol id="other">', "lists of the principles"),
-                                  ('<ol id="principles">', '<ol id="principles" class="wide">', None),
-                                  ('<ol id="principles">', '<ol id="principles">\n<ol id="principles">', "holds a <ol>, and holds only <li>"),
-                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<p>x</p>", "holds only <li>"),
-                                  ("<li>Keep one place</li>", "<li>Keep one place</li>\n<li>Keep\none place</li>", None),
-                                  # Without the line that closes the list, the next </ol> on the page is not its end: what
-                                  # stands before it is not an item, and nothing is written over.
-                                  ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>", None)):
+    def test_a_section_of_another_form_fails_and_generate_writes_nothing(self):
+        start = '<section id="values" class="values">'
+        for old, new in ((start, '<section id="other" class="values">'),
+                         (start, '<section id="values" class="values wide">'),
+                         (start, start + "\n" + start),
+                         ("<ul class=\"manifesto\">", "<ul class=\"manifesto\">\n<p>x</p>"),
+                         ("<li><strong>Shown results</strong> over reported success</li>",
+                          "<li><strong>Shown results</strong> over\nreported success</li>"),
+                         ('<p class="lead">', '<p class="lead" id="values">'),
+                         # Markup the generator never writes, added inside a line it writes: a link in the line that
+                         # weighs the values, a second paragraph after the story on its line, an em in the lead. Each
+                         # fails, and write mode leaves it as it is (round 1 of #143).
+                         ("The left is for when it doesn't.</p>",
+                          "The left is for when it doesn't. <a href=\"https://github.com/fabian-von-tiedemann/ratchet\">More</a></p>"),
+                         ("with confidence.</em></p>", "with confidence.</em></p><p>KEEP THIS</p>"),
+                         ("<strong>We value:</strong></p>", "<strong>We value:</strong> <em>all of it</em></p>"),
+                         ("<li><strong>Written decisions</strong>", "<li><strong>Written</strong> <strong>decisions</strong>"),
+                         # A list item without " over ", which the generator never writes (round 2 of #143).
+                         ("</ul>", "<li><strong>Handwritten note</strong></li>\n</ul>"),
+                         # A line of a form the generator writes, with a reference it never writes (round 3 of #143).
+                         ("</ul>", "</ul>\n<p class=\"balance\">Copyright &copy; contributors</p>"),
+                         # The same with a character values.json refuses, which the generator never writes (round 4).
+                         ("</ul>", "</ul>\n<p class=\"balance\">Copyright \u00a9 contributors</p>")):
             with self.subTest(new=new):
                 self.setUp()
                 before = self.page().replace(old, new, 1)
                 self.change(old, new)
-                if message:
-                    self.assert_list_fails(message)
                 self.assert_check_fails(self.form)
                 code, output = run("generate.py", root=self.copy, cwd=self.copy)
                 self.assertEqual(code, 1, output)
                 self.assertNotIn("wrote docs/index.html", output)
                 self.assertEqual(self.page(), before)
-
-    def test_an_indented_list_passes(self):
+        # Without the line that closes the section, the next </section> on the page is not its end: what stands before
+        # it is not a line the generator writes, and nothing is written over.
+        self.setUp()
         text = self.page()
-        start = text.index('<ol id="principles">')
-        end = text.index("</ol>", start) + len("</ol>")
+        end = text.index("</section>", text.index(start))
+        self.change(text[end:end + len("</section>\n")], "")
+        self.assert_check_fails(self.form)
+
+    def test_an_indented_section_passes(self):
+        text = self.page()
+        start = text.index('<section id="values" class="values">')
+        end = text.index("</section>", start) + len("</section>")
         self.change(text[start:end], "\n".join("  " + line for line in text[start:end].split("\n")))
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
-        self.assertEqual(principle_problems(self.copy), [])
+        self.assertEqual(values_problems(self.copy), [])
 
-    def test_text_in_the_list_outside_an_item_fails(self):
-        # Words straight in the <ol> show on the page as part of the list, and are not an item the test compares.
-        for old, new in (("<li>Keep one place</li>", "<li>Keep one place</li>\nand one more"),
-                         ('<ol id="principles">', '<ol id="principles">Ship it'),
-                         ("<li>Watch production and the ground under the code</li>\n</ol>", "<li>Watch production and the ground under the code</li>\n&#83;hip it</ol>")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_list_fails("holds text outside an <li>")
-                self.assert_check_fails(self.form)
-
-    def test_a_void_element_in_the_list_fails_and_leaves_the_count_right(self):
-        # A <br> has no end tag. Counted as opened, it would leave the reader one level deep, so that the next <li> was
-        # read as nested and a later <p> as inside an item. The reader names the void element and does not count it.
-        for old, new in (("<li>Guard the boundaries</li>", "<li>Guard the<br>boundaries</li>"),
-                         ("<li>Guard the boundaries</li>", "<li>Guard the<br/>boundaries</li>"),
-                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries</li><hr>"),
-                         ("<li>Guard the boundaries</li>", "<li>Guard the boundaries</br></li>")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_list_fails("void element", "and its items hold only text")
-                self.assert_check_fails(self.form)
-        self.setUp()
-        self.change("<li>Guard the boundaries</li>", "<li>Guard the<br>boundaries</li>")
-        self.change("<li>Subtract first</li>", "<li>Subtract first</li>\n<p>x</p>")
-        self.assert_list_fails("holds a <p>, and holds only <li>")
-        reader = ListReader()
-        reader.feed(self.page())
-        self.assertEqual(reader.in_list, 0)
-        self.assertEqual(len(reader.items), 10)
+    def test_a_value_is_written_as_text(self):
+        # A value may hold "<" and "&", by the characters a value may hold. Each is written as a character reference.
+        lines = generate.page_values({"story": "A & B", "lead": "<b>", "values": [{"prefer": "C < D", "over": "E & F"}], "balance": "G"})
+        self.assertEqual(lines, ['<p class="story"><em>A &amp; B</em></p>', '<p class="lead"><strong>&lt;b&gt;</strong></p>',
+                                 '<ul class="manifesto">', "<li><strong>C &lt; D</strong> over E &amp; F</li>", "</ul>",
+                                 '<p class="balance">G</p>'])
 
 
 class PageMotion(RepoCopy, unittest.TestCase):
