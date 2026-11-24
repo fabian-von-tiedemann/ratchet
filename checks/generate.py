@@ -1026,6 +1026,16 @@ def page_count(data):
     return PAGE_COUNT_LINE % (core["rules"], core["enforced"], core["text_only"], core["reference_checks"], core["enforced"])
 
 
+def page_value_line(line):
+    """Whether a line is one the generator can write between the markers: of one of the forms PAGE_VALUE_LINE, and with
+    text that html.escape writes as it stands, so that a reference such as "&copy;", which the generator never writes,
+    makes a line one it does not write (round 3 of #143)."""
+    if not PAGE_VALUE_LINE.match(line):
+        return False
+    text = re.sub(r"<[^<>]*>", "\n", line)
+    return all(html.escape(html.unescape(part), quote=False) == part for part in text.split("\n"))
+
+
 def page_values(values):
     """The lines of the landing page between PAGE_VALUES and PAGE_VALUES_END: the story, the line that leads to the
     values, each value, and the line that weighs them, each written as text."""
@@ -1066,7 +1076,7 @@ def page_text(text, released, data, values):
     found = [number for number, each in enumerate(lines) if each.lstrip(" ") == PAGE_VALUES]
     others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
     ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == PAGE_VALUES_END]
-    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not PAGE_VALUE_LINE.match(each.lstrip(" "))) if found and ends else 0
+    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not page_value_line(each.lstrip(" "))) if found and ends else 0
     if (len(found), others, strays) != (1, 0, 0) or not ends:
         problems.append('%s: the story and the values must be the line "%s", once, then lines the generator writes only, then '
                         'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '
