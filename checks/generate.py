@@ -33,10 +33,11 @@ block marked sh, and names the newest version with a date. That version's tag is
 the release run after the merge, so for the minutes that run takes the command names a tag
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
-version in it, so the page fetches what README.md fetches. It writes three more parts of the page:
+version in it, so the page fetches what README.md fetches. It writes four more parts of the page:
 from ratchet.json the line that counts the rules of the core, from values.json the story and
-the values, which stand on the page between two lines of their own, and from sources.json the
-line that names the pinned sources.
+the values, which stand on the page between two lines of their own, from sources.json the
+line that names the pinned sources, and from ratchet.json and values.json the principles, each
+by its title, in order, between two lines of their own (D-2026-11-24-landing-page-pass).
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
@@ -106,6 +107,14 @@ PAGE_SOURCES = re.compile(re.escape(PAGE_SOURCES_LINE).replace("%d", "[0-9]+").r
 PAGE_VALUES, PAGE_VALUES_END = '<section id="values" class="values">', "</section>"
 PAGE_VALUE_LINE = re.compile(r'(?:<p class="story"><em>[^<>]*</em></p>|<p class="lead"><strong>[^<>]*</strong></p>'
                              r'|<p class="balance">[^<>]*</p>|<ul class="manifesto">|</ul>|<li><strong>[^<>]+</strong> over [^<>]+</li>)\Z')
+# The page's principles, from ratchet.json: this line, the lines the generator writes, and the line that closes them.
+# Each principle is an item of a list, by its title, as text. The line from values.json that introduces the principles
+# for production stands before the first of them, whose list starts at its number, and the line on aims stands last.
+# As for the values, every line between the two is of one of the forms PAGE_PRINCIPLE_LINE, so the generator never
+# writes over anything else.
+PAGE_PRINCIPLES, PAGE_PRINCIPLES_END = '<section id="principles" class="principles">', "</section>"
+PAGE_PRINCIPLE_LINE = re.compile(r'(?:<ol>|<ol start="[1-9][0-9]*">|</ol>|<li>[^<>]+</li>'
+                                 r'|<p class="production"><strong>[^<>]+</strong></p>|<p class="aims"><em>[^<>]+</em></p>)\Z')
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -1069,6 +1078,42 @@ def page_values(values):
     return lines + ["</ul>", '<p class="balance">%s</p>' % text(values["balance"])]
 
 
+# Each form of PAGE_PRINCIPLE_LINE that holds a text, with the check of that text: a title as ratchet.json's texts
+# are checked, and a line from values.json as its texts are.
+PAGE_PRINCIPLE_TEXTS = ((re.compile(r"<li>([^<>]+)</li>\Z"), registry.text_problem),
+                        (re.compile(r'<p class="production"><strong>([^<>]+)</strong></p>\Z'), registry.values_text_problem),
+                        (re.compile(r'<p class="aims"><em>([^<>]+)</em></p>\Z'), registry.values_text_problem))
+
+
+def page_principle_line(line):
+    """Whether a line is one the generator can write between the markers of the principles: of one of the forms
+    PAGE_PRINCIPLE_LINE, with a text that html.escape writes as it stands and that its data file may hold."""
+    if not PAGE_PRINCIPLE_LINE.match(line):
+        return False
+    for form, problem in PAGE_PRINCIPLE_TEXTS:
+        found = form.match(line)
+        if found:
+            text = html.unescape(found.group(1))
+            if html.escape(text, quote=False) != found.group(1) or problem(text):
+                return False
+    return True
+
+
+def page_principles(data, values):
+    """The lines of the landing page between PAGE_PRINCIPLES and PAGE_PRINCIPLES_END: the principles in order, each
+    by its title, written as text, in a list. The line from values.json that introduces those for production stands
+    before the first of them, where a new list starts at that principle's number, and the line on aims stands last,
+    as in numbered()."""
+    text = lambda value: html.escape(value, quote=False)
+    product, lines, split = production(data), ["<ol>"], False
+    for number, principle in enumerate(data["principles"], 1):
+        if principle["key"] in product and not split:
+            split = True
+            lines += ["</ol>", '<p class="production"><strong>%s</strong></p>' % text(values["production"]), '<ol start="%d">' % number]
+        lines.append("<li>%s</li>" % text(principle["title"]))
+    return lines + ["</ol>", '<p class="aims"><em>%s</em></p>' % text(values["aims"])]
+
+
 def page_sources(sources):
     """The line of the landing page that names the pinned sources, each name with its license, written as text."""
     names = ["%s (%s)" % (source["name"], source["license"]) for source in sources]
@@ -1101,6 +1146,10 @@ def page_text(text, released, data, values, sources):
 
     The fourth is one line, of the form PAGE_SOURCES, that names the pinned sources from sources.json, with their count
     and their licenses. No other line may hold 'id="sources"'. sources.json must hold a source, since the line names them.
+
+    The fifth is the principles: the line PAGE_PRINCIPLES, once, and every line from it to the next line
+    PAGE_PRINCIPLES_END, which the generator writes from ratchet.json and values.json. Every line between the two is of
+    one of the forms PAGE_PRINCIPLE_LINE, and no other line may hold 'id="principles"'.
     """
     lines = text.split("\n")
     problems = []
@@ -1120,21 +1169,24 @@ def page_text(text, released, data, values, sources):
             continue
         at = found[0]
         lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
-    marker = 'id="values"'
-    found = [number for number, each in enumerate(lines) if each.lstrip(" ") == PAGE_VALUES]
-    others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
-    ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == PAGE_VALUES_END]
-    strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not page_value_line(each.lstrip(" "))) if found and ends else 0
-    if (len(found), others, strays) != (1, 0, 0) or not ends:
-        problems.append('%s: the story and the values must be the line "%s", once, then lines the generator writes only, then '
-                        'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '
-                        "%s, %s after it, and %d lines between that the generator does not write"
-                        % (PAGE, PAGE_VALUES, PAGE_VALUES_END, marker, len(found), others, marker,
-                           "a line that closes them" if ends else "no line that closes them", strays))
-    else:
-        at = found[0]
-        indent = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))]
-        lines[at + 1:ends[0]] = [indent + line for line in page_values(values)]
+    for what, marker, first, last, written, block in (
+            ("the story and the values", 'id="values"', PAGE_VALUES, PAGE_VALUES_END, page_value_line, page_values(values)),
+            ("the principles", 'id="principles"', PAGE_PRINCIPLES, PAGE_PRINCIPLES_END, page_principle_line,
+             page_principles(data, values))):
+        found = [number for number, each in enumerate(lines) if each.lstrip(" ") == first]
+        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
+        ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == last]
+        strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not written(each.lstrip(" "))) if found and ends else 0
+        if (len(found), others, strays) != (1, 0, 0) or not ends:
+            problems.append('%s: %s must be the line "%s", once, then lines the generator writes only, then '
+                            'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '
+                            "%s, %s after it, and %d lines between that the generator does not write"
+                            % (PAGE, what, first, last, marker, len(found), others, marker,
+                               "a line that closes them" if ends else "no line that closes them", strays))
+        else:
+            at = found[0]
+            indent = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))]
+            lines[at + 1:ends[0]] = [indent + line for line in block]
     if problems:
         return None, problems
     return "\n".join(lines), []

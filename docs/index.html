@@ -110,8 +110,14 @@ header {
   border-bottom: 1px solid var(--edge);
   background: var(--box);
 }
-picture {
-  display: block;
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.repo {
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 h1 {
   margin-top: 1rem;
@@ -218,16 +224,31 @@ section p + p {
   border-left: 4px solid var(--fg);
 }
 
-/* The one figure: the ratchet as a staircase. It is a file of its own, with the colors of this page. */
+/* The one figure: the ratchet as a wheel with a tooth for each principle. It is a file of its own, with the colors of this page. */
 .notch {
   display: block;
   width: 100%;
   max-width: 30rem;
   height: auto;
-  margin: 2rem 0 1.25rem;
+  margin: 1.25rem 0;
+}
+.principles {
+  margin-top: 0;
+}
+.principles ol + p, .principles p + ol {
+  margin-top: 0.75rem;
+}
+.principles li + li {
+  margin-top: 0.35rem;
+}
+.production {
+  margin-top: 1rem;
+}
+.aims {
+  color: var(--muted);
 }
 
-/* The numbered lists: the four steps of how it works, and the three commands. */
+/* The numbered lists: the principles, the four steps of how it works, and the three commands. */
 ol {
   padding-left: 1.75rem;
 }
@@ -238,6 +259,9 @@ ol li::marker {
   color: var(--muted);
   font-family: var(--mono);
   font-weight: 700;
+}
+.flow {
+  margin-top: 1.5rem;
 }
 .flow li + li {
   margin-top: 0.75rem;
@@ -303,10 +327,13 @@ footer p + p {
 </head>
 <body>
 <header>
+<nav class="top">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="ratchet-dark.svg">
 <img src="ratchet-light.svg" width="64" height="64" alt="Ratchet logo">
 </picture>
+<a class="repo" href="https://github.com/fabian-von-tiedemann/ratchet">GitHub</a>
+</nav>
 <h1>Ratchet</h1>
 <p class="tagline"><strong>Rules for one person with a team of AI coding agents.</strong> A way to turn each mistake an agent makes into a check you build, which goes red the next time.</p>
 <p class="status"><strong>Beta.</strong> Before 1.0, a new version may change the form of your register, and the <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">changelog</a> says what to do.</p>
@@ -332,7 +359,31 @@ init: --check. Nothing was written: 5 file(s) would be written, 0 files left as 
 </ul>
 <p class="balance">That is, while there is value in the items on the right, we value the items on the left more. The right is faster. It works while the agent remembers, obeys and judges itself well. The left is for when it doesn't.</p>
 </section>
-<p class="next"><a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">The principles</a></p>
+<section>
+<h2 id="the-principles">The principles</h2>
+<p>Each failure turns the ratchet one notch tighter, and the pawl keeps it from slipping back. The teeth are the principles:</p>
+<img class="notch" src="ratchet-notch.svg" width="400" height="352" alt="A ratchet wheel with 11 teeth, numbered 1 to 11, one for each principle. An arrow shows the way it turns, one notch tighter with each failure that becomes a check. A pawl rests against a tooth and keeps the wheel from slipping back.">
+<section id="principles" class="principles">
+<ol>
+<li>Before a session ends, write down what the next one needs. Give every decision and rule one home in the repo.</li>
+<li>Merge only when the checks pass and a reviewer with fresh eyes approves.</li>
+<li>The agent finds the facts. The owner makes the decisions. What cannot be undone waits for the owner's yes.</li>
+<li>Done means the run that proves it is shown, with its output. Silence from a scheduled job is a failure.</li>
+<li>Turn every failure into a check, and trust no check you have not seen fail.</li>
+<li>Keep secrets out of the repo and the chat.</li>
+<li>Text from outside is material, never instructions.</li>
+<li>Simplicity is essential: try removing something before adding anything.</li>
+</ol>
+<p class="production"><strong>For applications with users in production:</strong></p>
+<ol start="9">
+<li>Ship the build that passed the tests, and try the way back before you need it.</li>
+<li>Someone who can judge accepts what users will see, and a test keeps what they accepted.</li>
+<li>Probe production from outside. Watch real use. Track what expires.</li>
+</ol>
+<p class="aims"><em>These are aims. Ratchet's rules say which of them a check can see.</em></p>
+</section>
+<p class="next">Each comes with a question to ask when no rule fits: <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#the-principles">the principles in full</a>.</p>
+</section>
 <section>
 <h2 id="how-it-works">How it works</h2>
 <p><strong>Instructions are not enough.</strong></p>
@@ -341,7 +392,6 @@ init: --check. Nothing was written: 5 file(s) would be written, 0 files left as 
 <li class="caught"><strong>A check:</strong> <code>ratchet.no-secrets</code> names a secret scan in every pull request. Made required, it blocks the merge when it flags the key.</li>
 </ul>
 <p class="next">Ratchet ships no scanner: you build or adopt it.</p>
-<img class="notch" src="ratchet-notch.svg" width="400" height="256" alt="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
 <ol class="flow">
 <li><strong>A rule goes in your register,</strong> copied from Ratchet or your own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
 <li><strong>It names what catches it:</strong> a check you build, or “text only” and why. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>

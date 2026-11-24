@@ -1,4 +1,4 @@
-# D-2026-11-24-landing-page-pass: loosen three style limits of the landing page for its first screen and its trust section
+# D-2026-11-24-landing-page-pass: the landing page's first screen, its trust section and the word "Beta"
 
 - Date: 2026-11-24
 - Decided by: Ratchet's maintainer
@@ -6,24 +6,29 @@
 
 ## Question
 
-Put to the maintainer in the pull request that adds this file, on 2026-11-24. Until the answer below is filled in, this file is a proposal (P).
+Put to the maintainer by the control room on 2026-11-24, in Swedish, after the first head of the pull request that adds this file. As the control room passed it on, with its own elision:
 
-The maintainer asked for a small pass on the landing page, `docs/index.html`, so that more people understand what Ratchet is and take a first step: who it is for, what they get and where it stands, one thing to do, and the trust a visitor needs (license, who is behind it, where questions go). The pass keeps every check of `checks/test_pages.py` that guards what the page may say or load. It needs three of that test's limits on style loosened. May they be loosened as follows? Recommended: yes to all three.
+> **Fyra saker behöver ditt beslut.** Jag rekommenderar ja på alla: 1. **Ordtaket höjs** från under 400 till under 560 ord. Sidan har nu 549. 2. **Sidan får en rubrik till**, så att "Who is behind it" får en egen. 3. **En länk till ärendelistan på GitHub tillåts**, för frågor. 4. **Ratchet beskrivs som "Beta"**, följt av "Before 1.0, a new version may change the form of your register." […] Svara till exempel **"ja på alla fyra"**, eller säg vad du vill ändra.
 
-1. The words. The page had to hold under 400 words outside its CSS. It now holds 549, and the limit becomes under 560. The added words are the line on who it is for and what you get, the line on the status, the sample of what the dry run prints, and the four lines on who is behind it.
-2. The headings. The page had to hold one `h1` and two `h2`. It now holds one `h1` and three `h2`: "Who is behind it" is the third.
-3. The links. A link into the repo could go to the repo, a file or a directory on `main`, a pull request, an issue or the latest release. It may now also go to the list of issues, `/issues`, in that one form, because that is where a question is asked. Nothing links out of the repo, as before.
-
-One exact string of the test changes with them and loosens nothing: the one button reads "Try it on your repo" where it read "Start here". The test now also fails on a second link of the class `button`.
+Translation: Four things need your decision. I recommend yes to all: 1. The word cap is raised from under 400 to under 560 words. The page now has 549. 2. The page gets one more heading, so that "Who is behind it" has its own. 3. A link to the list of issues on GitHub is allowed, for questions. 4. Ratchet is described as "Beta", followed by "Before 1.0, a new version may change the form of your register." […] Answer for example "yes to all four", or say what you want to change.
 
 ## Answer
 
-To be filled in on approval: the control room writes the maintainer's answer here, verbatim, before the pull request is merged.
+> ja på alla fyra. gärna visualisering av en ratchet. kanske med alla primciper? Kan vi ha en github-länk? Är du med så att det syns tydligt? Även om vi inte har några stars än ...
+
+Translation: yes to all four. A visualization of a ratchet would be welcome. Perhaps with all the principles? Can we have a GitHub link? Are you with me, so that it shows clearly? Even though we have no stars yet ...
 
 ## What follows
 
-Proposals (P) until the pull request is merged:
+Decided by the answer:
 
-- `checks/test_pages.py` states the three new limits exactly and fails on a breach of each: 560 words or more, headings other than one `h1` and three `h2`, and a link into the repo of another form, such as `/issues/new` or `/pulls`.
-- The test gains three ties between the top of the page and the repo: "Before 1.0" holds only while the version of `ratchet.json` is below 1.0, "MIT" only while `LICENSE` starts "MIT License", and each line of the sample of the dry run is a line that `checks/init.py --check` prints in an empty repo.
-- The story and the values stand word for word as `values.json` holds them ([D-2026-11-23-values-and-principles](D-2026-11-23-values-and-principles.md)). They moved below the top of the page.
+- `checks/test_pages.py` may hold the page to under 560 words outside its CSS where it held it to under 400, to one `h1` and three `h2` where it held it to two, and may allow a link to the list of issues, `/issues`, in that one form. Nothing links out of the repo, as before.
+- The page says "Beta", followed by "Before 1.0, a new version may change the form of your register".
+
+Proposals (P) until the maintainer has answered them, since the yes covers the four things named and the rest of the answer asks for work without naming a limit:
+
+- The visualization is the page's one figure, a ratchet wheel with a numbered tooth for each principle and a pawl, in place of the staircase. Under it the page lists the title of each principle, in order, as `generate.py` writes them from `ratchet.json`, with the two lines of `values.json` around them. This puts the principles back on the page, where [D-2026-11-23-values-and-principles](D-2026-11-23-values-and-principles.md) had made them a link.
+- That list needs two further loosenings: under 780 words where the answer allowed under 560 (the page has 761), and a fourth `h2`, "The principles".
+- The GitHub link stands at the top of the page, opposite the logo, as the word "GitHub", with no count of stars and no mark: the page may hold no inline SVG, and a second file in `docs/` would need a strict reader of its own.
+- The test gains ties between the page and the repo: "Before 1.0" holds only while the version of `ratchet.json` is below 1.0, "MIT" only while `LICENSE` starts "MIT License", each line of the sample of the dry run is a line that `checks/init.py --check` prints in an empty repo, the principles on the page are those of `ratchet.json`, and the figure has a tooth for each.
+- The story and the values stand word for word as `values.json` holds them. They moved below the top of the page.
