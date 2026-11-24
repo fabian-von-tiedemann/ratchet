@@ -266,14 +266,14 @@ footer p + p {
 <p><strong>Instructions are not enough.</strong></p>
 <ul class="example">
 <li><strong>An instruction:</strong> <code>AGENTS.md</code> says “Never commit secrets.” An agent commits a key anyway.</li>
-<li class="caught"><strong>A check:</strong> <code>ratchet.no-secrets</code> names a secret scan in every pull request. Made required, it fails the pull request, and the key never reaches <code>main</code>.</li>
+<li class="caught"><strong>A check:</strong> <code>ratchet.no-secrets</code> names a secret scan in every pull request. Made required, it blocks the merge when it flags the key.</li>
 </ul>
 <p class="next">Ratchet ships no scanner: you build or adopt it.</p>
 <img class="notch" src="ratchet-notch.svg" width="400" height="256" alt="A staircase of three steps. Each step is labeled failure to check, and is one notch tighter than the last. A ball rests on the top step, and a stop behind it keeps it from slipping back.">
 <ol class="flow">
 <li><strong>A rule goes in your register,</strong> copied from Ratchet or your own. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet's own register</a></li>
 <li><strong>It names what catches it:</strong> a check you build, or “text only” and why. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md">The rules</a></li>
-<li><strong>When something slips, a built check catches it</strong> before <code>main</code>. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md">The reference checks</a></li>
+<li><strong>When something slips, a built check goes red on it,</strong> where it runs. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/checks/README.md">The reference checks</a></li>
 <li><strong>Each failure turns it one notch tighter:</strong> a new check or fixture. <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SELF-IMPROVEMENT.md#the-loop">The loop</a></li>
 </ol>
 <p id="count" class="count"><strong>Ratchet today:</strong> the core has 19 rules. 13 describe a check and 6 are text only. Ratchet ships a reference check for 1 of the 13, and you build the others.</p>

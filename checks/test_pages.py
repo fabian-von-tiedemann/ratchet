@@ -1334,8 +1334,10 @@ class PageSources(RepoCopy, unittest.TestCase):
 
     def test_the_page_names_the_sources_of_sources_json(self):
         self.assertEqual(lines_that_hold(self.page(), 'id="sources"'), [sources_line(self.copy)])
-        self.assertIn(">5 pinned sources</a>, google/elephant-goldfish-model (Apache-2.0), mattpocock/skills (MIT), pstack (MIT), "
-                      "obra/superpowers (MIT) and sprocketlab/slop-code-bench (MIT).", sources_line(self.copy))
+        with open(os.path.join(self.copy, "sources.json"), encoding="utf-8") as handle:
+            sources = json.load(handle)["sources"]
+        named = ["%s (%s)" % (source["name"], source["license"]) for source in sources]
+        self.assertIn(">%d pinned sources</a>, %s and %s." % (len(named), ", ".join(named[:-1]), named[-1]), sources_line(self.copy))
 
     def test_a_source_added_fails_until_generate_moves_the_page(self):
         before = self.page()
