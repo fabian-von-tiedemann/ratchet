@@ -19,9 +19,8 @@ with no .github/workflows/ratchet.yml, which adopt mode never writes, is told in
 how to copy checks/run_pinned.py again from the new commit, with the line for a
 local check script and for the CI step, as init.py prints them. It does not move a
 clone with changes to files git tracks in it, or one on a branch, and it says how to move the clone back. A version
-with no tag, a shallow clone that lacks the tag, a tag asked for that does not exist,
-a fetch that fails and a release before 0.11, whose upgrade.py does not do this,
-each stop it, with what to do.
+with no tag, a shallow clone that lacks the tag, a tag asked for that does not exist
+and a fetch that fails each stop it, with what to do.
 
 Offline, with --from: --from is ratchet.json of the version the register states, and
 --source, by default the ratchet.json next to this script, is the newer Ratchet. It
@@ -54,9 +53,6 @@ Either way the script compares the two versions, rule by rule, and prints:
 - when the fields of ratchet.json differ between the two, at the top or in its rules,
   a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
   check of its own, that reads it.
-- when the form of register.json changed between the two versions, what changed, with
-  the new fields named. Every field that came in 0.10 or 0.11 may be left out, and the
-  phrase of a row adopted in part, which came in 0.12, may too, so none of it is a step.
 - the commands that print REGISTER.md and the instruction file again and check them,
   with the options first and the register's path after "--". A register with rows by
   reference after the steps and no REGISTER.md beside it is not told to print one, and
@@ -109,33 +105,10 @@ COMPARED = (("status", "the status"), ("enforcement", "the enforcement"), ("rule
 # or moved into Ratchet's own register, which ratchet.json does not show: the changelog does.
 MERGED = ("The changelog of Ratchet %s says why it was removed. When it was merged into another rule, the register may "
           "adopt that rule in its place.")
-# The versions that changed the form of register.json, and what changed. Told to a register that moves past the version.
-REGISTER_FORMS = (
-    ("0.10", 'The form of register.json grew in Ratchet 0.10 (D-2026-11-20-generated-block). It may name an instruction file in '
-             '"instructions", and check_register.py then checks the block of rules it generates into that file. An adopted rule '
-             'may carry a "translation", bound to its English rule by a sha256. An own rule may carry "status" and "where". A '
-             'register without them stays valid, so none of this is a step.'),
-    ("0.11", 'The form of register.json grew in Ratchet 0.11 (D-2026-11-22-second-redraw). It was meant as the last change '
-             'of form before the count toward 1.0, and the form changed again in 0.12. An adopted rule may be adopted by reference, the weaker mode, with two new fields: "stands_in", '
-             'the Markdown file where the project\'s own wording of the rule stands, and "sha256", the hash of the rule and its '
-             'ratchet. Such a row holds no rule, ratchet or source, and the file holds the line <!-- ratchet:rule <key> --> '
-             'once. check_register.py sees that marker, not the words. REGISTER.md may be left out by a register with such '
-             'rows. A register without them stays valid, so none of this is a step.'),
-    ("0.12", 'The form of register.json changed in Ratchet 0.12 (D-2026-11-23-partial-adoption-form), so the count toward 1.0 '
-             'starts again from 0.12. A row adopted by reference may be adopted in part: its "where" is then exactly "Not stated '
-             'here: <clause>; <clause>.", the clauses the project\'s wording does not state, and it is not "built". No field is '
-             'added, but a row by reference of a rule that is text only, which took no "where" before, takes one, and only as '
-             'that phrase. A register without it stays valid, so none of this is a step.'),
-)
-
-
 # The workflow init.py writes for a new repo. Adopt mode writes none, and runs the check with run_pinned.py instead.
 WORKFLOW = ".github/workflows/ratchet.yml"
 # A release: a major and a minor version, as a tag names it after its "v".
 RELEASE = re.compile(r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
-# The first version whose upgrade.py fetches and compares the tags itself (D-2026-11-22-second-redraw, step 6). The one
-# command runs the upgrade.py of the release it moves to, so it can move only to this version or a later one.
-FIRST = "0.11"
 
 
 class UpgradeError(Exception):
@@ -234,11 +207,10 @@ def form_changes(old, new):
     """The fields that one version has and the other lacks, as text: first those at the top of ratchet.json, then those
     of its rules, each sorted by the field.
 
-    The older file is read with registry.validate(older=True), which allows it to lack the cap and to hold the date
-    and the sources, which left ratchet.json in 0.9 (D-2026-11-19-batched-releases), allows its experimental rules
-    to lack "since", which came in 0.10 (D-2026-11-19-one-point-oh), and refuses any other field it does not know.
-    So a field can be new, or gone. A field of a rule counts when some rule of one version holds it and no rule of
-    the other does: "kept_by", which a rule may hold, is new only once a rule holds it.
+    The older file is read with registry.validate(older=True), which refuses a field it does not know, at the top as
+    in a rule. So a field can be new, or gone, only when a later version changes the form. A field of a rule counts
+    when some rule of one version holds it and no rule of the other does: "kept_by", which a rule may hold, is new only
+    once a rule holds it.
     """
     changes = [(field, '"%s" is new' % field) for field in set(new) - set(old)]
     changes += [(field, '"%s" is gone' % field) for field in set(old) - set(new)]
@@ -494,10 +466,6 @@ def report(path, register, old, new, out, script):
               "of the project's own, that reads ratchet.json must be updated: replace the copy with the one from Ratchet %s, or "
               "change the check." % (old["version"], new["version"], joined(form), old["version"], new["version"], new["version"]),
               file=out)
-    for version, text in REGISTER_FORMS:
-        if version_key(old["version"]) < version_key(version) <= version_key(new["version"]):
-            print("", file=out)
-            print(text, file=out)
     print("", file=out)
     instructions = None
     if check_register.INSTRUCTIONS in register:
@@ -638,14 +606,10 @@ def one_command(args, out):
     else:
         raise UpgradeError("%s has no release tag to compare with.%s" % (
             shown, " Its tags were not fetched: run again without --no-fetch." if args.no_fetch else ""))
-    # Going back is what is wrong with a release older than the register, even one before FIRST, so that is said first.
     if version_key(target) < version_key(stated):
         print("FAIL: Ratchet %s, %s, is older than %s, the version %s states. An upgrade does not go back." % (
             target, which, stated, name), file=out)
         return 1
-    if version_key(target) < version_key(FIRST):
-        raise UpgradeError("Ratchet %s comes before %s, the first version whose upgrade.py fetches and compares the tags "
-                           "itself. Compare two files with --from, as the UPGRADING.md of v%s says." % (target, FIRST, target))
     if stated not in known:
         missing = "%s states Ratchet %s, and %s has no tag v%s to compare with." % (name, stated, shown, stated)
         if not args.no_fetch:
@@ -672,9 +636,8 @@ def one_command(args, out):
         code, branch, _ = git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
         if code == 0:
             # A clone on a branch may be someone's work on Ratchet, so it is not moved. A clone made at a tag is not on one.
-            # It is told to move to the release itself, whose upgrade.py does the one command, so that the same command
-            # then runs: the tag the register states may be before FIRST, and its upgrade.py would not (Gemini's review
-            # of 0425ffe).
+            # It is told to move to the release itself, whose upgrade.py knows that release's forms, so that the same
+            # command then runs there (Gemini's review of 0425ffe).
             branch = branch.decode("utf-8", errors="replace").strip()
             raise UpgradeError("%s is on the branch %s, so it is not moved. Move it to %s, the release to upgrade to, with "
                                "git -C %s checkout --detach %s, and run again. The branch stays where it is: git -C %s "

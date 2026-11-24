@@ -67,16 +67,15 @@ STATUSES = ("core", "experimental")
 ENFORCEMENTS = ("enforced", "text-only")
 RULE_FIELDS = {"key", "part", "principle", "status", "enforcement", "rule", "ratchet", "source", "reference_check", "since",
                "kept_by", "not_used_because"}
-# The fields of an experimental rule only: the version it entered Ratchet, which every experimental rule names from
-# 0.10, and the decision that kept it once more (D-2026-11-19-one-point-oh, choice 4). The ratchet.json of an older
-# version has neither.
+# The fields of an experimental rule only: the version it entered Ratchet, which every experimental rule names, and the
+# decision that kept it once more (D-2026-11-19-one-point-oh, choice 4).
 AGE_FIELDS = ("since", "kept_by")
 # A field of an experimental rule only: why Ratchet itself cannot use the rule. A rule that enters Ratchet is adopted in
 # Ratchet's own register, or names this (D-2026-11-20-proposal-triage, choice 5). generate.py --check reads the two
 # together, since only it reads the register too.
 NOT_USED = "not_used_because"
-# Every rule names the key of one principle in "principle". It is read on its own, after the other fields, since the
-# ratchet.json of a version before 0.10 has no principles and no rule of it names one.
+# Every rule names the key of one principle in "principle". It is read on its own, after the other fields, so that a
+# rule without one is told to name one.
 PRINCIPLE = "principle"
 REQUIRED_RULE_FIELDS = RULE_FIELDS - {"reference_check", NOT_USED, PRINCIPLE} - set(AGE_FIELDS)
 # An experimental rule that has stood through this many releases and this many days, with no decision, fails.
@@ -94,10 +93,6 @@ TITLE_LENGTH = 120
 SENTENCES = 3
 # Where a sentence ends: a full stop, a question mark or an exclamation mark, then a space or the end of the text.
 SENTENCE_END = re.compile(r"[.?!](?= |\Z)")
-# The fields that ratchet.json had up to 0.8 and no longer has: the date, which is in the heading of the entry in
-# CHANGELOG.md, and the sources, which are in sources.json (D-2026-11-19-batched-releases). The ratchet.json of an
-# older version may hold them.
-GONE_FIELDS = {"date", "sources"}
 # The budget: the most experimental rules there may be (D-2026-11-17-pull-and-budget). Raising it is a decision.
 CAP = "experimental_cap"
 
@@ -563,32 +558,28 @@ def load(path=SOURCE):
 def validate(data, root, older=False):
     """Every problem with a parsed ratchet.json, or nothing.
 
-    With older=True, the ratchet.json of an older version, which checks/upgrade.py compares with this one: it may
-    lack the cap, which came in 0.5, may hold the date and the sources, which left in 0.9, and its experimental
-    rules may lack "since", which came in 0.10. Its sources are not read, the files of its reference checks and of
-    the decisions in "kept_by" are not looked for, and the budget is not counted. Everything else is read as
-    strictly as this version's own file.
+    With older=True, the ratchet.json of an older version, from 0.12 on, which checks/upgrade.py compares with this
+    one (D-2026-11-23-support-from-0-12): the files of its reference checks and of the decisions in "kept_by" are not
+    looked for, and the budget is not counted. Everything else is read as strictly as this version's own file.
     """
     problems = []
     if not isinstance(data, dict):
         return ["the top level must be an object"]
-    for field in sorted(TOP_FIELDS - set(data) - ({CAP, PRINCIPLES} if older else set())):
+    for field in sorted(TOP_FIELDS - set(data)):
         problems.append("missing field %r" % field)
-    for field in sorted(set(data) - TOP_FIELDS - (GONE_FIELDS if older else set())):
+    for field in sorted(set(data) - TOP_FIELDS):
         problems.append("unknown field %r" % field)
     if problems:
         return problems
 
     if not isinstance(data["version"], str) or not VERSION.match(data["version"]):
         problems.append("version must look like 0.2")
-    if "date" in data and (not isinstance(data["date"], str) or not DATE.match(data["date"])):
-        problems.append("date must look like 2026-01-31")
-    cap = data.get(CAP)
-    if CAP in data and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
+    cap = data[CAP]
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap < 0:
         problems.append("%s must be a whole number from 0, found %s" % (CAP, json.dumps(cap)))
 
-    for field in ("start", "principles", "parts", "sources", "rules"):
-        if field in data and not isinstance(data[field], list):
+    for field in ("start", "principles", "parts", "rules"):
+        if not isinstance(data[field], list):
             problems.append("%s must be a list" % field)
     if problems:
         return problems
@@ -605,7 +596,7 @@ def validate(data, root, older=False):
             problems.append("part %s is listed twice" % part["id"])
         parts[part["id"]] = part
 
-    principles = principle_problems(data.get(PRINCIPLES, []), problems)
+    principles = principle_problems(data[PRINCIPLES], problems)
     under = dict((key, 0) for key in principles)
 
     keys = set()
@@ -633,8 +624,7 @@ def validate(data, root, older=False):
         if rule["part"] not in parts:
             problems.append("%s: unknown part %s" % (name, rule["part"]))
         if PRINCIPLE not in rule:
-            if PRINCIPLES in data:
-                problems.append("%s: has no principle. Every rule names the key of one principle in principles" % name)
+            problems.append("%s: has no principle. Every rule names the key of one principle in principles" % name)
         elif rule[PRINCIPLE] not in under:
             problems.append("%s: names %s, which is not a principle in principles" % (name, rule[PRINCIPLE]))
         else:
@@ -785,8 +775,7 @@ def age_field_problems(rule, root, older):
     if rule["status"] != "experimental":
         return ["only an experimental rule has %s" % field for field in AGE_FIELDS if field in rule]
     if "since" not in rule:
-        if not older:
-            problems.append("an experimental rule has since, the version it entered Ratchet")
+        problems.append("an experimental rule has since, the version it entered Ratchet")
     elif not VERSION.match(rule["since"]):
         problems.append("since must look like 0.2")
     if "kept_by" in rule:

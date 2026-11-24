@@ -5,11 +5,11 @@
 ratchet.json holds a list "principles", each with a key of the form principle.<slug>, a title of one or two short
 sentences and a text of at most three sentences, the question, and every rule names one of them in "principle" (D-2026-11-20-principles-and-obligations). A
 principle names no check of its own: each rule keeps its own ratchet, and a register keeps the status of each rule it
-adopts. The reader is as strict as for every other field (D-2026-11-16-strict-forms, D-2026-11-17-latin-strict-utf8).
-The ratchet.json of a version before 0.10 has neither field, and checks/upgrade.py reads it.
+adopts. The reader is as strict as for every other field (D-2026-11-16-strict-forms, D-2026-11-17-latin-strict-utf8),
+also for the ratchet.json of an older version, which checks/upgrade.py reads.
 
-The fixtures are under checks/fixtures/principles/: clean.json, a small data file that passes, older.json, the same
-in the form before principles, and one file per fault, each clean.json with one change. Each test loads what it
+The fixtures are under checks/fixtures/principles/: clean.json, a small data file that passes, and one file per
+fault, each clean.json with one change. Each test loads what it
 uses through FixtureTest. Standard library only.
 """
 
@@ -63,7 +63,7 @@ FAILING = {
     "rule-principle-not-text": "ratchet.keep: every field must be a string",
     "principle-without-rule": "principle.name-it has no rule under it. A principle stands over at least one rule",
 }
-PASSING = ("clean", "older")
+PASSING = ("clean",)
 
 # The lines around the principles that values.json gives, as a test of the generator passes them in.
 VALUES = {"production": "For production:", "aims": "These are aims."}
@@ -108,22 +108,14 @@ class PrincipleForm(FixtureTest):
         data = registry.parse_json(self.fixture_bytes("principles/clean.json"))
         self.assertEqual(registry.validate(data, ROOT), [])
 
-    def test_an_older_ratchet_json_may_lack_the_principles_and_this_one_may_not(self):
-        data = registry.parse_json(self.fixture_bytes("principles/older.json"))
-        self.assertEqual(registry.validate(data, None, older=True), [])
-        self.assertIn("missing field 'principles'", registry.validate(data, None))
-
-    def test_an_older_ratchet_json_with_principles_is_read_as_strictly(self):
-        for name in ("rule-without-principle", "rule-unknown-principle", "principle-without-rule", "title-twice", "text-four-sentences"):
+    def test_an_older_ratchet_json_is_read_as_strictly(self):
+        # From 0.12 on, every version has the principles, so an older ratchet.json without them fails as this one does
+        # (D-2026-11-23-support-from-0-12).
+        for name in ("missing-principles", "rule-without-principle", "rule-unknown-principle", "principle-without-rule",
+                     "title-twice", "text-four-sentences"):
             with self.subTest(fixture=name):
                 data = registry.parse_json(self.fixture_bytes("principles/%s.json" % name))
                 self.assertIn(FAILING[name], registry.validate(data, None, older=True))
-
-    def test_a_rule_in_an_older_ratchet_json_names_no_principle_it_lacks(self):
-        data = registry.parse_json(self.fixture_bytes("principles/older.json"))
-        data["rules"][0]["principle"] = "principle.test-everything"
-        self.assertEqual(registry.validate(data, None, older=True),
-                         ["ratchet.keep: names principle.test-everything, which is not a principle in principles"])
 
     def test_the_generator_writes_each_principle_with_its_rules_and_a_list_of_the_titles(self):
         data = registry.parse_json(self.fixture_bytes("principles/clean.json"))

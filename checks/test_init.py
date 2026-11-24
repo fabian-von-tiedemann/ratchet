@@ -1289,25 +1289,6 @@ os.link = link
                     self.assertNotIn("Traceback", said)
                 self.assertTrue(os.path.isfile(self.path("register.json")), output)
 
-    def test_an_agents_md_that_init_wrote_before_is_named_and_the_start_suggested(self):
-        # Review of 58ca014: a start under the earlier order, AGENTS.md first, that stopped before the workflow, is
-        # taken for adopt mode. When AGENTS.md is, below its title, the file init.py writes, with or without --solo,
-        # it says so and suggests the start.
-        for solo in (False, True):
-            with self.subTest(solo=solo):
-                self.project = self.make_project("stopped-%s" % solo)
-                self.write("AGENTS.md", init.agents_text("Another name", solo))
-                code, output = self.init()
-                self.assertEqual(code, 0, output)
-                self.assertIn("adopt mode", output)
-                self.assertIn("init: AGENTS.md is, below its title, the file init.py writes", output)
-                self.assertIn("delete AGENTS.md and register.json and run init.py again", output)
-        self.project = self.make_project("own-file")
-        self.write("AGENTS.md", self.SWEDISH)
-        code, output = self.init()
-        self.assertEqual(code, 0, output)
-        self.assertNotIn("the file init.py writes", output)
-
     def test_an_empty_adopted_list_is_offered_register_on_top(self):
         # Review of 58ca014: a register.json of the project's own that adopts nothing does not pass, and the rule that is
         # the floor is offered with the rest.
