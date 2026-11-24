@@ -382,9 +382,9 @@
       "status": "experimental",
       "since": "0.2",
       "enforcement": "enforced",
-      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. A check counts as built only after it has failed at least once on a real or seeded violation, and only where it can refuse: a merge check is required for the merge and reads its rules from the base branch, a hook runs in every harness the project uses, a scheduled check posts its result and is red when the post is late, and no deploy can run without a deploy check. When a failure class comes back after a lesson, the lesson's ratchet was too weak. Strengthen the ratchet. Rewording the rule does not count.",
+      "rule": "A rule whose ratchet is \"text only\" is turned into a check as soon as a check can see it. A check counts as built only after it has failed at least once on a real or seeded violation, and only where it can refuse: a merge check is required for the merge and reads its rules from the base branch, a hook runs in every harness the project uses, a scheduled check posts its result and is red when the post is late, and no deploy can run without a deploy check. When a failure class comes back after a lesson, the lesson's ratchet was too weak. Strengthen the ratchet. Rewording the rule does not count. A review finding that recurs is a failure class: it becomes a check, for code usually a rule of the project's linter in the required job, with a fixture it fails on.",
       "ratchet": "Check: the periodic count of rules by kind of ratchet, and of repeated failure classes. It does not see where a check runs or whether it has failed, so what makes a check built is a convention, and the register says where each check is enforced",
-      "source": "pstack `principle-encode-lessons-in-structure`"
+      "source": "pstack `principle-encode-lessons-in-structure`; sprocketlab/slop-code-bench, which measures how agent-written code erodes across iterations"
     },
     {
       "key": "ratchet.si-pull",

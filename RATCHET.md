@@ -218,6 +218,7 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 | mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `abeeaf95660ba9e8b7c753eb38f441ca707a8823` | MIT |
 | pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `792440e8a560a4a3f63748cdee70491ecd412982` | MIT |
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
+| sprocketlab\/slop\-code\-bench | https\:\/\/github\.com\/SprocketLab\/slop\-code\-bench | `de70a479acce7b565d2d0c772f48d7c881c15510` | MIT |
 <!-- /generated -->
 
 The table is generated from [sources.json](sources.json), and a rule cites a source by its name there. Ratchet restates ideas from these sources in its own words and credits them rule by rule. It copies no files or passages from them. A project that wants a skill copies it from the source itself, together with its license.
