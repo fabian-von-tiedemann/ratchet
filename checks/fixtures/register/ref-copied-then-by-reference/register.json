@@ -1,6 +1,6 @@
 {
   "project": "the example project",
-  "ratchet_version": "0.13",
+  "ratchet_version": "0.14",
   "adopted": [
     {
       "key": "ratchet.fresh-context",

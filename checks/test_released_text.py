@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 import release
 import test_checks
@@ -80,7 +81,7 @@ def git(root, *args):
 
 
 # How long one script may run before the test fails it as hung. A script on its own takes seconds. The run of the whole
-# suite inside ReleaseSteps takes as long as the suite, which grows with every check and fixture: it took more than 600
+# suite in released_copy_case takes as long as the suite, which grows with every check and fixture: it took more than 600
 # seconds on a loaded machine in November 2026. The limit for that run guards against a hang, not against a slow suite,
 # so it is well above the suite's time. In CI the job's own timeout-minutes in .github/workflows/checks.yml ends it sooner.
 SCRIPT_TIMEOUT = 600
@@ -481,12 +482,8 @@ class ReleaseSteps(unittest.TestCase):
         code, output = run(GUARD, root=self.copy, cwd=self.copy)
         self.assertEqual(code, 0, output)
         self.assertIn("in %d tags" % len(self.entries()), output)
-        # After it, the full suite passes in the copy, run by the check that every expected test ran. This module
-        # holds no test in that run, so that it does not run itself again.
-        write(self.copy, "checks/test_released_text.py", '"""Left out of the run inside ReleaseSteps, which runs this module."""\n')
-        code, output = run("expected_tests.py", root=self.copy, cwd=self.copy, timeout=SUITE_TIMEOUT)
-        self.assertEqual(code, 0, output)
-        self.assertIn("expected_tests: every expected test ran and passed", output)
+        # That the full suite passes in the copy after it is the case of released_copy_case, which the job released of
+        # .github/workflows/checks.yml runs once, out of this suite (D-2026-11-24-faster-suite).
 
     def test_while_unreleased_a_rule_may_change_and_after_its_release_only_with_a_new_version(self):
         self.hold()
@@ -534,5 +531,157 @@ class ReleaseSteps(unittest.TestCase):
         self.checks_pass()
 
 
+RELEASE_STEPS = "test_an_unreleased_entry_publishes_nothing_and_the_entry_given_its_date_releases_it"
+RELEASED_COPY = "python3 checks/test_released_text.py --released-copy"
+SUITE_PASSED = "expected_tests: every expected test ran and passed"
+
+
+def released_copy_case():
+    """The full suite on a released copy of this repo, as one test that the suite does not collect (D-2026-11-24-faster-suite).
+
+    The test takes every release step of ReleaseSteps, with each of its assertions, on a copy, and then runs
+    checks/expected_tests.py in that copy, which runs the whole suite there, this module among it. The class is made
+    here and not at the top of the module, so that discover does not collect it and the suite does not run itself
+    again. The job released of .github/workflows/checks.yml runs it once per pull request and push to main, with
+    RELEASED_COPY, and the job checks needs that job; the release workflow runs it before it tags.
+    """
+
+    class ReleasedCopy(ReleaseSteps):
+        def test_the_full_suite_passes_after_the_release(self):
+            getattr(self, RELEASE_STEPS)()
+            code, output = run("expected_tests.py", root=self.copy, cwd=self.copy, timeout=SUITE_TIMEOUT)
+            self.assertEqual(code, 0, output)
+            self.assertIn(SUITE_PASSED, output)
+
+    return ReleasedCopy("test_the_full_suite_passes_after_the_release")
+
+
+def released_copy(stream=None):
+    """Run released_copy_case and give 0 only when its one test ran and passed: a skip, an error or a failure is 1."""
+    stream = stream or sys.stderr
+    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(unittest.TestSuite([released_copy_case()]))
+    if (result.testsRun == 1 and result.wasSuccessful() and not result.skipped and not result.expectedFailures
+            and not result.unexpectedSuccesses):
+        stream.write("released copy: the full suite passed on a released copy of this repo\n")
+        return 0
+    stream.write("released copy: the full suite did not pass on a released copy of this repo, or did not run\n")
+    return 1
+
+
+def job_block(lines, start):
+    """The line start and the lines under it up to the next line indented no deeper, or None unless start stands once."""
+    if lines.count(start) != 1:
+        return None
+    index = lines.index(start)
+    depth = len(start) - len(start.lstrip(" "))
+    block = [start]
+    for line in lines[index + 1:]:
+        if line.strip(" ") and not line.strip(" ").startswith("#") and len(line) - len(line.lstrip(" ")) <= depth:
+            break
+        block.append(line)
+    return block
+
+
+# What the job checks must hold so that it is red unless the job released passed, whatever the event.
+RELEASED_GATE = ("      RELEASED: ${{ needs.released.result }}\n",
+                 '          if [ "$RELEASED" != success ]; then\n'
+                 '            echo "The full suite on a released copy of this repo, the job released, did not pass."\n'
+                 "            exit 1\n"
+                 "          fi\n")
+
+
+def released_job_problems(workflow):
+    """Why checks.yml does not run the suite on a released copy in a job of its own that the job checks needs, each as a line."""
+    lines = workflow.split("\n")
+    problems = []
+    job = job_block(lines, "  released:")
+    if job is None:
+        problems.append("the workflow has no job released, once")
+    else:
+        if job.count("        run: %s" % RELEASED_COPY) != 1:
+            problems.append("the job released does not run %s once" % RELEASED_COPY)
+        if [line for line in job if line.strip(" ").startswith(("if:", "- if:")) or "continue-on-error" in line]:
+            problems.append("the job released has a condition, so it may not run or not fail")
+    checks = job_block(lines, "  checks:")
+    if checks is None:
+        problems.append("the workflow has no job checks, once")
+    else:
+        text = "\n".join(checks) + "\n"
+        if "    needs: [own, base, released]\n" not in text:
+            problems.append("the job checks does not need the job released")
+        if not all(part in text for part in RELEASED_GATE):
+            problems.append("the job checks does not fail unless the job released passed")
+    return problems
+
+
+class ReleasedCopyJob(unittest.TestCase):
+    """The case that runs the full suite on a released copy, and the job of checks.yml that runs it (D-2026-11-24-faster-suite)."""
+
+    def workflow(self):
+        with open(os.path.join(ROOT, ".github", "workflows", "checks.yml"), encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_the_job_released_runs_the_case_and_the_job_checks_needs_it(self):
+        self.assertEqual(released_job_problems(self.workflow()), [])
+
+    def test_a_workflow_where_checks_does_not_need_released_or_released_does_not_run_the_case_fails(self):
+        workflow = self.workflow()
+        cases = {
+            "checks does not need released": (("needs: [own, base, released]", "needs: [own, base]"), "does not need the job released"),
+            "checks does not read its result": (('if [ "$RELEASED" != success ]', 'if [ "$RELEASED" = nothing ]'), "does not fail unless"),
+            "checks does not fail on it": (('the job released, did not pass."\n            exit 1', 'the job released, did not pass."\n            true'), "does not fail unless"),
+            "released runs something else": ((RELEASED_COPY, "python3 checks/expected_tests.py"), "does not run"),
+            "released runs only on a push": (("  released:\n", "  released:\n    if: github.event_name == 'push'\n"), "has a condition"),
+            "released may fail and pass": (("  released:\n", "  released:\n    continue-on-error: true\n"), "has a condition"),
+            "no job released": (("  released:\n", "  other:\n"), "no job released"),
+        }
+        for name, ((old, new), problem) in sorted(cases.items()):
+            with self.subTest(case=name):
+                self.assertEqual(workflow.count(old), 1, old)
+                problems = released_job_problems(workflow.replace(old, new))
+                self.assertTrue([line for line in problems if problem in line], problems)
+
+    def test_the_release_workflow_runs_the_case_before_it_tags(self):
+        with open(os.path.join(ROOT, ".github", "workflows", "release.yml"), encoding="utf-8") as handle:
+            lines = handle.read().split("\n")
+        self.assertEqual(lines.count("        run: %s" % RELEASED_COPY), 1)
+        self.assertLess(lines.index("        run: %s" % RELEASED_COPY), lines.index("        run: python3 checks/release.py publish"))
+
+    def run_the_case(self, suite):
+        """released_copy with the release steps and the run of the suite in the copy replaced: [what was called], exit status."""
+        called = []
+        module = sys.modules[__name__]
+
+        def steps(case):
+            called.append("steps")
+
+        def fake_run(script, *args, **options):
+            called.append((script, args, options["root"] == options["cwd"] and options["root"] != ROOT))
+            return suite()
+
+        with unittest.mock.patch.object(module.ReleaseSteps, RELEASE_STEPS, steps), unittest.mock.patch.object(module, "run", fake_run):
+            stream = io.StringIO()
+            code = module.released_copy(stream)
+        return called, code, stream.getvalue()
+
+    def test_the_case_takes_the_release_steps_and_then_runs_the_suite_in_the_copy(self):
+        called, code, output = self.run_the_case(lambda: (0, SUITE_PASSED + ": 3 tests\n"))
+        self.assertEqual(called, ["steps", ("expected_tests.py", (), True)])
+        self.assertEqual(code, 0, output)
+        self.assertIn("released copy: the full suite passed", output)
+
+    def test_a_released_copy_whose_suite_fails_or_does_not_run_fails(self):
+        def skip():
+            raise unittest.SkipTest("skipped")
+
+        for name, suite in (("fails", lambda: (1, "expected_tests: 1 problem\n")), ("says nothing", lambda: (0, "")), ("skipped", skip)):
+            with self.subTest(suite=name):
+                called, code, output = self.run_the_case(suite)
+                self.assertEqual(code, 1, output)
+                self.assertIn("released copy: the full suite did not pass", output)
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--released-copy"]:
+        sys.exit(released_copy())
     unittest.main()

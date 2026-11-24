@@ -1035,7 +1035,7 @@ class Inventory(FixtureTest):
         files = self.files(facts)
         self.assertEqual(files["AGENTS.md"]["kind"], "instructions")
         workflows = {entry["path"]: entry for entry in facts["workflows"]}
-        self.assertEqual([job["id"] for job in workflows[".github/workflows/checks.yml"]["jobs"]], ["own", "base", "checks"])
+        self.assertEqual([job["id"] for job in workflows[".github/workflows/checks.yml"]["jobs"]], ["own", "released", "base", "checks"])
         # The fixture repos under checks/fixtures/ hold AGENTS.md and CLAUDE.md too, as instruction files at depth.
         self.assertEqual(files["checks/fixtures/inventory/repo/AGENTS.md"]["kind"], "instructions")
 

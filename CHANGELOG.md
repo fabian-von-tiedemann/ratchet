@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14 (unreleased)
+
+In short: no rule and no form changes for a project that uses Ratchet, and it has nothing to do beyond the version that an upgrade always sets. This repo's own CI runs its suite once in each pass, and runs the suite on a released copy of the repo once, in a job of its own, so a pull request's checks take less time.
+
+- This repo's `.github/workflows/checks.yml`: the job `own` runs the suite once, with `checks/expected_tests.py`, and no longer runs `unittest discover` before it. The full suite on a released copy of the repo, which ran inside `test_released_text.ReleaseSteps` and so inside every run of the suite, is a job of its own, `released`, which the job `checks` needs and fails without. The release workflow runs it too, before it tags ([D-2026-11-24-faster-suite](decisions/D-2026-11-24-faster-suite.md), [#147](https://github.com/fabian-von-tiedemann/ratchet/pull/147)).
+
+<!-- generated:count -->
+Ratchet 0.14, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.13 (2026-11-24)
 
 In short: for a project that adopted by reference, five frictions from an adoption report on 0.12 are fixed, among them a line for the local check script that went on after a failing check, and `run_pinned.py` now runs in about half a second. To do: if your local check script runs the line adopt mode printed in 0.12, replace it with the `( ... ) || exit 1` line that `init.py` or `upgrade.py` prints now, and if your `REGISTER.md` has rows by reference, print it again, since their label changed. Ratchet now opens with four values over eleven principles, new pages say how to try it and how to give back, a change to a check's code gets two reviewers from two other model families, and no form changes.

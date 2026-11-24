@@ -129,7 +129,7 @@ SHOWN = (
     "  base:\n    if: github.event_name == 'pull_request'\n",
     'git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"',
     'python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"',
-    "  checks:\n    needs: [own, base]\n    if: always()\n",
+    "  checks:\n    needs: [own, base, released]\n    if: always()\n",
     'if [ "$EVENT" = pull_request ] && [ "$BASE" != success ]; then',
 )
 
@@ -411,7 +411,7 @@ class Triage(RepoCopy, unittest.TestCase):
                                                  "repo.version: its where does not name `checks/released_text.py`"),
             "a workflow with no job base": (register, workflow.replace('git show "HEAD^1:checks/from_base.py"', 'cat checks/from_base.py'), commands,
                                             "the workflow does not show"),
-            "a job checks that does not wait for base": (register, workflow.replace("needs: [own, base]", "needs: [own]"), commands,
+            "a job checks that does not wait for base": (register, workflow.replace("needs: [own, base, released]", "needs: [own, released]"), commands,
                                                          "the workflow does not show"),
             "a base that runs on pull_request_target": (register, workflow + "\n# pull_request_target\n", commands,
                                                         "pull_request_target"),
