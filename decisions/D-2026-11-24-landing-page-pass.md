@@ -36,12 +36,17 @@ Translation: yes, you had a much better cogwheel before. Are you still limited b
 
 ## Third question
 
-Put to the maintainer by the control room on 2026-11-25, after the third head of the pull request: the four further loosenings that head listed as new. The control room's own words were not passed on to the author of this file, so the four stand here as the pull request listed them, and the control room replaces them with its question verbatim before the merge.
+Put to the maintainer by the control room on 2026-11-25, in Swedish, after the third head of the pull request:
 
-1. The page may hold one inline SVG, the GitHub mark in the link to the repo.
-2. The figure may hold a `<g>`, to group what the animation turns.
-3. The page's palette gains two colors for the figure, `--signal` and `--ink`.
-4. GitHub's logo is used, only as the link to the repo.
+> Fyra nya saker behöver ditt beslut. Jag rekommenderar ja på alla:
+> 1. **GitHub-loggan som SVG direkt i sidan.** Den får bara innehålla en ritad form, inga skript och inga länkar ut, och det kontrolleras av ett test.
+> 2. **Hjulets delar får grupperas i bildfilen,** så att animationen kan vrida dem tillsammans.
+> 3. **Två nya färger för bilden:** orange för hjulet och mörk för visaren.
+> 4. **GitHubs logga får användas,** men bara som länk till repot. Vill du hellre ha bara ordet "GitHub" går det också.
+>
+> Svara **"ja på de fyra"**, eller säg vad du vill ändra.
+
+Translation: Four new things need your decision. I recommend yes to all: 1. The GitHub logo as SVG directly in the page. It may hold only a drawn shape, no scripts and no links out, and a test checks that. 2. The parts of the wheel may be grouped in the image file, so that the animation can turn them together. 3. Two new colors for the image: orange for the wheel and dark for the pointer. 4. GitHub's logo may be used, but only as the link to the repo. If you would rather have only the word "GitHub", that works too. Answer "yes to the four", or say what you want to change.
 
 ## Third answer
 
@@ -50,6 +55,22 @@ Put to the maintainer by the control room on 2026-11-25, after the third head of
 Translation: Ok, but you had an animation where there actually was a pawl. The wheel turned and the pawl stopped the wheel from rolling back.
 
 The control room reads the "Ok" as yes to the four.
+
+## Fourth question
+
+Put to the maintainer by the control room on 2026-11-25, in Swedish, after the fourth head of the pull request, which made the figure a working ratchet:
+
+> **Hur vill du gå vidare?**
+> - **A. Bra, granska och slå ihop (rekommenderas).** Jag skriver in min exakta fråga i beslutsfilen, och sedan granskar Codex och Astra 6.2 att allt stämmer och att SVG:n är säker. Därefter ber jag om ditt ja, och du slår ihop med "Bypass". Sajten publiceras vid sammanslagningen.
+> - **B. Ett varv till.** Säg vad som ska ändras, till exempel tempot, storleken eller färgen.
+
+Translation: How do you want to go on? A. Good, review and merge (recommended). I write my exact question into the decision file, and then Codex and Astra 6.2 review that everything is true and that the SVG is safe. Then I ask for your yes, and you merge with "Bypass". The site is published at the merge. B. One more round. Say what should change, for example the pace, the size or the color.
+
+## Fourth answer
+
+> À
+
+The control room reads "À" as "A", typed on a keyboard that added the accent: the figure as the fourth head has it, to be reviewed and merged.
 
 ## What follows
 
