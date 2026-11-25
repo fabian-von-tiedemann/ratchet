@@ -504,7 +504,7 @@ init: --check. Nothing was written: 5 file(s) would be written, 0 files left as 
 </section>
 <section>
 <h2 id="start-here">Start here</h2>
-<p><strong>Paste one prompt into your coding agent, in your git repo.</strong> It asks the agent to fetch Ratchet, show you the dry run, and stop before anything is written.</p>
+<p><strong>Paste one prompt into your coding agent, in your git repo.</strong> The agent fetches Ratchet into <code>.ratchet</code>, shows you the dry run, and stops before anything else is written.</p>
 <fieldset class="tools">
 <legend>Your coding agent</legend>
 <input type="radio" name="tool" id="tool-claude-code" checked="checked">
@@ -535,6 +535,7 @@ Set up Ratchet in this git repo. Work in the repo's root.
    python3 .ratchet/checks/init.py --check
 3. Stop there. Tell me which of the two paths init.py takes here: a new repo, or adopt mode, for a repo with an instruction file of its own. Ask me before you run anything that writes: init.py, or init.py with --adopt.
 4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.
+5. If init.py wrote AGENTS.md and you do not read it, say how to make you.
 
 Do not commit, push, or make a check required without asking me first.
 </pre>

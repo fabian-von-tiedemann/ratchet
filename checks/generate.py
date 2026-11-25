@@ -84,6 +84,8 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 # The landing page that GitHub Pages serves from docs/, and its one line that fetches Ratchet, which the generator writes.
 PAGE = "docs/index.html"
 PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
+# The same command as the prompt holds it, as text indented by three spaces, with any version (D-2026-11-25-prompt-per-tool).
+PROMPT_FETCH = re.compile(r"   git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet\Z")
 # The page's one line that counts the rules of the core, which the generator writes.
 # It says how many of the rules that name a check come with one from Ratchet, so that the number of rules that name a
 # check does not read as the number of checks that exist.
@@ -136,6 +138,7 @@ PROMPT = (
     "3. Stop there. Tell me which of the two paths init.py takes here: a new repo, or adopt mode, for a repo with an "
     "instruction file of its own. Ask me before you run anything that writes: init.py, or init.py with --adopt.",
     "4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.",
+    "5. If init.py wrote AGENTS.md and you do not read it, say how to make you.",
     "",
     "Do not commit, push, or make a check required without asking me first.",
 )
@@ -1190,10 +1193,14 @@ def page_text(text, released, data, values, sources):
     lines = text.split("\n")
     problems = []
     # The lines of the prompt, which hold the command that fetches Ratchet a second time, as text and not as a command
-    # of the page. None of the lines before the blocks are written changes how many lines there are.
+    # of the page. One line of them is let past the count of "git clone", and only that one: the line of the form
+    # PROMPT_FETCH. Every other marker counts in the prompt as anywhere else. None of the lines before the blocks are
+    # written changes how many lines there are.
     opens = [number for number, each in enumerate(lines) if each == PAGE_PROMPT]
     closes = [number for number, each in enumerate(lines) if opens and number > opens[0] and each == PAGE_PROMPT_END]
     prompt = range(opens[0] + 1, closes[0]) if len(opens) == 1 and closes else range(0)
+    prompt_fetch = [number for number in prompt if PROMPT_FETCH.match(lines[number])]
+    prompt_fetch = prompt_fetch if len(prompt_fetch) == 1 else []
     fetch = "<pre><code>%s</code></pre>" % (FETCH % released)
     if not sources:
         problems.append("%s: the page names the pinned sources, and sources.json holds none" % PAGE)
@@ -1203,7 +1210,8 @@ def page_text(text, released, data, values, sources):
             (page_sources_line, 'id="sources"', page_sources(sources) if sources else "", "the pinned sources",
              "with any number and any list of names as text")):
         found = [number for number, each in enumerate(lines) if pattern(each.lstrip(" "))]
-        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found and number not in prompt)
+        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found
+                     and not (marker == "git clone" and number in prompt_fetch))
         if (len(found), others) != (1, 0):
             problems.append('%s: %s must be one line "%s", once, and no other line may hold %s. Found that line %d times, %s, '
                             "and %d other lines that hold %s" % (PAGE, what, line, marker, len(found), form, others, marker))

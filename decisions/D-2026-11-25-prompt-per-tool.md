@@ -9,7 +9,7 @@
 A proposal (P) until the maintainer answers. The question as the pull request that adds this file puts it, for the control room to pass on. The control room replaces it with the question exactly as it put it, in its language, before the merge:
 
 > Under "Start here" the landing page gets a picker by coding agent, Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot and "Other", over one prompt to paste, which `generate.py` writes with the released tag. Three things in the page's test are loosened for it, and need your decision. I recommend yes to all three:
-> 1. The word cap is raised from under 780 to under 1100 words. The page now has 1079. The prompt is 113 of them and the picker 140.
+> 1. The word cap is raised from under 780 to under 1100 words. The page now has 1096, the prompt and the picker among them.
 > 2. The page may hold one picker: a `<fieldset>` with a `<legend>`, six radio inputs and their labels. An input is a radio of the picker and nothing else. There is no script, no form and no button, and the picker works with CSS only.
 > 3. The command that fetches Ratchet stands twice on the page: as before in the three commands, and as a line of the prompt. `generate.py` writes both from the same version.
 >
