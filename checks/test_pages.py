@@ -140,7 +140,7 @@ FRAGMENT = re.compile(r"#[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 # A path on main: parts that may start with one dot, as .github does, so no part is "." or "..".
 REPO_PATH = re.compile(r"(?:\.?[A-Za-z0-9_][A-Za-z0-9_.-]*/)*\.?[A-Za-z0-9_][A-Za-z0-9_.-]*")
 REPO_LINK = re.compile(
-    r"(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/(?:pull|issues)/[1-9][0-9]*|/issues|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?\Z"
+    r"(?:(?:/(?P<kind>blob|tree)/main/(?P<path>%s)|/(?:pull|issues)/[1-9][0-9]*|/releases/latest)?(?:#[a-z0-9]+(?:-[a-z0-9]+)*)?|/issues)\Z"
     % REPO_PATH.pattern
 )
 # Characters the page may not hold: controls but the newline, and the ones that reorder or hide text.
@@ -939,7 +939,7 @@ class Page(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
                 self.assertEqual(page_problems(self.copy), [])
-        for target in ("/issues/0", "/issues/49/../../x", "/issues/", "/issues/new", "/issues?q=x", "/pull/0", "/pulls"):
+        for target in ("/issues/0", "/issues/49/../../x", "/issues/", "/issues/new", "/issues?q=x", "/issues#reports", "/pull/0", "/pulls"):
             with self.subTest(target=target):
                 self.setUp()
                 self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
