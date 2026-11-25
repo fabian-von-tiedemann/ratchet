@@ -696,7 +696,8 @@ def main(argv=None, out=None):
         else:
             plan.append(("skip", file, None, "it exists and differs from what init.py writes. It was left as it is: "
                                              "compare it with %s/templates/%s by hand" % (typed(RATCHET), {
-                                                 "AGENTS.md": "AGENTS.md", "register.json": "register.json",
+                                                 "AGENTS.md": "AGENTS.md", "CLAUDE.md": "CLAUDE.md",
+                                                 "register.json": "register.json",
                                                  WORKFLOW: "ratchet-checks.yml"}[file])))
     if "register.json" not in states:
         # Adopt mode with no --adopt: register.json is not written, and one of the project's own is checked as it stands.

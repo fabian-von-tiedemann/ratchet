@@ -1619,6 +1619,21 @@ init.add_line = add_line""" % (stop, stop))
         with open(self.path("CLAUDE.md"), "rb") as handle:
             self.assertEqual(handle.read(), data)
 
+    def test_a_claude_md_that_appears_after_the_choice_is_skipped_and_named(self):
+        # Review round 3 of #158: a CLAUDE.md that stands there by the time the plan reads it, though writes_claude saw
+        # none, is skipped and named like any file in the way, with no KeyError, and its bytes are left as they are.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.write("CLAUDE.md", "# Our own\n")
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.run_patched("init.writes_claude = lambda root, planned: True", *args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("Traceback", output)
+                self.assertRegex(output, r"(?m)^skip +CLAUDE\.md: it exists and differs from what init\.py writes\. "
+                                         r"It was left as it is: compare it with .*templates/CLAUDE\.md by hand")
+                self.assertEqual(self.text("CLAUDE.md"), "# Our own\n")
+
     def test_a_claude_md_template_without_the_import_is_refused(self):
         self.assertIn(init.CLAUDE_IMPORT, read_template("CLAUDE.md").split("\n"))
         code, output = self.run_patched("init.template = (lambda real: lambda name: real(name).replace('@AGENTS.md', "

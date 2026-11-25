@@ -12,7 +12,7 @@ Every step after the three commands under [Start here](README.md#start-here) in 
 
 ## A new repo
 
-`init.py` writes `AGENTS.md`, a `CLAUDE.md` whose line `@AGENTS.md` makes Claude Code read `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. It never overwrites a file: one that exists is skipped and named.
+`init.py` writes `AGENTS.md`, a `CLAUDE.md` whose line `@AGENTS.md` makes Claude Code read `AGENTS.md`, `register.json`, the generated `REGISTER.md`, and `.github/workflows/ratchet.yml` pinned to the commit of `.ratchet`, and adds `/.ratchet/` to `.gitignore`. It never overwrites a file: one that exists is skipped and named. A `CLAUDE.md` is written only in a new start, and one that is already there is left as it is, without a word.
 
 | Option | What it does |
 |---|---|
