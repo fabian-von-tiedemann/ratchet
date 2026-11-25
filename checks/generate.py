@@ -33,11 +33,13 @@ block marked sh, and names the newest version with a date. That version's tag is
 the release run after the merge, so for the minutes that run takes the command names a tag
 that does not exist yet. The daily release run is red if that lasts. The landing page,
 docs/index.html, holds the same command as one line of its own, and the generator writes the
-version in it, so the page fetches what README.md fetches. It writes four more parts of the page:
+version in it, so the page fetches what README.md fetches. It writes five more parts of the page:
 from ratchet.json the line that counts the rules of the core, from values.json the story and
 the values, which stand on the page between two lines of their own, from sources.json the
-line that names the pinned sources, and from ratchet.json and values.json the principles, each
-by its title, in order, between two lines of their own (D-2026-11-24-landing-page-pass).
+line that names the pinned sources, from ratchet.json and values.json the principles, each
+by its title, in order, between two lines of their own (D-2026-11-24-landing-page-pass), and
+the one prompt to paste into a coding agent, PROMPT, with the same command at the same
+version, between two lines of its own (D-2026-11-25-prompt-per-tool).
 
 --check also fails, naming each rule, when an experimental rule has stood through three releases and 60 days with no
 decision, counted at the newest version with a date in CHANGELOG.md (registry.age_problems,
@@ -82,6 +84,8 @@ FETCH = "git clone --branch v%s https://github.com/fabian-von-tiedemann/ratchet 
 # The landing page that GitHub Pages serves from docs/, and its one line that fetches Ratchet, which the generator writes.
 PAGE = "docs/index.html"
 PAGE_FETCH = re.compile(r"<pre><code>git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>\Z")
+# The same command as the prompt holds it, as text indented by three spaces, with any version (D-2026-11-25-prompt-per-tool).
+PROMPT_FETCH = re.compile(r"   git clone --branch v[0-9]+\.[0-9]+ https://github\.com/fabian-von-tiedemann/ratchet \.ratchet\Z")
 # The page's one line that counts the rules of the core, which the generator writes.
 # It says how many of the rules that name a check come with one from Ratchet, so that the number of rules that name a
 # check does not read as the number of checks that exist.
@@ -115,6 +119,29 @@ PAGE_VALUE_LINE = re.compile(r'(?:<p class="story"><em>[^<>]*</em></p>|<p class=
 PAGE_PRINCIPLES, PAGE_PRINCIPLES_END = '<section id="principles" class="principles">', "</section>"
 PAGE_PRINCIPLE_LINE = re.compile(r'(?:<ol>|<ol start="[1-9][0-9]*">|</ol>|<li>[^<>]+</li>'
                                  r'|<p class="production"><strong>[^<>]+</strong></p>|<p class="aims"><em>[^<>]+</em></p>)\Z')
+# The page's one prompt, which a visitor pastes into a coding agent: this line, the lines the generator writes, and the
+# line that closes them. It asks the agent for the three steps of "Start here", with the commands of README.md, to stop
+# and ask before it writes anything, then to follow STARTING.md, and not to commit, push or require a check without
+# asking. Its one "%s" is the command that fetches Ratchet, FETCH at the newest version with a date in CHANGELOG.md, so a
+# release moves the prompt as it moves the command. The lines stand in a <pre>, so neither marker is indented and no
+# line is: the text is the prompt as it is pasted. Every line between the two is ASCII with no "<", ">" or "&", so the
+# generator never writes over markup, and a line added in that form is generated text and is written over.
+PAGE_PROMPT, PAGE_PROMPT_END = '<pre id="prompt" class="prompt">', "</pre>"
+PAGE_PROMPT_LINE = re.compile(r"[ !-%'-;=?-~]*\Z")
+PROMPT = (
+    "Set up Ratchet in this git repo. Work in the repo's root.",
+    "",
+    "1. Fetch Ratchet at its released tag into .ratchet:",
+    "   %s",
+    "2. Run the dry run, which writes nothing, and show me all of its output:",
+    "   python3 .ratchet/checks/init.py --check",
+    "3. Stop there. Tell me which of the two paths init.py takes here: a new repo, or adopt mode, for a repo with an "
+    "instruction file of its own. Ask me before you run anything that writes: init.py, or init.py with --adopt.",
+    "4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.",
+    "5. If init.py wrote AGENTS.md and you do not read it, say how to make you.",
+    "",
+    "Do not commit, push, or make a check required without asking me first.",
+)
 KEY_MENTION = re.compile(r"(?<![\w/.-])ratchet\.([a-z0-9]+(?:-[a-z0-9]+)*)")
 PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -1114,6 +1141,13 @@ def page_principles(data, values):
     return lines + ["</ol>", '<p class="aims"><em>%s</em></p>' % text(values["aims"])]
 
 
+def page_prompt(released):
+    """The lines of the landing page between PAGE_PROMPT and PAGE_PROMPT_END: the prompt, PROMPT, with the command that
+    fetches Ratchet at the released version. Each line is written as it stands: it holds nothing that HTML reads as
+    markup, which PAGE_PROMPT_LINE says of every line."""
+    return [line % (FETCH % released) if "%s" in line else line for line in PROMPT]
+
+
 def page_sources(sources):
     """The line of the landing page that names the pinned sources, each name with its license, written as text."""
     names = ["%s (%s)" % (source["name"], source["license"]) for source in sources]
@@ -1150,9 +1184,23 @@ def page_text(text, released, data, values, sources):
     The fifth is the principles: the line PAGE_PRINCIPLES, once, and every line from it to the next line
     PAGE_PRINCIPLES_END, which the generator writes from ratchet.json and values.json. Every line between the two is of
     one of the forms PAGE_PRINCIPLE_LINE, and no other line may hold 'id="principles"'.
+
+    The sixth is the prompt: the line PAGE_PROMPT, once and not indented, and every line from it to the next line
+    PAGE_PROMPT_END, which the generator writes from PROMPT with the same command at the same version. Every line
+    between the two is of the form PAGE_PROMPT_LINE, and no other line may hold 'id="prompt"'. The prompt holds the one
+    other "git clone" of the page.
     """
     lines = text.split("\n")
     problems = []
+    # The lines of the prompt, which hold the command that fetches Ratchet a second time, as text and not as a command
+    # of the page. One line of them is let past the count of "git clone", and only that one: the line of the form
+    # PROMPT_FETCH. Every other marker counts in the prompt as anywhere else. None of the lines before the blocks are
+    # written changes how many lines there are.
+    opens = [number for number, each in enumerate(lines) if each == PAGE_PROMPT]
+    closes = [number for number, each in enumerate(lines) if opens and number > opens[0] and each == PAGE_PROMPT_END]
+    prompt = range(opens[0] + 1, closes[0]) if len(opens) == 1 and closes else range(0)
+    prompt_fetch = [number for number in prompt if PROMPT_FETCH.match(lines[number])]
+    prompt_fetch = prompt_fetch if len(prompt_fetch) == 1 else []
     fetch = "<pre><code>%s</code></pre>" % (FETCH % released)
     if not sources:
         problems.append("%s: the page names the pinned sources, and sources.json holds none" % PAGE)
@@ -1162,21 +1210,25 @@ def page_text(text, released, data, values, sources):
             (page_sources_line, 'id="sources"', page_sources(sources) if sources else "", "the pinned sources",
              "with any number and any list of names as text")):
         found = [number for number, each in enumerate(lines) if pattern(each.lstrip(" "))]
-        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
+        others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found
+                     and not (marker == "git clone" and number in prompt_fetch))
         if (len(found), others) != (1, 0):
             problems.append('%s: %s must be one line "%s", once, and no other line may hold %s. Found that line %d times, %s, '
                             "and %d other lines that hold %s" % (PAGE, what, line, marker, len(found), form, others, marker))
             continue
         at = found[0]
         lines[at] = lines[at][:len(lines[at]) - len(lines[at].lstrip(" "))] + line
-    for what, marker, first, last, written, block in (
-            ("the story and the values", 'id="values"', PAGE_VALUES, PAGE_VALUES_END, page_value_line, page_values(values)),
+    # The lines of a <pre> are text, spaces and all, so the prompt is read and written with no indent.
+    bare = lambda each, indented: each.lstrip(" ") if indented else each
+    for what, marker, first, last, written, block, indented in (
+            ("the story and the values", 'id="values"', PAGE_VALUES, PAGE_VALUES_END, page_value_line, page_values(values), True),
             ("the principles", 'id="principles"', PAGE_PRINCIPLES, PAGE_PRINCIPLES_END, page_principle_line,
-             page_principles(data, values))):
-        found = [number for number, each in enumerate(lines) if each.lstrip(" ") == first]
+             page_principles(data, values), True),
+            ("the prompt", 'id="prompt"', PAGE_PROMPT, PAGE_PROMPT_END, PAGE_PROMPT_LINE.match, page_prompt(released), False)):
+        found = [number for number, each in enumerate(lines) if bare(each, indented) == first]
         others = sum(1 for number, each in enumerate(lines) if marker in each and number not in found)
-        ends = [number for number, each in enumerate(lines) if found and number > found[0] and each.lstrip(" ") == last]
-        strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not written(each.lstrip(" "))) if found and ends else 0
+        ends = [number for number, each in enumerate(lines) if found and number > found[0] and bare(each, indented) == last]
+        strays = sum(1 for each in lines[found[0] + 1:ends[0]] if not written(bare(each, indented))) if found and ends else 0
         if (len(found), others, strays) != (1, 0, 0) or not ends:
             problems.append('%s: %s must be the line "%s", once, then lines the generator writes only, then '
                             'the line "%s", and no other line may hold %s. Found that line %d times, %d other lines that hold '

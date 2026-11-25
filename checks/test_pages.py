@@ -11,6 +11,17 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   have, each once; every element that is opened is closed, in order; a void element is never closed; there is no
   comment, no processing instruction and no other declaration. There is no script, no frame, no form, no base,
   no style attribute and no event handler, because none of them is an element or an attribute the page may hold
+- the page holds one picker, the one <fieldset class="tools"> (D-2026-11-25-prompt-per-tool): a <legend>, then for each
+  coding agent of TOOLS, in order, an <input type="radio" name="tool"> with its id and a <label> for it, then one line
+  for each, a <p class="where for-...">, and the CSS shows the line of the radio that is checked. The first radio is
+  checked and no other. An <input> is such a radio and stands nowhere else, so it sends nothing anywhere: there is no
+  form, no button and no other kind of input. A line that names the file its agent reads names a file that
+  checks/init.py reads to choose adopt mode, INSTRUCTION_FILES, and says init.py sees it, or, for the one agent whose
+  rules init.py does not see, names a path that is not in that list, says so and links to TRYING.md
+- the page holds one prompt, the one <pre id="prompt" class="prompt">: the lines the test spells out, PROMPT_LINES, with
+  the command that fetches Ratchet at the newest version with a date in CHANGELOG.md. Each of its lines that is a
+  command, a line indented by three spaces, is a line of a code block marked sh in README.md, and the file it tells the
+  agent to follow, STARTING.md, is in this checkout
 - the page holds one inline SVG, the mark in the link to the repo: an <svg> that holds <path> and nothing else, no
   text, no other element of SVG and no element of the page, with only the attributes listed, whose values are numbers
   and words. So there is no script, use, image, foreignObject or animate in it, no href, no style attribute and no
@@ -53,7 +64,7 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   while it says the license is MIT, LICENSE starts "MIT License"
 - the figure moves only as the page may: its animation stands in the query for no preference, so it is still for a
   visitor who asked for less motion, and the wheel turns one tooth for each principle, at the angle of one tooth
-- the page is short: under 780 words outside the CSS, with one h1 and four h2, and one link of the class button
+- the page is short: under 1100 words outside the CSS, with one h1 and four h2, and one link of the class button
 - the principles, the one <section id="principles">, are the titles of the principles of ratchet.json, in order, in
   lists numbered from 1 on, with the two lines values.json gives around them, and the figure has one numbered tooth
   for each principle. The test reads the section and the figure itself, and does not ask generate.py
@@ -61,16 +72,18 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   value and the line that weighs them, as values.json holds them, in order, with the part each marks. The test reads
   the section itself, and does not ask generate.py.
 
-Five parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
+Six parts of the page are written by generate.py, which checks them: the line that fetches Ratchet, which names
 the newest version with a date in CHANGELOG.md, as the command in README.md does; the line that counts the rules
 of the core, from ratchet.json; the story and the values, from values.json; the line that names the pinned
-sources, from sources.json; and the principles, from ratchet.json and values.json. So a release that moves the README, a rule that changes kind, a value that is changed
+sources, from sources.json; the principles, from ratchet.json and values.json; and the prompt, which holds the same
+command at the same version. So a release that moves the README, a rule that changes kind, a value that is changed
 and a source that is added each move the page when generate.py is run, and generate.py --check fails until it is.
-The tests of all five are here too, and they read each line as generate.py
-does, after the spaces that indent it. The principles are a link to RATCHET.md, not a list on the page
+The tests of all six are here too, and they read each line as generate.py
+does, after the spaces that indent it, and the lines of the prompt as they stand. The principles are a link to RATCHET.md, not a list on the page
 (D-2026-11-23-values-and-principles).
 
-What the test does not claim: that a browser shows the page or the figure as intended, that the figure's labels fit
+What the test does not claim: that a browser shows the page or the figure as intended, that an agent does what the
+prompt asks, that a coding agent reads the file the page says it reads, or that Ratchet works in any of them, that the figure's labels fit
 where they are drawn or that each lies on the background it is checked against, that a named color is legible (it
 reads hex colors only), that the border of a box stands out from the background (--edge is not checked: a box says
 nothing that its text and its place in the list do not), or that the text is true. The text is taken
@@ -92,6 +105,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import generate  # noqa: E402
+import init  # noqa: E402
 import registry  # noqa: E402
 from test_checks import ROOT, RepoCopy, first_entry, run  # noqa: E402
 
@@ -116,7 +130,7 @@ FIGURE_VALUE = re.compile(r"[A-Za-z0-9 .,-]+\Z")
 # What the figure may not hold anywhere, since each is a way to bring in what the XML parser would not show as an element.
 FIGURE_MARKS = (("<!", "a doctype, a comment or a CDATA section"), ("<?", "a processing instruction"),
                 ("&", "a character reference or an entity"))
-VOID = {"meta", "link", "img", "source", "br"}
+VOID = {"meta", "link", "img", "source", "br", "input"}
 GLOBAL = {"id", "class"}
 # Every element the page may hold, with the attributes it may have beside id and class.
 ELEMENTS = {
@@ -125,6 +139,7 @@ ELEMENTS = {
     "h1": set(), "h2": set(), "h3": set(), "p": set(), "ul": set(), "ol": {"start"}, "li": set(), "a": {"href"},
     "strong": set(), "em": set(), "code": set(), "pre": set(), "br": set(), "span": set(),
     "picture": set(), "source": {"media", "srcset"}, "img": {"src", "width", "height", "alt"},
+    "fieldset": set(), "legend": set(), "input": {"type", "name", "checked"}, "label": {"for"},
     "svg": {"viewbox", "width", "height", "aria-hidden"}, "path": {"d"},
 }
 # The inline SVG of the page, the mark in the link to the repo: an <svg> holds only these elements, each directly in
@@ -180,14 +195,47 @@ WATCH_RUN = "        run: python3 checks/watch_sources.py --data sources.json"
 ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5
 # The page is short: fewer words than this outside the CSS, these headings, and one link of the class button, the one
-# thing to do (D-2026-11-24-landing-page-pass). The cap was 450, then 400, then 560 before the principles were listed.
-WORDS = 780
+# thing to do (D-2026-11-24-landing-page-pass). The cap was 450, then 400, then 560 before the principles were listed,
+# then 780 before the picker and the prompt (D-2026-11-25-prompt-per-tool).
+WORDS = 1100
 HEADINGS = [1, 2, 2, 2, 2]
 BUTTON = '<a class="button" href="#start-here">Try it on your repo</a>'
 # What the top of the page says of the project, each tied to what the repo holds.
 BEFORE_ONE = "Before 1.0"
 LICENSED = '<strong>License:</strong> <a href="%s/blob/main/LICENSE">MIT</a>.' % REPO
 SAMPLE = re.compile(r'<pre class="sample">([^<>]*)</pre>')
+# The picker (D-2026-11-25-prompt-per-tool): each coding agent as (the end of its id and of its line's class, its name
+# on the page, the file the page says it reads, whether checks/init.py sees that file, that is, whether it is one of
+# init.INSTRUCTION_FILES). The last is every other agent, and names no file. The page says of no agent that Ratchet was
+# tried in it: a test cannot see that, and the line under the prompt says which two build Ratchet.
+TOOLS = (("claude-code", "Claude Code", "CLAUDE.md", True), ("codex", "Codex", "AGENTS.md", True),
+         ("gemini-cli", "Gemini CLI", "GEMINI.md", True), ("cursor", "Cursor", ".cursor/rules", False),
+         ("copilot", "GitHub Copilot", ".github/copilot-instructions.md", True), ("other", "Other", None, None))
+PICKER = "tools"
+RADIO = {"type": "radio", "name": "tool"}
+SEES = "<code>init.py</code> sees that file and never changes it"
+NOT_SEEN = "which <code>init.py</code> does not see"
+INVENTORY_FIRST = '<a href="%s/blob/main/TRYING.md">take inventory first</a>' % REPO
+SHOWN = "#tool-%s:checked ~ .for-%s"
+PANEL_CODE = re.compile(r"<code>([^<>]*)</code>")
+# The prompt, as the test expects it, spelled out here and not taken from generate.py. Its one "%s" is FETCH at the
+# newest version with a date in CHANGELOG.md. A line indented by three spaces is a command.
+PROMPT_OPEN, PROMPT_CLOSE = '<pre id="prompt" class="prompt">', "</pre>"
+PROMPT_LINES = (
+    "Set up Ratchet in this git repo. Work in the repo's root.",
+    "",
+    "1. Fetch Ratchet at its released tag into .ratchet:",
+    "   %s",
+    "2. Run the dry run, which writes nothing, and show me all of its output:",
+    "   python3 .ratchet/checks/init.py --check",
+    "3. Stop there. Tell me which of the two paths init.py takes here: a new repo, or adopt mode, for a repo with an "
+    "instruction file of its own. Ask me before you run anything that writes: init.py, or init.py with --adopt.",
+    "4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.",
+    "5. If init.py wrote AGENTS.md and you do not read it, say how to make you.",
+    "",
+    "Do not commit, push, or make a check required without asking me first.",
+)
+PROMPT_FOLLOWS = "STARTING.md"
 
 
 class PageReader(html.parser.HTMLParser):
@@ -276,6 +324,12 @@ class PageReader(html.parser.HTMLParser):
                 self.problems.append("%s: a <title> stands in <head>, and nowhere else" % self.where())
         if tag == "source" and self.stack[-1:] != ["picture"]:
             self.problems.append("%s: a <source> stands in a <picture>" % self.where())
+        if tag in ("input", "label", "legend") and self.stack[-1:] != ["fieldset"]:
+            self.problems.append("%s: <%s> stands directly in the <fieldset> of the picker, and nowhere else" % (self.where(), tag))
+        if tag == "input" and (dict((name, value) for name, value in values.items() if name in RADIO) != RADIO
+                               or values.get("checked", "checked") != "checked"):
+            self.problems.append('%s: an <input> is a radio of the picker, type="radio" and name="tool", and no other kind, and '
+                                 'checked is written checked="checked"' % self.where())
         if re.fullmatch(r"h[1-6]", tag):
             self.headings.append((self.where(), int(tag[1])))
         if tag == "code" and self.stack[-1:] == ["pre"]:
@@ -582,6 +636,7 @@ def page_problems(root):
     found += ["%s: %s" % (name, problem) for problem in watch_problems(root)]
     found += ["%s: %s" % (name, problem) for problem in short_problems(text) + top_problems(root, text)]
     found += ["%s: %s" % (name, problem) for problem in principles_problems(root)]
+    found += ["%s: %s" % (name, problem) for problem in picker_problems(text, "".join(reader.styles)) + prompt_problems(root, text)]
     readme_path = os.path.join(root, "README.md")
     with open(readme_path, encoding="utf-8", errors="strict") as handle:
         allowed = readme_commands(handle.read())
@@ -681,6 +736,141 @@ def watch_problems(root):
     return []
 
 
+class PickerReader(html.parser.HTMLParser):
+    """Reads the page for its picker: how many <fieldset> it holds, and each element directly in the first of the class
+    PICKER, in order, as [its tag, its attributes, what it holds as the page writes it]. Text directly in the
+    <fieldset> is counted too, since the picker holds none."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.fieldsets, self.depth, self.done, self.children, self.stray = 0, None, False, [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "fieldset":
+            self.fieldsets += 1
+            if self.depth is None and not self.done and dict(attrs) == {"class": PICKER}:
+                self.depth = 0
+                return
+        if self.depth is None:
+            return
+        if self.depth == 0:
+            self.children.append([tag, dict(attrs), []])
+        else:
+            self.children[-1][2].append(self.get_starttag_text())
+        if tag not in VOID:
+            self.depth += 1
+
+    def handle_endtag(self, tag):
+        if self.depth is None or tag in VOID:
+            return
+        if self.depth == 0:
+            self.depth, self.done = None, True
+            return
+        self.depth -= 1
+        if self.depth:
+            self.children[-1][2].append("</%s>" % tag)
+
+    def handle_data(self, data):
+        if self.depth:
+            self.children[-1][2].append(data)
+        elif self.depth == 0 and data.strip():
+            self.stray += 1
+
+
+def picker_problems(text, css, files=init.INSTRUCTION_FILES):
+    """Why the picker is not the one of TOOLS, or says of a file what checks/init.py does not do, as messages, or nothing.
+
+    The page holds one <fieldset>, of the class PICKER: a <legend>, then a radio and its <label> for each agent of
+    TOOLS, in order, the first checked and no other, then one line for each, in the same order. The CSS holds, for each,
+    the selector that shows the line of the radio that is checked, and no other selector reads :checked that way. A line
+    names in <code> only its agent's file and init.py. files is what init.py reads to choose adopt mode: a line says
+    init.py sees its file only when the file is one of them, and says it does not, with the link to TRYING.md, only when
+    it is not.
+    """
+    reader = PickerReader()
+    reader.feed(text)
+    reader.close()
+    if reader.fieldsets != 1 or not reader.done:
+        return ['holds one picker, a <fieldset class="%s"> that is closed, and no other <fieldset>. Found <fieldset> %d times'
+                % (PICKER, reader.fieldsets)]
+    problems = []
+    if reader.stray:
+        problems.append("the picker holds text that stands in none of its elements")
+    expected = ["legend"] + ["input", "label"] * len(TOOLS) + ["p"] * len(TOOLS)
+    tags = [tag for tag, _, _ in reader.children]
+    if tags != expected:
+        return problems + ["the picker holds a <legend>, then an <input> and its <label> for each of %d agents, then a <p> for each. "
+                           "Found %s" % (len(TOOLS), ", ".join("<%s>" % tag for tag in tags) or "nothing")]
+    if not "".join(reader.children[0][2]).strip():
+        problems.append("the <legend> of the picker names it, and is empty")
+    for number, (slug, label, file, seen) in enumerate(TOOLS):
+        radio, name, line = reader.children[1 + 2 * number], reader.children[2 + 2 * number], reader.children[1 + 2 * len(TOOLS) + number]
+        wanted = dict(RADIO, id="tool-%s" % slug, **({"checked": "checked"} if number == 0 else {}))
+        if radio[1] != wanted:
+            problems.append("radio %d of the picker is %r, and must be %r: the first is checked, and no other" % (number + 1, radio[1], wanted))
+        if name[1] != {"for": "tool-%s" % slug} or "".join(name[2]) != label:
+            problems.append("label %d of the picker is %r with %r, and must be for tool-%s with %r"
+                            % (number + 1, name[1], "".join(name[2]), slug, label))
+        said = "".join(line[2])
+        if line[1] != {"class": "where for-%s" % slug}:
+            problems.append('line %d of the picker has %r, and must have class="where for-%s"' % (number + 1, line[1], slug))
+        if SHOWN % (slug, slug) not in css:
+            problems.append("the CSS does not hold %s, which shows the line of %s when its radio is checked" % (SHOWN % (slug, slug), label))
+        named = set(PANEL_CODE.findall(said)) - {"init.py"}
+        if named != ({file} if file else set()):
+            problems.append("the line of %s names %s in <code>, and must name %s and init.py only"
+                            % (label, ", ".join(sorted(named)) or "no file", file or "no file"))
+        if file is None:
+            continue
+        if seen != (file in files):
+            problems.append("the page says checks/init.py %s %s, the file of %s, and INSTRUCTION_FILES of checks/init.py says otherwise"
+                            % ("sees" if seen else "does not see", file, label))
+        if seen and (SEES not in said or NOT_SEEN in said):
+            problems.append('the line of %s must say "%s", and not that init.py does not see the file' % (label, SEES))
+        if not seen and (NOT_SEEN not in said or SEES in said or INVENTORY_FIRST not in said):
+            problems.append('the line of %s must say "%s", link to TRYING.md as %s, and not say that init.py sees the file'
+                            % (label, NOT_SEEN, INVENTORY_FIRST))
+    if css.count(":checked ~") != len(TOOLS):
+        problems.append("the CSS reads :checked ~ %d times, and must read it once for each of the %d lines of the picker"
+                        % (css.count(":checked ~"), len(TOOLS)))
+    return problems
+
+
+def page_prompt(text):
+    """The lines of the one prompt on the page, between PROMPT_OPEN and the next PROMPT_CLOSE, each a line of its own
+    and not indented, or None when the prompt does not stand there once."""
+    lines = text.split("\n")
+    if lines.count(PROMPT_OPEN) != 1 or text.count('id="prompt"') != 1:
+        return None
+    start = lines.index(PROMPT_OPEN)
+    return lines[start + 1:lines.index(PROMPT_CLOSE, start)] if PROMPT_CLOSE in lines[start:] else None
+
+
+def prompt_problems(root, text):
+    """Why the prompt is not the one the test expects, as messages, or nothing: PROMPT_LINES with the command that
+    fetches Ratchet at the newest version with a date in CHANGELOG.md, each command of it a line of a code block marked
+    sh in README.md, and the file it tells the agent to follow a file of this checkout."""
+    prompt = page_prompt(text)
+    if prompt is None:
+        return ['holds one prompt, the line %s, then the lines of the prompt, then the line %s' % (PROMPT_OPEN, PROMPT_CLOSE)]
+    problems = []
+    released = generate.changelog_context(root)[1]
+    expected = [line % (FETCH % released) if "%s" in line else line for line in PROMPT_LINES]
+    if prompt != expected:
+        problems.append("the prompt is not the one the test expects at v%s: %r, and must be %r" % (released, prompt, expected))
+    with open(os.path.join(root, "README.md"), encoding="utf-8", errors="strict") as handle:
+        allowed = readme_commands(handle.read())
+    commands = [line[3:] for line in prompt if line.startswith("   ")]
+    for command in commands:
+        if command not in allowed:
+            problems.append("the command %r of the prompt is not a line of a code block marked sh in README.md" % command)
+    if not commands:
+        problems.append("the prompt holds no command, a line indented by three spaces")
+    if PROMPT_FOLLOWS in " ".join(prompt) and not os.path.isfile(os.path.join(root, PROMPT_FOLLOWS)):
+        problems.append("the prompt tells the agent to follow %s, which is not a file in this checkout" % PROMPT_FOLLOWS)
+    return problems
+
+
 def link_problem(root, value, ids):
     """Why a link on the page is not allowed, or None. ids maps each page in docs/ to the ids on it.
 
@@ -760,7 +950,9 @@ class Page(RepoCopy, unittest.TestCase):
                       'href="%s/issues"' % REPO, REPO + "/blob/main/SECURITY.md", "<strong>Planned:</strong>",
                       "<strong>Maintainer:</strong> one person, <code>fabian-von-tiedemann</code> on GitHub",
                       "<code>ratchet.no-secrets</code> names a secret scan in every pull request", EXAMPLE_NOT_SHIPPED,
-                      'id="sources"'):
+                      'id="sources"', '<fieldset class="tools">', PROMPT_OPEN,
+                      "Do not commit, push, or make a check required without asking me first.",
+                      "Ratchet builds itself with Claude Code and Codex, and has not been tried in the others"):
             self.assertIn(words, text)
 
     def test_the_page_is_short(self):
@@ -843,6 +1035,34 @@ class Page(RepoCopy, unittest.TestCase):
                 self.setUp()
                 self.change("</main>", script + "\n</main>")
                 self.assert_fails("is not an element this page may hold")
+
+    def test_an_input_that_is_not_a_radio_of_the_picker_or_a_control_that_sends_something_fails(self):
+        radio = '<input type="radio" name="tool" id="tool-codex">'
+        for old, new, message in (
+                (radio, '<input type="text" name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
+                (radio, '<input type="submit" name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
+                (radio, '<input type="radio" name="other" id="tool-codex">', "an <input> is a radio of the picker"),
+                (radio, '<input name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
+                (radio, '<input type="radio" name="tool" id="tool-codex" checked="">', 'checked is written checked="checked"'),
+                (radio, '<input type="radio" name="tool" id="tool-codex" checked>', "has the attribute checked without a value"),
+                (radio, '<input type="radio" name="tool" id="tool-codex" formaction="https://example.invalid/">',
+                 "<input> may not have the attribute formaction"),
+                (radio, '<input type="radio" name="tool" id="tool-codex" onchange="x()">', "<input> may not have the attribute onchange"),
+                (radio, '<input type="radio" name="tool" id="tool-codex" value="x">', "<input> may not have the attribute value"),
+                (radio, '<input type="image" name="tool" id="tool-codex" src="https://example.invalid/x.png">',
+                 "<input> may not have the attribute src"),
+                (radio, radio + "</input>", "</input> closes a void element"),
+                ("</main>", '<input type="radio" name="tool" id="tool-more">\n</main>', "<input> stands directly in the <fieldset>"),
+                ("</main>", '<label for="tool-codex">Codex</label>\n</main>', "<label> stands directly in the <fieldset>"),
+                ("</main>", "<button>Copy</button>\n</main>", "<button> is not an element this page may hold"),
+                ("</main>", "<textarea>x</textarea>\n</main>", "<textarea> is not an element this page may hold"),
+                ("</main>", "<select><option>x</option></select>\n</main>", "<select> is not an element this page may hold"),
+                ('<fieldset class="tools">', '<form action="https://example.invalid/"><fieldset class="tools">',
+                 "<form> is not an element this page may hold")):
+            with self.subTest(new=new):
+                self.setUp()
+                self.change(old, new)
+                self.assert_fails(message)
 
     def test_an_inline_svg_that_is_more_than_the_mark_fails(self):
         mark = '<svg class="mark" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path d="M8 0'
@@ -1253,7 +1473,8 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
     def test_the_page_fetches_what_the_readme_fetches(self):
         version, fetched = first_entry(self.copy)
         line = "<pre><code>%s</code></pre>" % (FETCH % fetched)
-        self.assertEqual(lines_that_hold(self.page(), "git clone"), [line])
+        # The prompt holds the same command, as text, before the command of the page.
+        self.assertEqual(lines_that_hold(self.page(), "git clone"), [FETCH % fetched, line])
         with open(os.path.join(self.copy, "README.md"), encoding="utf-8") as handle:
             self.assertIn("   " + FETCH % fetched + "\n", handle.read())
 
@@ -1279,6 +1500,9 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertIn("wrote docs/index.html", output)
         self.assertEqual(self.page(), before.replace(FETCH % fetched, FETCH % version))
+        # The release moved the prompt with the command: both hold the new version, and nothing holds the old one.
+        self.assertEqual(lines_that_hold(self.page(), "git clone"), [FETCH % version, "<pre><code>%s</code></pre>" % (FETCH % version)])
+        self.assertIn("   " + FETCH % version, page_prompt(self.page()))
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
         self.assertEqual(page_problems(self.copy), [])
@@ -1290,7 +1514,7 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.write_page(self.page().replace(line, "  " + line, 1))
         code, output = run("generate.py", "--check", root=self.copy)
         self.assertEqual(code, 0, output)
-        self.assertEqual(lines_that_hold(self.page(), "git clone"), [line])
+        self.assertEqual(lines_that_hold(self.page(), "git clone"), [FETCH % fetched, line])
         self.assertEqual(page_problems(self.copy), [])
 
     def test_the_page_moved_ahead_of_the_readme_fails(self):
@@ -1331,6 +1555,175 @@ class PageFetchLine(RepoCopy, unittest.TestCase):
         self.assertEqual(code, 1, output)
         self.assertIn("is not valid UTF-8", output)
         self.assertNotIn("Traceback", output)
+
+
+class PagePicker(RepoCopy, unittest.TestCase):
+    """The picker is the agents of TOOLS, and what a line says of a file is what checks/init.py does with it."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def problems(self, text, files=init.INSTRUCTION_FILES):
+        return picker_problems(text, text[text.index("<style>"):text.index("</style>")], files)
+
+    def test_the_picker_as_it_stands_passes(self):
+        self.assertEqual(self.problems(self.page()), [])
+
+    def test_every_file_a_line_says_init_sees_is_one_init_reads_and_the_other_is_not(self):
+        for slug, label, file, seen in TOOLS:
+            if file is not None:
+                self.assertEqual(file in init.INSTRUCTION_FILES, seen, file)
+        self.assertEqual([seen for _, _, _, seen in TOOLS].count(False), 1)
+
+    def test_a_line_that_says_of_a_file_what_init_does_not_do_fails(self):
+        # init.py learns to see the file of the one agent it did not, or stops seeing one: the page fails until it follows.
+        for files, message in ((init.INSTRUCTION_FILES + (".cursor/rules",), "does not see .cursor/rules, the file of Cursor"),
+                               (tuple(each for each in init.INSTRUCTION_FILES if each != "GEMINI.md"), "sees GEMINI.md, the file of Gemini CLI")):
+            with self.subTest(files=files):
+                self.assertTrue(any(message in problem for problem in self.problems(self.page(), files)), self.problems(self.page(), files))
+
+    def test_a_picker_changed_by_hand_fails(self):
+        cursor = "Cursor reads <code>.cursor/rules</code>, which <code>init.py</code> does not see"
+        for old, new, message in (
+                ("<code>CLAUDE.md</code>: <code>init.py</code> sees", "<code>CLAUDE.txt</code>: <code>init.py</code> sees",
+                 "the line of Claude Code names CLAUDE.txt in <code>, and must name CLAUDE.md and init.py only"),
+                ("Codex reads <code>AGENTS.md</code>", "Codex reads <code>AGENTS.md</code> and <code>CODEX.md</code>",
+                 "the line of Codex names AGENTS.md, CODEX.md in <code>"),
+                (cursor, "Cursor reads <code>.cursor/rules</code>: " + SEES, "the line of Cursor must say"),
+                (cursor + ": if your rules stand there, " + INVENTORY_FIRST, cursor, "the line of Cursor must say"),
+                ("Gemini CLI reads <code>GEMINI.md</code>: " + SEES, "Gemini CLI reads <code>GEMINI.md</code>, " + NOT_SEEN,
+                 "the line of Gemini CLI must say"),
+                ("Another agent that can run commands in your repo", "Another agent, which reads <code>RULES.md</code>",
+                 "the line of Other names RULES.md in <code>, and must name no file"),
+                ('<input type="radio" name="tool" id="tool-codex">', '<input type="radio" name="tool" id="tool-codex" checked="checked">',
+                 "radio 2 of the picker"),
+                (' id="tool-claude-code" checked="checked"', ' id="tool-claude-code"', "radio 1 of the picker"),
+                ('<label for="tool-codex">Codex</label>', '<label for="tool-cursor">Codex</label>', "label 2 of the picker"),
+                ('<label for="tool-copilot">GitHub Copilot</label>', '<label for="tool-copilot">Copilot, tested</label>', "label 5 of the picker"),
+                ('<p class="where for-codex">', '<p class="where for-cursor">', "line 2 of the picker"),
+                ('<input type="radio" name="tool" id="tool-other">\n<label for="tool-other">Other</label>\n', "", "Found <legend>"),
+                ("<legend>Your coding agent</legend>\n", "", "Found <input>"),
+                ("<legend>Your coding agent</legend>", "<legend></legend>", "the <legend> of the picker names it"),
+                ("<legend>Your coding agent</legend>", "<legend>Your coding agent</legend>\nTried in all of them.", "holds text that stands in none"),
+                ("#tool-codex:checked ~ .for-codex,\n", "", "the CSS does not hold #tool-codex:checked ~ .for-codex"),
+                ("#tool-codex:checked ~ .for-codex,", "#tool-codex:checked ~ .for-codex,\n#tool-codex:checked ~ .prompt,",
+                 "the CSS reads :checked ~ 7 times"),
+                ('<fieldset class="tools">', '<fieldset class="other">', "holds one picker"),
+                ("</main>", "<fieldset></fieldset>\n</main>", "Found <fieldset> 2 times")):
+            with self.subTest(new=new):
+                text = self.page()
+                self.assertIn(old, text)
+                problems = self.problems(text.replace(old, new, 1))
+                self.assertTrue(any(message in problem for problem in problems), "%r not in %r" % (message, problems))
+
+    def test_the_page_fails_on_a_picker_changed_by_hand(self):
+        self.edit("docs/index.html", "<code>GEMINI.md</code>", "<code>GEMINI.txt</code>")
+        self.assertTrue(any("the line of Gemini CLI names GEMINI.txt" in problem for problem in page_problems(self.copy)))
+
+
+class PagePrompt(RepoCopy, unittest.TestCase):
+    """generate.py writes the prompt on the page, --check fails on a prompt edited by hand, and the test holds it too."""
+
+    def page(self):
+        with open(os.path.join(self.copy, DOCS, PAGE), encoding="utf-8", newline="") as handle:
+            return handle.read()
+
+    def write_page(self, text):
+        with open(os.path.join(self.copy, DOCS, PAGE), "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+
+    def test_the_prompt_is_the_one_the_test_expects_at_the_released_version(self):
+        released = generate.changelog_context(self.copy)[1]
+        prompt = page_prompt(self.page())
+        self.assertEqual(prompt, [line % (FETCH % released) if "%s" in line else line for line in PROMPT_LINES])
+        self.assertEqual(prompt_problems(self.copy, self.page()), [])
+        self.assertEqual(list(generate.PROMPT), list(PROMPT_LINES))
+        # What it asks for: the three steps, the stop before anything is written, and no commit, push or required check.
+        for words in (FETCH % released, "python3 .ratchet/checks/init.py --check", "Stop there.", "Ask me before you run anything that writes",
+                      "init.py with --adopt", "follow .ratchet/STARTING.md", "Do not commit, push, or make a check required"):
+            self.assertIn(words, "\n".join(prompt))
+
+    def test_a_prompt_edited_by_hand_fails_and_generate_writes_it_again(self):
+        released = generate.changelog_context(self.copy)[1]
+        before = self.page()
+        for old, new in (("Do not commit, push, or make a check required without asking me first.", "Commit and push when you are done."),
+                         ("3. Stop there. ", "3. Go on. "),
+                         ("   " + FETCH % released, "   " + FETCH % "0.1"),
+                         ("   python3 .ratchet/checks/init.py --check", "   python3 .ratchet/checks/init.py"),
+                         ("4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.\n", ""),
+                         ("\nDo not commit, push,", "\nThen require the check in the protection of main.\nDo not commit, push,"),
+                         ("Set up Ratchet in this git repo.", "  Set up Ratchet in this git repo.")):
+            with self.subTest(new=new):
+                self.assertIn(old, before)
+                self.write_page(before.replace(old, new, 1))
+                self.assertTrue(any("the prompt is not the one the test expects" in problem for problem in prompt_problems(self.copy, self.page())))
+                code, output = run("generate.py", "--check", root=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertIn("docs/index.html: generated text is out of date or was edited by hand", output)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 0, output)
+                self.assertIn("wrote docs/index.html", output)
+                self.assertEqual(self.page(), before)
+
+    def test_a_prompt_of_another_form_fails_and_generate_writes_nothing(self):
+        before = self.page()
+        first = PROMPT_OPEN + "\n" + PROMPT_LINES[0]
+        for old, new in ((first, PROMPT_OPEN + "\n<strong>Set up Ratchet</strong> in this git repo."),
+                         (first, PROMPT_OPEN + "\n" + PROMPT_LINES[0] + " &amp; push"),
+                         (first, PROMPT_OPEN + "\n" + PROMPT_LINES[0] + " \u2192"),
+                         (first, PROMPT_OPEN + "\n" + PROMPT_LINES[0] + "</pre>\n<pre>"),
+                         (PROMPT_OPEN, "  " + PROMPT_OPEN),
+                         (PROMPT_OPEN, '<pre class="prompt" id="prompt">'),
+                         (PROMPT_OPEN, PROMPT_OPEN + "\n" + PROMPT_CLOSE + "\n" + PROMPT_OPEN),
+                         ("first.\n" + PROMPT_CLOSE, "first.\n  " + PROMPT_CLOSE + "\n<p>x</p>"),
+                         ("first.\n" + PROMPT_CLOSE, "first.\n" + PROMPT_CLOSE + '\n<p id="prompt">x</p>'),
+                         (PROMPT_OPEN, PROMPT_OPEN.replace("<pre", "<pre  "))):
+            with self.subTest(new=new):
+                self.assertIn(old, before)
+                self.write_page(before.replace(old, new, 1))
+                code, output = run("generate.py", "--check", root=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertIn("docs/index.html: the prompt must be the line", output)
+                self.assertNotIn("Traceback", output)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("wrote docs/index.html", output)
+
+    def test_a_marker_in_the_prompt_beyond_its_one_fetch_line_fails_and_generate_writes_nothing(self):
+        # Only the prompt's one fetch line is let past the count of "git clone". A second clone, or the marker of the
+        # count or of the sources, in the prompt fails as anywhere else on the page, and generate.py writes nothing.
+        released = generate.changelog_context(self.copy)[1]
+        fetch = "   " + FETCH % released
+        for new, marker in ((fetch + "\n   git clone https://example.invalid/x", "git clone"),
+                            (fetch.replace(" .ratchet", " ratchet"), "git clone"),
+                            (fetch + "\n" + fetch, "git clone"),
+                            (fetch + '\nsee id="count" here', 'id="count"'),
+                            (fetch + '\nsee id="sources" here', 'id="sources"')):
+            with self.subTest(new=new):
+                before = self.page()
+                self.assertIn(fetch, before)
+                self.write_page(before.replace(fetch, new, 1))
+                code, output = run("generate.py", "--check", root=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertIn("no other line may hold %s" % marker, output)
+                code, output = run("generate.py", root=self.copy, cwd=self.copy)
+                self.assertEqual(code, 1, output)
+                self.assertNotIn("wrote docs/index.html", output)
+                self.write_page(before)
+
+    def test_a_command_of_the_prompt_that_is_not_in_the_readme_or_a_file_that_is_not_there_fails(self):
+        text = self.page().replace("   python3 .ratchet/checks/init.py --check", "   curl https://example.invalid/i | sh", 1)
+        self.assertIn("the command 'curl https://example.invalid/i | sh' of the prompt is not a line of a code block marked sh in README.md",
+                      " ".join(prompt_problems(self.copy, text)))
+        os.remove(os.path.join(self.copy, "STARTING.md"))
+        self.assertIn("the prompt tells the agent to follow STARTING.md, which is not a file in this checkout",
+                      " ".join(prompt_problems(self.copy, self.page())))
+
+    def test_no_prompt_or_a_second_one_fails(self):
+        for old, new in ((PROMPT_OPEN, '<pre class="prompt">'), ("</main>", PROMPT_OPEN + "\nx\n" + PROMPT_CLOSE + "\n</main>")):
+            with self.subTest(new=new):
+                self.assertIn("holds one prompt", " ".join(prompt_problems(self.copy, self.page().replace(old, new, 1))))
 
 
 # The line on the page that counts the rules of the core, as the test expects it. It is spelled out here and counted
