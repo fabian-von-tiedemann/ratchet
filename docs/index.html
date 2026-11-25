@@ -439,14 +439,15 @@ footer p + p {
 <p class="tagline"><strong>Rules for one person with a team of AI coding agents.</strong> A way to turn each mistake an agent makes into a check you build, which goes red the next time.</p>
 <p class="status"><strong>Beta.</strong> Before 1.0, a new version may change the form of your register, and the <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/CHANGELOG.md">changelog</a> says what to do.</p>
 <p class="actions"><a class="button" href="#start-here">Try it on your repo</a> <a href="https://github.com/fabian-von-tiedemann/ratchet">Star or watch it on GitHub</a></p>
-<p class="caption">Part of the dry run in an empty repo. It writes nothing:</p>
+<p class="caption">From an empty repo’s dry run, which writes nothing:</p>
 <pre class="sample">$ python3 .ratchet/checks/init.py --check
 would write .github/workflows/ratchet.yml
 would write AGENTS.md
+would write CLAUDE.md
 would write register.json
 would write REGISTER.md
 would write .gitignore
-init: --check. Nothing was written: 5 file(s) would be written, 0 files left as they are</pre>
+init: --check. Nothing was written: 6 file(s) would be written, 0 files left as they are</pre>
 </header>
 <main>
 <section id="values" class="values">

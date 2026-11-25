@@ -27,7 +27,8 @@ sys.path.insert(0, HERE)
 import init  # noqa: E402
 import run_pinned  # noqa: E402
 
-WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore")
+WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore",
+           "CLAUDE.md")
 PLACEHOLDER = "<40-character commit sha>"
 
 
@@ -251,6 +252,8 @@ class Init(unittest.TestCase):
         template["project"] = "demo-project"
         self.assertEqual(register, template)
         self.assertEqual(self.text(".gitignore"), "/.ratchet/\n")
+        self.assertEqual(self.text("CLAUDE.md"), read_template("CLAUDE.md"))
+        self.assertIn("@AGENTS.md", self.text("CLAUDE.md").split("\n"))
         self.assert_ratchet_ignored()
         self.assertIn("10 rules match Ratchet %s" % self.version, output)
         self.assertNotIn("adopt mode", output)
@@ -297,7 +300,8 @@ class Init(unittest.TestCase):
         import check_register
         for solo in (False, True):
             with self.subTest(solo=solo):
-                for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+                for name in ("AGENTS.md", "CLAUDE.md", "register.json", "REGISTER.md",
+                             os.path.join(".github", "workflows", "ratchet.yml")):
                     if os.path.lexists(self.path(name)):
                         os.remove(self.path(name))
                 code, output = self.init(*(["--solo"] if solo else []))
@@ -487,7 +491,9 @@ class Init(unittest.TestCase):
         self.assertEqual(snapshot(self.project), before)
         self.assertIn("Nothing changed", output)
         self.assertNotRegex(output, r"(?m)^(write|add) ")
-        self.assertEqual(len(re.findall(r"(?m)^unchanged ", output)), len(WRITTEN), output)
+        # Every file but CLAUDE.md, which a run names only when it writes it (review round 2 of #158).
+        self.assertEqual(len(re.findall(r"(?m)^unchanged ", output)), len(WRITTEN) - 1, output)
+        self.assertNotIn("CLAUDE.md", output)
 
     def test_check_writes_nothing(self):
         before = snapshot(self.project)
@@ -736,8 +742,8 @@ init.gitignore_plan = gitignore_plan
         # to fill in AGENTS.md or name files that were not written.
         code, output = self.init()
         self.assertEqual(code, 0, output)
-        self.assertIn("init: done. Fill in AGENTS.md, and commit .github/workflows/ratchet.yml, AGENTS.md, register.json, "
-                      "REGISTER.md and .gitignore\n", output)
+        self.assertIn("init: done. Fill in AGENTS.md, and commit .github/workflows/ratchet.yml, AGENTS.md, CLAUDE.md, "
+                      "register.json, REGISTER.md and .gitignore\n", output)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertIn("init: done. Nothing to commit\n", output)
@@ -749,7 +755,7 @@ init.gitignore_plan = gitignore_plan
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertIn("init: done. Compare each file left as it is with what init.py would write, by hand, and commit "
-                      "register.json, REGISTER.md and .gitignore\n", output)
+                      "CLAUDE.md, register.json, REGISTER.md and .gitignore\n", output)
         self.assertNotIn("Fill in AGENTS.md", output)
 
     def run_patched(self, patch, *args):
@@ -1468,12 +1474,173 @@ def write_new(root, path, data):
 init.write_new = write_new""")
         self.assertEqual(code, 2, output)
         self.assertTrue(os.path.isfile(self.path("AGENTS.md")), output)
+        self.assertTrue(os.path.isfile(self.path("CLAUDE.md")), output)
         self.assertTrue(os.path.isfile(self.path(WRITTEN[3])), output)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertNotIn("adopt mode", output)
         for name in WRITTEN:
             self.assertTrue(os.path.isfile(self.path(name)), output)
+
+    def test_a_start_stopped_at_any_file_is_never_taken_for_adopt_mode(self):
+        # The CLAUDE.md that a start writes is an instruction file that switches a run to adopt mode, as AGENTS.md is.
+        # A start stopped at each file in turn leaves an instruction file only when it also left the workflow, which keeps
+        # the next run a start: that run is not in adopt mode, writes the rest, and leaves CLAUDE.md as it was written.
+        for stop in WRITTEN:
+            with self.subTest(stop=stop):
+                self.project = self.make_project("stop-%d" % len(os.listdir(self.directory)))
+                code, output = self.run_patched("""
+real = init.write_new
+def write_new(root, path, data):
+    if os.path.relpath(path, root) == %r:
+        raise OSError(errno.ENOSPC, "cut off")
+    return real(root, path, data)
+init.write_new = write_new
+real_add = init.add_line
+def add_line(root, path, before, after):
+    if os.path.relpath(path, root) == %r:
+        raise OSError(errno.ENOSPC, "cut off")
+    return real_add(root, path, before, after)
+init.add_line = add_line""" % (stop, stop))
+                self.assertEqual(code, 2, output)
+                if init.own_instructions(self.project):
+                    self.assertTrue(os.path.isfile(self.path(WRITTEN[3])), output)
+                self.assertEqual(init.adopt_mode(self.project), [], output)
+                written = snapshot(self.project)
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertEqual(sorted(snapshot(self.project)), sorted(WRITTEN))
+                for name, data in written.items():
+                    self.assertEqual(snapshot(self.project)[name], data, name)
+                self.assertEqual(self.text("CLAUDE.md"), read_template("CLAUDE.md"))
+
+    def test_a_second_start_with_the_claude_md_it_wrote_is_not_adopt_mode(self):
+        # A repo init.py started has CLAUDE.md, an instruction file. The workflow it wrote keeps a second run a start:
+        # with --check and without, every file unchanged, CLAUDE.md among them, and no adopt mode.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(init.own_instructions(self.project), ["AGENTS.md", "CLAUDE.md"])
+        before = snapshot(self.project)
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertNotIn("CLAUDE.md", output)
+                self.assertEqual(snapshot(self.project), before)
+        # Without the workflow, the same CLAUDE.md and AGENTS.md are a repo's own, and the run is in adopt mode: what
+        # recognizes a start is the workflow, and the test fails if init.py stops writing it first.
+        os.remove(self.path(WRITTEN[3]))
+        code, output = self.init("--check")
+        self.assertIn("init: adopt mode: AGENTS.md is the project's own instruction file", output)
+
+    def test_an_existing_claude_md_is_never_touched(self):
+        # A CLAUDE.md of the project's own: in a repo init.py has not started, adopt mode, as before; in one it started,
+        # neither read nor named (review round 2 of #158). Either way its bytes stay as they were.
+        data = b"# Our rules for Claude\r\nKeep it short.\r\n"
+        with open(self.path("CLAUDE.md"), "wb") as handle:
+            handle.write(data)
+        for args in (("--check",), ()):
+            with self.subTest(args=args, started=False):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertIn("init: adopt mode: CLAUDE.md is the project's own instruction file", output)
+                self.assertEqual(snapshot(self.project), {"CLAUDE.md": data})
+        os.makedirs(self.path(".github", "workflows"))
+        self.write(WRITTEN[3], read_template("ratchet-checks.yml").replace(PLACEHOLDER, self.commit))
+        for args in (("--check",), ()):
+            with self.subTest(args=args, started=True):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertNotIn("CLAUDE.md", output)
+                with open(self.path("CLAUDE.md"), "rb") as handle:
+                    self.assertEqual(handle.read(), data)
+
+    def test_claude_md_is_written_only_beside_a_register_of_init_s_own(self):
+        # Review round 2 of #158: CLAUDE.md is written only when register.json is missing or holds the bytes init.py
+        # writes, so a register that names CLAUDE.md, in any spelling and in any field, never gets the template there.
+        # Byte for byte the register of init.py: CLAUDE.md written. One that differs, by its name alone: not written and
+        # not named. One that names claude.md in lowercase, in instructions or in stands_in, on a volume that may not
+        # tell case apart: no file of that name in any case written, and CLAUDE.md not named by init.py itself.
+        ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
+
+        def changed(change):
+            def make(name):
+                register = json.loads(init.register_text(name, ratchet))
+                change(register)
+                return json.dumps(register, indent=2) + "\n"
+            return make
+
+        cases = (("init.py's own", lambda name: init.register_text(name, ratchet), True),
+                 ("another name", lambda name: init.register_text("other", ratchet), False),
+                 ("claude.md in instructions", changed(lambda register: register.update(instructions="claude.md")), False),
+                 ("claude.md in stands_in", changed(lambda register: register.update(
+                     adopted=[init.reference_row("ratchet.no-secrets", "claude.md", ratchet)])), False))
+        for case, register, written in cases:
+            with self.subTest(register=case):
+                self.project = self.make_project("claude-%d" % len(os.listdir(self.directory)))
+                self.write("register.json", register(os.path.basename(self.project)))
+                for args in (("--check",), ()):
+                    code, output = self.init(*args)
+                    self.assertNotIn("Traceback", output)
+                    self.assertNotIn("adopt mode", output)
+                    plan = re.findall(r"(?m)^(?:would write|write|unchanged|skip) +(\S+)", output)
+                    self.assertEqual("CLAUDE.md" in plan, written, output)
+                    if not written:
+                        self.assertNotRegex(output, r"(?m)^\S.*CLAUDE\.md")
+                names = [name.lower() for name in os.listdir(self.project)]
+                self.assertEqual("claude.md" in names, written, names)
+                if written:
+                    self.assertEqual(self.text("CLAUDE.md"), read_template("CLAUDE.md"))
+                    self.assertEqual(code, 0, output)
+                elif case == "another name":
+                    self.assertEqual(code, 0, output)
+
+    def test_an_unreadable_claude_md_in_a_started_repo_is_never_read(self):
+        # Review round 2 of #158: a CLAUDE.md in a repo init.py started is not read, so one that cannot be read is no
+        # new way to stop the run. (An AGENTS.md that cannot be read stops a run with a traceback, on main as here.)
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root reads a file with mode 000")
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        with open(self.path("CLAUDE.md"), "rb") as handle:
+            data = handle.read()
+        os.chmod(self.path("CLAUDE.md"), 0)
+        self.addCleanup(os.chmod, self.path("CLAUDE.md"), 0o644)
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("Traceback", output)
+                self.assertNotIn("CLAUDE.md", output)
+        os.chmod(self.path("CLAUDE.md"), 0o644)
+        with open(self.path("CLAUDE.md"), "rb") as handle:
+            self.assertEqual(handle.read(), data)
+
+    def test_a_claude_md_that_appears_after_the_choice_is_skipped_and_named(self):
+        # Review round 3 of #158: a CLAUDE.md that stands there by the time the plan reads it, though writes_claude saw
+        # none, is skipped and named like any file in the way, with no KeyError, and its bytes are left as they are.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.write("CLAUDE.md", "# Our own\n")
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.run_patched("init.writes_claude = lambda root, planned: True", *args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("Traceback", output)
+                self.assertRegex(output, r"(?m)^skip +CLAUDE\.md: it exists and differs from what init\.py writes\. "
+                                         r"It was left as it is: compare it with .*templates/CLAUDE\.md by hand")
+                self.assertEqual(self.text("CLAUDE.md"), "# Our own\n")
+
+    def test_a_claude_md_template_without_the_import_is_refused(self):
+        self.assertIn(init.CLAUDE_IMPORT, read_template("CLAUDE.md").split("\n"))
+        code, output = self.run_patched("init.template = (lambda real: lambda name: real(name).replace('@AGENTS.md', "
+                                        "'AGENTS.md') if name == 'CLAUDE.md' else real(name))(init.template)")
+        self.assertEqual(code, 2, output)
+        self.assertIn("templates/CLAUDE.md must hold the line @AGENTS.md", output)
+        self.assertEqual(snapshot(self.project), {})
 
     def test_adopt_mode_writes_nothing_through_a_link(self):
         # register.json is the one file adopt mode writes, and a link on its path, here the root's parent being fine

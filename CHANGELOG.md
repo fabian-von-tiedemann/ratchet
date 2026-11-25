@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15 (unreleased)
+
+In short: in a new repo, `init.py` also writes `CLAUDE.md`, whose line `@AGENTS.md` makes Claude Code load `AGENTS.md`, so a project started from the landing page gets rules its Claude Code reads. It writes it only where `CLAUDE.md` is missing and `register.json` is missing or the one `init.py` writes, and it never changes a `CLAUDE.md` that is there. No project needs to do anything.
+
+- `init.py` writes `CLAUDE.md` from the new `templates/CLAUDE.md` in a start, after the workflow, so a second run still knows the repo as one it started, and `--check` names it among the files it would write ([#158](https://github.com/fabian-von-tiedemann/ratchet/pull/158)).
+
+<!-- generated:count -->
+Ratchet 0.15, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.14 (2026-11-25)
 
 In short: `ratchet.si-harden` gets one clause, that a review finding that recurs is a failure class and becomes a check: a project that adopted the rule by copy pastes the new text, and one that adopted it by reference pins the new sha256 that `upgrade.py` prints. A register on 0.12 also does the steps of 0.13, and `upgrade.py` now starts from 0.12, so a register on an earlier version upgrades with Ratchet 0.13 first. No form changes; the rest changes only this repo's own CI, which now takes less time, and its landing page.

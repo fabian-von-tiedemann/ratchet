@@ -2003,7 +2003,7 @@ class StartPath(unittest.TestCase):
         commands = re.findall(r"(?m)^\s*(python3 \.ratchet/\S.*)$", self.readme)
         self.assertEqual(commands[:2], ["python3 .ratchet/checks/init.py --check", "python3 .ratchet/checks/init.py"])
         self.run_the_readme()
-        for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+        for name in ("AGENTS.md", "CLAUDE.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
             self.assertTrue(os.path.isfile(os.path.join(self.project, name)), name)
 
     def test_no_instruction_tells_the_reader_to_leave_the_root(self):
