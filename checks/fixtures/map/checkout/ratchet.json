@@ -1,0 +1,17 @@
+{
+  "version": "0.9",
+  "rules": [
+    {
+      "key": "ratchet.alpha",
+      "status": "core"
+    },
+    {
+      "key": "ratchet.beta",
+      "status": "core"
+    },
+    {
+      "key": "ratchet.gamma",
+      "status": "experimental"
+    }
+  ]
+}

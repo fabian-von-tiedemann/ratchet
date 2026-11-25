@@ -1,0 +1,24 @@
+{
+  "ratchet": "0.9",
+  "rules": {
+    "ratchet.alpha": {
+      "status": "covered",
+      "by": [
+        "/etc/passwd"
+      ],
+      "note": "The job `test` runs on every pull request, and AGENTS.md says so."
+    },
+    "ratchet.beta": {
+      "status": "gap",
+      "by": [
+        "docs/rules.md"
+      ],
+      "note": "Covered in part: docs/rules.md names decisions, with no id and no check."
+    },
+    "ratchet.gamma": {
+      "status": "gap",
+      "by": [],
+      "note": "Nothing in the repo covers it."
+    }
+  }
+}
