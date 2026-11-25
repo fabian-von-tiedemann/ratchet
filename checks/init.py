@@ -472,12 +472,13 @@ def start_reason(root):
 
 def start_line(reason, plan):
     """The line that says a run is a start, why, and what its plan writes or adds: only the files whose action is write,
-    and the line it adds to .gitignore, or that it writes nothing."""
+    and the line it adds to .gitignore, or that it writes nothing. It gives no reason for writing nothing: a file may be
+    there already, or it may not be one init.py can write, and the lines of the plan say which (review round 2 of #164)."""
     writes = [file.replace(os.sep, "/") for action, file, data, note in plan if action == "write"]
     parts = (["writes " + and_list(writes)] if writes else []) + (
         ["adds %s to .gitignore" % IGNORE] if any(action == "add" for action, file, data, note in plan) else [])
     if not parts:
-        return "init: a new start: %s, and init.py writes nothing: every file it would write is there already" % reason
+        return "init: a new start: %s, and init.py writes nothing. The lines below say what it does with each file" % reason
     return "init: a new start: %s, so init.py %s. It never overwrites a file" % (reason, ", and ".join(parts))
 
 

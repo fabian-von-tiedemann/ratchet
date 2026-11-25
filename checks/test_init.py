@@ -175,11 +175,25 @@ def dry_run(source, commit=None):
 
 
 def tag_commit(root, tag):
-    """The full commit id that the tag refs/tags/<tag> of root names, or None when there is no such tag. Only the full
-    ref is read, so a branch of the same name is never taken for the tag."""
-    found = subprocess.run(["git", "-C", root, "rev-parse", "-q", "--verify", "refs/tags/%s^{commit}" % tag],
-                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True, env=environment())
-    return found.stdout.strip() if found.returncode == 0 else None
+    """(whether root holds the tag refs/tags/<tag>, the full commit id it names or None). Only the full ref is read, so a
+    branch of the same name is never taken for the tag. A tag that is there but names no commit, such as a tree, is
+    there: it is never taken for a missing tag (review round 2 of #164)."""
+    def verify(ref):
+        found = subprocess.run(["git", "-C", root, "rev-parse", "-q", "--verify", ref], stdout=subprocess.PIPE,
+                               stderr=subprocess.DEVNULL, universal_newlines=True, env=environment())
+        return found.stdout.strip() if found.returncode == 0 else None
+    if verify("refs/tags/%s" % tag) is None:
+        return False, None
+    return True, verify("refs/tags/%s^{commit}" % tag)
+
+
+def first_entry(root):
+    """(the version, the date or None) of the first entry of root's CHANGELOG.md, or (None, None) when its first heading
+    is not of the exact form."""
+    with open(os.path.join(root, "CHANGELOG.md"), encoding="utf-8") as handle:
+        headings = [line for line in handle.read().split("\n") if line.startswith("## ")]
+    match = generate.HEADING.match(headings[0]) if headings else None
+    return (match.group(1), match.group(2)) if match else (None, None)
 
 
 def sample_problems(root, head):
@@ -207,11 +221,15 @@ def sample_problems(root, head):
     with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
         current = json.load(handle)["version"]
     date, newest = generate.changelog_context(root)
+    first, first_date = first_entry(root)
     tag = "v" + version
-    commit = tag_commit(root, tag)
+    exists, commit = tag_commit(root, tag)
+    if exists and commit is None:
+        return ["the page fetches %s with its clone command, and the tag %s in this checkout names no commit, so git "
+                "clone --branch %s cannot check it out. The head is not compared in its place" % (tag, tag, tag)]
     if commit is not None:
         source, which = root, "the tag %s, which the page's clone command fetches" % tag
-    elif version == current and date is not None and newest == current:
+    elif version == current and first == current and first_date is not None and newest == current:
         source, which = head, "the head, the release of %s, whose tag %s does not exist yet" % (version, tag)
     else:
         return ["the page fetches %s with its clone command, and this checkout has no tag %s, so the sample cannot be "
@@ -364,7 +382,7 @@ class Init(unittest.TestCase):
         # A second run: the workflow is there, and nothing is left to write.
         self.assertEqual(self.start_lines(),
                          "init: a new start: .github/workflows/ratchet.yml is there, which init.py writes first in a start, "
-                         "and init.py writes nothing: every file it would write is there already")
+                         "and init.py writes nothing. The lines below say what it does with each file")
         # A .gitignore of the project's own gets the line added, and is not named as written.
         self.project = self.make_project("ignoring")
         self.write(".gitignore", "build/\n")
@@ -390,6 +408,19 @@ class Init(unittest.TestCase):
                 code, output = self.init(*args)
                 self.assertIn("init: adopt mode: CLAUDE.md is the project's own instruction file", output)
                 self.assertNotIn("init: a new start", output)
+
+    def test_a_start_that_writes_nothing_gives_no_reason_it_may_not_have(self):
+        # Review round 2 of #164 (both reviewers, proven by a run): with REGISTER.md gone and register.json broken, the
+        # line said every file was there already, and then REGISTER.md was skipped as one that cannot be generated.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        os.remove(self.path("REGISTER.md"))
+        self.write("register.json", "{\n")
+        line = self.start_lines()
+        self.assertEqual(line, "init: a new start: .github/workflows/ratchet.yml is there, which init.py writes first in "
+                               "a start, and init.py writes nothing. The lines below say what it does with each file")
+        self.assertNotIn("there already", line)
+        self.assertFalse(os.path.exists(self.path("REGISTER.md")))
 
     def test_the_pinned_commit_is_in_the_workflow(self):
         code, output = self.init()
@@ -1912,6 +1943,30 @@ class Sample(unittest.TestCase):
                 root = self.repo(sample)
                 git(root, "branch", "v9.0", "HEAD")
                 self.assertEqual(self.problems(root), expected)
+
+    def test_a_tag_that_names_no_commit_fails_and_the_head_is_not_taken(self):
+        # Review round 2 of #164 (both reviewers, proven by a run): a tag of the release that named a tree was read as a
+        # missing tag, and the head was taken, though git clone --branch of that tag fails.
+        for sample in (self.TAG_LINES, self.HEAD_LINES):
+            with self.subTest(sample=sample):
+                root = self.repo(sample, self.release)
+                git(root, "tag", "v" + self.version, "HEAD^{tree}")
+                problems = self.problems(root)
+                self.assertEqual(len(problems), 1, problems)
+                self.assertIn("the tag v%s in this checkout names no commit" % self.version, problems[0])
+
+    def test_a_first_entry_of_another_version_is_not_the_release(self):
+        # Review round 2 of #164 (proven by a run): with no tag, a dated entry of an older version above the dated
+        # entry of this one passed as the release, because the first entry and the newest dated one were read apart.
+        root = self.repo(self.HEAD_LINES, self.release)
+        path = os.path.join(root, "CHANGELOG.md")
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write("# Changelog\n\n## 0.1 (2026-11-26)\n\nIn short: older.\n\n" + text.split("\n", 1)[1].lstrip("\n"))
+        problems = self.problems(root)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("has no tag v%s" % self.version, problems[0])
 
     def test_a_release_entry_without_a_date_is_not_a_release_and_needs_the_tag(self):
         # The page fetches the version of ratchet.json while its entry is unreleased: there is no tag for it, and the
