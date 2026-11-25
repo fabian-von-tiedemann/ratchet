@@ -1320,6 +1320,7 @@ This one checks no rule in a register. It is the start of a project, run from th
 **What it claims.** It writes what the steps of "Start here" set up by hand, and never overwrites a file:
 
 - `AGENTS.md` from `templates/AGENTS.md`, with the project's name in its title. The rest of the template, with its parts in angle brackets, is the project's to fill in. The two lines that mark the parts for a team, HTML comments holding `team` and `/team`, as `TEAM` in `init.py` spells them, are not written. With `--solo`, for one agent and no control room, neither is what stands between them: the line that the control room reads its handbook, and the section on skills. The marks must stand in pairs, each on a line of its own, one pair at least and none inside another, or it does not run.
+- `CLAUDE.md` from `templates/CLAUDE.md` as it stands. Its one job is to make Claude Code, which reads `CLAUDE.md` and not `AGENTS.md`, load `AGENTS.md`, with its import line `@AGENTS.md`, and the template must hold that line on a line of its own, or it does not run. It is written after the workflow, so a start that wrote it, whole or stopped halfway, is still a start on the next run, and is not taken into adopt mode by the `CLAUDE.md` it wrote itself. A `CLAUDE.md` that exists is never touched: in a repo that `init.py` has not started it means adopt mode, as before, and in one it started it is skipped and named.
 - `register.json` from `templates/register.json`, with the project's name, checked with `check_register.py` before it is written.
 - `REGISTER.md`, generated from the `register.json` that stands after the run, as `check_register.py --print-markdown` prints it. When `register.json` already exists, that is the one it is generated from.
 - `.github/workflows/ratchet.yml` from `templates/ratchet-checks.yml`, with the commit of the Ratchet checkout it runs from as the pin. The commit is read with `git rev-parse` in that checkout and must be 40 characters `0-9` and `a-f`. It does not run when the checkout is not a git repo of its own, or has changes that are not committed, since the commit would then not hold the files it copies. It says whether the commit is the one of the tag of its version. The workflow has two jobs, and the template must hold each once: `ratchet`, whose step runs `check_register.py register.json --markdown REGISTER.md --agents AGENTS.md`, and `project-checks`, the place for the project's own checks, with one step that says what goes there.
@@ -1345,7 +1346,7 @@ The shared threat model, [The threat model](#the-threat-model) at the top of thi
 
 | Case | Result |
 |---|---|
-| An empty repo | Every file written, with the folder's name, `.ratchet/` in `.gitignore`, exit 0. `AGENTS.md` is the template without the marks of the parts for a team |
+| An empty repo | Every file written, with the folder's name, `.ratchet/` in `.gitignore`, exit 0. `AGENTS.md` is the template without the marks of the parts for a team, and `CLAUDE.md` is its template, with the line `@AGENTS.md` |
 | `--solo` | `AGENTS.md` without the control room, the skills and the marks, with no blank line too many; a second run with `--solo` changes nothing, and one without it skips `AGENTS.md`, exit 0 |
 | Marks of the parts for a team that are not in pairs: one start, one end, two starts, two ends, none | Refused, with and without `--solo` |
 | `AGENTS.md` as written, with and without `--solo` | `init.py` names each placeholder it holds, and the workflow's register check fails naming each; with one left, that one alone |
@@ -1354,7 +1355,7 @@ The shared threat model, [The threat model](#the-threat-model) at the top of thi
 | The handover's placeholder chosen as `status issue #<n>`, everything else filled in (also in `test_checks.py`, through `--agents`); the same for every placeholder that holds another one | The inner one alone is named, and `--agents` fails |
 | The written workflow | Has the jobs `ratchet` and `project-checks`, and `init.py` names both, with and without `--check`; a template that lacks one, or holds one twice, is refused |
 | No remote in the git config, with and without `--check` | The five rules that wait for one are named, and no other; after `git remote add`, none |
-| A `register.json` that names in `instructions`: `AGENTS.md` that is missing, so the template is written there; `AGENTS.md` with no block; `AGENTS.md` with a block that is stale, and one whose markers are broken; `CLAUDE.md` that is missing; `link/AGENTS.md` where `link` is a symbolic link; `REGISTER.md` that is missing | `--check` writes nothing, names the problem and exits 1, and a real run names it and exits 1 |
+| A `register.json` that names in `instructions`: `AGENTS.md` that is missing, so the template is written there; `AGENTS.md` with no block; `AGENTS.md` with a block that is stale, and one whose markers are broken; `CLAUDE.md` that is missing, so its template is written there; `RULES.md` that is missing; `link/AGENTS.md` where `link` is a symbolic link; `REGISTER.md` that is missing | `--check` writes nothing, names the problem and exits 1, and a real run names it and exits 1 |
 | A `register.json` that names `AGENTS.md`, or `docs/RULES.md`, holding the block it generates | `--check` and a real run exit 0 |
 | A directory, or a link to a file with the right text, at `REGISTER.md` | Skipped as not a plain file; `--check` and a real run exit 1 |
 | The last line: a first run, a second run, and a run that keeps the project's own `AGENTS.md` and workflow | Names the files written; says there is nothing to commit; asks to compare and names the files written, but not to fill in `AGENTS.md` |
@@ -1403,7 +1404,11 @@ The shared threat model, [The threat model](#the-threat-model) at the top of thi
 | Adopt mode: `.claude/CLAUDE.md` alone; `AGENTS.md` with `CLAUDE.md`; `.github` a link to a folder with `copilot-instructions.md`; a workflow that is a dangling link | Adopted with `.claude/CLAUDE.md`; `AGENTS.md` named, `stands_in` in every row, `CLAUDE.md` offered; not an instruction file; not adopt mode |
 | Adopt mode: `AGENTS.md` a link to `CLAUDE.md`; `GEMINI.md` with `.github/copilot-instructions.md` | `CLAUDE.md` named, the link left as it is; `GEMINI.md` named and in `stands_in` of every row, and the other offered |
 | Adopt mode: `register.json` a dangling link to a file outside | Skipped, nothing written outside |
-| A start that stopped after the workflow and `AGENTS.md` were written | The next run is not in adopt mode and writes the rest |
+| A start that stopped after the workflow, `AGENTS.md` and `CLAUDE.md` were written | The next run is not in adopt mode and writes the rest |
+| A start stopped at each file it writes in turn | An instruction file is left only beside the workflow; the next run is not in adopt mode, writes the rest and keeps what was written |
+| A second run after a start, with and without `--check`, and the same repo with the workflow removed | `CLAUDE.md` unchanged and no adopt mode; without the workflow, adopt mode, so the workflow is what recognizes a start |
+| A `CLAUDE.md` of the project's own, in a repo `init.py` has not started and in one it started, with and without `--check` | Adopt mode, nothing written; skipped and named, pointing at `templates/CLAUDE.md`; its bytes unchanged either way |
+| A `CLAUDE.md` template without the line `@AGENTS.md` | Cannot run, writes nothing |
 | A project started with `init.py`, with its own `AGENTS.md`, and a register that names an instruction file | Not in adopt mode |
 | The repository of the step adopt mode prints | The one the workflow template fetches, and the one `run_pinned.py` clones from |
 

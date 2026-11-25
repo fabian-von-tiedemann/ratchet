@@ -13,6 +13,9 @@ It writes what README's "Start here" sets up:
 - AGENTS.md, from templates/AGENTS.md, with the project's name in its title, and without the lines
   <!-- team --> and <!-- /team -->. With --solo it also leaves out what stands between them: the control room's
   line and the skills
+- CLAUDE.md, from templates/CLAUDE.md as it stands, whose only job is to load AGENTS.md into Claude Code, which reads
+  CLAUDE.md and not AGENTS.md, with its import line @AGENTS.md. It is written after the workflow, so a start that wrote
+  it is still taken for a start on the next run, and not for a repo with an instruction file of its own
 - register.json, from templates/register.json, with the project's name
 - REGISTER.md, generated from the register.json that stands after the run, as check_register.py --print-markdown
   prints it
@@ -122,6 +125,8 @@ NAME = re.compile(r"^[A-Za-z0-9]+(?:[-._ ][A-Za-z0-9]+)*\Z")
 NAME_LENGTH = 100
 COMMIT = re.compile(r"^[0-9a-f]{40}\Z")
 TEAM = ("<!-- team -->\n", "<!-- /team -->\n")
+# The line of templates/CLAUDE.md that makes Claude Code load AGENTS.md: its import of a file, on a line of its own.
+CLAUDE_IMPORT = "@AGENTS.md"
 JOBS = ("ratchet", "project-checks")
 # The instruction files of a project's own that switch init.py to adopt mode, in the order the first is named, each as
 # a path from the root: the ones a harness loads at the root of a repo (checks/inventory.py has the full list).
@@ -350,6 +355,15 @@ def agents_text(name, solo):
     return AGENTS_TITLE % name + "\n" + team_parts(rest, solo)
 
 
+def claude_text():
+    """CLAUDE.md for a start: the template as it stands, which must hold the import line @AGENTS.md on a line of its
+    own, since loading AGENTS.md into Claude Code is all it is for."""
+    text = template("CLAUDE.md")
+    if CLAUDE_IMPORT not in text.split("\n"):
+        raise InitError("templates/CLAUDE.md must hold the line %s" % CLAUDE_IMPORT)
+    return text
+
+
 def register_text(name, ratchet):
     try:
         register = registry.strict_loads(template("register.json"))
@@ -570,8 +584,8 @@ def here():
 
 def main(argv=None, out=None):
     out = out or sys.stdout
-    parser = argparse.ArgumentParser(description="Start a project on Ratchet: write AGENTS.md, register.json, REGISTER.md, "
-                                                 "the workflow and .gitignore, never overwriting a file.")
+    parser = argparse.ArgumentParser(description="Start a project on Ratchet: write AGENTS.md, CLAUDE.md, register.json, "
+                                                 "REGISTER.md, the workflow and .gitignore, never overwriting a file.")
     parser.add_argument("--check", action="store_true", help="say what would be written and what is skipped, write nothing")
     parser.add_argument("--name", help="the project's name (default: the name of the current folder)")
     parser.add_argument("--solo", action="store_true", help="one agent and no control room: leave the control room's line "
@@ -611,9 +625,10 @@ def main(argv=None, out=None):
             texts = [("register.json", adopt_register_text(name, ratchet, args.adopt, adopting[0]))] if args.adopt else []
             runner = runner_blob(commit)
         else:
-            # The workflow first: a start that stops halfway has it, so the next run is not taken for adopt mode.
+            # The workflow first: a start that stops halfway has it, so the next run is not taken for adopt mode, by
+            # the AGENTS.md or the CLAUDE.md it wrote either.
             texts = [(WORKFLOW, workflow_text(commit)), ("AGENTS.md", agents_text(name, args.solo)),
-                     ("register.json", register_text(name, ratchet))]
+                     ("CLAUDE.md", claude_text()), ("register.json", register_text(name, ratchet))]
     except (InitError, registry.RegistryError, OSError) as error:
         say("init: cannot run: %s" % error)
         say("init: nothing was written")
@@ -657,7 +672,8 @@ def main(argv=None, out=None):
         else:
             plan.append(("skip", file, None, "it exists and differs from what init.py writes. It was left as it is: "
                                              "compare it with %s/templates/%s by hand" % (typed(RATCHET), {
-                                                 "AGENTS.md": "AGENTS.md", "register.json": "register.json",
+                                                 "AGENTS.md": "AGENTS.md", "CLAUDE.md": "CLAUDE.md",
+                                                 "register.json": "register.json",
                                                  WORKFLOW: "ratchet-checks.yml"}[file])))
     if "register.json" not in states:
         # Adopt mode with no --adopt: register.json is not written, and one of the project's own is checked as it stands.

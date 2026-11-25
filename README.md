@@ -91,7 +91,7 @@ Run these in the root of your own git repo.
 
 | In | `init.py` writes |
 |---|---|
-| A new repo | `AGENTS.md`, the working rules your agents read first, with parts for you to fill in. `register.json`, your register, with the rules to start with. `REGISTER.md`, the register that people read, generated from it. A workflow that runs the register check on every pull request. |
+| A new repo | `AGENTS.md`, the working rules your agents read first, with parts for you to fill in. `CLAUDE.md`, one line that makes Claude Code read `AGENTS.md`. `register.json`, your register, with the rules to start with. `REGISTER.md`, the register that people read, generated from it. A workflow that runs the register check on every pull request. |
 | A repo with an instruction file of its own | Nothing on the first run. It prints a marker line for each rule to start with. Put the marker by your own wording of a rule, and `init.py --adopt <key>` writes `register.json` with a row by reference that points at it. It also prints one step for your CI, which runs the register check from the pinned commit. |
 
 From then on:

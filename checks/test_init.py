@@ -27,7 +27,8 @@ sys.path.insert(0, HERE)
 import init  # noqa: E402
 import run_pinned  # noqa: E402
 
-WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore")
+WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore",
+           "CLAUDE.md")
 PLACEHOLDER = "<40-character commit sha>"
 
 
@@ -251,6 +252,8 @@ class Init(unittest.TestCase):
         template["project"] = "demo-project"
         self.assertEqual(register, template)
         self.assertEqual(self.text(".gitignore"), "/.ratchet/\n")
+        self.assertEqual(self.text("CLAUDE.md"), read_template("CLAUDE.md"))
+        self.assertIn("@AGENTS.md", self.text("CLAUDE.md").split("\n"))
         self.assert_ratchet_ignored()
         self.assertIn("10 rules match Ratchet %s" % self.version, output)
         self.assertNotIn("adopt mode", output)
@@ -297,7 +300,8 @@ class Init(unittest.TestCase):
         import check_register
         for solo in (False, True):
             with self.subTest(solo=solo):
-                for name in ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml")):
+                for name in ("AGENTS.md", "CLAUDE.md", "register.json", "REGISTER.md",
+                             os.path.join(".github", "workflows", "ratchet.yml")):
                     if os.path.lexists(self.path(name)):
                         os.remove(self.path(name))
                 code, output = self.init(*(["--solo"] if solo else []))
@@ -689,7 +693,10 @@ init.gitignore_plan = gitignore_plan
             ("AGENTS.md", write("AGENTS.md", lambda block: block.replace("## Rules in force", "## Rules once") + "\n# Ours\n"),
              "is not what register.json generates"),
             ("AGENTS.md", write("AGENTS.md", lambda block: block + block), "the markers of the generated block are broken"),
-            ("CLAUDE.md", nothing, "CLAUDE.md: the file is missing"),
+            # A start writes CLAUDE.md from its template, as it writes AGENTS.md, so a register that names it finds no
+            # block there, and a file that is missing is one that init.py does not write.
+            ("CLAUDE.md", nothing, "CLAUDE.md: holds no generated block"),
+            ("RULES.md", nothing, "RULES.md: the file is missing"),
             ("link/AGENTS.md", linked, "link is a symbolic link"),
             ("REGISTER.md", nothing, "REGISTER.md: holds no generated block"),
         )
@@ -736,8 +743,8 @@ init.gitignore_plan = gitignore_plan
         # to fill in AGENTS.md or name files that were not written.
         code, output = self.init()
         self.assertEqual(code, 0, output)
-        self.assertIn("init: done. Fill in AGENTS.md, and commit .github/workflows/ratchet.yml, AGENTS.md, register.json, "
-                      "REGISTER.md and .gitignore\n", output)
+        self.assertIn("init: done. Fill in AGENTS.md, and commit .github/workflows/ratchet.yml, AGENTS.md, CLAUDE.md, "
+                      "register.json, REGISTER.md and .gitignore\n", output)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertIn("init: done. Nothing to commit\n", output)
@@ -749,7 +756,7 @@ init.gitignore_plan = gitignore_plan
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertIn("init: done. Compare each file left as it is with what init.py would write, by hand, and commit "
-                      "register.json, REGISTER.md and .gitignore\n", output)
+                      "CLAUDE.md, register.json, REGISTER.md and .gitignore\n", output)
         self.assertNotIn("Fill in AGENTS.md", output)
 
     def run_patched(self, patch, *args):
@@ -1468,12 +1475,98 @@ def write_new(root, path, data):
 init.write_new = write_new""")
         self.assertEqual(code, 2, output)
         self.assertTrue(os.path.isfile(self.path("AGENTS.md")), output)
+        self.assertTrue(os.path.isfile(self.path("CLAUDE.md")), output)
         self.assertTrue(os.path.isfile(self.path(WRITTEN[3])), output)
         code, output = self.init()
         self.assertEqual(code, 0, output)
         self.assertNotIn("adopt mode", output)
         for name in WRITTEN:
             self.assertTrue(os.path.isfile(self.path(name)), output)
+
+    def test_a_start_stopped_at_any_file_is_never_taken_for_adopt_mode(self):
+        # The CLAUDE.md that a start writes is an instruction file that switches a run to adopt mode, as AGENTS.md is.
+        # A start stopped at each file in turn leaves an instruction file only when it also left the workflow, which keeps
+        # the next run a start: that run is not in adopt mode, writes the rest, and leaves CLAUDE.md as it was written.
+        for stop in WRITTEN:
+            with self.subTest(stop=stop):
+                self.project = self.make_project("stop-%d" % len(os.listdir(self.directory)))
+                code, output = self.run_patched("""
+real = init.write_new
+def write_new(root, path, data):
+    if os.path.relpath(path, root) == %r:
+        raise OSError(errno.ENOSPC, "cut off")
+    return real(root, path, data)
+init.write_new = write_new
+real_add = init.add_line
+def add_line(root, path, before, after):
+    if os.path.relpath(path, root) == %r:
+        raise OSError(errno.ENOSPC, "cut off")
+    return real_add(root, path, before, after)
+init.add_line = add_line""" % (stop, stop))
+                self.assertEqual(code, 2, output)
+                if init.own_instructions(self.project):
+                    self.assertTrue(os.path.isfile(self.path(WRITTEN[3])), output)
+                self.assertEqual(init.adopt_mode(self.project), [], output)
+                written = snapshot(self.project)
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertEqual(sorted(snapshot(self.project)), sorted(WRITTEN))
+                for name, data in written.items():
+                    self.assertEqual(snapshot(self.project)[name], data, name)
+                self.assertEqual(self.text("CLAUDE.md"), read_template("CLAUDE.md"))
+
+    def test_a_second_start_with_the_claude_md_it_wrote_is_not_adopt_mode(self):
+        # A repo init.py started has CLAUDE.md, an instruction file. The workflow it wrote keeps a second run a start:
+        # with --check and without, every file unchanged, CLAUDE.md among them, and no adopt mode.
+        code, output = self.init()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(init.own_instructions(self.project), ["AGENTS.md", "CLAUDE.md"])
+        before = snapshot(self.project)
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertRegex(output, r"(?m)^unchanged +CLAUDE\.md$")
+                self.assertEqual(snapshot(self.project), before)
+        # Without the workflow, the same CLAUDE.md and AGENTS.md are a repo's own, and the run is in adopt mode: what
+        # recognizes a start is the workflow, and the test fails if init.py stops writing it first.
+        os.remove(self.path(WRITTEN[3]))
+        code, output = self.init("--check")
+        self.assertIn("init: adopt mode: AGENTS.md is the project's own instruction file", output)
+
+    def test_an_existing_claude_md_is_never_touched(self):
+        # A CLAUDE.md of the project's own: in a repo init.py has not started, adopt mode, as before; in one it started,
+        # skipped and named. Either way its bytes stay as they were.
+        data = b"# Our rules for Claude\r\nKeep it short.\r\n"
+        with open(self.path("CLAUDE.md"), "wb") as handle:
+            handle.write(data)
+        for args in (("--check",), ()):
+            with self.subTest(args=args, started=False):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertIn("init: adopt mode: CLAUDE.md is the project's own instruction file", output)
+                self.assertEqual(snapshot(self.project), {"CLAUDE.md": data})
+        os.makedirs(self.path(".github", "workflows"))
+        self.write(WRITTEN[3], read_template("ratchet-checks.yml").replace(PLACEHOLDER, self.commit))
+        for args in (("--check",), ()):
+            with self.subTest(args=args, started=True):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertNotIn("adopt mode", output)
+                self.assertRegex(output, r"(?m)^skip +CLAUDE\.md: it exists and differs from what init\.py writes\. "
+                                         r"It was left as it is: compare it with \.ratchet/templates/CLAUDE\.md by hand$")
+                with open(self.path("CLAUDE.md"), "rb") as handle:
+                    self.assertEqual(handle.read(), data)
+
+    def test_a_claude_md_template_without_the_import_is_refused(self):
+        self.assertIn(init.CLAUDE_IMPORT, read_template("CLAUDE.md").split("\n"))
+        code, output = self.run_patched("init.template = (lambda real: lambda name: real(name).replace('@AGENTS.md', "
+                                        "'AGENTS.md') if name == 'CLAUDE.md' else real(name))(init.template)")
+        self.assertEqual(code, 2, output)
+        self.assertIn("templates/CLAUDE.md must hold the line @AGENTS.md", output)
+        self.assertEqual(snapshot(self.project), {})
 
     def test_adopt_mode_writes_nothing_through_a_link(self):
         # register.json is the one file adopt mode writes, and a link on its path, here the root's parent being fine
