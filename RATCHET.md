@@ -215,8 +215,8 @@ How lessons travel from a project back to Ratchet is in [SELF-IMPROVEMENT.md](SE
 | Name | Repo | Commit | License |
 |---|---|---|---|
 | google\/elephant\-goldfish\-model | https\:\/\/github\.com\/google\/elephant\-goldfish\-model | `94d948d7d2a1d48e981997c20963e39d9e9ee67c` | Apache\-2\.0 |
-| mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `abeeaf95660ba9e8b7c753eb38f441ca707a8823` | MIT |
-| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `792440e8a560a4a3f63748cdee70491ecd412982` | MIT |
+| mattpocock\/skills | https\:\/\/github\.com\/mattpocock\/skills | `d65391149dbb5fe76478e76fa8d5122b2aa5a70e` | MIT |
+| pstack | https\:\/\/github\.com\/cursor\/plugins\, directory `pstack` \(by Lauren Tan\) | `ca782ed8b3c2c521cead8e1720d55c3a5dbf2347` | MIT |
 | obra\/superpowers | https\:\/\/github\.com\/obra\/superpowers | `22f0b463e7a5e579904dd6211a520321035526f7` | MIT |
 | sprocketlab\/slop\-code\-bench | https\:\/\/github\.com\/SprocketLab\/slop\-code\-bench | `de70a479acce7b565d2d0c772f48d7c881c15510` | MIT |
 <!-- /generated -->
