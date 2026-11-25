@@ -520,7 +520,7 @@ init: --check. Nothing was written: 6 file(s) would be written, 0 files left as 
 <label for="tool-copilot">GitHub Copilot</label>
 <input type="radio" name="tool" id="tool-other">
 <label for="tool-other">Other</label>
-<p class="where for-claude-code">Paste it into Claude Code, started in your repo’s root. Claude Code reads <code>CLAUDE.md</code>: <code>init.py</code> sees that file and never changes it.</p>
+<p class="where for-claude-code">Paste it into Claude Code, started in your repo’s root. Claude Code reads <code>CLAUDE.md</code>: <code>init.py</code> sees that file and never changes it. In a new repo, <code>init.py</code> writes one that points at <code>AGENTS.md</code>.</p>
 <p class="where for-codex">Paste it into Codex, started in your repo’s root. Codex reads <code>AGENTS.md</code>: <code>init.py</code> sees that file and never changes it.</p>
 <p class="where for-gemini-cli">Paste it into Gemini CLI, started in your repo’s root. Gemini CLI reads <code>GEMINI.md</code>: <code>init.py</code> sees that file and never changes it.</p>
 <p class="where for-cursor">Paste it into Cursor’s agent, with your repo open. Cursor reads <code>.cursor/rules</code>, which <code>init.py</code> does not see: if your rules stand there, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">take inventory first</a>.</p>
@@ -540,8 +540,8 @@ Set up Ratchet in this git repo. Work in the repo's root.
 
 Do not commit, push, or make a check required without asking me first.
 </pre>
-<p class="hint">One click selects the whole prompt. Ratchet builds itself with Claude Code and Codex, and has not been tried in the others: <a href="https://github.com/fabian-von-tiedemann/ratchet/issues">tell us how it went</a>.</p>
-<p class="own">Or type the three commands yourself, in your git repo’s root:</p>
+<p class="hint">One click selects the whole prompt. It has been tried in Claude Code and Codex, not in the others: <a href="https://github.com/fabian-von-tiedemann/ratchet/issues">tell us how it went</a>.</p>
+<p class="own">Or type the three commands yourself, in your repo’s root:</p>
 <ol class="steps">
 <li>Fetch Ratchet.
 <pre><code>git clone --branch v0.15 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
@@ -565,7 +565,7 @@ Do not commit, push, or make a check required without asking me first.
 <li><strong>License:</strong> <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/LICENSE">MIT</a>.</li>
 <li><strong>Maintainer:</strong> one person, <code>fabian-von-tiedemann</code> on GitHub, with a team of AI coding agents.</li>
 <li><strong>Questions and reports:</strong> <a href="https://github.com/fabian-von-tiedemann/ratchet/issues">an issue on GitHub</a>. A security fault goes in <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/SECURITY.md">a private report</a>.</li>
-<li><strong>Planned:</strong> reference checks for more of the rules. The count above says how many ship today.</li>
+<li><strong>Planned:</strong> reference checks for more of the rules.</li>
 </ul>
 </section>
 </main>

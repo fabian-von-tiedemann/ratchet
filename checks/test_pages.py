@@ -17,7 +17,9 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   checked and no other. An <input> is such a radio and stands nowhere else, so it sends nothing anywhere: there is no
   form, no button and no other kind of input. A line that names the file its agent reads names a file that
   checks/init.py reads to choose adopt mode, INSTRUCTION_FILES, and says init.py sees it, or, for the one agent whose
-  rules init.py does not see, names a path that is not in that list, says so and links to TRYING.md
+  rules init.py does not see, names a path that is not in that list, says so and links to TRYING.md. The line of Claude
+  Code also names AGENTS.md, the file that templates/CLAUDE.md, which init.py writes in a new repo, points at, and no
+  line names any other file
 - the page holds one prompt, the one <pre id="prompt" class="prompt">: the lines the test spells out, PROMPT_LINES, with
   the command that fetches Ratchet at the newest version with a date in CHANGELOG.md. Each of its lines that is a
   command, a line indented by three spaces, is a line of a code block marked sh in README.md, and the file it tells the
@@ -206,11 +208,15 @@ LICENSED = '<strong>License:</strong> <a href="%s/blob/main/LICENSE">MIT</a>.' %
 SAMPLE = re.compile(r'<pre class="sample">([^<>]*)</pre>')
 # The picker (D-2026-11-25-prompt-per-tool): each coding agent as (the end of its id and of its line's class, its name
 # on the page, the file the page says it reads, whether checks/init.py sees that file, that is, whether it is one of
-# init.INSTRUCTION_FILES). The last is every other agent, and names no file. The page says of no agent that Ratchet was
-# tried in it: a test cannot see that, and the line under the prompt says which two build Ratchet.
+# init.INSTRUCTION_FILES). The last is every other agent, and names no file. The picker says of no agent that the prompt
+# was tried in it: a test cannot see that, and the line under the prompt says which two it was tried in.
 TOOLS = (("claude-code", "Claude Code", "CLAUDE.md", True), ("codex", "Codex", "AGENTS.md", True),
          ("gemini-cli", "Gemini CLI", "GEMINI.md", True), ("cursor", "Cursor", ".cursor/rules", False),
          ("copilot", "GitHub Copilot", ".github/copilot-instructions.md", True), ("other", "Other", None, None))
+# A file a line may name beside its agent's own, by the end of its id: in a new repo init.py writes CLAUDE.md, from
+# templates/CLAUDE.md, and that file points Claude Code at AGENTS.md, as POINTS_AT is.
+ALSO_NAMED = {"claude-code": "AGENTS.md"}
+POINTS_AT = "\n@AGENTS.md\n"
 PICKER = "tools"
 RADIO = {"type": "radio", "name": "tool"}
 SEES = "<code>init.py</code> sees that file and never changes it"
@@ -783,7 +789,7 @@ def picker_problems(text, css, files=init.INSTRUCTION_FILES):
     The page holds one <fieldset>, of the class PICKER: a <legend>, then a radio and its <label> for each agent of
     TOOLS, in order, the first checked and no other, then one line for each, in the same order. The CSS holds, for each,
     the selector that shows the line of the radio that is checked, and no other selector reads :checked that way. A line
-    names in <code> only its agent's file and init.py. files is what init.py reads to choose adopt mode: a line says
+    names in <code> only its agent's file and init.py, and the line of an agent in ALSO_NAMED names that file too. files is what init.py reads to choose adopt mode: a line says
     init.py sees its file only when the file is one of them, and says it does not, with the link to TRYING.md, only when
     it is not.
     """
@@ -817,9 +823,10 @@ def picker_problems(text, css, files=init.INSTRUCTION_FILES):
         if SHOWN % (slug, slug) not in css:
             problems.append("the CSS does not hold %s, which shows the line of %s when its radio is checked" % (SHOWN % (slug, slug), label))
         named = set(PANEL_CODE.findall(said)) - {"init.py"}
-        if named != ({file} if file else set()):
+        wanted = ({file} if file else set()) | ({ALSO_NAMED[slug]} if slug in ALSO_NAMED else set())
+        if named != wanted:
             problems.append("the line of %s names %s in <code>, and must name %s and init.py only"
-                            % (label, ", ".join(sorted(named)) or "no file", file or "no file"))
+                            % (label, ", ".join(sorted(named)) or "no file", ", ".join(sorted(wanted)) or "no file"))
         if file is None:
             continue
         if seen != (file in files):
@@ -952,7 +959,7 @@ class Page(RepoCopy, unittest.TestCase):
                       "<code>ratchet.no-secrets</code> names a secret scan in every pull request", EXAMPLE_NOT_SHIPPED,
                       'id="sources"', '<fieldset class="tools">', PROMPT_OPEN,
                       "Do not commit, push, or make a check required without asking me first.",
-                      "Ratchet builds itself with Claude Code and Codex, and has not been tried in the others"):
+                      "It has been tried in Claude Code and Codex, not in the others"):
             self.assertIn(words, text)
 
     def test_the_page_is_short(self):
@@ -1576,6 +1583,12 @@ class PagePicker(RepoCopy, unittest.TestCase):
                 self.assertEqual(file in init.INSTRUCTION_FILES, seen, file)
         self.assertEqual([seen for _, _, _, seen in TOOLS].count(False), 1)
 
+    def test_the_file_the_line_of_claude_code_also_names_is_the_one_its_template_points_at(self):
+        with open(os.path.join(ROOT, "templates", "CLAUDE.md"), encoding="utf-8", newline="") as handle:
+            self.assertIn(POINTS_AT, handle.read())
+        self.assertEqual(POINTS_AT, "\n@%s\n" % ALSO_NAMED["claude-code"])
+        self.assertEqual(list(ALSO_NAMED), ["claude-code"])
+
     def test_a_line_that_says_of_a_file_what_init_does_not_do_fails(self):
         # init.py learns to see the file of the one agent it did not, or stops seeing one: the page fails until it follows.
         for files, message in ((init.INSTRUCTION_FILES + (".cursor/rules",), "does not see .cursor/rules, the file of Cursor"),
@@ -1587,7 +1600,13 @@ class PagePicker(RepoCopy, unittest.TestCase):
         cursor = "Cursor reads <code>.cursor/rules</code>, which <code>init.py</code> does not see"
         for old, new, message in (
                 ("<code>CLAUDE.md</code>: <code>init.py</code> sees", "<code>CLAUDE.txt</code>: <code>init.py</code> sees",
-                 "the line of Claude Code names CLAUDE.txt in <code>, and must name CLAUDE.md and init.py only"),
+                 "the line of Claude Code names AGENTS.md, CLAUDE.txt in <code>, and must name AGENTS.md, CLAUDE.md and init.py only"),
+                ("points at <code>AGENTS.md</code>", "points at AGENTS.md",
+                 "the line of Claude Code names CLAUDE.md in <code>, and must name AGENTS.md, CLAUDE.md and init.py only"),
+                ("points at <code>AGENTS.md</code>", "points at <code>GEMINI.md</code>",
+                 "the line of Claude Code names CLAUDE.md, GEMINI.md in <code>"),
+                ("points at <code>AGENTS.md</code>", "points at <code>AGENTS.md</code> and <code>README.md</code>",
+                 "the line of Claude Code names AGENTS.md, CLAUDE.md, README.md in <code>"),
                 ("Codex reads <code>AGENTS.md</code>", "Codex reads <code>AGENTS.md</code> and <code>CODEX.md</code>",
                  "the line of Codex names AGENTS.md, CODEX.md in <code>"),
                 (cursor, "Cursor reads <code>.cursor/rules</code>: " + SEES, "the line of Cursor must say"),
