@@ -292,6 +292,89 @@ ol li::marker {
   margin-top: 1rem;
 }
 
+/* The picker: one radio for each coding agent, drawn as a row of names, over the one prompt. The radio that is checked
+   shows its line: where to paste, and the file that agent reads. With no CSS every line shows. It is a card: the names
+   and the line on top, the prompt below. */
+.tools {
+  min-width: 0;
+  margin: 1.25rem 0 0;
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--edge);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--box);
+}
+.tools legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 0.6rem;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.tools input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.tools label {
+  display: inline-block;
+  margin: 0 0.3rem 0.5rem 0;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--muted);
+  border-radius: 2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tools label:hover {
+  border-color: var(--accent);
+}
+.tools input:checked + label {
+  border-color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+}
+.tools input:focus-visible + label {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.where {
+  display: none;
+  margin-top: 0.25rem;
+}
+#tool-claude-code:checked ~ .for-claude-code,
+#tool-codex:checked ~ .for-codex,
+#tool-gemini-cli:checked ~ .for-gemini-cli,
+#tool-cursor:checked ~ .for-cursor,
+#tool-copilot:checked ~ .for-copilot,
+#tool-other:checked ~ .for-other {
+  display: block;
+}
+/* The prompt, as it is pasted. Long lines wrap on the page and not in what is copied, and one click selects all of it. */
+.prompt {
+  margin-top: 0;
+  padding: 1rem;
+  border: 1px solid var(--edge);
+  border-radius: 0 0 8px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  -webkit-user-select: all;
+  user-select: all;
+}
+.hint {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.own {
+  margin-top: 2.25rem;
+}
+
 /* What the last command writes, in a new repo and in one with an instruction file of its own. */
 .paths {
   display: grid;
@@ -421,7 +504,42 @@ init: --check. Nothing was written: 5 file(s) would be written, 0 files left as 
 </section>
 <section>
 <h2 id="start-here">Start here</h2>
-<p>In your git repo’s root:</p>
+<p><strong>Paste one prompt into your coding agent, in your git repo.</strong> It asks the agent to fetch Ratchet, show you the dry run, and stop before anything is written.</p>
+<fieldset class="tools">
+<legend>Your coding agent</legend>
+<input type="radio" name="tool" id="tool-claude-code" checked="checked">
+<label for="tool-claude-code">Claude Code</label>
+<input type="radio" name="tool" id="tool-codex">
+<label for="tool-codex">Codex</label>
+<input type="radio" name="tool" id="tool-gemini-cli">
+<label for="tool-gemini-cli">Gemini CLI</label>
+<input type="radio" name="tool" id="tool-cursor">
+<label for="tool-cursor">Cursor</label>
+<input type="radio" name="tool" id="tool-copilot">
+<label for="tool-copilot">GitHub Copilot</label>
+<input type="radio" name="tool" id="tool-other">
+<label for="tool-other">Other</label>
+<p class="where for-claude-code">Paste it into Claude Code, started in your repo’s root. Claude Code reads <code>CLAUDE.md</code>: <code>init.py</code> sees that file and never changes it.</p>
+<p class="where for-codex">Paste it into Codex, started in your repo’s root. Codex reads <code>AGENTS.md</code>: <code>init.py</code> sees that file and never changes it.</p>
+<p class="where for-gemini-cli">Paste it into Gemini CLI, started in your repo’s root. Gemini CLI reads <code>GEMINI.md</code>: <code>init.py</code> sees that file and never changes it.</p>
+<p class="where for-cursor">Paste it into Cursor’s agent, with your repo open. Cursor reads <code>.cursor/rules</code>, which <code>init.py</code> does not see: if your rules stand there, <a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/TRYING.md">take inventory first</a>.</p>
+<p class="where for-copilot">Paste it into Copilot’s agent mode, with your repo open. Copilot reads <code>.github/copilot-instructions.md</code>: <code>init.py</code> sees that file and never changes it.</p>
+<p class="where for-other">Another agent that can run commands in your repo: the same prompt.</p>
+</fieldset>
+<pre id="prompt" class="prompt">
+Set up Ratchet in this git repo. Work in the repo's root.
+
+1. Fetch Ratchet at its released tag into .ratchet:
+   git clone --branch v0.14 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+2. Run the dry run, which writes nothing, and show me all of its output:
+   python3 .ratchet/checks/init.py --check
+3. Stop there. Tell me which of the two paths init.py takes here: a new repo, or adopt mode, for a repo with an instruction file of its own. Ask me before you run anything that writes: init.py, or init.py with --adopt.
+4. When I have said yes, follow .ratchet/STARTING.md, one step at a time.
+
+Do not commit, push, or make a check required without asking me first.
+</pre>
+<p class="hint">One click selects the whole prompt. Ratchet builds itself with Claude Code and Codex, and has not been tried in the others: <a href="https://github.com/fabian-von-tiedemann/ratchet/issues">tell us how it went</a>.</p>
+<p class="own">Or type the three commands yourself, in your git repo’s root:</p>
 <ol class="steps">
 <li>Fetch Ratchet.
 <pre><code>git clone --branch v0.14 https://github.com/fabian-von-tiedemann/ratchet .ratchet</code></pre>
