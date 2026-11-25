@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16 (unreleased)
+
+In short: in a new repo, `init.py` now says that it takes the path of a new start, and why, as it already said so in adopt mode. This repo's test of the dry run on the landing page compares it with the tag that the page fetches, not with the head. No project needs to do anything, and no form changes.
+
+- `init.py`, in a start, prints one line that names the path it takes, why, and what it writes, or that it writes nothing, as `init: a new start: the project has no instruction file of its own, so init.py writes ...`, the same in `--check` and in a real run. Adopt mode prints as before ([#164](https://github.com/fabian-von-tiedemann/ratchet/pull/164)).
+- This repo's test of the sample of the dry run on the landing page runs `init.py --check` of the tag that the page's clone command fetches, cloned from this checkout and checked out by its commit, and of the head only in the release of that version before it is tagged. A checkout without that tag, or with a tag that names no commit, fails the test and says why, and a sample needs two lines of output, none empty ([#164](https://github.com/fabian-von-tiedemann/ratchet/pull/164)).
+- The landing page says the prompt was tried in Claude Code and Codex, and that `init.py` writes a CLAUDE.md that points at AGENTS.md ([#163](https://github.com/fabian-von-tiedemann/ratchet/pull/163)).
+
+<!-- generated:count -->
+Ratchet 0.16, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.15 (2026-11-25)
 
 In short: in a new repo, `init.py` also writes `CLAUDE.md`, whose line `@AGENTS.md` makes Claude Code load `AGENTS.md`, and it never changes a `CLAUDE.md` that is there. The landing page gets one prompt to paste into your coding agent. No project needs to do anything, and no form changes.

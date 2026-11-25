@@ -61,8 +61,9 @@ repo, not a reference check. The test reads the page strictly and fails on what 
 - the watch that the line of the sources calls daily is one schedule of one run a day in
   .github/workflows/watch-sources.yml, which runs checks/watch_sources.py on sources.json
 - what the top of the page says of the project is what the repo holds: the sample of the dry run, the one
-  <pre class="sample">, is the command of README.md and lines that checks/init.py --check prints in an empty repo
-  (the test is in test_init.py); while the page says "Before 1.0", the version of ratchet.json is below 1.0; and
+  <pre class="sample">, is the command of README.md and lines that checks/init.py --check prints in an empty repo,
+  at the tag the page's clone command fetches, or at the head in the release of that version (the test is in
+  test_init.py); while the page says "Before 1.0", the version of ratchet.json is below 1.0; and
   while it says the license is MIT, LICENSE starts "MIT License"
 - the figure moves only as the page may: its animation stands in the query for no preference, so it is still for a
   visitor who asked for less motion, and the wheel turns one tooth for each principle, at the angle of one tooth

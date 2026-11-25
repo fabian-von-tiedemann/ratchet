@@ -30,6 +30,9 @@ It writes what README's "Start here" sets up:
 - the line /.ratchet/ at the end of .gitignore, unless the last line there that mentions .ratchet is exactly
   .ratchet/ or /.ratchet/, with no negation after it
 
+In a start it says so in one line, "init: a new start:", with why, in the words of adopt_mode, and what its plan
+writes or adds, or that it writes nothing, the same in --check and in a real run. In adopt mode it says so in the line "init: adopt mode:" instead.
+
 A repo that already has an instruction file of its own, a plain file at one of INSTRUCTION_FILES, such as AGENTS.md or
 CLAUDE.md, is adopted, in adopt mode (step 9b of D-2026-11-22-second-redraw), unless .github/workflows/ratchet.yml
 exists, which init.py writes first in a start, or a register.json names an instruction file in instructions. It says
@@ -457,6 +460,33 @@ def adopt_mode(root):
     return own_instructions(root)
 
 
+def start_reason(root):
+    """Why a run that is not in adopt mode is a start, in the words of adopt_mode: no instruction file of the project's
+    own stands there, or the workflow that a start writes first is there, or register.json names an instruction file."""
+    if not own_instructions(root):
+        return "the project has no instruction file of its own"
+    if os.path.lexists(os.path.join(root, WORKFLOW)):
+        return "%s is there, which init.py writes first in a start" % WORKFLOW.replace(os.sep, "/")
+    return "register.json names an instruction file in instructions"
+
+
+def start_line(reason, plan):
+    """The line that says a run is a start, why, and what its plan writes or adds: only the files whose action is write,
+    and the line it adds to .gitignore, or that it writes nothing. It gives no reason for writing nothing: a file may be
+    there already, or it may not be one init.py can write, and the lines of the plan say which (review round 2 of #164)."""
+    writes = [file.replace(os.sep, "/") for action, file, data, note in plan if action == "write"]
+    parts = (["writes " + and_list(writes)] if writes else []) + (
+        ["adds %s to .gitignore" % IGNORE] if any(action == "add" for action, file, data, note in plan) else [])
+    if not parts:
+        return "init: a new start: %s, and init.py writes nothing. The lines below say what it does with each file" % reason
+    return "init: a new start: %s, so init.py %s. It never overwrites a file" % (reason, ", and ".join(parts))
+
+
+def and_list(names):
+    """Names joined as a sentence lists them: "a", "a and b", "a, b and c"."""
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
 def workflow_text_from(text, commit):
     if text.count(PLACEHOLDER) != 1:
         raise InitError("templates/ratchet-checks.yml must hold %r once, found it %d times" % (PLACEHOLDER, text.count(PLACEHOLDER)))
@@ -676,7 +706,7 @@ def main(argv=None, out=None):
             % typed(os.path.join(RATCHET, "checks", "inventory.py")))
         if args.solo:
             say("init: --solo changes nothing in adopt mode, which writes no instruction file")
-    say()
+        say()
 
     # The plan, all of it worked out before anything is written.
     plan = []  # (action, name, bytes or None, note)
@@ -755,6 +785,12 @@ def main(argv=None, out=None):
         if refused:
             plan = [(("skip", file, None, "the register would not pass check_register.py, so it is not written: see below")
                      if action == "write" else (action, file, data, note)) for action, file, data, note in plan]
+
+    # A start says so once its plan is known, so that the line names only what the plan writes or adds, the same in
+    # --check and in a real run (review round 1 of #164).
+    if not adopting:
+        say(start_line(start_reason(root), plan))
+        say()
 
     shown = {"write": "would write", "add": "would add"} if args.check else {}
     written = skipped = 0
