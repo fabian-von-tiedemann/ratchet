@@ -604,6 +604,20 @@ class RegisterCheck(FixtureTest):
                 self.assertIn("not a valid data file: it " + NOT_UTF8, output)
                 self.assertNotIn("Traceback", output)
 
+    def test_an_unreadable_register_md_is_named_and_not_a_traceback(self):
+        # Review round 1 of #158 (proven by a run): a REGISTER.md that cannot be read stopped the check with a
+        # PermissionError. It is a problem named, exit 1, like a REGISTER.md that is not UTF-8.
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root reads a file with mode 000")
+        directory = self.fixture_directory("register/clean")
+        markdown = os.path.join(directory, "REGISTER.md")
+        os.chmod(markdown, 0)
+        self.addCleanup(os.chmod, markdown, 0o644)
+        code, output = run("check_register.py", os.path.join(directory, "register.json"), "--markdown", markdown)
+        self.assertEqual(code, 1, output)
+        self.assertNotIn("Traceback", output)
+        self.assertIn("REGISTER.md: cannot be read: ", output)
+
     def test_the_replacement_character_in_the_data_does_not_stand_in_for_bytes_that_are_not_utf8(self):
         # The pair a review found: U+FFFD in a value, and a generated file with one wrong byte in its place.
         directory = scratch(self)

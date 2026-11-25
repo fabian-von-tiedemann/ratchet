@@ -2,9 +2,11 @@
 
 ## 0.15 (unreleased)
 
-In short: in a new repo, `init.py` also writes `CLAUDE.md`, whose line `@AGENTS.md` makes Claude Code load `AGENTS.md`, so a project started from the landing page gets rules its Claude Code reads. A repo that already has a `CLAUDE.md`, or that `init.py` started before, needs to do nothing: the file is never overwritten, and an existing one still means adopt mode.
+In short: in a new repo, `init.py` also writes `CLAUDE.md`, whose line `@AGENTS.md` makes Claude Code load `AGENTS.md`, so a project started from the landing page gets rules its Claude Code reads. No project must do anything: a `CLAUDE.md` that exists is never overwritten, and it still means adopt mode in a repo that `init.py` did not start, while in a repo it started it is skipped and named. A second run in a repo that `init.py` started before writes the `CLAUDE.md` it lacks.
 
-- `init.py` writes `CLAUDE.md` from the new `templates/CLAUDE.md` in a start, after the workflow, so a second run still knows the repo as one it started. `--check` names it among the files it would write ([#158](https://github.com/fabian-von-tiedemann/ratchet/pull/158)).
+- `init.py` writes `CLAUDE.md` from the new `templates/CLAUDE.md` in a start, after the workflow, so a second run still knows the repo as one it started. `--check` names it among the files it would write. Where `register.json` names `CLAUDE.md`, in `instructions` or in a row's `stands_in`, it is not written but named as missing ([#158](https://github.com/fabian-von-tiedemann/ratchet/pull/158)).
+- `init.py` no longer stops with a traceback at a file it cannot read, such as `AGENTS.md` or `register.json` with mode 000 in a repo it started: the file is skipped and named, and the run exits 1 only where the register cannot be checked. `check_register.py` names a `REGISTER.md` it cannot read as a problem, in place of a traceback ([#158](https://github.com/fabian-von-tiedemann/ratchet/pull/158)).
+- `init.py` no longer writes the template of `AGENTS.md` where `register.json` names `AGENTS.md` in a row's `stands_in` and the file is missing, so `--check` and a real run both say it is missing ([#158](https://github.com/fabian-von-tiedemann/ratchet/pull/158)).
 
 <!-- generated:count -->
 Ratchet 0.15, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.

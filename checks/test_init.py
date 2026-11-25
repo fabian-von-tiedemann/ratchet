@@ -693,10 +693,7 @@ init.gitignore_plan = gitignore_plan
             ("AGENTS.md", write("AGENTS.md", lambda block: block.replace("## Rules in force", "## Rules once") + "\n# Ours\n"),
              "is not what register.json generates"),
             ("AGENTS.md", write("AGENTS.md", lambda block: block + block), "the markers of the generated block are broken"),
-            # A start writes CLAUDE.md from its template, as it writes AGENTS.md, so a register that names it finds no
-            # block there, and a file that is missing is one that init.py does not write.
-            ("CLAUDE.md", nothing, "CLAUDE.md: holds no generated block"),
-            ("RULES.md", nothing, "RULES.md: the file is missing"),
+            ("CLAUDE.md", nothing, "CLAUDE.md: the file is missing"),
             ("link/AGENTS.md", linked, "link is a symbolic link"),
             ("REGISTER.md", nothing, "REGISTER.md: holds no generated block"),
         )
@@ -1559,6 +1556,68 @@ init.add_line = add_line""" % (stop, stop))
                                          r"It was left as it is: compare it with \.ratchet/templates/CLAUDE\.md by hand$")
                 with open(self.path("CLAUDE.md"), "rb") as handle:
                     self.assertEqual(handle.read(), data)
+
+    def test_an_unreadable_file_is_skipped_and_named_with_no_traceback(self):
+        # Review round 1 of #158 (proven by a run): every file a start reads, made unreadable in a repo init.py started,
+        # stopped --check and a real run with a PermissionError, on main for AGENTS.md and the rest too. Each is now
+        # skipped and named, and left as it is. The run fails only where the register cannot be checked: register.json,
+        # and REGISTER.md, which the check at the end reads.
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root reads a file with mode 000")
+        for name in WRITTEN:
+            with self.subTest(file=name):
+                self.project = self.make_project("unreadable-%d" % len(os.listdir(self.directory)))
+                code, output = self.init()
+                self.assertEqual(code, 0, output)
+                with open(self.path(name), "rb") as handle:
+                    data = handle.read()
+                os.chmod(self.path(name), 0)
+                self.addCleanup(os.chmod, self.path(name), 0o644)
+                label = name.replace(os.sep, "/")
+                for args in (("--check",), ()):
+                    code, output = self.init(*args)
+                    self.assertNotIn("Traceback", output)
+                    self.assertNotIn("adopt mode", output)
+                    self.assertRegex(output, r"(?m)^skip +%s: it exists and cannot be read" % re.escape(label))
+                    self.assertEqual(code, 1 if name in ("register.json", "REGISTER.md") else 0, output)
+                    if name == "REGISTER.md":
+                        self.assertIn("REGISTER.md: cannot be read", output)
+                os.chmod(self.path(name), 0o644)
+                with open(self.path(name), "rb") as handle:
+                    self.assertEqual(handle.read(), data)
+
+    def test_check_and_a_real_run_agree_on_a_missing_file_the_register_names(self):
+        # Review round 1 of #158 (proven by a run): a register whose row names AGENTS.md or CLAUDE.md in stands_in, with
+        # the file missing. --check said the file is missing, and the real run wrote the template there and then said it
+        # held no marker. init.py now writes no file the register names in stands_in, nor a CLAUDE.md it names in
+        # instructions, so both say the file is missing. AGENTS.md named in instructions still gets the template, and
+        # both runs say the same of it, as test_check_and_a_real_run_agree_on_the_instruction_file_the_register_names has.
+        ratchet = init.registry.load(os.path.join(ROOT, "ratchet.json"))
+        for target in ("AGENTS.md", "CLAUDE.md"):
+            for how in ("stands_in", "instructions"):
+                with self.subTest(file=target, named_in=how):
+                    self.project = self.make_project("named-%d" % len(os.listdir(self.directory)))
+                    register = json.loads(init.register_text("demo-project", ratchet))
+                    if how == "stands_in":
+                        register["adopted"] = [init.reference_row("ratchet.no-secrets", target, ratchet)]
+                    else:
+                        register["instructions"] = target
+                    self.write("register.json", json.dumps(register, indent=2) + "\n")
+                    checked, check_output = self.init("--check")
+                    code, output = self.init()
+                    self.assertEqual((checked, code), (1, 1), check_output + output)
+                    said = [[line.strip() for line in text.split("\n") if line.strip().startswith(target + ": ")]
+                            for text in (check_output, output)]
+                    self.assertTrue(said[0], check_output)
+                    self.assertEqual(said[0], said[1], check_output + output)
+                    self.assertNotIn("Traceback", check_output + output)
+                    if (target, how) == ("AGENTS.md", "instructions"):
+                        self.assertTrue(os.path.isfile(self.path(target)), output)
+                        continue
+                    self.assertFalse(os.path.lexists(self.path(target)), output)
+                    self.assertIn("%s: the file is missing" % target, said[1][0])
+                    for text in (check_output, output):
+                        self.assertRegex(text, r"(?m)^skip +%s: register\.json names it in %s" % (re.escape(target), how))
 
     def test_a_claude_md_template_without_the_import_is_refused(self):
         self.assertIn(init.CLAUDE_IMPORT, read_template("CLAUDE.md").split("\n"))

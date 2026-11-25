@@ -993,6 +993,9 @@ def generated_problems(register_path, register, markdown=None, planned=None):
                 problems += registry.compare(markdown, current, render(register), os.path.basename(register_path))
         except registry.RegistryError as error:
             problems.append(str(error))
+        except OSError as error:
+            # A REGISTER.md that cannot be read is named, as one that is not UTF-8 is (review round 1 of #158).
+            problems.append("%s: cannot be read: %s" % (markdown, error.strerror or error))
     block, found = instruction_place(register_path, register) if INSTRUCTIONS in register else (None, [])
     problems += found
     if block is None:

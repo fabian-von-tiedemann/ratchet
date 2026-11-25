@@ -15,7 +15,9 @@ It writes what README's "Start here" sets up:
   line and the skills
 - CLAUDE.md, from templates/CLAUDE.md as it stands, whose only job is to load AGENTS.md into Claude Code, which reads
   CLAUDE.md and not AGENTS.md, with its import line @AGENTS.md. It is written after the workflow, so a start that wrote
-  it is still taken for a start on the next run, and not for a repo with an instruction file of its own
+  it is still taken for a start on the next run, and not for a repo with an instruction file of its own. It is not
+  written where a register.json that stands names CLAUDE.md, in instructions or in the stands_in of a row: that file is
+  the project's to write, and it is named as missing
 - register.json, from templates/register.json, with the project's name
 - REGISTER.md, generated from the register.json that stands after the run, as check_register.py --print-markdown
   prints it
@@ -50,7 +52,10 @@ git config as a file, when that is a name, or else the folder's name, and the ru
 digits, in words joined by one space, "-", "." or "_", at most 100 characters.
 
 It never overwrites a file. A file that exists with the content it would write is unchanged. A file that exists
-with other content, or that is not a plain file, is skipped, named, and left as it is. That is reported, not a
+with other content, that is not a plain file, or that cannot be read, is skipped, named, and left as it is: an unreadable
+register.json or REGISTER.md then fails the register check, and is not a traceback (review round 1 of #158). A file that
+a register.json that stands names in the stands_in of a row is the project's own wording, so init.py never writes its
+template there, AGENTS.md included: it is skipped and named as missing, and --check and a real run say the same of it. That is reported, not a
 failure: the run goes on and writes the rest (step 5 of D-2026-11-22-second-redraw). The one
 file it changes is .gitignore, and only by adding its line at the end, in one step, and only if .gitignore still
 holds what it read: when it changed meanwhile, init.py stops and leaves it as it is. With --check it writes
@@ -425,6 +430,42 @@ def names_instructions(root):
     return isinstance(register, dict) and check_register.INSTRUCTIONS in register
 
 
+def register_names(root):
+    """{path: where}, for each file that a register.json at root names: "instructions" for the one it names there, and
+    "stands_in" for each that a row of adopted names in stands_in. Nothing when there is no register.json that can be
+    read as one. Read as names_instructions reads it."""
+    state, text = existing(os.path.join(root, "register.json"))
+    try:
+        register = registry.parse_json(text.encode("utf-8")) if state == "file" and text is not None else None
+    except registry.RegistryError:
+        return {}
+    if not isinstance(register, dict):
+        return {}
+    named = {}
+    rows = register.get("adopted")
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and isinstance(row.get(check_register.STANDS_IN), str):
+            named[row[check_register.STANDS_IN]] = check_register.STANDS_IN
+    if isinstance(register.get(check_register.INSTRUCTIONS), str):
+        named.setdefault(register[check_register.INSTRUCTIONS], check_register.INSTRUCTIONS)
+    return named
+
+
+def withheld(root):
+    """{file: why}, for each file of a start that init.py does not write while it is missing, since the register.json
+    that stands names it: any file named in stands_in, whose wording is the project's own, and CLAUDE.md named in
+    instructions, which is the project's file for the block, not the one that points at AGENTS.md. AGENTS.md named in
+    instructions still gets its template, which the block is then put into (review round 1 of #158)."""
+    named = register_names(root)
+    kept = {}
+    for file in ("AGENTS.md", "CLAUDE.md"):
+        where = named.get(file)
+        if where == check_register.STANDS_IN or (file == "CLAUDE.md" and where == check_register.INSTRUCTIONS):
+            kept[file] = ("register.json names it in %s, so its wording is the project's own and init.py does not write "
+                          "its template there. It is missing: write it" % where)
+    return kept
+
+
 def adopt_mode(root):
     """The instruction files of the project's own when init.py runs in adopt mode, else nothing. Adopt mode is for a repo
     that already has an instruction file (step 9b of D-2026-11-22-second-redraw). A project that init.py started has
@@ -450,13 +491,17 @@ def workflow_text(commit):
 
 
 def existing(path):
-    """(the state of path, its text with CRLF read as LF or None): missing, a plain file, or something else."""
+    """(the state of path, its text with CRLF read as LF or None): missing, a plain file, one that cannot be read, or
+    something else."""
     if not os.path.lexists(path):
         return "missing", None
     if os.path.islink(path) or not os.path.isfile(path):
         return "other", None
-    with open(path, "rb") as handle:
-        data = handle.read()
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        return "unreadable", None
     try:
         return "file", data.decode("utf-8", errors="strict").replace("\r\n", "\n")
     except UnicodeDecodeError:
@@ -465,6 +510,8 @@ def existing(path):
 
 def register_md_text(register_state, register_text_now, ratchet):
     """REGISTER.md as the register.json that stands after the run generates it, or (None, the reason)."""
+    if register_state == "unreadable":
+        return None, "register.json cannot be read"
     if register_state == "other" or register_text_now is None:
         return None, "register.json is not a plain file in UTF-8"
     try:
@@ -495,8 +542,11 @@ def gitignore_plan(path):
         return "write", (IGNORE + "\n").encode("ascii"), ""
     if os.path.islink(path) or not os.path.isfile(path):
         return "skip", None, "it exists and is not a plain file. Add the line %s to it by hand" % IGNORE
-    with open(path, "rb") as handle:
-        data = handle.read()
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read()
+    except OSError:
+        return "skip", None, "it exists and cannot be read. It was left as it is: add the line %s to it by hand" % IGNORE
     if ignores_ratchet(data):
         return "unchanged", None, ""
     newline = b"\r\n" if b"\r\n" in data else b"\n"
@@ -657,11 +707,17 @@ def main(argv=None, out=None):
     # The plan, all of it worked out before anything is written.
     plan = []  # (action, name, bytes or None, note)
     states = {}
+    held = {} if adopting else withheld(root)
     for file, text in texts:
         state, current = existing(os.path.join(root, file))
         states[file] = (state, current, text)
-        if state == "missing":
+        if state == "missing" and file in held:
+            states[file] = (state, current, None)
+            plan.append(("skip", file, None, held[file]))
+        elif state == "missing":
             plan.append(("write", file, text.encode("utf-8"), ""))
+        elif state == "unreadable":
+            plan.append(("skip", file, None, "it exists and cannot be read. It was left as it is"))
         elif current == text:
             plan.append(("unchanged", file, None, ""))
         elif state == "other":
@@ -684,6 +740,8 @@ def main(argv=None, out=None):
                                                            "states: see below"))
         elif state == "other":
             plan.append(("skip", "register.json", None, "it exists and is not a plain file. It was left as it is"))
+        elif state == "unreadable":
+            plan.append(("skip", "register.json", None, "it exists and cannot be read. It was left as it is"))
         else:
             plan.append(("skip", "register.json", None, "it is the project's own. It was left as it is, and is checked "
                                                         "as it stands"))
@@ -700,6 +758,9 @@ def main(argv=None, out=None):
         plan.append(("skip", "REGISTER.md", None, "it cannot be generated: %s" % reason))
     elif markdown_state == "missing":
         plan.append(("write", "REGISTER.md", markdown.encode("utf-8"), ""))
+    elif markdown_state == "unreadable":
+        plan.append(("skip", "REGISTER.md", None, "it exists and cannot be read. It was left as it is, and the register "
+                                                  "check at the end names it"))
     elif current == markdown:
         plan.append(("unchanged", "REGISTER.md", None, ""))
     elif markdown_state == "other":
