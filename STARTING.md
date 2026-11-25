@@ -2,7 +2,7 @@
 
 Every step after the three commands under [Start here](README.md#start-here) in the README. Run everything in the root of your own git repo. If your `register.json` follows an earlier version, [UPGRADING.md](UPGRADING.md) moves it to this version.
 
-`init.py` takes one of two paths, and says which:
+`init.py` takes one of two paths, and says which in a line of its own: `init: a new start: ...` or `init: adopt mode: ...`.
 
 | Your repo | Path |
 |---|---|

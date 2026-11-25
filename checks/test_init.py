@@ -10,6 +10,7 @@ that init.py reads a real commit to pin. Standard library only.
 import builtins
 import contextlib
 import errno
+import html
 import json
 import os
 import re
@@ -24,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+import generate  # noqa: E402
 import init  # noqa: E402
 import run_pinned  # noqa: E402
 
@@ -146,6 +148,73 @@ def snapshot(directory):
     return found
 
 
+# The sample of the dry run on the landing page, and the command on the page that fetches Ratchet, with its version.
+SAMPLE = re.compile(r'<pre class="sample">([^<>]*)</pre>')
+SAMPLE_COMMAND = "$ python3 .ratchet/checks/init.py --check"
+PAGE_FETCH = re.compile(r"(?m)^<pre><code>git clone --branch v([0-9]+\.[0-9]+) "
+                        r"https://github\.com/fabian-von-tiedemann/ratchet \.ratchet</code></pre>$")
+
+
+def dry_run(source, branch=None):
+    """(exit code, lines) of init.py --check in a new empty git repo, with source cloned into its .ratchet, at the tag
+    branch, or at the HEAD of source when branch is None, as README's command fetches Ratchet."""
+    project = os.path.join(tempfile.mkdtemp(prefix="ratchet-test-"), "demo-project")
+    try:
+        os.mkdir(project)
+        git(project, "init", "-q")
+        git(project, "clone", "-q", *(["--branch", branch] if branch else []), source, ".ratchet")
+        result = subprocess.run([sys.executable, os.path.join(project, ".ratchet", "checks", "init.py"), "--check"],
+                                cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
+                                env=dict(environment(), PWD=project))
+        return result.returncode, result.stdout.split("\n")
+    finally:
+        shutil.rmtree(os.path.dirname(project))
+
+
+def sample_problems(root, head):
+    """Why the sample on root's landing page is not what init.py --check prints in an empty repo at the version that the
+    page's clone command fetches, as messages, or nothing.
+
+    The page fetches the tag vX.Y that its clone command names, so the sample is compared with that tag's own init.py,
+    cloned from root, which must hold the tag. Only in the release of vX.Y, where ratchet.json names X.Y and the first
+    entry of CHANGELOG.md is X.Y with a date, does the tag not exist yet, and the sample is compared with head, a git
+    repo whose HEAD holds root as it stands. A tag that is missing anywhere else is a problem: the head is never taken in
+    its place. After its first line, the command, each line of the sample is a line that the run prints, so the lines
+    that differ between runs, the commit and the project's name, need not stand in it.
+    """
+    with open(os.path.join(root, "docs", "index.html"), encoding="utf-8") as handle:
+        page = handle.read()
+    samples, fetched = SAMPLE.findall(page), PAGE_FETCH.findall(page)
+    if len(samples) != 1 or len(fetched) != 1:
+        return ["the page holds %d samples of the dry run and %d clone commands, and must hold one of each"
+                % (len(samples), len(fetched))]
+    sample, version = html.unescape(samples[0]).split("\n"), fetched[0]
+    if sample[0] != SAMPLE_COMMAND or len(sample) < 2:
+        return ["the sample must start with the line %r and show what it prints" % SAMPLE_COMMAND]
+    with open(os.path.join(root, "ratchet.json"), encoding="utf-8") as handle:
+        current = json.load(handle)["version"]
+    date, newest = generate.changelog_context(root)
+    tag = "v" + version
+    if version == current and date is not None and newest == current:
+        source, branch, which = head, None, "the head, the release of %s, whose tag %s does not exist yet" % (version, tag)
+    else:
+        found = subprocess.run(["git", "-C", root, "rev-parse", "-q", "--verify", "refs/tags/%s^{commit}" % tag],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=environment())
+        if found.returncode != 0:
+            return ["the page fetches %s with its clone command, and this checkout has no tag %s, so the sample cannot be "
+                    "compared with what that version prints. Fetch the tags, with git fetch --tags, or in CI with "
+                    "fetch-depth: 0 in actions/checkout. The head is not compared in its place" % (tag, tag)]
+        source, branch, which = root, tag, "the tag %s, which the page's clone command fetches" % tag
+    code, printed = dry_run(source, branch)
+    if code != 0:
+        return ["init.py --check exits %d in an empty repo at %s:\n%s" % (code, which, "\n".join(printed))]
+    missing = [line for line in sample[1:] if line not in printed]
+    if missing:
+        return ["the sample on the page holds lines that init.py --check does not print in an empty repo at %s: %s"
+                % (which, missing)]
+    return []
+
+
 class Init(unittest.TestCase):
     """init.py, run from the root of a new project with this checkout cloned into .ratchet."""
 
@@ -257,6 +326,40 @@ class Init(unittest.TestCase):
         self.assert_ratchet_ignored()
         self.assertIn("10 rules match Ratchet %s" % self.version, output)
         self.assertNotIn("adopt mode", output)
+
+    def test_a_start_says_which_path_it_takes_and_why_and_adopt_mode_does_not(self):
+        # STARTING.md says init.py takes one of two paths and says which. Adopt mode says so in its line; a start says so
+        # in one line too, in --check and in a real run, with the reason that adopt_mode has for not adopting.
+        start = "init: a new start: %s, so init.py writes %s, and adds /.ratchet/ to .gitignore. It never overwrites a file\n"
+        every = ".github/workflows/ratchet.yml, AGENTS.md, CLAUDE.md, register.json and REGISTER.md"
+        for args in (("--check",), ()):
+            with self.subTest(args=args):
+                code, output = self.init(*args)
+                self.assertEqual(code, 0, output)
+                self.assertIn(start % ("the project has no instruction file of its own", every), output)
+                self.assertEqual(output.count("init: a new start"), 1)
+                self.assertNotIn("adopt mode", output)
+        code, output = self.init("--check")
+        self.assertEqual(code, 0, output)
+        self.assertIn(start % (".github/workflows/ratchet.yml is there, which init.py writes first in a start",
+                               ".github/workflows/ratchet.yml, AGENTS.md, register.json and REGISTER.md"), output)
+        # A register that names an instruction file keeps a repo with its own AGENTS.md out of adopt mode.
+        self.project = self.make_project("named")
+        self.write("AGENTS.md", "# Our own rules\n")
+        register = json.loads(init.register_text("named", init.registry.load(os.path.join(ROOT, "ratchet.json"))))
+        register["instructions"] = "AGENTS.md"
+        self.write("register.json", json.dumps(register, indent=2) + "\n")
+        code, output = self.init("--check")
+        self.assertIn(start % ("register.json names an instruction file in instructions",
+                               ".github/workflows/ratchet.yml, AGENTS.md, register.json and REGISTER.md"), output)
+        # Adopt mode prints its own line and never this one.
+        self.project = self.make_project("adopted")
+        self.write("CLAUDE.md", "# Our own rules\n")
+        for args in (("--check",), ()):
+            with self.subTest(adopt=args):
+                code, output = self.init(*args)
+                self.assertIn("init: adopt mode: CLAUDE.md is the project's own instruction file", output)
+                self.assertNotIn("init: a new start", output)
 
     def test_the_pinned_commit_is_in_the_workflow(self):
         code, output = self.init()
@@ -406,19 +509,11 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertNotIn("names no remote", output)
 
-    def test_the_sample_on_the_landing_page_is_what_the_dry_run_prints_in_an_empty_repo(self):
-        # The landing page shows the dry run: after its first line, the command, each line is one --check prints here.
-        with open(os.path.join(ROOT, "docs", "index.html"), encoding="utf-8") as handle:
-            found = re.findall(r'<pre class="sample">([^<>]*)</pre>', handle.read())
-        self.assertEqual(len(found), 1)
-        sample = found[0].split("\n")
-        self.assertEqual(sample[0], "$ python3 .ratchet/checks/init.py --check")
-        code, output = self.init("--check")
-        self.assertEqual(code, 0, output)
-        printed = output.split("\n")
-        self.assertGreater(len(sample), 2)
-        for line in sample[1:]:
-            self.assertIn(line, printed)
+    def test_the_sample_on_the_landing_page_is_what_the_dry_run_prints_at_the_version_the_page_fetches(self):
+        # The landing page shows the dry run: after its first line, the command, each line is one that --check prints in
+        # an empty repo, at the tag the page's clone command fetches, or at the head in that version's release. The
+        # cases are the tests of Sample.
+        self.assertEqual(sample_problems(ROOT, self.source), [])
 
     def test_the_workflow_has_a_job_for_the_projects_own_checks_and_init_names_the_jobs_to_require(self):
         code, output = self.init()
@@ -1678,6 +1773,105 @@ init.add_line = add_line""" % (stop, stop))
         for key in init.WAIT_FOR_REMOTE:
             with self.subTest(key=key):
                 self.assertIn(key, keys)
+
+
+class Sample(unittest.TestCase):
+    """sample_problems on a repo of its own: a copy of this checkout, tagged v9.0 as the version the page fetches, and a
+    head after the tag whose init.py prints "would draft" where the tag prints "would write". So a sample of the tag's
+    lines passes only when the tag is what it is compared with, and a sample of the head's only when the head is.
+    ratchet.json keeps this checkout's version, which the template's register must name for init.py to run: the
+    release is that version with a date, and the page fetching it."""
+
+    TAG_LINE, HEAD_LINE = "would write AGENTS.md", "would draft AGENTS.md"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = tempfile.mkdtemp(prefix="ratchet-test-")
+        cls.origin = os.path.join(cls.base, "ratchet")
+        shutil.copytree(ROOT, cls.origin, ignore=shutil.ignore_patterns(".git", "__pycache__", "fixtures", ".claude"))
+        git(cls.origin, "init", "-q")
+        with open(os.path.join(ROOT, "ratchet.json"), encoding="utf-8") as handle:
+            cls.version = json.load(handle)["version"]
+        cls.unreleased = dict(fetched="9.0", heading="## %s (unreleased)" % cls.version)
+        cls.release = dict(fetched=cls.version, heading="## %s (2026-11-26)" % cls.version)
+        cls.state(cls.origin, **cls.unreleased)
+        git(cls.origin, "add", "-A")
+        git(cls.origin, "commit", "-q", "-m", "Ratchet 9.0")
+        git(cls.origin, "tag", "v9.0")
+        path = os.path.join(cls.origin, "checks", "init.py")
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        shown = '{"write": "would write"'
+        assert text.count(shown) == 1, "init.py no longer holds %s once" % shown
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text.replace(shown, '{"write": "would draft"'))
+        git(cls.origin, "commit", "-q", "-am", "The head after v9.0")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.base)
+
+    @staticmethod
+    def state(root, fetched, heading, sample=None):
+        """Make the page fetch vfetched and the first heading of CHANGELOG.md be heading, and, with sample, the sample on
+        the page be the command and that one line."""
+        def edit(name, pattern, replacement):
+            path = os.path.join(root, *name.split("/"))
+            with open(path, encoding="utf-8", newline="") as handle:
+                text, count = re.subn(pattern, replacement, handle.read(), count=1, flags=re.M)
+            assert count == 1, "%s holds no %s" % (name, pattern)
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                handle.write(text)
+        edit("docs/index.html", r"(<pre><code>git clone --branch v)[0-9]+\.[0-9]+", r"\g<1>" + fetched)
+        edit("CHANGELOG.md", r"^## .*$", heading)
+        if sample is not None:
+            edit("docs/index.html", r'<pre class="sample">[^<>]*</pre>',
+                 '<pre class="sample">%s\n%s</pre>' % (SAMPLE_COMMAND, sample))
+
+    def repo(self, sample, state=None):
+        """A clone of the origin, with its tags, the state given committed at its head."""
+        directory = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, directory)
+        git(directory, "clone", "-q", self.origin, "ratchet")
+        root = os.path.join(directory, "ratchet")
+        self.state(root, sample=sample, **(state or self.unreleased))
+        git(root, "commit", "-q", "-am", "The state of the case")
+        return root
+
+    def problems(self, root):
+        return sample_problems(root, root)
+
+    def test_a_sample_of_what_the_tag_prints_passes_while_the_head_prints_otherwise(self):
+        self.assertEqual(self.problems(self.repo(self.TAG_LINE)), [])
+
+    def test_a_sample_of_what_the_head_prints_fails_while_the_head_is_not_the_tag(self):
+        problems = self.problems(self.repo(self.HEAD_LINE))
+        self.assertEqual(problems, ["the sample on the page holds lines that init.py --check does not print in an empty "
+                                    "repo at the tag v9.0, which the page's clone command fetches: ['%s']" % self.HEAD_LINE])
+
+    def test_in_a_release_the_sample_is_what_the_head_prints(self):
+        self.assertEqual(self.problems(self.repo(self.HEAD_LINE, self.release)), [])
+        self.assertEqual(self.problems(self.repo(self.TAG_LINE, self.release)),
+                         ["the sample on the page holds lines that init.py --check does not print in an empty repo at "
+                          "the head, the release of %s, whose tag v%s does not exist yet: ['%s']"
+                          % (self.version, self.version, self.TAG_LINE)])
+
+    def test_a_release_entry_without_a_date_is_not_a_release_and_needs_the_tag(self):
+        # The page fetches the version of ratchet.json while its entry is unreleased: there is no tag for it, and the
+        # head is not taken.
+        problems = self.problems(self.repo(self.HEAD_LINE, dict(self.unreleased, fetched=self.version)))
+        self.assertEqual(len(problems), 1)
+        self.assertIn("this checkout has no tag v%s" % self.version, problems[0])
+
+    def test_a_missing_tag_fails_clearly_and_the_head_is_not_taken_in_its_place(self):
+        for sample in (self.TAG_LINE, self.HEAD_LINE):
+            with self.subTest(sample=sample):
+                root = self.repo(sample)
+                git(root, "tag", "-d", "v9.0")
+                self.assertEqual(self.problems(root), [
+                    "the page fetches v9.0 with its clone command, and this checkout has no tag v9.0, so the sample cannot "
+                    "be compared with what that version prints. Fetch the tags, with git fetch --tags, or in CI with "
+                    "fetch-depth: 0 in actions/checkout. The head is not compared in its place"])
 
 
 if __name__ == "__main__":
