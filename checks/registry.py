@@ -189,13 +189,29 @@ def strict_loads(text):
 
 
 def load_json(path):
-    """Read a JSON data file strictly: valid UTF-8, no field twice in one object, no NaN or Infinity."""
+    """Read a JSON data file strictly: valid UTF-8, no field twice in one object, no NaN or Infinity.
+
+    The path is opened without blocking and read only when it is a regular file, as inventory.py's guarded reader
+    does, so a FIFO, a device or a folder in the place of a data file is refused and never waited on. A link is
+    followed, as before (the assessment of checks/, D-2026-11-26-checks-assessment, section 4)."""
     try:
-        with open(path, "rb") as handle:
-            data = handle.read()
+        handle = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError as error:
         raise RegistryError("not a valid data file: %s" % error)
-    return parse_json(data)
+    try:
+        if not stat.S_ISREG(os.fstat(handle).st_mode):
+            raise RegistryError("not a valid data file: it is not a regular file")
+        chunks = []
+        while True:
+            chunk = os.read(handle, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    except OSError as error:
+        raise RegistryError("not a valid data file: %s" % error)
+    finally:
+        os.close(handle)
+    return parse_json(b"".join(chunks))
 
 
 def parse_json(data):
