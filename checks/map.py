@@ -6,7 +6,8 @@
 A repo with rules and checks of its own does not adopt Ratchet first. Its agent writes ratchet-map.json at the root of
 ROOT (by default the folder it runs in), with every rule of the ratchet.json beside this script, each marked "covered"
 or "gap", the paths in the repo that cover it, and a note. This check reads that file strictly and prints every
-assessment, the gaps first, for the owner to review. Ratchet never writes the file.
+assessment, the gaps first, for the owner to review, each with the source its rule names in ratchet.json, if any.
+Ratchet never writes the file.
 
 It checks the form of the map and that every path it cites is a plain file under ROOT, reached through no link. It
 does not check whether a path covers a rule: every row is the agent's proposal, and the owner judges it.
@@ -68,7 +69,8 @@ def kind_of(value):
 
 
 def checkout():
-    """The version and the rules, in order, of the ratchet.json beside this script: (version, [(key, status)])."""
+    """The version and the rules, in order, of the ratchet.json beside this script: (version, [(key, status, source)]).
+    A rule's source is the text it draws on, printed as it stands, or "" when it names none."""
     if not os.path.isfile(SOURCE):
         raise CannotRun("there is no ratchet.json beside map.py, at %s: run map.py from a checkout of Ratchet" % SOURCE)
     try:
@@ -82,9 +84,9 @@ def checkout():
     keys = []
     for rule in rules:
         key = rule.get("key") if isinstance(rule, dict) else None
-        if not isinstance(key, str) or not registry.KEY.match(key) or key in [k for k, _ in keys]:
+        if not isinstance(key, str) or not registry.KEY.match(key) or key in [k for k, _, _ in keys]:
             raise CannotRun("%s has a rule without a key of its own" % SOURCE)
-        keys.append((key, rule.get("status") if isinstance(rule.get("status"), str) else "?"))
+        keys.append((key, rule.get("status") if isinstance(rule.get("status"), str) else "?", rule.get("source", "")))
     return version, keys
 
 
@@ -248,14 +250,16 @@ def check(root):
         if not isinstance(given, dict):
             problems.append("rules must be an object with one entry for each rule, found %s" % kind_of(given))
         else:
-            known = [key for key, _ in rules]
-            for key, part in rules:
+            known = [key for key, _, _ in rules]
+            for key, part, source in rules:
                 if key not in given:
                     problems.append("rules has no entry for %s, a rule of Ratchet %s" % (key, version))
                     continue
                 entry = rule_problems(root, key, given[key], problems)
                 if entry is not None:
                     entry["part"] = part
+                    if source:
+                        entry["source"] = source
                     entries.append(entry)
             for key in given:
                 if key not in known:
@@ -273,6 +277,8 @@ def entry_lines(entry):
     lines = ["  %s (%s): %s%s" % (entry["key"], entry["part"], entry["status"], "  <-- GAP" if entry["status"] == "gap" else "")]
     lines.append("    by: %s" % (", ".join(entry["by"]) if entry["by"] else "(no path)"))
     lines.append("    note: %s" % entry["note"])
+    if "source" in entry:
+        lines.append("    source: %s" % entry["source"])
     return lines
 
 

@@ -2,8 +2,8 @@
 
     python3 -m unittest discover -s checks -v
 
-The fixtures are under checks/fixtures/map/: a checkout's ratchet.json with three rules under checkout/, a repo with a
-valid map under repo/, and maps with one fault each under faults/. A fixture's name cannot start with a dot, so a part
+The fixtures are under checks/fixtures/map/: a checkout's ratchet.json with three rules, one with a source, under
+checkout/, a repo with a valid map under repo/, and maps with one fault each under faults/. A fixture's name cannot start with a dot, so a part
 that starts with dot- is renamed to start with . in the copy the test makes. Links, FIFOs and files that cannot be read
 are made in scratch directories at test time, never committed. Each case of checks/README.md#mappy is a test here.
 Standard library only.
@@ -115,6 +115,20 @@ def snapshot(top):
                     data = handle.read()
             seen[os.path.relpath(path, top)] = (status.st_mode, status.st_size, status.st_mtime_ns, data)
     return seen
+
+
+def blocks(text):
+    """The lines under each rule's key in the text report: {key: [lines]}."""
+    found, key = {}, None
+    for line in text.split("\n"):
+        if re.match(r"^  ratchet\.[a-z-]+ \(", line):
+            key = line.split()[0]
+            found[key] = []
+        elif line.startswith("    ") and key:
+            found[key].append(line)
+        else:
+            key = None
+    return found
 
 
 def versions():
@@ -457,6 +471,51 @@ class Map(FixtureTest):
                 code, out, _ = self.run_map(self.repo, "--json")
                 self.assertEqual(code, expected, out)
                 self.assertEqual(json.loads(out)["proposal"], notice)
+
+    # 14. A rule's source from the checkout's ratchet.json, printed as it stands, on gaps and covered rules alike.
+
+    def test_the_source_stands_under_its_own_rule_only_whether_covered_or_a_gap(self):
+        source = "example/skills `tdd`"
+        for status in ("covered", "gap"):
+            with self.subTest(status=status):
+                value = self.valid_map()
+                value["rules"]["ratchet.alpha"]["status"] = status
+                self.write_map(json.dumps(value))
+                code, out, err = self.run_map(self.repo)
+                self.assertEqual((code, err), (0, ""), out + err)
+                found = blocks(out)
+                self.assertEqual(sorted(found), ["ratchet.alpha", "ratchet.beta", "ratchet.gamma"])
+                self.assertIn("    source: %s" % source, found["ratchet.alpha"])
+                for key in ("ratchet.beta", "ratchet.gamma"):
+                    self.assertFalse([line for line in found[key] if line.startswith("    source:")], found[key])
+                self.assertEqual(out.count("source:"), 1)
+                facts = json.loads(self.run_map(self.repo, "--json")[1])
+                by_key = dict((entry["key"], entry) for entry in facts["rules"])
+                self.assertEqual(by_key["ratchet.alpha"]["status"], status)
+                self.assertEqual(by_key["ratchet.alpha"]["source"], source)
+                self.assertNotIn("source", by_key["ratchet.beta"])
+                self.assertNotIn("source", by_key["ratchet.gamma"])
+
+    def test_a_source_that_looks_like_markdown_is_printed_as_it_stands(self):
+        source = "a/skills `one`; b `two-three`, which goes further; c/d (the e)"
+        self.assertIsNone(map_check.registry.text_problem(source))
+        data = json.loads(self.fixture_text("map/checkout/ratchet.json"))
+        data["rules"][1]["source"] = source
+        checkout = self.make_checkout(json.dumps(data).encode("utf-8"))
+        code, out, err = self.run_map(self.repo, checkout=checkout)
+        self.assertEqual((code, err), (0, ""), out + err)
+        self.assertIn("    source: %s" % source, blocks(out)["ratchet.beta"])
+        facts = json.loads(self.run_map(self.repo, "--json", checkout=checkout)[1])
+        self.assertEqual([entry["source"] for entry in facts["rules"] if entry["key"] == "ratchet.beta"], [source])
+
+    def test_a_map_that_fails_prints_its_problems_and_no_rule_or_source(self):
+        self.write_map(self.fixture_bytes("map/faults/path-missing.json"))
+        out = self.problems()
+        self.assertNotIn("source", out)
+        self.assertEqual(blocks(out), {})
+        facts = json.loads(self.problems("--json"))
+        self.assertEqual(sorted(facts), ["map", "ok", "problems", "proposal", "ratchet"])
+        self.assertNotIn("source", json.dumps(facts))
 
     # 6. A path it cites is looked at for its kind and never read.
 
