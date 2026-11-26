@@ -132,9 +132,8 @@ class UpgradeError(Exception):
     """The upgrade cannot run."""
 
 
-def version_key(version):
-    major, minor = version.split(".")
-    return int(major), int(minor)
+# The one form in which versions are compared. Each caller has checked the version's form first.
+version_key = registry.version_key
 
 
 def load_older(path, data=None):

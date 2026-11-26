@@ -97,10 +97,8 @@ class ReleaseError(Exception):
     """The release cannot be made, or was not finished. The message says what was written."""
 
 
-def version_key(version):
-    """(major, minor) as integers, the one form in which versions are compared. The version has matched VERSION."""
-    major, minor = version.split(".")
-    return int(major), int(minor)
+# (major, minor) as integers, the one form in which versions are compared. The version has matched VERSION.
+version_key = registry.version_key
 
 
 def name(key):
