@@ -57,6 +57,11 @@ class Pages(unittest.TestCase):
     def problems(self, text=None):
         return generate.short_page_problems(self.root, text if text is not None else changelog(entry("0.17")))
 
+    def test_the_five_pages_and_their_caps_are_pinned(self):
+        """Read from the rule, not from generate.py, so a page dropped from PAGE_CAPS, or a cap moved, turns this red."""
+        self.assertEqual(generate.PAGE_CAPS, {"README.md": 1600, "TRYING.md": 700, "STARTING.md": 1300,
+                                              "UPGRADING.md": 900, "HANDOVER.md": 2000})
+
     def test_each_page_at_its_cap_passes(self):
         self.assertEqual(self.problems(), [])
         self.page("README.md", generate.PAGE_CAPS["README.md"] - 300)
