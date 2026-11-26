@@ -1,18 +1,26 @@
 # Copy to .github/workflows/ratchet.yml in your project.
 # It runs Ratchet's reference checks against your repo, from Ratchet at the version your register states.
+# Once a week the job behind fails when a newer Ratchet has been released.
 name: ratchet
 
 on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"
 
 # The token of every job can only read the repo, so no step can push, merge or approve with it.
 permissions:
   contents: read
 
+# The full commit sha of the Ratchet tag the register states, not the tag name. Both checkouts of Ratchet use it.
+env:
+  RATCHET_COMMIT: <40-character commit sha>
+
 jobs:
   ratchet:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     # The same for this job on its own, so that it holds when the job is copied into another workflow.
@@ -27,8 +35,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fabian-von-tiedemann/ratchet
-          # The full commit sha of the Ratchet tag the register states, not the tag name.
-          ref: <40-character commit sha>
+          ref: ${{ env.RATCHET_COMMIT }}
           path: .ratchet
           persist-credentials: false
       - name: The register has not drifted, and AGENTS.md holds no placeholder of the template
@@ -37,6 +44,7 @@ jobs:
   # The project's own checks: its tests, its secret scan, and each check that register.json marks as built.
   # Replace the step below with them, one step each. init.py names the jobs to require in the protection of main.
   project-checks:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -47,3 +55,24 @@ jobs:
           persist-credentials: false
       - name: The project's own checks go here
         run: echo "No checks of the project's own yet. Replace this step with them."
+
+  # On the schedule only, and not a job to require. For a report that never fails, add || true to the command.
+  behind:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch Ratchet at the version the register states
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fabian-von-tiedemann/ratchet
+          ref: ${{ env.RATCHET_COMMIT }}
+          path: .ratchet
+          persist-credentials: false
+      - name: The register states the latest release of Ratchet
+        run: python3 .ratchet/checks/upgrade.py register.json --behind

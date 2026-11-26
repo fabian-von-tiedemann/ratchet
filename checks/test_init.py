@@ -427,7 +427,9 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         workflow = self.text(".github", "workflows", "ratchet.yml")
         self.assertRegex(self.commit, r"^[0-9a-f]{40}$")
-        self.assertIn("ref: %s\n" % self.commit, workflow)
+        # One pin, which both checkouts of Ratchet take (#180).
+        self.assertIn("\n  RATCHET_COMMIT: %s\n" % self.commit, workflow)
+        self.assertEqual(workflow.count("ref: ${{ env.RATCHET_COMMIT }}\n"), 2)
         self.assertNotIn(PLACEHOLDER, workflow)
         self.assertEqual(workflow, read_template("ratchet-checks.yml").replace(PLACEHOLDER, self.commit))
         self.assertIn(self.commit, output)
@@ -443,7 +445,13 @@ class Init(unittest.TestCase):
         self.assertIn("check_register.py register.json --markdown REGISTER.md", output)
 
     def run_the_workflow(self):
-        """(exit code, output) of each step of the written workflow that runs a check of Ratchet, run here."""
+        """(exit code, output) of each step of the written workflow that runs a check of Ratchet, run here.
+
+        The job behind fetches the tags of .ratchet from its origin, this test's copy of Ratchet. The clone gets the tag
+        of the version the register states, as a release has it, so the register is on the latest release (#180)."""
+        ratchet = self.path(".ratchet")
+        if not git(ratchet, "tag", "--list", "v" + self.version):
+            git(ratchet, "tag", "v" + self.version)
         commands = re.findall(r"(?m)^\s+run: python3 (\.ratchet/\S.*)$", self.text(".github", "workflows", "ratchet.yml"))
         self.assertGreaterEqual(len(commands), 1)
         results = []
@@ -581,8 +589,8 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         workflow = self.text(".github", "workflows", "ratchet.yml")
         jobs = re.findall(r"(?m)^  ([a-z][a-z-]*):$", workflow.split("\njobs:\n", 1)[1])
-        self.assertEqual(jobs, ["ratchet", "project-checks"])
-        own = workflow.split("\n  project-checks:\n", 1)[1]
+        self.assertEqual(jobs, ["ratchet", "project-checks", "behind"])
+        own = self.workflow_jobs(workflow)["project-checks"]
         self.assertIn("runs-on:", own)
         self.assertIn("The project's own checks", own)
         self.assertIn("require the jobs ratchet and project-checks", output)
@@ -1818,16 +1826,46 @@ init.add_line = add_line""" % (stop, stop))
         # Finding from a real adoption: every job's token only reads, and no checkout leaves the token in .git/config.
         text = read_template("ratchet-checks.yml")
         self.assertIn("\npermissions:\n  contents: read\n", text)
-        jobs = "\n" + text.split("\njobs:\n", 1)[1]
-        for job in init.JOBS:
+        jobs = self.workflow_jobs(text)
+        self.assertEqual(sorted(jobs), sorted(init.JOBS + ("behind",)))
+        for job, block in jobs.items():
             with self.subTest(job=job):
-                block = jobs.split("\n  %s:\n" % job, 1)[1].split("\n  project-checks:\n", 1)[0]
+                # Each job's own lines, up to the next job (round 1 of #183).
                 self.assertIn("\n    permissions:\n      contents: read\n    steps:\n", "\n" + block)
         checkouts = re.findall(r"uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\n(?: +#.*\n)*?((?: +\S.*\n)*?) +with:\n((?: {10}.*\n)+)",
                                text)
         self.assertEqual(len(checkouts), text.count("uses: actions/checkout@"))
         for _, options in checkouts:
             self.assertIn("persist-credentials: false\n", options)
+
+    def workflow_jobs(self, text):
+        """{job: its lines} of a workflow, for each job at the indent of two spaces under "jobs:"."""
+        parts = re.split(r"(?m)^  ([a-z-]+):\n", text.split("\njobs:\n", 1)[1])
+        return dict(zip(parts[1::2], parts[2::2]))
+
+    def test_the_job_behind_runs_on_the_schedule_only(self):
+        # Case 7 of #180: once a week the job behind runs upgrade.py --behind from the pinned checkout, and only then.
+        text = read_template("ratchet-checks.yml")
+        self.assertRegex(text.split("\npermissions:\n", 1)[0], r"\n  schedule:\n    - cron: \"[0-9]+ [0-9]+ \* \* [0-6]\"\n")
+        behind = self.workflow_jobs(text)["behind"]
+        self.assertTrue(behind.startswith("    if: github.event_name == 'schedule'\n"), behind)
+        self.assertIn("          ref: ${{ env.RATCHET_COMMIT }}\n          path: .ratchet\n", behind)
+        self.assertEqual(re.findall(r"(?m)^ +run: (.*)$", behind), ["python3 .ratchet/checks/upgrade.py register.json --behind"])
+
+    def test_the_jobs_to_require_do_not_run_on_the_schedule_and_init_pins_one_commit(self):
+        # Case 11 of #180: the jobs init.py names to require keep their names and do not run on the schedule, and the
+        # workflow init.py writes pins one commit, which both checkouts of Ratchet fetch.
+        text = read_template("ratchet-checks.yml")
+        jobs = self.workflow_jobs(text)
+        self.assertEqual(sorted(jobs), sorted(init.JOBS + ("behind",)))
+        for job in init.JOBS:
+            with self.subTest(job=job):
+                self.assertTrue(jobs[job].startswith("    if: github.event_name != 'schedule'\n"), jobs[job])
+        written = init.workflow_text_from(text, "a" * 40)
+        self.assertEqual(re.findall(r"[0-9a-f]{40}(?= *$)", written, re.M), ["a" * 40])
+        self.assertIn("\nenv:\n  RATCHET_COMMIT: %s\n" % ("a" * 40), written)
+        self.assertEqual(written.count("ref: ${{ env.RATCHET_COMMIT }}\n"), 2)
+        self.assertEqual(len(re.findall(r"(?m)^ +ref: ", written)), 2)
 
     def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
         keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]

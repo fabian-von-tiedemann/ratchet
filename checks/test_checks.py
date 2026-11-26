@@ -1953,6 +1953,14 @@ class StartPath(unittest.TestCase):
         # Step 1 of "A new repo" in STARTING.md fills in AGENTS.md. Until it does, the workflow's register check fails.
         import check_register
         self.run_the_readme()
+        # The job behind fetches the tags of .ratchet from its origin. Here the origin is the clone itself, with the tag of
+        # the version the register states, so the register is on the latest release (#180).
+        ratchet = os.path.join(self.project, ".ratchet")
+        with open(os.path.join(ratchet, "ratchet.json"), encoding="utf-8") as handle:
+            version = json.load(handle)["version"]
+        for command in (["tag", "v" + version], ["remote", "add", "origin", ratchet]):
+            subprocess.run(["git", "-C", ratchet] + command, check=True, stdout=subprocess.DEVNULL,
+                           env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
         path = os.path.join(self.project, "AGENTS.md")
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
