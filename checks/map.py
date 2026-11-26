@@ -277,11 +277,13 @@ def entry_lines(entry):
 
 
 def text_report(facts):
-    """The facts as text. It is made from the same facts as --json, and from nothing else."""
+    """The facts as text. It is made from the same facts as --json, and from nothing else. The line that the map is
+    the agent's proposal stands in both, whether the map passes or not."""
     out = []
     if not facts["ok"]:
         out.append("%s, for Ratchet %s: %d problem%s" % (facts["map"], facts["ratchet"], len(facts["problems"]),
                                                        "" if len(facts["problems"]) == 1 else "s"))
+        out.append(facts["proposal"])
         for problem in facts["problems"]:
             out.append("  %s" % problem)
         return "\n".join(out) + "\n"

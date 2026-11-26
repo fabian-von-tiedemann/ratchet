@@ -438,6 +438,57 @@ class Map(FixtureTest):
         self.assertEqual(facts["counts"], {"covered": 1, "gap": 2})
         self.assertEqual(facts["proposal"], map_check.PROPOSAL)
 
+    def test_the_notice_that_the_map_is_a_proposal_stands_in_both_formats_whether_it_passes_or_not(self):
+        # Spelled out here, not read from map.PROPOSAL, so that a notice emptied or reworded in map.py fails (round 1
+        # of the review of #167).
+        notice = ("This map is the agent's proposal, for the owner to review. map.py checks its form and that each path "
+                  "it cites is a plain file under the root, not whether a path covers a rule.")
+        self.assertIn("the agent's proposal", notice)
+        self.assertIn("map.py checks its form and that each path it cites is a plain file", notice)
+        self.assertIn("not whether a path covers a rule", notice)
+        for name, expected in ((None, 0), ("key-missing", 1)):
+            if name:
+                self.write_map(self.fixture_bytes("map/faults/%s.json" % name))
+            with self.subTest(fault=name, format="text"):
+                code, out, _ = self.run_map(self.repo)
+                self.assertEqual(code, expected, out)
+                self.assertIn("\n%s\n" % notice, out)
+            with self.subTest(fault=name, format="json"):
+                code, out, _ = self.run_map(self.repo, "--json")
+                self.assertEqual(code, expected, out)
+                self.assertEqual(json.loads(out)["proposal"], notice)
+
+    # 6. A path it cites is looked at for its kind and never read.
+
+    def test_only_the_map_is_read_never_a_path_it_cites(self):
+        value = self.valid_map()
+        value["rules"]["ratchet.gamma"]["by"] = ["docs/rules.md", "AGENTS.md", ".github/workflows/ci.yml"]
+        self.write_map(json.dumps(value))
+        inventory = map_check.inventory
+        reads, looks = [], []
+        real_read, real_look = inventory.guarded_read, inventory.guarded_look
+
+        def read(start, parts, prefix=""):
+            reads.append(list(parts))
+            return real_read(start, parts, prefix)
+
+        def look(start, parts):
+            looks.append(list(parts))
+            return real_look(start, parts)
+
+        out = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(inventory, "guarded_read", read))
+            stack.enter_context(mock.patch.object(inventory, "guarded_look", look))
+            stack.enter_context(mock.patch.object(map_check, "SOURCE", os.path.join(self.checkout, "ratchet.json")))
+            stack.enter_context(contextlib.redirect_stdout(out))
+            code = map_check.main([self.repo, "--json"])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertEqual(reads, [["ratchet-map.json"]])
+        # Every path it cites was looked at, so the run did reach them.
+        for path in (".github/workflows/ci.yml", "AGENTS.md", "docs/rules.md"):
+            self.assertIn(path.split("/"), looks)
+
 
 if __name__ == "__main__":
     unittest.main()
