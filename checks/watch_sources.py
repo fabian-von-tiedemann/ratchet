@@ -29,7 +29,7 @@ the origin https://api.github.com, compared exactly and never by prefix. A redir
 a token the reads run unauthenticated, and if anything would be written, the run fails and names the titles,
 without writing them.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

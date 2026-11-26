@@ -48,7 +48,7 @@ D-2026-11-19-one-point-oh). And it fails, naming each rule, when an experimental
 "not_used_because" why Ratchet cannot use it, or when the register adopts a rule that names "not_used_because"
 (use_problems, D-2026-11-20-proposal-triage, choice 5).
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

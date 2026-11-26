@@ -38,7 +38,7 @@ when the version at the head of main, or an older one, is not finished, and pass
 The token is sent only to https://api.github.com and is never printed. It never moves,
 deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

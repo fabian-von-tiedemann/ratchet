@@ -73,7 +73,7 @@ does not pass against the version it states, the newer Ratchet is older, or the
 steps would not give a register that passes against it. 2: the script could not
 run: a file is missing or is not a valid data file, or, in the one command, .ratchet
 is not a git clone or cannot be moved, a tag is missing, or the fetch failed.
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

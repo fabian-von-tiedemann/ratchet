@@ -90,7 +90,7 @@ Every file is read as strict UTF-8. Bytes that are not UTF-8 fail the check.
 Line endings: CRLF is read as LF. Generated files are printed with LF.
 
 Exit code 0: the register is valid. 1: at least one problem. 2: the check could not run.
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

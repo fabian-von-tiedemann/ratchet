@@ -30,7 +30,7 @@ needs no new version.
 
 A file is read as strict UTF-8, and CRLF is read as LF, as every check here reads it.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

@@ -10,9 +10,14 @@ permissions:
 
 jobs:
   # The pull request's own checks, on its own data. On a push to main, they run with the job released, and base does not.
+  # It runs on the oldest Python the checks support and on the newest, and the job checks needs both legs.
   own:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.x"]
     env:
       # No bytecode next to the checks: unittest imports them before their own code can say so (#100).
       PYTHONDONTWRITEBYTECODE: "1"
@@ -21,6 +26,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
       - name: Generated text matches the data files
         run: python3 checks/generate.py --check
       - name: This repo's own register has not drifted

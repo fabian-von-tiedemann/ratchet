@@ -32,7 +32,7 @@ collected and have no start.
 FixtureTest is how a test loads a fixture. It works the same in a run without this
 runner, such as `python3 -m unittest discover -s checks`, and records nothing there.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys
