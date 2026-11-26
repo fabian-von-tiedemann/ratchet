@@ -1,0 +1,19 @@
+{
+  "ratchet": "0.9",
+  "rules": {
+    "ratchet.alpha": {
+      "status": "covered",
+      "by": [
+        ".github/workflows/ci.yml",
+        "AGENTS.md"
+      ],
+      "note": "The job `test` runs on every pull request, and AGENTS.md says so."
+    },
+    "ratchet.beta": null,
+    "ratchet.gamma": {
+      "status": "gap",
+      "by": [],
+      "note": "Nothing in the repo covers it."
+    }
+  }
+}

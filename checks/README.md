@@ -1585,6 +1585,75 @@ Each rule of the rules for a branch must have its `type`, `ruleset_source_type` 
 | A repo with one instruction file | "The agent layer: 1 file" |
 | This repo | Runs, with `AGENTS.md`, the job `checks`, and the fixtures' instruction files at depth |
 
+## map.py
+
+```sh
+python3 .ratchet/checks/map.py           # the map at the root of the repo in the folder it runs in
+python3 .ratchet/checks/map.py --json    # the same facts, as JSON
+```
+
+This one checks no rule in a register. It is the map-only mode of [D-2026-11-23-new-rules-first](../decisions/D-2026-11-23-new-rules-first.md), new in 0.16: a repo with rules and checks of its own maps Ratchet's rules to them before it adopts anything, as the second path of [TRYING.md](../TRYING.md) says. The agent writes the map, `ratchet-map.json` at the root of the repo and only there. Ratchet never writes it, and the map puts nothing in a required job. Its name ends in `.json`, so it can never be a register's instruction or reference file, which end in `.md`.
+
+**The form.** One exact form, read strictly with `registry.parse_json`: UTF-8 with no byte order mark, no field twice in one object, no NaN or Infinity, and no `null`, `true`, `false`, number, array or object where the form wants another kind. So nothing is nested deeper than the form, and a file nested deeper than 100 is refused before it is parsed.
+
+```json
+{
+  "ratchet": "0.16",
+  "rules": {
+    "ratchet.protected-main": {"status": "covered", "by": [".github/workflows/ci.yml"], "note": "..."},
+    "ratchet.no-secrets": {"status": "gap", "by": [], "note": "..."}
+  }
+}
+```
+
+- **The top level** is an object with the two fields `ratchet` and `rules`, and no other.
+- **`ratchet`** is text of the form MAJOR.MINOR, equal to the `version` of the `ratchet.json` of the checkout that `map.py` runs from, the folder above `checks/`. Run it from a released checkout, as [Start here](../README.md#start-here) fetches it: the check compares the two versions and does not look at tags.
+- **`rules`** is an object with one entry for every rule of that `ratchet.json`, core and experimental, and no other.
+- **Each entry** is an object with the three fields `status`, `by` and `note`, and no other.
+  - `status` is `covered`, the repo covers the rule fully, by a check or a rule of its own, or `gap`, it does not, or only in part, and the note says how. There is no "not wanted": whether a rule is wanted is the owner's decision, not the agent's.
+  - `by` is an array of paths. With `covered` it holds at least one, and with `gap` it may hold the files of a partial cover, or none. No path stands twice in one array. A path is given from the root, with `/` between its parts: no empty part, `.` or `..`, no `/` at its start or end, no backslash, `:`, `#` or `?`, at most 200 characters, each an ASCII letter or digit, `.`, `_`, `-`, `+` or `/`. It names a regular file under the root, reached through no link at any part of the path.
+  - `note` is text of 1 to 300 characters that passes `registry.text_problem`, as every value in a data file here does ([The characters a value may hold](#the-characters-a-value-may-hold)).
+
+**What it claims.** A map that passes names every rule of the `ratchet.json` beside `map.py`, each once, with `covered` or `gap`, in the form above, and every path it cites exists as a regular file under the root, reached through no link. It prints every assessment for the owner to review, rule by rule with its status, paths and note, the gaps first under a heading of their own and each marked `<-- GAP`, with a count for each status. One line says the map is the agent's proposal and that `map.py` checks its form and paths, not whether a path covers a rule; it stands in the text and in `--json`, whether the map passes or not. With `--json` it prints the same facts as JSON, and the text is made from those facts and nothing else. It writes nothing, reaches no network, runs no program and writes no bytecode. It reads the map, and looks at each path it cites, only through the guarded reader of [inventory.py](#inventorypy), `guarded_read` and `guarded_look`, imported with no change to `inventory.py`: a link at any part of a path below the root is refused, and a path it cites is looked at for its kind and never read. The root is resolved as `inventory.py` resolves its own: the folder given, or the folder it runs in, may itself be reached through a link, as `/tmp` and `/var` are on macOS, and nothing below it is. Exit code 0 when the map is of its form and every path exists as stated; 1 when not, with every problem named, the map file missing, a link, a folder, a FIFO or unreadable among them; 2 when it could not run: no valid `ratchet.json` beside it, or a root that is not a folder.
+
+**Against which threat.** Mistakes and drift, as [the threat model](#the-threat-model) says of every check: an agent forgets a rule, misspells a key, maps against another checkout's version, cites a file that is not there or one through a link, writes a malformed file, or marks a rule covered with no path.
+
+**What it does not claim.**
+
+- Whether a path it cites covers the rule. Each row is the agent's proposal, and the owner judges it.
+- That the version is released, or that the checkout matches a tag.
+- Anything against an author who means to mislead it, such as a file named to look like a check.
+- Whether an owner's decision about a rule is authentic, or that the owner has read the map.
+- A change to the files while it runs.
+
+**The cases.** Each is a test in [test_map.py](test_map.py). The fixtures are under [fixtures/map/](fixtures/map/): a checkout's `ratchet.json` with three rules under `checkout/`, a repo with a valid map under `repo/`, and maps with one fault each under `faults/`, which the table `FAULTS` in the test pairs with the problem each names, and a test fails on a fixture there without its case. Each is loaded by a test through `FixtureTest`, so [expected_tests.py](#expected_testspy) fails on one that is not. A part that starts with `dot-` is renamed to start with `.` in the copy the test makes. Links, FIFOs and files that cannot be read are made in a scratch directory when the test runs, never committed.
+
+| Case | Result |
+|---|---|
+| The valid map: a rule covered by two paths, a gap with a path and a gap with none | Exit 0; the gaps first, each marked, then the covered, with the counts and the line that it is a proposal |
+| A map of every rule of this repo's `ratchet.json`, against a checkout whose version is unreleased and one whose version is the latest released, and this checkout's own `map.py` | Exit 0 each |
+| A rule's key missing, an extra key, a key misspelled, a key twice | Exit 1, each named |
+| A status other than `covered` or `gap`, and `not-wanted` | Exit 1, the second with the line that whether a rule is wanted is the owner's decision |
+| `covered` with an empty `by` | Exit 1 |
+| A path twice in one `by`; empty, `.`, `../AGENTS.md`, an empty part, a part `.`, absolute, a `/` at the end, a backslash, `:`, `#`, `?`, 201 characters, a space, a letter outside ASCII; a number or an array in place of a path | Exit 1, each named; 200 characters pass |
+| A path that does not exist, a folder, a link, a path under a linked folder, under a link to a folder outside the root, and a FIFO | Exit 1, each named; nothing behind a link looked at |
+| `ratchet` another version, `0.9.1`, a number, `null` | Exit 1, each named |
+| `ratchet` or `rules` missing, an unknown field at the top, the top an array, `rules` an array or `null`; in an entry a missing field, an unknown field, text or `null` for the entry, `null` or `true` for `status`, text or an object for `by`, a number or an object for `note` | Exit 1, each named |
+| A note empty, of 301 characters, with a `\|`, a line break, or U+202E | Exit 1, each named; 300 characters pass |
+| A map that is not UTF-8, starts with a byte order mark, is not JSON, holds NaN or Infinity, or is nested 101 deep | Exit 1, each named |
+| The map file a link, a folder, a FIFO, unreadable, over 1,000,000 bytes, or not there | Exit 1, each named, and no wait on the FIFO |
+| Three faults in one map | Exit 1, all three named |
+| No `ratchet.json` beside `map.py`, one that is not JSON, one without a version and rules, one with a key twice | Cannot run, exit 2, nothing on standard output |
+| A root that does not exist, a root that is a file | Cannot run, exit 2 |
+| The root through a link, and no root given, run in the repo | The same output as the root given as it is |
+| Every run, valid and with faults, text and `--json` | Nothing under the repo or the checkout changes: no file, size, time or byte |
+| A run with bytecode allowed | No `__pycache__` beside the checks |
+| A run in the same process with every way to start a program patched to fail | Exit 0, no program run |
+| The script's imports and calls | Only `sys`, `os`, `argparse`, `json`, `re`, `inventory` and `registry`; no open, stat, listing, walk or readlink of its own, and from `inventory` only `guarded_look`, `guarded_read` and `shown` |
+| The text and `--json`, for a valid map and two with faults | The text is the text made from the JSON's facts, with the same exit code |
+| The valid map and `key-missing`, text and `--json` | The line that the map is the agent's proposal and that `map.py` checks only its form and paths, as the test spells it out, in all four |
+| A run with several paths in `by`, every read recorded | `guarded_read` is given `ratchet-map.json` and nothing else: a path it cites is never read |
+
 ## tripwire.py
 
 ```sh
