@@ -28,7 +28,7 @@ does not stop test code that defeats it on purpose: that code runs with the same
 rights as the check, and a change to checks/ is read by the maintainer
 (ratchet.owner-paths).
 
-Standard library only. CI runs it on Python 3.9 and the newest Python 3.
+Standard library only. Run on Python 3.9 and 3.12.
 """
 
 import sys
