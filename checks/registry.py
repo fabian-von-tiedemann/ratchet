@@ -1088,3 +1088,10 @@ def counts(data):
     core = result["core"]
     result["text_only_percent"] = int(round(100.0 * core["text_only"] / core["rules"])) if core["rules"] else 0
     return result
+
+
+def _throwaway_match(value):
+    # Throwaway, never merged: a 3.10-only construct, to show that the 3.9 leg of the job own fails on it.
+    match value:
+        case _:
+            return value
