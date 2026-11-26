@@ -3,13 +3,13 @@
     {
       "name": "google/elephant-goldfish-model",
       "repo": "https://github.com/google/elephant-goldfish-model",
-      "commit": "94d948d7d2a1d48e981997c20963e39d9e9ee67c",
+      "commit": "46933754e63c0424daa9c270d7e0734245d79560",
       "license": "Apache-2.0"
     },
     {
       "name": "mattpocock/skills",
       "repo": "https://github.com/mattpocock/skills",
-      "commit": "d65391149dbb5fe76478e76fa8d5122b2aa5a70e",
+      "commit": "6f7f7831a625f040a8e06a0e7954826b87ce775a",
       "license": "MIT"
     },
     {
