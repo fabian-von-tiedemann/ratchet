@@ -427,7 +427,9 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         workflow = self.text(".github", "workflows", "ratchet.yml")
         self.assertRegex(self.commit, r"^[0-9a-f]{40}$")
-        self.assertIn("ref: %s\n" % self.commit, workflow)
+        # One pin, which both checkouts of Ratchet take (#180).
+        self.assertIn("\n  RATCHET_COMMIT: %s\n" % self.commit, workflow)
+        self.assertEqual(workflow.count("ref: ${{ env.RATCHET_COMMIT }}\n"), 2)
         self.assertNotIn(PLACEHOLDER, workflow)
         self.assertEqual(workflow, read_template("ratchet-checks.yml").replace(PLACEHOLDER, self.commit))
         self.assertIn(self.commit, output)
@@ -443,7 +445,13 @@ class Init(unittest.TestCase):
         self.assertIn("check_register.py register.json --markdown REGISTER.md", output)
 
     def run_the_workflow(self):
-        """(exit code, output) of each step of the written workflow that runs a check of Ratchet, run here."""
+        """(exit code, output) of each step of the written workflow that runs a check of Ratchet, run here.
+
+        The job behind fetches the tags of .ratchet from its origin, this test's copy of Ratchet. The clone gets the tag
+        of the version the register states, as a release has it, so the register is on the latest release (#180)."""
+        ratchet = self.path(".ratchet")
+        if not git(ratchet, "tag", "--list", "v" + self.version):
+            git(ratchet, "tag", "v" + self.version)
         commands = re.findall(r"(?m)^\s+run: python3 (\.ratchet/\S.*)$", self.text(".github", "workflows", "ratchet.yml"))
         self.assertGreaterEqual(len(commands), 1)
         results = []
@@ -581,7 +589,7 @@ class Init(unittest.TestCase):
         self.assertEqual(code, 0, output)
         workflow = self.text(".github", "workflows", "ratchet.yml")
         jobs = re.findall(r"(?m)^  ([a-z][a-z-]*):$", workflow.split("\njobs:\n", 1)[1])
-        self.assertEqual(jobs, ["ratchet", "project-checks"])
+        self.assertEqual(jobs, ["ratchet", "project-checks", "behind"])
         own = workflow.split("\n  project-checks:\n", 1)[1]
         self.assertIn("runs-on:", own)
         self.assertIn("The project's own checks", own)
