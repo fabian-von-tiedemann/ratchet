@@ -9,6 +9,7 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, and
 - New: `checks/form_age.py` says whether the form has stood unchanged for three tags and 30 days, the first criterion for 1.0 ([#173](https://github.com/fabian-von-tiedemann/ratchet/pull/173)).
 - New, for this repo: `repo.short-pages` caps the words of `README.md`, `TRYING.md`, `STARTING.md`, `UPGRADING.md` and `HANDOVER.md`, and of "In short" and each bullet in the changelog from 0.17 on ([#176](https://github.com/fabian-von-tiedemann/ratchet/pull/176)).
 - `map.py` prints under each rule its `source` in `ratchet.json`, the skill or work it draws on, and `--json` gives it as a new field `source` ([#179](https://github.com/fabian-von-tiedemann/ratchet/pull/179)).
+- The command that copies `run_pinned.py` refuses, before it writes, anything at `<target>.new` and a target that is not a regular file, and the data reader refuses a FIFO rather than wait; `upgrade.py` prints the new command ([#184](https://github.com/fabian-von-tiedemann/ratchet/pull/184)).
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.

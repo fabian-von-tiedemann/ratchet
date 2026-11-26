@@ -549,6 +549,13 @@ class RunPinned(unittest.TestCase):
             handle.write(b"UNCHANGED\n")
         return path, b"UNCHANGED\n"
 
+    def clear(self, path):
+        """Remove what stands at path, a link, a file or a folder, so that the next case starts from nothing."""
+        if os.path.islink(path) or os.path.isfile(path):
+            os.remove(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+
     def test_the_copy_command_refuses_anything_at_the_temporary_name(self):
         # The assessment of checks/ (D-2026-11-26-checks-assessment, section 4): a link left at <target>.new was
         # written through, so the copy overwrote a file outside the project, and the target was left a link.
@@ -569,27 +576,29 @@ class RunPinned(unittest.TestCase):
                             handle.write(b"LEFT OVER\n")
                     else:
                         os.mkdir(temporary)
-                    code, output = self.shell(copy, shell)
-                    self.assertNotEqual(code, 0, output)
-                    self.assertIn("run_pinned.py was not copied: %s.new is in the way" % COPY.replace(os.sep, "/"),
-                                  output)
-                    with open(sentinel, "rb") as handle:
-                        self.assertEqual(handle.read(), before)
-                    self.assertFalse(os.path.lexists(sentinel + ".missing"))
-                    self.assertFalse(os.path.lexists(self.path(COPY)))
-                    # What stood at the temporary name is left as it was, for the project to look at.
-                    if kind == "regular file":
-                        with open(temporary, "rb") as handle:
-                            self.assertEqual(handle.read(), b"LEFT OVER\n")
-                    elif kind == "folder":
-                        self.assertTrue(os.path.isdir(temporary) and not os.path.islink(temporary))
-                        self.assertEqual(os.listdir(temporary), [])
-                    else:
-                        self.assertTrue(os.path.islink(temporary))
-                    if kind == "folder":
-                        os.rmdir(temporary)
-                    else:
-                        os.remove(temporary)
+                    try:
+                        code, output = self.shell(copy, shell)
+                        self.assertNotEqual(code, 0, output)
+                        self.assertIn("run_pinned.py was not copied: %s.new is in the way" % COPY.replace(os.sep, "/"),
+                                      output)
+                        with open(sentinel, "rb") as handle:
+                            self.assertEqual(handle.read(), before)
+                        self.assertFalse(os.path.lexists(sentinel + ".missing"))
+                        self.assertFalse(os.path.lexists(self.path(COPY)))
+                        # What stood at the temporary name is left as it was, for the project to look at.
+                        if kind == "regular file":
+                            with open(temporary, "rb") as handle:
+                                self.assertEqual(handle.read(), b"LEFT OVER\n")
+                        elif kind == "folder":
+                            self.assertTrue(os.path.isdir(temporary) and not os.path.islink(temporary))
+                            self.assertEqual(os.listdir(temporary), [])
+                        else:
+                            self.assertTrue(os.path.islink(temporary))
+                    finally:
+                        for path in (temporary, self.path(COPY), sentinel + ".missing"):
+                            self.clear(path)
+                        with open(sentinel, "wb") as handle:
+                            handle.write(before)
 
     def test_the_copy_command_refuses_a_target_that_is_not_a_regular_file(self):
         self.clone_store()
@@ -606,21 +615,26 @@ class RunPinned(unittest.TestCase):
                         os.symlink(target, self.path(COPY))
                     else:
                         os.mkdir(self.path(COPY))
-                    code, output = self.shell(copy, shell)
-                    self.assertNotEqual(code, 0, output)
-                    self.assertIn("run_pinned.py was not copied: %s is not a regular file" % COPY.replace(os.sep, "/"),
-                                  output)
-                    with open(sentinel, "rb") as handle:
-                        self.assertEqual(handle.read(), before)
-                    self.assertEqual(sorted(os.listdir(folder)), ["sentinel"])
-                    self.assertEqual(os.path.islink(self.path(COPY)), bool(target))
-                    if not target:
-                        self.assertEqual(os.listdir(self.path(COPY)), [])
-                    self.assertEqual(os.listdir(self.path(".github", "ratchet")), ["run_pinned.py"])
-                    if target:
-                        os.remove(self.path(COPY))
-                    else:
-                        os.rmdir(self.path(COPY))
+                    try:
+                        code, output = self.shell(copy, shell)
+                        self.assertNotEqual(code, 0, output)
+                        self.assertIn("run_pinned.py was not copied: %s is not a regular file"
+                                      % COPY.replace(os.sep, "/"), output)
+                        with open(sentinel, "rb") as handle:
+                            self.assertEqual(handle.read(), before)
+                        self.assertEqual(sorted(os.listdir(folder)), ["sentinel"])
+                        self.assertEqual(os.path.islink(self.path(COPY)), bool(target))
+                        if not target:
+                            self.assertEqual(os.listdir(self.path(COPY)), [])
+                        self.assertEqual(os.listdir(self.path(".github", "ratchet")), ["run_pinned.py"])
+                    finally:
+                        for name in os.listdir(self.path(".github", "ratchet")):
+                            self.clear(self.path(".github", "ratchet", name))
+                        for name in os.listdir(folder):
+                            if name != "sentinel":
+                                self.clear(os.path.join(folder, name))
+                        with open(sentinel, "wb") as handle:
+                            handle.write(before)
 
     def test_the_copy_command_replaces_a_regular_file_at_the_target(self):
         # As after an earlier copy, or an upgrade that copies the runner of a new commit over the old one.
