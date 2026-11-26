@@ -8,7 +8,7 @@ Generated from `register.json` by Ratchet's `check_register.py`. Never edit this
 
 ### Rules from Ratchet
 
-Ratchet version: 0.16. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.17. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
