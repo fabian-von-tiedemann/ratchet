@@ -2,10 +2,11 @@
 
 ## 0.17 (unreleased)
 
-In short: a new report, `checks/form_age.py`, says whether the form of `ratchet.json` and `register.json` has been unchanged for three tags and at least 30 days, the first criterion for 1.0. It is run by hand and blocks no merge. No project needs to do anything, and no form of `ratchet.json` or `register.json` changes.
+In short: trying Ratchet on a repo with rules of its own now takes one page, and a new report tells how far 1.0 is. No project needs to do anything, and no form changes.
 
-- New: `checks/form_age.py`, the report for the first criterion of [D-2026-11-19-one-point-oh](decisions/D-2026-11-19-one-point-oh.md). It reads the last three tags from `v0.16` on, compares the fields of `ratchet.json`, `register.json` and `templates/register.json` at each, and reads the line `Changes of form:` in the changelog entries of the two newer tags and the dates in their headings. It says "holds", "does not hold" with each reason, or "cannot tell" with what it could not read, and writes nothing. On the day it was built it says "does not hold": one tag from `v0.16` on ([#70](https://github.com/fabian-von-tiedemann/ratchet/issues/70)).
-- [TRYING.md](TRYING.md) gives the map-only mode as four steps, with the form of `ratchet-map.json` and an example, so a repo with rules of its own needs no other page to try it. It says which parts of this repo an adopter does not need to read ([#174](https://github.com/fabian-von-tiedemann/ratchet/pull/174)).
+- `TRYING.md` gives the map-only mode as four steps on one page, with the form of `ratchet-map.json` and an example ([#174](https://github.com/fabian-von-tiedemann/ratchet/pull/174)).
+- `README.md` and `TRYING.md` say that Ratchet holds no opinion on how code looks: your own rules go in your register ([#175](https://github.com/fabian-von-tiedemann/ratchet/pull/175)).
+- New: `checks/form_age.py` says whether the form has stood unchanged for three tags and 30 days, the first criterion for 1.0 ([#173](https://github.com/fabian-von-tiedemann/ratchet/pull/173)).
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.

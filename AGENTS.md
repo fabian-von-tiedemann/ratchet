@@ -103,8 +103,8 @@ The words used here are defined in [GLOSSARY.md](GLOSSARY.md).
 
 An entry is read by a person who decides whether to upgrade, and by an agent that does the upgrade. One form serves both:
 
-1. **"In short" first.** The entry opens with a paragraph that starts "In short:". Two or three plain sentences: what changes for a project that uses Ratchet, and whether it must do anything.
-2. **One bullet for each change.** What changed and for whom, in plain words, with its pull request linked at the end. A rule is named by its key.
+1. **"In short" first.** The entry opens with a paragraph that starts "In short:". At most 60 words: what changes for a project that uses Ratchet, and whether it must do anything.
+2. **One bullet for each change, one sentence of at most 40 words.** What changed, and what to do if anything, with its pull request linked at the end. A rule is named by its key. From 0.17 on, the si-measure record of a release is a table.
 3. **Changes of form in a list of their own,** under the line "Changes of form:". A change of form is anything a register or a data file must follow to keep passing. Each bullet says what to do.
 4. **The detail stays in the pull request:** the reasons, the cases and the review. A bullet that needs a second sentence to explain itself links to the decision instead.
 5. **The generated count stands last.**

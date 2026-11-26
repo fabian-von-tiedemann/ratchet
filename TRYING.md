@@ -1,6 +1,6 @@
 # Try Ratchet on your repo
 
-Ratchet gives a repo built by AI agents one list of rules, each naming the check that enforces it or saying why no check can. Trying it costs a clone into a folder you can delete.
+Ratchet gives a repo built by AI agents one list of rules, each naming the check that enforces it or saying why no check can. Trying it costs a clone into a folder you can delete. It holds no opinion on how your code looks: your own rules go in your register beside Ratchet's, and each names its check the same way.
 
 You need this page, and the rules in [RATCHET.md](RATCHET.md). You do not need the rest of this repo: `checks/`, its tests and fixtures, and `decisions/` are for the people who maintain Ratchet.
 
