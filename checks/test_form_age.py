@@ -172,6 +172,13 @@ class TagsNotAllRead(Seeded):
         git(self.root, "tag", "-d", "v0.18")
         self.assertReport(2, "form_age: cannot tell.", "the release 0.18 is dated there and has no tag v0.18 here")
 
+    def test_a_dated_release_with_no_tag_among_three_cannot_tell(self):
+        """A tag not fetched when only three releases exist: two tags are left, and the answer is "cannot tell", not
+        "does not hold" for too few tags."""
+        self.seed()
+        git(self.root, "tag", "-d", "v0.17")
+        self.assertReport(2, "form_age: cannot tell.", "the release 0.17 is dated there and has no tag v0.17 here")
+
     def test_a_partial_clone_cannot_tell_and_fetches_nothing(self):
         """A partial clone could fetch each file the report asks for. It is refused before anything is read."""
         self.seed()

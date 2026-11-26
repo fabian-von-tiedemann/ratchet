@@ -184,25 +184,39 @@ def register_at(root, tag):
     return paths
 
 
-def changelog_at(root, tag, versions, tagged):
-    """{version: (date, entry)} for each version, from CHANGELOG.md at a tag. Raises CannotTell, also when the
-    changelog dates a release from FIRST on, up to the newest version, that is not among the tagged versions."""
+def changelog_text(root, tag):
+    """(name, text) of CHANGELOG.md at a tag. Raises CannotTell."""
     name = "CHANGELOG.md at %s" % tag
     try:
-        text = released_text.text(show(root, tag, "CHANGELOG.md"), name)
+        return name, released_text.text(show(root, tag, "CHANGELOG.md"), name)
     except ValueError as error:
         raise CannotTell(str(error))
-    found, untagged = {}, []
-    newest = upgrade.version_key(versions[-1])
+
+
+def untagged(root, tag, tagged):
+    """Each release from FIRST on, up to the version of tag, that CHANGELOG.md at tag dates and that has no tag here, as
+    a problem. It runs before any verdict, so that a tag not fetched never shortens the count nor makes two tags look
+    like neighbours. Raises CannotTell."""
+    name, text = changelog_text(root, tag)
+    newest = upgrade.version_key(tag[1:])
+    missing = []
+    for heading, _ in released_text.entries(text):
+        match = DATED.match(heading)
+        if match and FIRST <= upgrade.version_key(match.group(1)) <= newest and match.group(1) not in tagged:
+            missing.append(match.group(1))
+    return ["%s: the release %s is dated there and has no tag v%s here, so the tags counted may not be all of them. "
+            "Fetch the tags: git fetch --tags" % (name, version, version) for version in missing]
+
+
+def changelog_at(root, tag, versions):
+    """{version: (date, entry)} for each version, from CHANGELOG.md at a tag. Raises CannotTell."""
+    name, text = changelog_text(root, tag)
+    found = {}
     for heading, entry in released_text.entries(text):
         version = released_text.version_of(heading)
         if version in versions:
             found.setdefault(version, []).append((heading, entry))
-        elif DATED.match(heading) and FIRST <= upgrade.version_key(version) <= newest and version not in tagged:
-            untagged.append(version)
     result, problems = {}, []
-    problems += ["%s: the release %s is dated there and has no tag v%s here, so the tags counted may not be neighbours. "
-                 "Fetch the tags: git fetch --tags" % (name, version, version) for version in untagged]
     for version in versions:
         held = found.get(version, [])
         if len(held) != 1:
@@ -231,10 +245,17 @@ def judge(root):
         counted = counted_tags(root)
     except CannotTell as error:
         return 2, "cannot tell", [str(error)]
+    tagged = set(version for version, _ in counted)
+    if counted:
+        try:
+            missing = untagged(root, counted[0][1], tagged)
+        except CannotTell as error:
+            missing = str(error).split("\n")
+        if missing:
+            return 2, "cannot tell", missing
     if len(counted) < TAGS:
         return 1, "does not hold", ["%d tag(s) from %s on (%s), and %d are needed" % (
             len(counted), FIRST_TAG, ", ".join(tag for _, tag in reversed(counted)) or "none", TAGS)]
-    tagged = set(version for version, _ in counted)
     counted = list(reversed(counted[:TAGS]))
     versions = [version for version, _ in counted]
     tags = [tag for _, tag in counted]
@@ -246,7 +267,7 @@ def judge(root):
             except CannotTell as error:
                 problems += str(error).split("\n")
     try:
-        dated = changelog_at(root, tags[-1], versions, tagged)
+        dated = changelog_at(root, tags[-1], versions)
     except CannotTell as error:
         problems += str(error).split("\n")
     if problems:

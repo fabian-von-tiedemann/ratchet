@@ -792,6 +792,7 @@ Every run ends with two lines: that the count starts at `v0.16`, and that parts 
 | ROOT a folder inside a checkout, or a folder outside any | Cannot tell |
 | A middle tag of four, `v0.18`, whose entry lists a change of form, with its ref broken so that git leaves it out of the list and warns | Cannot tell, naming the warning, never "holds" from `v0.17` to `v0.19` |
 | The same four tags with `v0.18` not here, while the changelog at `v0.19` dates 0.18 | Cannot tell, naming the release with no tag |
+| Three tags with `v0.17` not here, while the changelog at `v0.18` dates 0.17 | Cannot tell, not "does not hold" for too few tags: the check of the dated releases runs before any verdict |
 | A partial clone, `--filter=blob:none` | Cannot tell, and no object is fetched |
 | A run | The seeded repo is left as it was, and git runs only as `rev-parse`, `config --get-regexp`, `tag --list` and `show` |
 | A run from a copy of the checks, with bytecode allowed | No file is written beside the script |
