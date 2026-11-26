@@ -153,6 +153,13 @@ HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
 UNRELEASED = re.compile(r"^## ([0-9]+\.[0-9]+) \(unreleased\)\Z")
 # Files that record history verbatim are not checked for mentions of keys that no longer exist.
 HISTORY = ("CHANGELOG.md",)
+# repo.short-pages: the cap of words of each page an adopter reads first, and of HANDOVER.md. A cap is lowered in a pull
+# request that shortens its page, never raised in one that lengthens it: the job `base` runs the base's caps.
+PAGE_CAPS = {"README.md": 1600, "TRYING.md": 700, "STARTING.md": 1300, "UPGRADING.md": 900, "HANDOVER.md": 2000}
+# The changelog entries whose "In short" and bullets are capped, from this version on, and the caps.
+SHORT_SINCE = (0, 17)
+IN_SHORT_CAP = 60
+BULLET_CAP = 40
 # The only lines that may start with "<" in a file that holds generated blocks.
 HTML_LINES = {
     "README.md": (
@@ -1350,6 +1357,7 @@ def consistency_problems(data, root, context):
     problems += found
     problems += ["ratchet.json: %s" % problem for problem in registry.age_problems(data, releases)]
     problems += ["ratchet.json: %s" % problem for problem in use_problems(data, root)]
+    problems += short_page_problems(root, changelog)
 
     released = context["released"]
     if released is None:
@@ -1361,6 +1369,61 @@ def consistency_problems(data, root, context):
     rules = [line for line in (owners or "").split("\n") if line.strip() and not line.startswith("#")]
     if rules != ["* " + MAINTAINER]:
         problems.append('.github/CODEOWNERS: must hold exactly one rule, "* %s", found %r' % (MAINTAINER, rules))
+    return problems
+
+
+def short_page_problems(root, changelog):
+    """repo.short-pages: each page in PAGE_CAPS over its cap or missing, and each changelog entry from SHORT_SINCE on
+    whose "In short" or a bullet is over its cap, or that has no "In short". A word is what str.split() splits off."""
+    problems = []
+    for name, cap in sorted(PAGE_CAPS.items()):
+        text = read(os.path.join(root, name))
+        if text is None:
+            problems.append("%s: missing, and repo.short-pages caps its words" % name)
+        elif len(text.split()) > cap:
+            problems.append("%s: %d words, over its cap of %d (repo.short-pages). Shorten it" % (name, len(text.split()), cap))
+    entries, lines = [], changelog.split("\n")
+    for number, line in enumerate(lines):
+        heading = HEADING.match(line) or UNRELEASED.match(line)
+        if line.startswith("## "):
+            entries.append((heading.group(1) if heading else None, number))
+    for index, (version, start) in enumerate(entries):
+        if version is None or version_key(version) < SHORT_SINCE:
+            continue
+        end = entries[index + 1][1] if index + 1 < len(entries) else len(lines)
+        problems += entry_word_problems(version, lines, start + 1, end)
+    return problems
+
+
+def entry_word_problems(version, lines, start, end):
+    """The "In short" and the bullets of one changelog entry, lines[start:end], over their caps. "In short" is the
+    paragraph that starts with "In short:", up to a blank line. A bullet starts at a line that starts with "- " and runs to
+    the next such line, a blank line, a table row or a generated block, so a bullet wrapped over lines is counted whole."""
+    problems, short, bullet = [], None, None
+    for number in range(start, end + 1):
+        line = lines[number] if number < end else ""
+        if bullet and (not line.strip() or line.startswith(("- ", "|", START))):
+            words = len(" ".join(bullet[1:]).split()) - 1
+            if words > BULLET_CAP:
+                problems.append("CHANGELOG.md:%d: a bullet of %d words in the entry of %s, over the cap of %d (repo.short-pages)"
+                                % (bullet[0], words, version, BULLET_CAP))
+            bullet = None
+        if short is None and line.startswith("In short:"):
+            paragraph = []
+            for each in lines[number:end]:
+                if not each.strip():
+                    break
+                paragraph.append(each)
+            short = len(" ".join(paragraph).split())
+            if short > IN_SHORT_CAP:
+                problems.append('CHANGELOG.md:%d: "In short" in the entry of %s has %d words, over the cap of %d '
+                                "(repo.short-pages)" % (number + 1, version, short, IN_SHORT_CAP))
+        if line.startswith("- "):
+            bullet = [number + 1, line]
+        elif bullet:
+            bullet.append(line)
+    if short is None:
+        problems.append('CHANGELOG.md: the entry of %s has no paragraph that starts with "In short:" (repo.short-pages)' % version)
     return problems
 
 

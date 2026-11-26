@@ -118,6 +118,7 @@ ENFORCED = {
     "repo.checks-fail-on-fixtures": ("checks/expected_tests.py",),
     "repo.version": ("checks/released_text.py",),
     "repo.new-rule-used": ("checks/generate.py", "--check"),
+    "repo.short-pages": ("checks/generate.py", "--check"),
 }
 # What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
 POINT = ("Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on ",
