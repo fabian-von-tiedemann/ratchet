@@ -309,19 +309,24 @@ def copy_command(objects, commit, blob, target):
     environment (GIT_DIR, GIT_COMMON_DIR, GIT_CONFIG_COUNT and the rest) is in effect, and reads through a new, empty git
     directory, with no config of the store's, the user's or the system's and no lazy fetch. The copy is kept only when
     git hash-object gives it the name blob, the one the pinned tree names. Otherwise nothing is left at target, and the
-    command fails."""
-    temporary = target + ".new"
-    return ("mkdir -p %s && (t=$(mktemp -d) && trap 'rm -rf \"$t\"' EXIT && "
+    command fails. Before it writes, it refuses, and leaves both as they are, when anything stands at target.new, a
+    file, a folder or a link, or when target stands and is not a regular file, so it never writes through a link at
+    either (the assessment of checks/, D-2026-11-26-checks-assessment, section 4). A link in a folder above them is not
+    looked at."""
+    temporary, final = shlex.quote(target + ".new"), shlex.quote(target)
+    return ("mkdir -p %s && if test -e %s || test -L %s; then echo 'run_pinned.py was not copied: '%s' is in the way: "
+            "remove it and copy again' >&2; false; elif test -L %s || { test -e %s && ! test -f %s; }; then "
+            "echo 'run_pinned.py was not copied: '%s' is not a regular file: remove it and copy again' >&2; false; "
+            "else (t=$(mktemp -d) && trap 'rm -rf \"$t\"' EXIT && "
             "g() { env -i PATH=\"$PATH\" HOME=\"$t\" XDG_CONFIG_HOME=\"$t\" GIT_CONFIG_NOSYSTEM=1 "
             "GIT_CONFIG_GLOBAL=/dev/null GIT_NO_LAZY_FETCH=1 GIT_NO_REPLACE_OBJECTS=1 GIT_TERMINAL_PROMPT=0 \"$@\"; } && "
             "g git init -q --bare --template= \"$t/git\" && g GIT_DIR=\"$t/git\" GIT_OBJECT_DIRECTORY=%s git "
             "--no-replace-objects cat-file blob %s > %s && "
             "test \"$(g GIT_DIR=\"$t/git\" git hash-object --no-filters --stdin < %s)\" = %s && "
             "mv %s %s) || { rm -f %s; echo 'run_pinned.py was not copied: the store does not hold blob %s of commit %s "
-            "as it is' >&2; false; }"
-            % (shlex.quote(os.path.dirname(target) or "."), quoted(objects), blob, shlex.quote(temporary),
-               shlex.quote(temporary), blob, shlex.quote(temporary), shlex.quote(target), shlex.quote(temporary),
-               blob, commit))
+            "as it is' >&2; false; }; fi"
+            % (shlex.quote(os.path.dirname(target) or "."), temporary, temporary, temporary, final, final, final, final,
+               quoted(objects), blob, temporary, temporary, blob, temporary, final, temporary, blob, commit))
 
 
 def run_command(commit, blob, target, register="register.json", markdown=False):
