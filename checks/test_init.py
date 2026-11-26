@@ -590,7 +590,7 @@ class Init(unittest.TestCase):
         workflow = self.text(".github", "workflows", "ratchet.yml")
         jobs = re.findall(r"(?m)^  ([a-z][a-z-]*):$", workflow.split("\njobs:\n", 1)[1])
         self.assertEqual(jobs, ["ratchet", "project-checks", "behind"])
-        own = workflow.split("\n  project-checks:\n", 1)[1]
+        own = self.workflow_jobs(workflow)["project-checks"]
         self.assertIn("runs-on:", own)
         self.assertIn("The project's own checks", own)
         self.assertIn("require the jobs ratchet and project-checks", output)
@@ -1826,10 +1826,11 @@ init.add_line = add_line""" % (stop, stop))
         # Finding from a real adoption: every job's token only reads, and no checkout leaves the token in .git/config.
         text = read_template("ratchet-checks.yml")
         self.assertIn("\npermissions:\n  contents: read\n", text)
-        jobs = "\n" + text.split("\njobs:\n", 1)[1]
-        for job in init.JOBS:
+        jobs = self.workflow_jobs(text)
+        self.assertEqual(sorted(jobs), sorted(init.JOBS + ("behind",)))
+        for job, block in jobs.items():
             with self.subTest(job=job):
-                block = jobs.split("\n  %s:\n" % job, 1)[1].split("\n  project-checks:\n", 1)[0]
+                # Each job's own lines, up to the next job (round 1 of #183).
                 self.assertIn("\n    permissions:\n      contents: read\n    steps:\n", "\n" + block)
         checkouts = re.findall(r"uses: actions/checkout@[0-9a-f]{40} # v[0-9.]+\n(?: +#.*\n)*?((?: +\S.*\n)*?) +with:\n((?: {10}.*\n)+)",
                                text)

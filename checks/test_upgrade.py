@@ -1405,7 +1405,8 @@ class Behind(FixtureTest):
 
     def test_behind_takes_no_option_of_the_steps(self):
         project = self.project(self.register())
-        for args in (("--to", "0.10"), ("--from", "old.json"), ("--new-rules", "full")):
+        # An explicit --new-rules line too, which is the default (round 1 of #183).
+        for args in (("--to", "0.10"), ("--from", "old.json"), ("--new-rules", "full"), ("--new-rules", "line")):
             with self.subTest(args=args):
                 code, output = self.behind(project, *args)
                 self.assertEqual(code, 2, output)

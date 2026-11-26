@@ -766,7 +766,8 @@ def one_command(args, out):
         # The register's path comes after --, so that one that starts with - is not read as an option there.
         # --new-rules goes on only to a version that knows it. One before it prints the entries in full.
         again = ((["--to", args.to] if args.to is not None else []) + ["--no-fetch"]
-                 + (["--new-rules", args.new_rules] if version_key(target) >= version_key(NEW_RULES_FROM) else [])
+                 + (["--new-rules", args.new_rules]
+                    if args.new_rules is not None and version_key(target) >= version_key(NEW_RULES_FROM) else [])
                  + ["--", args.register])
         result = subprocess.run([sys.executable, "-B", typed] + again,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -787,7 +788,7 @@ def one_command(args, out):
         print("%s states Ratchet %s, %s. It is not behind." % (name, stated, which), file=out)
     print("", file=out)
     code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"),
-                  args.new_rules)
+                  args.new_rules or "line")
     if code == 0 and behind:
         print("", file=out)
         # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
@@ -845,13 +846,15 @@ def main(argv=None, out=None):
     parser.add_argument("--from", dest="older", metavar="ratchet.json",
                         help="offline: ratchet.json of the version the register states, as it stood at its tag")
     parser.add_argument("--source", help="with --from: path to the newer ratchet.json (default: the one next to this script)")
-    parser.add_argument("--new-rules", choices=("line", "full"), default="line",
+    parser.add_argument("--new-rules", choices=("line", "full"),
                         help="the new rules by key under the title of their part (line, the default), or each with its entry (full)")
     parser.add_argument("--behind", action="store_true",
                         help="only say how many releases come after the version the register states: exit 0 when none, 1 when "
                              "some, 2 when it cannot tell")
     args = parser.parse_args(argv)
-    if args.behind and (args.older is not None or args.to is not None or args.new_rules != "line"):
+    # None when --new-rules is not given, so that an explicit --new-rules line is refused with --behind too (round 1 of
+    # #183). It means "line".
+    if args.behind and (args.older is not None or args.to is not None or args.new_rules is not None):
         parser.error("--behind compares the register with the latest release and prints no steps: leave out --from, --to and "
                      "--new-rules")
     if args.older is not None and (args.to is not None or args.no_fetch):
@@ -880,7 +883,7 @@ def main(argv=None, out=None):
             print("%s: %s" % (args.register, error), file=out)
             print("FAIL: the register cannot be read", file=out)
             return 1
-        return report(args.register, register, old, new, out, script, args.new_rules)
+        return report(args.register, register, old, new, out, script, args.new_rules or "line")
     except (registry.RegistryError, UpgradeError) as error:
         print("upgrade: cannot run: %s" % error, file=sys.stderr)
         return 2

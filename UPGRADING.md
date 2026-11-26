@@ -10,11 +10,11 @@ Run it in the root of your own repo, on a branch of its own, where `.ratchet` is
 python3 .ratchet/checks/upgrade.py register.json
 ```
 
-It fetches the tags of `.ratchet` from its origin, with git and nothing else, reads the version that `register.json` states, and compares that tag with the latest release, or with the one you ask for with `--to 0.12`. It says how many releases behind the register is, moves `.ratchet` to the release, and prints what the register must do: each adopted rule that changed or was removed, with the entry to paste, the new rules to borrow, and the commands that put `REGISTER.md`, and the instruction file the register names, in place again and check them. Last it prints the commit to pin `.github/workflows/ratchet.yml` to. It writes no file of the project. It says how to move `.ratchet` back, and it does not move a clone that has changes of its own, or that is on a branch. For a clone on a branch it prints the command that moves it to the release, and then the same command runs.
+It fetches the tags of `.ratchet`, reads the version that `register.json` states, and compares that tag with the latest release, or with the one you ask for with `--to 0.12`. It says how many releases behind the register is, moves `.ratchet` to the release, and prints what the register must do: each adopted rule that changed or was removed, with the entry to paste, the new rules to borrow, and the commands that put `REGISTER.md`, and the instruction file the register names, in place again and check them. Last it prints the commit to pin `.github/workflows/ratchet.yml` to. It says how to move `.ratchet` back. It does not move a clone with changes of its own, or one on a branch, for which it prints the command that moves it to the release.
 
 It fails, and prints no steps, when the register does not pass against the version it states: fix that first. It cannot run when the version the register states has no tag in `.ratchet`. With `--no-fetch`, which uses only the tags the clone has, it prints the command that fetches them. After a fetch, that version was never released.
 
-For a register before 0.12 it prints the commands of the first leg instead: `.ratchet` to `v0.11`, whose `upgrade.py` takes the register to 0.13, then the command again.
+For a JSON register from 0.3 through 0.11 it prints the commands of the first leg instead: `.ratchet` to `v0.11`, whose `upgrade.py` takes the register to 0.13, then the command again.
 
 When `.ratchet` is not a git clone, clone it again as the README says. Without git, `--from` compares two files you give it and fetches nothing: see [checks/README.md](checks/README.md#upgradepy).
 
@@ -29,7 +29,7 @@ When `.ratchet` is not a git clone, clone it again as the README says. Without g
 
 ## Falling behind
 
-`python3 .ratchet/checks/upgrade.py register.json --behind` prints how many releases came after the version the register states, and exits 1 when any did. It moves nothing. The workflow template runs it once a week, in the job `behind`. Copy into your workflow what the template adds: the `schedule`, the `env`, the `if` of each job, and the job `behind`. Replacing the workflow would drop your own checks. For a report that never fails, add `|| true`.
+`python3 .ratchet/checks/upgrade.py register.json --behind` prints how many releases came after the register's version, and exits 1 when any did. It moves nothing. The workflow template runs it once a week, in the job `behind`. To add it, keep your workflow and its own checks, and copy the `schedule`, the `if` of each job and the job `behind`. Add the `env`, with `RATCHET_COMMIT` set to the commit you pin, of 0.17 or later, since earlier ones lack `--behind`. Then set the `ref` of the job `ratchet` to `${{ env.RATCHET_COMMIT }}`, so one pin moves both. For a report that never fails, add `|| true`.
 
 ## What the command does not do
 
