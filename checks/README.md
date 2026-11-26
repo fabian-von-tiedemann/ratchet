@@ -1335,13 +1335,13 @@ Before it prints a step, it checks that the register passes `check_register.py` 
 **What it does not claim.**
 
 - It does not see that `origin` is Ratchet, or that a tag is the one Ratchet released. It trusts the clone's `origin` and its tags, as the README's clone does. Someone who controls them, or the clone, is outside [the threat model](#the-threat-model).
-- It prints the steps for a register of 0.12 and later only. The first leg is tried from a register that the `init.py` of `v0.9` wrote.
+- It prints the steps for a register of 0.12 and later only. A test compares the printed first leg with the four commands, character for character. That they lead through the real `v0.11` and `v0.13` to a register that passes was shown by a run from a register that the `init.py` of `v0.9` wrote, in [#183](https://github.com/fabian-von-tiedemann/ratchet/pull/183), not by a test. The tag ruleset locks those tags, so only the printed text can break it.
 - Offline, it does not see that the file given with `--from` is the one at the tag. It checks that the register passes against it and that the version is older or the same, and that two files that name the same version have the same rules.
 - It does not see whether a check marked `built` exists or works.
 - It does not list a rule that only moved to another part, or whose reference check changed. Neither changes the register.
 - It does not say why a rule changed. The changelog of the newer Ratchet does.
 
-**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and under `released/0.12/` the `ratchet.json` of the tag `v0.12`, with a `register.json` that the `init.py` of `v0.12` wrote in adopt mode, two rows by reference, one of whose rules changed in 0.13, and the `AGENTS.md` that holds their marker lines. `released/0.3/ratchet.json` and `released/0.9/ratchet.json`, the `ratchet.json` of those tags, are data for `test_budget.py` too. Under `released/0.9/` is also the `register.json` that the `init.py` of `v0.9` wrote, and under `released/0.11/` and `released/0.13/` the `ratchet.json` of those tags and the scripts their `upgrade.py` runs, as they were there.
+**The cases.** Each is a test in [test_upgrade.py](test_upgrade.py). The fixtures are under [fixtures/upgrade/](fixtures/upgrade/): a Ratchet 9.8 and a 9.9 with every kind of change between them, a register on 9.8, a smaller 9.8 and 9.9 under `removed/`, in which a rule that names a check and a rule that is text only are removed and one rule is added, and under `released/0.12/` the `ratchet.json` of the tag `v0.12`, with a `register.json` that the `init.py` of `v0.12` wrote in adopt mode, two rows by reference, one of whose rules changed in 0.13, and the `AGENTS.md` that holds their marker lines. `released/0.3/ratchet.json` and `released/0.9/ratchet.json`, the `ratchet.json` of those tags, are data for `test_budget.py` too. Under `released/0.9/` is also the `register.json` that the `init.py` of `v0.9` wrote, which the cases of `--behind` read.
 
 | Case | Fixture | Result |
 |---|---|---|
@@ -1398,7 +1398,7 @@ The cases of the one command are in the class `OneCommand`. A git repo made in a
 | `--behind` on 0.17, a missing `ratchet_version`, `0.9.1`, no release tag, a failed fetch, a field twice, Markdown, 0.2 | the same, changed in the test | Exit 2, naming what it could not read |
 | `--behind` on that register with a field the current reader refuses | the same | Exit 1, as before |
 | `--behind --no-fetch` on a shallow clone at `v0.9` | the same | Exit 0: no tag was fetched |
-| The first leg printed for a register of 0.9, run command by command, with each step done | `released/0.9/`, `released/0.11/`, `released/0.13/` | Ends at this version, and the register passes |
+| A register of 0.3, 0.9 or 0.11, with the tags `v0.11`, `v0.13` and `v0.16` | a register made in the test | Cannot run, and prints exactly the four commands of the first leg, the last with `--to 0.16`. The clone is not moved |
 | A register of 0.2, or `--to` before 0.13, on a register before 0.12 | a register made in the test | Cannot run |
 | `--new-rules full`, given to the one command | `register.json` | The `upgrade.py` of the release prints the entries. Without it, the keys under their part |
 | The command in `UPGRADING.md`, run on the register by reference of 0.12 in a clone at `v0.12` whose origin has this version's `ratchet.json` at its tag, in a project with no workflow, then the steps done and each printed command run: the check, the copy of `run_pinned.py` from the new commit, and the line for the local check script | `released/0.12/` | Passes |

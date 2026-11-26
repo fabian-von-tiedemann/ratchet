@@ -1412,90 +1412,43 @@ class Behind(FixtureTest):
                 self.assertIn("--behind compares the register with the latest release", output)
 
 
-def done_as_printed(output, path):
-    """Do in the register at path the numbered steps that upgrade.py printed: set the version, put each printed entry in
-    place of the rule's, and take out each removed rule. The steps end where the output turns to what follows them."""
-    block = output.split("\nSteps for ", 1)[1]
-    block = re.split(r"\n\n(?=New rules|Not adopted|The form|Then |REGISTER\.md is not|Rules to start with|Checked:)", block)[0]
-    with open(path, "rb") as handle:
-        register = registry.parse_json(handle.read())
-    decoder = json.JSONDecoder()
-    for match in re.finditer(r"(?m)^\d+\. (.*)$", block):
-        text = match.group(1)
-        version = re.match(r'Set "ratchet_version" to "([0-9.]+)"\.', text)
-        if version:
-            register["ratchet_version"] = version.group(1)
-            continue
-        key, said = text.split(": ", 1)
-        if said.startswith("removed."):
-            register["adopted"] = [item for item in register["adopted"] if item["key"] != key]
-            continue
-        assert said.startswith("changed: "), text
-        printed, _ = decoder.raw_decode(block, block.index("\n{", match.end()) + 1)
-        assert printed["key"] == key, (key, printed)
-        register["adopted"] = [printed if item["key"] == key else item for item in register["adopted"]]
-    with open(path, "w", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
-    return register
-
-
 class FirstLeg(FixtureTest):
-    """A register before 0.12 is told the commands of the first leg (#181, part 1). An origin made here has the releases
-    v0.9, v0.11 and v0.13, each with its ratchet.json and, for v0.11 and v0.13, the scripts that their upgrade.py runs, as
-    they were at those tags, and this version. The register is the one that the init.py of v0.9 wrote."""
-
-    def test_the_printed_first_leg_run_as_printed_leads_to_a_register_that_passes(self):
-        # Case 8.
-        released = "upgrade/released/"
-        scripts = {"0.11": ("upgrade", "check_register", "registry"), "0.13": ("upgrade", "check_register", "registry", "run_pinned")}
-        new = registry.load(registry.SOURCE)
-        origin = os.path.join(self.scratch(), "ratchet")
-        make_origin(origin, [("0.9", self.fixture_bytes(released + "0.9/ratchet.json"))] + [
-            (version, self.fixture_bytes(released + version + "/ratchet.json"),
-             dict(("checks/%s.py" % name, self.fixture_bytes("%s%s/checks/%s.py" % (released, version, name))) for name in names))
-            for version, names in sorted(scripts.items())] + [(new["version"], read("ratchet.json").encode("utf-8"))])
-        project = self.scratch()
-        path = os.path.join(project, "register.json")
-        with open(path, "wb") as handle:
-            handle.write(self.fixture_bytes(released + "0.9/register.json"))
-        git(project, "clone", "-q", "--branch", "v" + new["version"], origin, ".ratchet")
-        code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json")
-        self.assertEqual(code, 2, output)
-        commands = re.findall(r"(?m)^    (\S.*)$", output)
-        self.assertEqual(commands, [
-            "git -C .ratchet fetch --tags origin",
-            "git -C .ratchet checkout --detach v0.11",
-            "python3 .ratchet/checks/upgrade.py --to 0.13 --no-fetch -- register.json",
-            "python3 .ratchet/checks/upgrade.py --to %s --no-fetch -- register.json" % new["version"]], output)
-        for command, version in zip(commands, (None, None, "0.13", new["version"])):
-            result = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " -B ", 1)],
-                                    cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-            self.assertEqual(result.returncode, 0, result.stdout)
-            if version is None:
-                continue
-            # The steps it printed, done in register.json, then each command it printed, run as printed.
-            self.assertIn('Set "ratchet_version" to "%s".' % version, result.stdout)
-            done_as_printed(result.stdout, path)
-            printed = re.findall(r"(?m)^    ((?:rm -f |python3 )\S.*)$", result.stdout)
-            self.assertTrue(printed, result.stdout)
-            for line in printed:
-                ran = subprocess.run(["/bin/sh", "-c", line.replace("python3 ", shlex.quote(sys.executable) + " -B ")],
-                                     cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-                self.assertEqual(ran.returncode, 0, ran.stdout)
-        with open(path, "rb") as handle:
-            register = registry.parse_json(handle.read())
-        self.assertEqual(register["ratchet_version"], new["version"])
-        self.assertEqual(check_register.check(register, new)[0], [])
+    """A register before 0.12 is told the commands of the first leg (#181, part 1). An origin made here has the release
+    tags of the leg, v0.11 and v0.13, the register's own and v0.16, the latest. That the chain these commands start runs
+    through the real v0.11 and v0.13 is shown by a run in the pull request: the tag ruleset locks those tags, so only the
+    printed text can break it (D-2026-11-26-checks-assessment)."""
 
     def first_leg(self, version, *args):
-        """The one command on a register of version, in a clone at v9.9 whose origin has the tags v0.11 and v0.13."""
+        """(exit code, output, project) of the one command on a register of version, in a clone at v0.16."""
         origin = os.path.join(self.scratch(), "ratchet")
-        make_origin(origin, [(name, release_data(name)) for name in (version, "0.11", "0.13", "9.9")])
+        make_origin(origin, [(name, release_data(name)) for name in sorted(set([version, "0.11", "0.13", "0.16"]),
+                                                                                key=upgrade.version_key)])
         project = self.scratch()
         with open(os.path.join(project, "register.json"), "w", encoding="utf-8") as handle:
             handle.write(json.dumps({"project": "example", "ratchet_version": version, "adopted": [], "own": []}))
-        git(project, "clone", "-q", "--branch", "v9.9", origin, ".ratchet")
-        return in_project(project, ".ratchet/checks/upgrade.py", "register.json", *args)
+        git(project, "clone", "-q", "--branch", "v0.16", origin, ".ratchet")
+        head = git(os.path.join(project, ".ratchet"), "rev-parse", "HEAD")
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json", *args)
+        self.assertEqual(git(os.path.join(project, ".ratchet"), "rev-parse", "HEAD"), head, ".ratchet did not move")
+        return code, output
+
+    def test_a_register_before_0_12_is_told_the_four_commands_of_the_first_leg(self):
+        # Case 8: exactly the four commands of the plan, in order. The only checkout is to v0.11, and no --to is before
+        # 0.13.
+        for version in ("0.3", "0.9", "0.11"):
+            with self.subTest(version=version):
+                code, output = self.first_leg(version, "--no-fetch")
+                self.assertEqual(code, 2, output)
+                self.assertEqual(output, (
+                    "register.json states Ratchet %s. This upgrade.py reads the forms of 0.12 and later, so a register "
+                    "before 0.12 takes two legs: to 0.13 with the upgrade.py of v0.11, then to 0.16. Run these from the "
+                    "project's root, in order. After each upgrade.py, do the steps it prints in register.json and run the "
+                    "commands it prints:\n"
+                    "\n"
+                    "    git -C .ratchet fetch --tags origin\n"
+                    "    git -C .ratchet checkout --detach v0.11\n"
+                    "    python3 .ratchet/checks/upgrade.py --to 0.13 --no-fetch -- register.json\n"
+                    "    python3 .ratchet/checks/upgrade.py --to 0.16 --no-fetch -- register.json\n") % version)
 
     def test_a_target_before_the_first_leg_or_a_register_of_0_2_is_refused(self):
         code, output = self.first_leg("0.9", "--to", "0.11")
@@ -1504,9 +1457,6 @@ class FirstLeg(FixtureTest):
         code, output = self.first_leg("0.2")
         self.assertEqual(code, 2, output)
         self.assertIn("MIGRATING.md at the tag v0.12", output)
-        code, output = self.first_leg("0.10")
-        self.assertEqual(code, 2, output)
-        self.assertIn("python3 .ratchet/checks/upgrade.py --to 9.9 --no-fetch -- register.json", output)
 
 
 class NewRulesByPart(FixtureTest):
