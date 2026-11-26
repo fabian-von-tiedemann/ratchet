@@ -24,7 +24,7 @@ Approvals are in .claude/ratchet-approvals.json in the project, a file the owner
 
 It is read strictly. One defect anywhere and it approves nothing. It never exits other than 0 or 2.
 
-Standard library only, in one file, so that a project can copy it. Run on Python 3.9 and 3.12.
+Standard library only, in one file, so that a project can copy it. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

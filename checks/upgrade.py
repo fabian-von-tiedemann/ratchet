@@ -83,7 +83,7 @@ steps would not give a register that passes against it. 2: the script could not
 run: a file is missing or is not a valid data file, or, in the one command, .ratchet
 is not a git clone or cannot be moved, a tag is missing, or the fetch failed, and a
 register before 0.12, which is told the commands of the first leg.
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

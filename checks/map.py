@@ -17,8 +17,8 @@ inventory.py, and looks at the kind of each path it cites, never at its content.
 link, as inventory.py's root may; nothing below it is.
 
 Exit code 0 when the map is of its form and every path exists as stated, 1 when not, with each problem named, and 2
-when it could not run: no valid ratchet.json beside it, or a ROOT that is not a folder. Standard library only. Run on
-Python 3.9 and 3.12.
+when it could not run: no valid ratchet.json beside it, or a ROOT that is not a folder. Standard library only.
+CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

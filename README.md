@@ -51,7 +51,7 @@ Each principle comes with a question to ask when no rule fits, in [RATCHET.md](R
 
 ## When to use it
 
-Ratchet is built for one person who decides, several coding agents, and a repo that has to last. It assumes issues, pull requests and branch protection, and an agent tool that reads an instruction file such as `AGENTS.md`.
+Ratchet is built for one person who decides, several coding agents, and a repo that has to last. It assumes issues, pull requests and branch protection, and an agent tool that reads an instruction file such as `AGENTS.md`. The checks need Python 3.9 or later and git, and have not been tried on Windows.
 
 | Your situation | What to do |
 |---|---|

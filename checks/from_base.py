@@ -32,7 +32,7 @@ request that changes a check or the form of a data file on purpose is one the ba
 stays red, and the maintainer reads the change and merges it as an administrator (D-2026-11-16-code-owner). It
 never passes such a pull request silently.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

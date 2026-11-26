@@ -36,7 +36,7 @@ nothing, reaches no network, and runs git only as rev-parse, config --get-regexp
 and show, with GIT_NO_LAZY_FETCH=1. A partial clone, which could fetch an object that
 a read asks for, is refused before anything is read.
 
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

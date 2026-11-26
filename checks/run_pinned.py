@@ -49,8 +49,8 @@ change to them is in the project's diff, for the owner's required review of the 
 stand against a git, a python3 or a PATH that is not what it says, or against the repository it clones from.
 
 It imports nothing from beside it, so python3 -I, which leaves the directory of the script out of sys.path, runs it.
-Exit code: the check's, 0 or 1. 2: it could not run, and the check did not run. Standard library only. Run on
-Python 3.9 and 3.12.
+Exit code: the check's, 0 or 1. 2: it could not run, and the check did not run. Standard library only. CI runs it on
+Python 3.9 and the newest Python 3.
 """
 
 import sys

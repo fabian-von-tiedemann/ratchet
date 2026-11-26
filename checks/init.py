@@ -97,7 +97,7 @@ a plain file or not what register.json generates, or the instruction file that r
 is not a plain file holding the block it generates. --check reaches that verdict with check_register.generated_problems,
 the function of the check at the end of a real run, given the bytes it would write (review of d86ff3e). 2: it could not run, and wrote nothing, or it stopped at a file it could not write or at a .gitignore that
 changed, and says how many files it wrote before.
-Standard library only. Run on Python 3.9 and 3.12.
+Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys

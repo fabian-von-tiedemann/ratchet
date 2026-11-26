@@ -28,7 +28,7 @@ and servers. Judging what each part means is the agent's job, on this output, an
 owner (D-2026-11-21-inventory-and-easy-upgrade, D-2026-11-22-second-redraw). The starting point for --ruleset is the
 folder of the path the user typed, resolved through its links once.
 
-Exit code 0 when it ran, 2 when it could not. Standard library only. Run on Python 3.9 and 3.12.
+Exit code 0 when it ran, 2 when it could not. Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
 
 import sys
