@@ -79,7 +79,7 @@ Run these in the root of your own git repo.
    python3 .ratchet/checks/init.py --check
    ```
 
-3. Write it. In a repo with an instruction file of its own, this run writes nothing either: it prints what to do, and `--adopt` writes.
+3. Write it.
 
    ```sh
    python3 .ratchet/checks/init.py
