@@ -1087,6 +1087,30 @@ A new experimental rule is already used by Ratchet itself, or says why Ratchet c
 
 The tests are in [test_budget.py](test_budget.py), on a copy of this repo.
 
+## Short pages
+
+**What it claims.** For `repo.short-pages`, `generate.py --check` fails when `README.md`, `TRYING.md`, `STARTING.md`, `UPGRADING.md` or `HANDOVER.md` is missing, naming it, or has more words than its cap in `PAGE_CAPS`, naming its count and its cap. A test pins the five pages and their caps. A word is what `str.split()` splits off, and a page that is not UTF-8 fails as every file does. In each changelog entry from 0.17 on, versions compared as numbers, it fails when "In short", the paragraph that starts with `In short:` up to a blank line, has more than 60 words or is missing, and when a bullet has more than 40. A bullet runs from a line that starts with `- ` to the next such line, a blank line, a table row or a generated block, so a wrapped bullet is counted whole. The job `base` runs the base branch's `generate.py` on the pull request's pages, so a page longer than the base's cap fails there, whatever cap the pull request sets.
+
+**Against which threat.** Drift: a page or a bullet that grows a little in each pull request.
+
+**What it does not claim.** Whether a text is clear or true. The pages a capped page links to, `checks/README.md`, `RATCHET.md`, `AGENTS.md`, and the entries before 0.17, which are locked to their tags. Lines of an entry that are neither "In short" nor a bullet nor a table row.
+
+| Case | Result |
+|---|---|
+| Each page at its cap | Passes |
+| A page one word over its cap | Fails, naming it |
+| A page missing, or not UTF-8 | Fails |
+| "In short" at 60 words, a bullet at 40 | Passes |
+| "In short" at 61, a bullet at 41, also wrapped over two lines | Fails |
+| An entry from 0.17 on with no "In short" | Fails |
+| An entry at 0.16, 0.10 or 0.9 with a bullet of 184 words | Passes |
+| An entry at 0.18 or 1.0 with a bullet of 41 words | Fails |
+| An entry with a table and the generated count | Passes |
+| A pull request that lengthens `HANDOVER.md` past the base's cap and raises the cap | Passes its own check, fails the base's |
+| This repo | Passes |
+
+The tests are in [test_short_pages.py](test_short_pages.py).
+
 ## The principles
 
 `ratchet.json` holds a list `principles`, and every rule names one of them in `principle` (`D-2026-11-20-principles-and-obligations`). A principle is a question an agent asks when no rule fits, or an aim, never a claim that something is protected. It is guidance, text only, and what is checked is only the rules under it. A principle has exactly a `key`, `principle.` followed by lowercase words joined by hyphens, a `title`, the principle in one or two short sentences, and a `text`, the question (`D-2026-11-23-values-and-principles`). The generator writes each principle in `RATCHET.md`, under "The principles", with its number and title as a heading, its text, the mark "Guidance, text only", and the keys of the rules under it, each marked "names a check" or "text only", and "experimental" where it is. It writes the titles as a numbered list in `README.md`. In both, the line `production` of `values.json` stands before the first principle whose rules all stand in `PRODUCT.md`, and the line `aims` after the last.

@@ -213,6 +213,14 @@
       "rule": "Nothing in this repo identifies a project that uses Ratchet, its company, its vendors or its incidents.",
       "ratchet": "Text only: a check cannot know every name",
       "source": ""
+    },
+    {
+      "key": "repo.short-pages",
+      "rule": "The pages an adopter reads first, `README.md`, `TRYING.md`, `STARTING.md` and `UPGRADING.md`, and `HANDOVER.md`, each stay at or under a cap of words. Each changelog entry from 0.17 on keeps \"In short\" to at most 60 words and each bullet to at most 40.",
+      "ratchet": "Check: `checks/generate.py --check`, which the job `base` runs from the base branch on the pull request's files, fails on a page over its cap and on a changelog entry from 0.17 on with a longer \"In short\" or bullet. The caps stand in the base branch's code, so a pull request that lengthens a page past the base's cap fails `base`, even if it raises the cap too. It does not see whether a page is clear.",
+      "source": "",
+      "status": "built",
+      "where": "Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on 2026-11-22, and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` from the base commit, never from the pull request, and it runs the base branch's `checks/generate.py --check` on the pull request's pages and changelog. It fails on the cases in `checks/test_short_pages.py`"
     }
   ]
 }
