@@ -1260,13 +1260,7 @@ def changelog_context(root):
     headings = [line for line in (read(os.path.join(root, "CHANGELOG.md")) or "").split("\n") if line.startswith("## ")]
     first = HEADING.match(headings[0]) if headings else None
     dated = [HEADING.match(line).group(1) for line in headings if HEADING.match(line)]
-    return (first.group(2) if first else None), (max(dated, key=version_key) if dated else None)
-
-
-def version_key(version):
-    """A version of the form MAJOR.MINOR as a pair of integers, so that 0.10 is newer than 0.9."""
-    major, minor = version.split(".")
-    return int(major), int(minor)
+    return (first.group(2) if first else None), (max(dated, key=registry.version_key) if dated else None)
 
 
 def release_dates(text):
@@ -1287,7 +1281,7 @@ def release_dates(text):
             headings[match.group(1)] = line
         except ValueError:
             problems.append("CHANGELOG.md: %r has a date that does not exist" % line)
-    ordered = sorted(releases, key=version_key)
+    ordered = sorted(releases, key=registry.version_key)
     for before, version in zip(ordered, ordered[1:]):
         if releases[version] < releases[before]:
             problems.append("CHANGELOG.md: %r is dated before %r, the entry of the version before it. The dates of the "
@@ -1348,7 +1342,7 @@ def consistency_problems(data, root, context):
                             'first may be headed "## <version> (unreleased)"' % line)
     entries = [line for line in headings if HEADING.match(line) or UNRELEASED.match(line)]
     for newer, older in zip(entries, entries[1:]):
-        if version_key((HEADING.match(newer) or UNRELEASED.match(newer)).group(1)) <= version_key(
+        if registry.version_key((HEADING.match(newer) or UNRELEASED.match(newer)).group(1)) <= registry.version_key(
                 (HEADING.match(older) or UNRELEASED.match(older)).group(1)):
             problems.append("CHANGELOG.md: the entries must stand newest first, each version higher than the one after it. "
                             "%r stands before %r" % (newer, older))
@@ -1388,7 +1382,7 @@ def short_page_problems(root, changelog):
         if line.startswith("## "):
             entries.append((heading.group(1) if heading else None, number))
     for index, (version, start) in enumerate(entries):
-        if version is None or version_key(version) < SHORT_SINCE:
+        if version is None or registry.version_key(version) < SHORT_SINCE:
             continue
         end = entries[index + 1][1] if index + 1 < len(entries) else len(lines)
         problems += entry_word_problems(version, lines, start + 1, end)

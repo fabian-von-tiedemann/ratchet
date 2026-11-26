@@ -33,6 +33,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 import registry  # noqa: E402
+import testing  # noqa: E402
 
 REFUSED = "Replace each link with a regular file"
 
@@ -248,20 +249,15 @@ def run(script, *args, root=ROOT, cwd=None, env=None):
 
 def git(repo, *args):
     """Run git in repo, with no global or system config, so that nothing of the user's own is used."""
-    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
-    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
-    subprocess.run(["git", "-c", "commit.gpgsign=false"] + list(args), cwd=repo, env=env, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    testing.git(repo, *args, env=testing.environment(drop="GIT_"), options=["-c", "commit.gpgsign=false"])
 
 
 def commit_all(repo):
-    """Make repo a git work tree and commit every file in it, with a name and mail set in that repo only."""
+    """Make repo a git work tree and commit every file in it, with a name and mail set in that repo only. git() turns
+    off gc in the new repo: one in the background after the commit would change .git while a test compares the tree."""
     git(repo, "init", "-q")
     git(repo, "config", "user.name", "Test")
     git(repo, "config", "user.email", "test@example.invalid")
-    # No gc in the background after the commit: it would change .git while a test compares the tree before and after.
-    git(repo, "config", "gc.auto", "0")
-    git(repo, "config", "maintenance.auto", "false")
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "fixture")
 
@@ -1145,8 +1141,6 @@ class InitRoot(Trees):
         project = os.path.join(self.outside, "project")
         os.mkdir(project)
         git(project, "init", "-q")
-        git(project, "config", "gc.auto", "0")
-        git(project, "config", "maintenance.auto", "false")
         os.symlink(project, os.path.join(self.repo, "project"))
         commit_all(self.repo)
         linked = os.path.join(self.repo, "project")

@@ -28,6 +28,7 @@ sys.path.insert(0, HERE)
 import generate  # noqa: E402
 import init  # noqa: E402
 import run_pinned  # noqa: E402
+import testing  # noqa: E402
 
 WRITTEN = ("AGENTS.md", "register.json", "REGISTER.md", os.path.join(".github", "workflows", "ratchet.yml"), ".gitignore",
            "CLAUDE.md")
@@ -36,28 +37,13 @@ PLACEHOLDER = "<40-character commit sha>"
 
 def environment():
     """git with no configuration of the person who runs the tests, and no repo named from outside."""
-    env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", LC_ALL="C")
-    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-        env.pop(name, None)
-    return env
-
-
-QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
+    return testing.environment(LC_ALL="C")
 
 
 def git(cwd, *args):
-    result = subprocess.run(
-        ["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
-         "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main", "-c", "gc.auto=0", "-c", "maintenance.auto=false"] + list(args),
-        cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=environment())
-    assert result.returncode == 0, result.stdout
-    # No automatic gc or maintenance in a repo a test makes, not for this call alone but in the new repo's own config, so
-    # that init.py, or anything else that runs git there, starts none either.
-    if args[:1] in (("init",), ("clone",)):
-        repo = cwd if args[0] == "init" else os.path.join(cwd, args[-1])
-        for name, value in QUIET:
-            git(repo, "config", name, value)
-    return result.stdout.strip()
+    return testing.git(cwd, *args, env=environment(), options=[
+        "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+        "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"] + testing.quiet_options())
 
 
 def read_template(name):

@@ -18,6 +18,7 @@ import tempfile
 import unittest
 
 import from_base
+import testing
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "from_base.py")
@@ -80,12 +81,7 @@ FAIL = "from_base: FAIL: the base branch's checks do not pass this pull request:
 
 def environment(home):
     """git with no configuration of the user's, and a fixed name for the commits."""
-    env = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C",
-               GIT_AUTHOR_NAME="Ratchet test", GIT_AUTHOR_EMAIL="test@example.invalid",
-               GIT_COMMITTER_NAME="Ratchet test", GIT_COMMITTER_EMAIL="test@example.invalid", PYTHONDONTWRITEBYTECODE="1")
-    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-        env.pop(name, None)
-    return env
+    return testing.environment(HOME=home, LC_ALL="C", PYTHONDONTWRITEBYTECODE="1", **testing.identity("Ratchet test"))
 
 
 class DryRun(unittest.TestCase):
@@ -103,10 +99,7 @@ class DryRun(unittest.TestCase):
         self.base = self.commit("the base")
 
     def git(self, *args):
-        result = subprocess.run(["git", "-C", self.repo] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                universal_newlines=True, env=self.env)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        return result.stdout.strip()
+        return testing.git(self.repo, *args, env=self.env)
 
     def write(self, files):
         for path, text in files.items():
@@ -119,9 +112,7 @@ class DryRun(unittest.TestCase):
                 handle.write(text)
 
     def commit(self, message):
-        self.git("add", "-A")
-        self.git("commit", "-q", "--allow-empty", "-m", message)
-        return self.git("rev-parse", "HEAD")
+        return testing.commit(self.repo, message, self.env)
 
     def pull_request(self, files, base_moves=None):
         """The pull request's commit on a branch from the base, and HEAD at the merge that GitHub makes of it."""

@@ -15,7 +15,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 import unittest
 import urllib.error
@@ -24,6 +23,7 @@ import zlib
 from unittest import mock
 
 import release
+import testing
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -651,41 +651,12 @@ def run_main(github, argv=("publish",), environ=None, root=None):
     return code, out.getvalue(), err.getvalue(), opener
 
 
-# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
-# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
-# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
-# own config, so that a script under test that runs git there starts none either.
-QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
-
-
 def git(directory, *args, **kwargs):
     """Run git in a repository that a test made, with no config of the user and no GIT_ variable of the environment."""
-    args = quiet_args(args)
-    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
-    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.realpath(directory)),
-               GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid", GIT_COMMITTER_NAME="Test",
-               GIT_COMMITTER_EMAIL="test@example.invalid", LC_ALL="C")
-    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"] + quiet_options() + ["-C", directory]
-                            + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, universal_newlines=True, **kwargs)
-    if result.returncode:
-        raise AssertionError("git %s: %s" % (" ".join(args), result.stderr))
-    if args[:1] == ("init",):
-        for name, value in QUIET:
-            git(directory, "config", name, value)
-    return result.stdout.strip()
-
-
-def quiet_options():
-    """-c for each setting of QUIET, for one call of git."""
-    return [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
-
-
-def quiet_args(args):
-    """args, with each setting of QUIET written into the config of the repository that a clone makes."""
-    args = tuple(args)
-    if args[:1] == ("clone",):
-        return args[:1] + tuple(part for name, value in QUIET for part in ("--config", "%s=%s" % (name, value))) + args[1:]
-    return args
+    env = testing.environment(drop="GIT_", GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.realpath(directory)), LC_ALL="C",
+                              **testing.identity("Test"))
+    return testing.git(directory, *args, env=env, options=["-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"]
+                       + testing.quiet_options(), **kwargs)
 
 
 class Checkout:
