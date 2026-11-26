@@ -150,14 +150,15 @@ class Upgrade(FixtureTest):
         return [self.fixture_file("upgrade/" + register), "--from", self.fixture_file("upgrade/" + old),
                 "--source", self.fixture_file("upgrade/" + new)]
 
-    def upgrade(self, **files):
-        return run("upgrade.py", *self.files(**files))
+    def upgrade(self, *args, **files):
+        return run("upgrade.py", *(self.files(**files) + list(args)))
 
     def loaded(self, name):
         return registry.parse_json(self.fixture_bytes("upgrade/" + name))
 
     def test_every_change_is_listed_with_what_the_register_must_do(self):
-        code, output = self.upgrade()
+        # With --new-rules full, the new rules come with their entries, as before #181.
+        code, output = self.upgrade("--new-rules", "full")
         self.assertEqual(code, 0, output)
         for line in (
             "register.json is on Ratchet 9.8. In Ratchet 9.9, 9 rules are new, changed or removed.",
@@ -328,7 +329,7 @@ class Upgrade(FixtureTest):
         self.assertIn("--print-markdown", out.getvalue())
 
     def test_each_printed_entry_is_the_rule_as_it_stands_in_the_newer_ratchet(self):
-        code, output = self.upgrade()
+        code, output = self.upgrade("--new-rules", "full")
         self.assertEqual(code, 0, output)
         new = registry.rules_by_key(self.loaded("new/ratchet.json"))
         printed = entries(output)
@@ -553,6 +554,16 @@ class OneCommand(FixtureTest):
         code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json", "--from", "old.json", "--source", "new.json")
         self.assertEqual(code, 0, output)
         return output
+
+    def test_new_rules_full_goes_on_to_the_upgrade_py_of_the_release(self):
+        # Case 9: the one command moves .ratchet to v9.10 and runs the upgrade.py there, which gets --new-rules full.
+        for args, full in (((), False), (("--new-rules", "full"), True)):
+            with self.subTest(args=args):
+                code, output = self.upgrade(self.project(), *args)
+                self.assertEqual(code, 0, output)
+                self.assertEqual(output.count(MARKER), 1, output)
+                self.assertEqual('"key": "ratchet.added"' in output, full, output)
+                self.assertEqual("\nOne:\n- ratchet.added\n- ratchet.added-text\n" in output, not full, output)
 
     def test_the_latest_release_is_fetched_compared_and_counted(self):
         # .ratchet is a shallow clone at v9.8, the version the register states, and has no other tag. The command fetches
@@ -1279,6 +1290,252 @@ class UpgradingSteps(FixtureTest):
                 self.assertEqual(ran.returncode, 0, ran.stdout)
         with open(os.path.join(project, "REGISTER.md"), encoding="utf-8", newline="") as handle:
             self.assertEqual(handle.read(), check_register.render(after))
+
+
+
+def release_data(version):
+    """This repo's ratchet.json with another version, so that each release of an origin is a commit of its own."""
+    data = read("ratchet.json").encode("utf-8")
+    current = registry.parse_json(data)["version"]
+    changed = data.replace(b'"version": "%s"' % current.encode("ascii"), b'"version": "%s"' % version.encode("ascii"), 1)
+    assert changed != data or version == current
+    return changed
+
+
+class Behind(FixtureTest):
+    """--behind (#180): one line that says how many releases, by number, come after the version the register states.
+    An origin made here has the release tags v0.2, v0.9, v0.10 and v0.16, so that text order and number order differ."""
+
+    LINE = "register.json states Ratchet 0.9. The latest release is 0.16, 2 releases after it: 0.10 and 0.16.\n"
+
+    def setUp(self):
+        self.origin = os.path.join(self.scratch(), "ratchet")
+        make_origin(self.origin, [(version, release_data(version)) for version in ("0.2", "0.9", "0.10", "0.16")])
+
+    def project(self, data, at="v0.16", depth=None):
+        """A project with register.json holding data, and Ratchet cloned into .ratchet at a tag. Returns its path."""
+        project = self.scratch()
+        with open(os.path.join(project, "register.json"), "wb") as handle:
+            handle.write(data)
+        if depth:
+            git(project, "clone", "-q", "--depth", str(depth), "--branch", at, "file://" + self.origin, ".ratchet")
+        else:
+            git(project, "clone", "-q", "--branch", at, self.origin, ".ratchet")
+        return project
+
+    def register(self, version="0.9"):
+        """The register that the init.py of v0.9 wrote, stating version."""
+        data = self.fixture_bytes("upgrade/released/0.9/register.json")
+        return data.replace(b'"ratchet_version": "0.9"', b'"ratchet_version": "%s"' % version.encode("ascii"), 1)
+
+    def behind(self, project, *args):
+        """Run --behind in the project. Nothing in the project or in .ratchet, its files or its checkout, may change."""
+        ratchet = os.path.join(project, ".ratchet")
+        before, head = snapshot(project, skip=(".ratchet/.git",)), git(ratchet, "rev-parse", "HEAD")
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json", "--behind", *args)
+        self.assertEqual(snapshot(project, skip=(".ratchet/.git",)), before, "no file changed")
+        self.assertEqual(git(ratchet, "rev-parse", "HEAD"), head, ".ratchet did not move")
+        self.assertNotIn("Traceback", output)
+        return code, output
+
+    def test_the_releases_after_the_register_are_counted_by_number(self):
+        # Case 1. By text, v0.9 sorts after v0.16 and v0.10, and would be taken for the latest.
+        code, output = self.behind(self.project(self.register()))
+        self.assertEqual((code, output), (1, self.LINE))
+
+    def test_a_register_on_the_latest_release_is_not_behind(self):
+        # Case 2.
+        code, output = self.behind(self.project(self.register("0.16")))
+        self.assertEqual((code, output), (0, "register.json states Ratchet 0.16, the latest release. It is not behind.\n"))
+
+    def test_a_version_it_cannot_read_or_place_cannot_tell(self):
+        # Case 3: newer than every tag, no field, and a version of three numbers.
+        missing = registry.parse_json(self.register())
+        del missing["ratchet_version"]
+        for data, said in ((self.register("0.17"), "states Ratchet 0.17, which is newer than the latest release in .ratchet, 0.16"),
+                           (json.dumps(missing).encode("utf-8"), 'register.json has no field "ratchet_version"'),
+                           (self.register("0.9.1"), 'the "ratchet_version" of register.json, "0.9.1", is not a version')):
+            with self.subTest(said=said):
+                code, output = self.behind(self.project(data))
+                self.assertEqual(code, 2, output)
+                self.assertIn(said, output)
+
+    def test_a_register_of_an_older_form_is_read_for_its_version_alone(self):
+        # Case 4: the register of 0.9, with a field at the top and one in a rule that the current reader refuses.
+        register = registry.parse_json(self.register())
+        register["waivers"] = []
+        register["adopted"][0]["waived"] = "no"
+        problems = "\n".join(check_register.check(dict(register, ratchet_version=registry.load(registry.SOURCE)["version"]),
+                                                  registry.load(registry.SOURCE))[0])
+        self.assertIn("unknown field 'waivers'", problems)
+        code, output = self.behind(self.project(json.dumps(register, indent=2).encode("utf-8")))
+        self.assertEqual((code, output), (1, self.LINE))
+
+    def test_no_fetch_uses_only_the_tags_in_the_clone(self):
+        # Case 6. A shallow clone at v0.9 holds that tag alone, so with --no-fetch the register is not behind. Without it,
+        # the fetch finds the rest. With origin gone, --no-fetch still runs.
+        project = self.project(self.register(), at="v0.9", depth=1)
+        self.assertEqual(self.behind(project, "--no-fetch"),
+                         (0, "register.json states Ratchet 0.9, the latest release. It is not behind.\n"))
+        git(os.path.join(project, ".ratchet"), "remote", "set-url", "origin", os.path.join(self.scratch(), "gone"))
+        self.assertEqual(self.behind(project, "--no-fetch")[0], 0)
+        git(os.path.join(project, ".ratchet"), "remote", "set-url", "origin", "file://" + self.origin)
+        self.assertEqual(self.behind(project), (1, self.LINE))
+
+    def test_no_release_tag_a_failed_fetch_or_a_register_that_is_not_strict_json_cannot_tell(self):
+        # Case 10, and a register of 0.2, which was Markdown.
+        project = self.project(self.register())
+        ratchet = os.path.join(project, ".ratchet")
+        git(ratchet, "remote", "set-url", "origin", os.path.join(self.scratch(), "gone"))
+        code, output = self.behind(project)
+        self.assertEqual(code, 2, output)
+        self.assertIn("could not be fetched from origin", output)
+        self.assertIn("--no-fetch", output)
+        for tag in git(ratchet, "tag").split():
+            git(ratchet, "tag", "-d", tag)
+        code, output = self.behind(project, "--no-fetch")
+        self.assertEqual(code, 2, output)
+        self.assertIn(".ratchet has no release tag to compare with.", output)
+        for data in (b'{"ratchet_version": "0.9", "ratchet_version": "0.9"}', b"# Register\n\n| Key | Rule |\n",
+                     b'{"ratchet_version": "0.2", "adopted": []}'):
+            with self.subTest(data=data):
+                code, output = self.behind(self.project(data))
+                self.assertEqual(code, 2, output)
+                self.assertIn("MIGRATING.md at the tag v0.12", output)
+
+    def test_behind_takes_no_option_of_the_steps(self):
+        project = self.project(self.register())
+        for args in (("--to", "0.10"), ("--from", "old.json"), ("--new-rules", "full")):
+            with self.subTest(args=args):
+                code, output = self.behind(project, *args)
+                self.assertEqual(code, 2, output)
+                self.assertIn("--behind compares the register with the latest release", output)
+
+
+def done_as_printed(output, path):
+    """Do in the register at path the numbered steps that upgrade.py printed: set the version, put each printed entry in
+    place of the rule's, and take out each removed rule. The steps end where the output turns to what follows them."""
+    block = output.split("\nSteps for ", 1)[1]
+    block = re.split(r"\n\n(?=New rules|Not adopted|The form|Then |REGISTER\.md is not|Rules to start with|Checked:)", block)[0]
+    with open(path, "rb") as handle:
+        register = registry.parse_json(handle.read())
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"(?m)^\d+\. (.*)$", block):
+        text = match.group(1)
+        version = re.match(r'Set "ratchet_version" to "([0-9.]+)"\.', text)
+        if version:
+            register["ratchet_version"] = version.group(1)
+            continue
+        key, said = text.split(": ", 1)
+        if said.startswith("removed."):
+            register["adopted"] = [item for item in register["adopted"] if item["key"] != key]
+            continue
+        assert said.startswith("changed: "), text
+        printed, _ = decoder.raw_decode(block, block.index("\n{", match.end()) + 1)
+        assert printed["key"] == key, (key, printed)
+        register["adopted"] = [printed if item["key"] == key else item for item in register["adopted"]]
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(register, indent=2, ensure_ascii=False) + "\n")
+    return register
+
+
+class FirstLeg(FixtureTest):
+    """A register before 0.12 is told the commands of the first leg (#181, part 1). An origin made here has the releases
+    v0.9, v0.11 and v0.13, each with its ratchet.json and, for v0.11 and v0.13, the scripts that their upgrade.py runs, as
+    they were at those tags, and this version. The register is the one that the init.py of v0.9 wrote."""
+
+    def test_the_printed_first_leg_run_as_printed_leads_to_a_register_that_passes(self):
+        # Case 8.
+        released = "upgrade/released/"
+        scripts = {"0.11": ("upgrade", "check_register", "registry"), "0.13": ("upgrade", "check_register", "registry", "run_pinned")}
+        new = registry.load(registry.SOURCE)
+        origin = os.path.join(self.scratch(), "ratchet")
+        make_origin(origin, [("0.9", self.fixture_bytes(released + "0.9/ratchet.json"))] + [
+            (version, self.fixture_bytes(released + version + "/ratchet.json"),
+             dict(("checks/%s.py" % name, self.fixture_bytes("%s%s/checks/%s.py" % (released, version, name))) for name in names))
+            for version, names in sorted(scripts.items())] + [(new["version"], read("ratchet.json").encode("utf-8"))])
+        project = self.scratch()
+        path = os.path.join(project, "register.json")
+        with open(path, "wb") as handle:
+            handle.write(self.fixture_bytes(released + "0.9/register.json"))
+        git(project, "clone", "-q", "--branch", "v" + new["version"], origin, ".ratchet")
+        code, output = in_project(project, ".ratchet/checks/upgrade.py", "register.json")
+        self.assertEqual(code, 2, output)
+        commands = re.findall(r"(?m)^    (\S.*)$", output)
+        self.assertEqual(commands, [
+            "git -C .ratchet fetch --tags origin",
+            "git -C .ratchet checkout --detach v0.11",
+            "python3 .ratchet/checks/upgrade.py --to 0.13 --no-fetch -- register.json",
+            "python3 .ratchet/checks/upgrade.py --to %s --no-fetch -- register.json" % new["version"]], output)
+        for command, version in zip(commands, (None, None, "0.13", new["version"])):
+            result = subprocess.run(["/bin/sh", "-c", command.replace("python3 ", shlex.quote(sys.executable) + " -B ", 1)],
+                                    cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            self.assertEqual(result.returncode, 0, result.stdout)
+            if version is None:
+                continue
+            # The steps it printed, done in register.json, then each command it printed, run as printed.
+            self.assertIn('Set "ratchet_version" to "%s".' % version, result.stdout)
+            done_as_printed(result.stdout, path)
+            printed = re.findall(r"(?m)^    ((?:rm -f |python3 )\S.*)$", result.stdout)
+            self.assertTrue(printed, result.stdout)
+            for line in printed:
+                ran = subprocess.run(["/bin/sh", "-c", line.replace("python3 ", shlex.quote(sys.executable) + " -B ")],
+                                     cwd=project, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                self.assertEqual(ran.returncode, 0, ran.stdout)
+        with open(path, "rb") as handle:
+            register = registry.parse_json(handle.read())
+        self.assertEqual(register["ratchet_version"], new["version"])
+        self.assertEqual(check_register.check(register, new)[0], [])
+
+    def first_leg(self, version, *args):
+        """The one command on a register of version, in a clone at v9.9 whose origin has the tags v0.11 and v0.13."""
+        origin = os.path.join(self.scratch(), "ratchet")
+        make_origin(origin, [(name, release_data(name)) for name in (version, "0.11", "0.13", "9.9")])
+        project = self.scratch()
+        with open(os.path.join(project, "register.json"), "w", encoding="utf-8") as handle:
+            handle.write(json.dumps({"project": "example", "ratchet_version": version, "adopted": [], "own": []}))
+        git(project, "clone", "-q", "--branch", "v9.9", origin, ".ratchet")
+        return in_project(project, ".ratchet/checks/upgrade.py", "register.json", *args)
+
+    def test_a_target_before_the_first_leg_or_a_register_of_0_2_is_refused(self):
+        code, output = self.first_leg("0.9", "--to", "0.11")
+        self.assertEqual(code, 2, output)
+        self.assertIn("A register before 0.12 upgrades to 0.13 first, and 0.11 is before that.", output)
+        code, output = self.first_leg("0.2")
+        self.assertEqual(code, 2, output)
+        self.assertIn("MIGRATING.md at the tag v0.12", output)
+        code, output = self.first_leg("0.10")
+        self.assertEqual(code, 2, output)
+        self.assertIn("python3 .ratchet/checks/upgrade.py --to 9.9 --no-fetch -- register.json", output)
+
+
+class NewRulesByPart(FixtureTest):
+    """New rules on one line each, grouped under the title of their part (#181, part 3)."""
+
+    def report(self, *form):
+        old, new = (registry.parse_json(self.fixture_bytes("upgrade/%s/ratchet.json" % name)) for name in ("old", "new"))
+        # A second part, so that the grouping shows: ratchet.added-text moves there.
+        new["parts"].append({"id": "two", "file": "RATCHET.md", "title": "Two"})
+        next(rule for rule in new["rules"] if rule["key"] == "ratchet.added-text")["part"] = "two"
+        out = io.StringIO()
+        register = registry.parse_json(self.fixture_bytes("upgrade/register.json"))
+        self.assertEqual(upgrade.report("register.json", register, old, new, out, "check_register.py", *form), 0, out.getvalue())
+        return out.getvalue()
+
+    def test_new_rules_are_one_line_each_under_their_part(self):
+        # Case 9, the default.
+        output = self.report()
+        self.assertIn("\nNew rules, which the register may adopt, by part. To print the entry of each, run again with "
+                      "--new-rules full:\n\nOne:\n- ratchet.added\n\nTwo:\n- ratchet.added-text\n\n", output)
+        self.assertNotIn('"key": "ratchet.added', output)
+        self.assertNotIn("ratchet.added: new.", output)
+
+    def test_with_full_the_entries_are_as_before(self):
+        # Case 9, --new-rules full.
+        output = self.report("full")
+        self.assertIn("\nNew rules, which the register may adopt:\n\n- ratchet.added: new.", output)
+        self.assertEqual([entry["key"] for entry in entries(output)][-2:], ["ratchet.added", "ratchet.added-text"])
+        self.assertNotIn("by part", output)
 
 
 if __name__ == "__main__":

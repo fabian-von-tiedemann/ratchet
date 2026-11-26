@@ -1829,6 +1829,35 @@ init.add_line = add_line""" % (stop, stop))
         for _, options in checkouts:
             self.assertIn("persist-credentials: false\n", options)
 
+    def workflow_jobs(self, text):
+        """{job: its lines} of a workflow, for each job at the indent of two spaces under "jobs:"."""
+        parts = re.split(r"(?m)^  ([a-z-]+):\n", text.split("\njobs:\n", 1)[1])
+        return dict(zip(parts[1::2], parts[2::2]))
+
+    def test_the_job_behind_runs_on_the_schedule_only(self):
+        # Case 7 of #180: once a week the job behind runs upgrade.py --behind from the pinned checkout, and only then.
+        text = read_template("ratchet-checks.yml")
+        self.assertRegex(text.split("\npermissions:\n", 1)[0], r"\n  schedule:\n    - cron: \"[0-9]+ [0-9]+ \* \* [0-6]\"\n")
+        behind = self.workflow_jobs(text)["behind"]
+        self.assertTrue(behind.startswith("    if: github.event_name == 'schedule'\n"), behind)
+        self.assertIn("          ref: ${{ env.RATCHET_COMMIT }}\n          path: .ratchet\n", behind)
+        self.assertEqual(re.findall(r"(?m)^ +run: (.*)$", behind), ["python3 .ratchet/checks/upgrade.py register.json --behind"])
+
+    def test_the_jobs_to_require_do_not_run_on_the_schedule_and_init_pins_one_commit(self):
+        # Case 11 of #180: the jobs init.py names to require keep their names and do not run on the schedule, and the
+        # workflow init.py writes pins one commit, which both checkouts of Ratchet fetch.
+        text = read_template("ratchet-checks.yml")
+        jobs = self.workflow_jobs(text)
+        self.assertEqual(sorted(jobs), sorted(init.JOBS + ("behind",)))
+        for job in init.JOBS:
+            with self.subTest(job=job):
+                self.assertTrue(jobs[job].startswith("    if: github.event_name != 'schedule'\n"), jobs[job])
+        written = init.workflow_text_from(text, "a" * 40)
+        self.assertEqual(re.findall(r"[0-9a-f]{40}(?= *$)", written, re.M), ["a" * 40])
+        self.assertIn("\nenv:\n  RATCHET_COMMIT: %s\n" % ("a" * 40), written)
+        self.assertEqual(written.count("ref: ${{ env.RATCHET_COMMIT }}\n"), 2)
+        self.assertEqual(len(re.findall(r"(?m)^ +ref: ", written)), 2)
+
     def test_the_rules_that_wait_for_a_remote_are_rules_of_the_starter_register(self):
         keys = [rule["key"] for rule in json.loads(read_template("register.json"))["adopted"]]
         for key in init.WAIT_FOR_REMOTE:

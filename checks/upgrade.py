@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Print what a project's register must do to move to a newer version of Ratchet.
 
-    python3 .ratchet/checks/upgrade.py register.json [--to 0.12] [--no-fetch]
+    python3 .ratchet/checks/upgrade.py register.json [--to 0.12] [--no-fetch] [--new-rules full]
+    python3 .ratchet/checks/upgrade.py register.json --behind [--no-fetch]
     python3 .ratchet/checks/upgrade.py register.json --from OLD/ratchet.json [--source NEW/ratchet.json]
 
 The register is the project's register.json.
@@ -20,7 +21,14 @@ how to copy checks/run_pinned.py again from the new commit, with the line for a
 local check script and for the CI step, as init.py prints them. It does not move a
 clone with changes to files git tracks in it, or one on a branch, and it says how to move the clone back. A version
 with no tag, a shallow clone that lacks the tag, a tag asked for that does not exist
-and a fetch that fails each stop it, with what to do.
+and a fetch that fails each stop it, with what to do. A register before 0.12 is told the
+commands of the first leg instead: move the clone to v0.11, whose upgrade.py takes it
+to 0.13, and then run the command again.
+
+With --behind, it reads only "ratchet_version" of the register, fetches the tags
+unless --no-fetch is given, and prints one line: how many releases, compared by
+number, come after the version the register states. It moves nothing. Exit code 0:
+not behind. 1: behind. 2: it cannot tell.
 
 Offline, with --from: --from is ratchet.json of the version the register states, and
 --source, by default the ratchet.json next to this script, is the newer Ratchet. It
@@ -48,7 +56,8 @@ Either way the script compares the two versions, rule by rule, and prints:
   the step says that the changelog says why, and that the rule it was merged into may
   be adopted in its place
 - when every adopted rule was removed, a step to adopt at least one rule
-- the new rules, each with the entry to paste if the project adopts it
+- the new rules, by key, under the title of their part. With --new-rules full, or
+  when the register must adopt one, each with the entry to paste
 - the changed and removed rules that the register does not adopt, by key
 - when the fields of ratchet.json differ between the two, at the top or in its rules,
   a field new or gone, a note for a project that keeps a copy of a Ratchet check, or a
@@ -72,7 +81,8 @@ Exit code 0: the steps are printed, or there is nothing to change. 1: the regist
 does not pass against the version it states, the newer Ratchet is older, or the
 steps would not give a register that passes against it. 2: the script could not
 run: a file is missing or is not a valid data file, or, in the one command, .ratchet
-is not a git clone or cannot be moved, a tag is missing, or the fetch failed.
+is not a git clone or cannot be moved, a tag is missing, or the fetch failed, and a
+register before 0.12, which is told the commands of the first leg.
 Standard library only. Run on Python 3.9 and 3.12.
 """
 
@@ -109,6 +119,13 @@ MERGED = ("The changelog of Ratchet %s says why it was removed. When it was merg
 WORKFLOW = ".github/workflows/ratchet.yml"
 # A release: a major and a minor version, as a tag names it after its "v".
 RELEASE = re.compile(r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
+# The first version whose ratchet.json this script reads as an older one. A register before it takes the first leg:
+# the upgrade.py of LEG_FROM, which reads the older forms, takes it to LEG_TO (#181).
+FIRST_READ, LEG_FROM, LEG_TO = "0.12", "0.11", "0.13"
+# The first version that takes --new-rules, so that the run after a move passes it on only to one that knows it.
+NEW_RULES_FROM = "0.17"
+# A register of 0.2 was Markdown. UPGRADING.md at v0.12 sends it to MIGRATING.md there.
+MARKDOWN = "%s states Ratchet %s, whose register was Markdown: MIGRATING.md at the tag v0.12 says how to move it."
 
 
 class UpgradeError(Exception):
@@ -380,8 +397,23 @@ def passes(name, register, old, out):
     return not problems
 
 
-def report(path, register, old, new, out, script):
-    """Print the steps for one register. Returns the exit code."""
+def new_rules_by_part(new_rules, new, out):
+    """The keys of the new rules, under the title of their part, in the order of the parts in ratchet.json."""
+    by_key = registry.rules_by_key(new)
+    for part in new["parts"]:
+        keys = [step["key"] for step in new_rules if by_key[step["key"]]["part"] == part["id"]]
+        if keys:
+            print("%s:" % part["title"], file=out)
+            for key in keys:
+                print("- %s" % key, file=out)
+            print("", file=out)
+
+
+def report(path, register, old, new, out, script, new_rules_form="line"):
+    """Print the steps for one register. Returns the exit code.
+
+    new_rules_form is "line", the key of each new rule under the title of its part, or "full", each with its entry. A
+    register that must adopt a rule gets the entries either way."""
     name = os.path.basename(path)
     if not passes(name, register, old, out):
         return 1
@@ -444,7 +476,13 @@ def report(path, register, old, new, out, script):
         for item in must_adopt:
             print(paste(item), file=out)
             print("", file=out)
-    if new_rules:
+    if new_rules and new_rules_form == "line" and not must_adopt:
+        print("", file=out)
+        print("New rules, which the register may adopt, by part. To print the entry of each, run again with --new-rules full:",
+              file=out)
+        print("", file=out)
+        new_rules_by_part(new_rules, new, out)
+    elif new_rules:
         print("", file=out)
         print("New rules, which the register may adopt:", file=out)
         print("", file=out)
@@ -556,18 +594,94 @@ def tags(versions):
     return joined(["v" + version for version in sorted(versions, key=version_key)])
 
 
-def one_command(args, out):
-    """The upgrade in one command: fetch the tags of the clone this script stands in, compare the tag the register
-    states with the latest release, or the one asked for, and print the steps. Returns the exit code."""
+def the_clone():
+    """(root, typed, shown) of the git clone this script stands in: its path, the script as typed, and the clone as
+    typed. Refuses a clone that is not a git work tree of its own."""
     here = os.path.abspath(__file__)
     root = os.path.dirname(os.path.dirname(here))
     typed = sys.argv[0] if os.path.isfile(sys.argv[0]) and os.path.samefile(sys.argv[0], here) else here
     shown = os.path.normpath(os.path.join(os.path.dirname(typed), os.pardir))
-    quoted = shlex.quote(shown)
     code, output, _ = git(root, "rev-parse", "--show-toplevel")
     if code != 0 or os.path.realpath(output.decode("utf-8", errors="replace").strip()) != os.path.realpath(root):
         raise UpgradeError("%s is not a git clone of Ratchet, so it has no tags to compare. Clone Ratchet into it with git, "
                            "as README.md says, or compare two files with --from." % shown)
+    return root, typed, shown
+
+
+def fetch(root, shown):
+    code, _, stderr = git(root, "fetch", "--tags", "--quiet", "--no-recurse-submodules", "origin", timeout=600)
+    if code != 0:
+        raise UpgradeError("the tags of %s could not be fetched from origin: %s. To use the tags already in %s, run "
+                           "again with --no-fetch." % (shown, said(stderr), shown))
+
+
+def behind(args, out):
+    """--behind: how many releases come after the version the register states. Reads "ratchet_version" alone, so a
+    register of any JSON form will do, and moves nothing. Returns 0 when it is not behind and 1 when it is."""
+    root, _, shown = the_clone()
+    name = os.path.basename(args.register)
+    if not os.path.isfile(args.register):
+        raise UpgradeError("no such file: %s" % args.register)
+    try:
+        register = registry.load_json(args.register)
+    except registry.RegistryError as error:
+        raise UpgradeError("%s cannot be read as strict JSON: %s. A register of Ratchet 0.2 was Markdown: MIGRATING.md at "
+                           "the tag v0.12 says how to move it." % (name, error))
+    if not isinstance(register, dict) or "ratchet_version" not in register:
+        raise UpgradeError('%s has no field "ratchet_version".' % name)
+    stated = register["ratchet_version"]
+    if not isinstance(stated, str) or not RELEASE.match(stated):
+        raise UpgradeError('the "ratchet_version" of %s, %s, is not a version of the form 0.11.' % (
+            name, json.dumps(stated, ensure_ascii=True)))
+    if version_key(stated) < (0, 3):
+        raise UpgradeError(MARKDOWN % (name, stated))
+    if not args.no_fetch:
+        fetch(root, shown)
+    known = releases(root)
+    if not known:
+        raise UpgradeError("%s has no release tag to compare with." % shown)
+    latest = max(known, key=version_key)
+    if version_key(stated) > version_key(latest):
+        raise UpgradeError("%s states Ratchet %s, which is newer than the latest release in %s, %s." % (name, stated, shown, latest))
+    after = sorted((version for version in known if version_key(version) > version_key(stated)), key=version_key)
+    if not after:
+        print("%s states Ratchet %s, the latest release. It is not behind." % (name, stated), file=out)
+        return 0
+    print("%s states Ratchet %s. The latest release is %s, %s after it: %s." % (
+        name, stated, latest, "1 release" if len(after) == 1 else "%d releases" % len(after), joined(after)), file=out)
+    return 1
+
+
+def first_leg(name, stated, target, known, typed, shown):
+    """What a register before FIRST_READ is told: the commands that take it to LEG_TO with the upgrade.py of LEG_FROM,
+    which reads its form, and then to the target with this command."""
+    if version_key(stated) < (0, 3):
+        raise UpgradeError(MARKDOWN % (name, stated))
+    if version_key(target) < version_key(LEG_TO):
+        raise UpgradeError("%s states Ratchet %s. A register before %s upgrades to %s first, and %s is before that." % (
+            name, stated, FIRST_READ, LEG_TO, target))
+    for version in (LEG_FROM, LEG_TO):
+        if version not in known:
+            raise UpgradeError("%s states Ratchet %s, and a register before %s takes its first leg with v%s and v%s. %s has "
+                               "no tag v%s: fetch the tags with git -C %s fetch --tags origin" % (
+                                   name, stated, FIRST_READ, LEG_FROM, LEG_TO, shown, version, shlex.quote(shown)))
+    script, clone, register = shlex.quote(typed), shlex.quote(shown), shlex.quote(name)
+    return ("%s states Ratchet %s. This upgrade.py reads the forms of %s and later, so a register before %s takes two legs: "
+            "to %s with the upgrade.py of v%s, then to %s. Run these from the project's root, in order. After each upgrade.py, "
+            "do the steps it prints in %s and run the commands it prints:\n\n"
+            "    git -C %s fetch --tags origin\n"
+            "    git -C %s checkout --detach v%s\n"
+            "    python3 %s --to %s --no-fetch -- %s\n"
+            "    python3 %s --to %s --no-fetch -- %s" % (
+                name, stated, FIRST_READ, FIRST_READ, LEG_TO, LEG_FROM, target, name, clone, clone, LEG_FROM, script, LEG_TO,
+                register, script, target, register))
+
+
+def one_command(args, out):
+    """The upgrade in one command: fetch the tags of the clone this script stands in, compare the tag the register
+    states with the latest release, or the one asked for, and print the steps. Returns the exit code."""
+    root, typed, shown = the_clone()
+    quoted = shlex.quote(shown)
     name = os.path.basename(args.register)
     if not os.path.isfile(args.register):
         raise UpgradeError("no such file: %s" % args.register)
@@ -586,10 +700,7 @@ def one_command(args, out):
                            "Ratchet into it again." % shown)
 
     if not args.no_fetch:
-        code, _, stderr = git(root, "fetch", "--tags", "--quiet", "--no-recurse-submodules", "origin", timeout=600)
-        if code != 0:
-            raise UpgradeError("the tags of %s could not be fetched from origin: %s. To use the tags already in %s, run "
-                               "again with --no-fetch." % (shown, said(stderr), shown))
+        fetch(root, shown)
         print("Fetched the tags of %s from origin." % shown, file=out)
     known = releases(root)
     listed = " Its release tags are %s." % tags(known) if known else " It has no release tag."
@@ -621,6 +732,9 @@ def one_command(args, out):
             missing += (" --no-fetch fetched no tag. Run again without --no-fetch, or fetch the tags: git -C %s fetch --tags "
                         "origin" % quoted)
         raise UpgradeError(missing)
+    if version_key(stated) < version_key(FIRST_READ):
+        print(first_leg(name, stated, target, known, typed, shown), file=out)
+        return 2
 
     code, data, stderr = git(root, "cat-file", "blob", "refs/tags/%s:ratchet.json" % known[stated])
     if code != 0:
@@ -650,7 +764,10 @@ def one_command(args, out):
             shown, known[target], head, quoted, head), file=out)
         # The steps are printed by the upgrade.py of the version moved to, which knows its own forms.
         # The register's path comes after --, so that one that starts with - is not read as an option there.
-        again = (["--to", args.to] if args.to is not None else []) + ["--no-fetch", "--", args.register]
+        # --new-rules goes on only to a version that knows it. One before it prints the entries in full.
+        again = ((["--to", args.to] if args.to is not None else []) + ["--no-fetch"]
+                 + (["--new-rules", args.new_rules] if version_key(target) >= version_key(NEW_RULES_FROM) else [])
+                 + ["--", args.register])
         result = subprocess.run([sys.executable, "-B", typed] + again,
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         out.write(result.stdout)
@@ -669,7 +786,8 @@ def one_command(args, out):
     else:
         print("%s states Ratchet %s, %s. It is not behind." % (name, stated, which), file=out)
     print("", file=out)
-    code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"))
+    code = report(args.register, register, old, new, out, os.path.join(os.path.dirname(typed), "check_register.py"),
+                  args.new_rules)
     if code == 0 and behind:
         print("", file=out)
         # The project's root is where this runs, as .ratchet/checks/upgrade.py, and where the printed commands run.
@@ -727,7 +845,15 @@ def main(argv=None, out=None):
     parser.add_argument("--from", dest="older", metavar="ratchet.json",
                         help="offline: ratchet.json of the version the register states, as it stood at its tag")
     parser.add_argument("--source", help="with --from: path to the newer ratchet.json (default: the one next to this script)")
+    parser.add_argument("--new-rules", choices=("line", "full"), default="line",
+                        help="the new rules by key under the title of their part (line, the default), or each with its entry (full)")
+    parser.add_argument("--behind", action="store_true",
+                        help="only say how many releases come after the version the register states: exit 0 when none, 1 when "
+                             "some, 2 when it cannot tell")
     args = parser.parse_args(argv)
+    if args.behind and (args.older is not None or args.to is not None or args.new_rules != "line"):
+        parser.error("--behind compares the register with the latest release and prints no steps: leave out --from, --to and "
+                     "--new-rules")
     if args.older is not None and (args.to is not None or args.no_fetch):
         parser.error("--from compares two files and fetches nothing: leave out --to and --no-fetch, or --from")
     if args.older is None and args.source is not None:
@@ -739,6 +865,8 @@ def main(argv=None, out=None):
         parser.error("name the register alone, from the folder that holds it, such as: python3 .ratchet/checks/upgrade.py "
                      "register.json (not %s)" % args.register)
     try:
+        if args.behind:
+            return behind(args, out)
         if args.older is None:
             return one_command(args, out)
         script = os.path.join(os.path.dirname(sys.argv[0]), "check_register.py")
@@ -752,7 +880,7 @@ def main(argv=None, out=None):
             print("%s: %s" % (args.register, error), file=out)
             print("FAIL: the register cannot be read", file=out)
             return 1
-        return report(args.register, register, old, new, out, script)
+        return report(args.register, register, old, new, out, script, args.new_rules)
     except (registry.RegistryError, UpgradeError) as error:
         print("upgrade: cannot run: %s" % error, file=sys.stderr)
         return 2
