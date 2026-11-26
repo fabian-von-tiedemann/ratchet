@@ -70,7 +70,7 @@ Run these in the root of your own git repo.
 1. Fetch Ratchet at the latest release into `.ratchet`.
 
    ```sh
-   git clone --branch v0.15 https://github.com/fabian-von-tiedemann/ratchet .ratchet
+   git clone --branch v0.16 https://github.com/fabian-von-tiedemann/ratchet .ratchet
    ```
 
 2. See what it would write. This writes nothing.

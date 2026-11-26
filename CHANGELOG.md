@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.16 (unreleased)
+## 0.16 (2026-11-26)
 
 In short: a repo with rules and checks of its own can now map Ratchet's rules to them in `ratchet-map.json`, which the new `checks/map.py` checks and prints for the owner, and `init.py` in a new repo says which path it takes, and why. This repo's test of the dry run on the landing page compares it with the tag that the page fetches. No project needs to do anything, and no form of `ratchet.json` or `register.json` changes.
 
