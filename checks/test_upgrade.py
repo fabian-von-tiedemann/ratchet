@@ -29,6 +29,7 @@ sys.path.insert(0, HERE)
 import check_register  # noqa: E402
 import registry  # noqa: E402
 import run_pinned  # noqa: E402
+import testing  # noqa: E402
 import upgrade  # noqa: E402
 
 # Fixture under upgrade/faults/ -> what the upgrade must say when it is given that file as a Ratchet data file.
@@ -61,29 +62,10 @@ def sha256(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
-# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
-# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
-# own config, so that a script under test that runs git there starts none either.
-QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
-
-
 def git(directory, *args):
     """What git prints for args in directory, as text. No GIT_ variable, and no global or system config, is used."""
-    env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
-    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
-    if args[:1] == ("clone",):
-        args = args[:1] + tuple(part for name, value in QUIET for part in ("--config", "%s=%s" % (name, value))) + args[1:]
-    quiet = [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
-    result = subprocess.run(["git", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false"]
-                            + quiet + ["-C", directory] + list(args), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            universal_newlines=True)
-    if result.returncode != 0:
-        raise AssertionError("git %s: %s" % (" ".join(args), result.stdout))
-    if args[:1] == ("init",):
-        for name, value in QUIET:
-            git(directory, "config", name, value)
-    return result.stdout.strip()
+    return testing.git(directory, *args, env=testing.environment(drop="GIT_"), options=[
+        "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "advice.detachedHead=false"] + testing.quiet_options())
 
 
 def make_origin(directory, releases):
@@ -93,8 +75,7 @@ def make_origin(directory, releases):
     Those files are this repo's again in the next release."""
     shutil.copytree(ROOT, directory, ignore=shutil.ignore_patterns(*COPY_IGNORED))
     git(directory, "init", "-q")
-    for name, value in (("user.name", "Test"), ("user.email", "test@example.invalid"), ("gc.auto", "0"),
-                        ("maintenance.auto", "false")):
+    for name, value in (("user.name", "Test"), ("user.email", "test@example.invalid")):
         git(directory, "config", name, value)
     for release in releases:
         version, data, others = release if len(release) == 3 else release + ({},)
@@ -856,10 +837,8 @@ class OneCommand(FixtureTest):
         """Run, through /bin/sh from the root of the project, the one command the refusal printed to move .ratchet."""
         commands = re.findall(r"git -C \S+ checkout --detach \S+?(?=,| and|$)", output)
         self.assertEqual(len(commands), 1, output)
-        env = dict((k, v) for k, v in os.environ.items() if not k.startswith("GIT_"))
-        env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
-        result = subprocess.run(["/bin/sh", "-c", commands[0]], cwd=project, env=env, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, universal_newlines=True)
+        result = subprocess.run(["/bin/sh", "-c", commands[0]], cwd=project, env=testing.environment(drop="GIT_"),
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(result.returncode, 0, result.stdout)
         return commands[0]
 

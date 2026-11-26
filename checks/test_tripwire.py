@@ -30,6 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import registry  # noqa: E402
+import testing  # noqa: E402
 import tripwire  # noqa: E402
 
 HOOK = os.path.join(HERE, "tripwire.py")
@@ -61,22 +62,9 @@ DEFECTS = {
 VALID_BUT_NO_MATCH = ("expired", "other-command", "other-step")
 
 
-# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
-# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
-# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
-# own config, so that a script under test that runs git there starts none either.
-QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
-
-
 def git(cwd, *args):
-    quiet = [part for name, value in QUIET for part in ("-c", "%s=%s" % (name, value))]
-    subprocess.run(["git"] + quiet + list(args), cwd=cwd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                   env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
-                            GIT_AUTHOR_NAME="Test", GIT_AUTHOR_EMAIL="test@example.invalid",
-                            GIT_COMMITTER_NAME="Test", GIT_COMMITTER_EMAIL="test@example.invalid"))
-    if args[:1] == ("init",):
-        for name, value in QUIET:
-            git(cwd, "config", name, value)
+    testing.git(cwd, *args, env=testing.environment(drop=(), **testing.identity("Test")),
+                options=testing.quiet_options())
 
 
 def fresh(root, length, make):

@@ -19,6 +19,7 @@ import unittest.mock
 import from_base
 import generate
 import registry
+import testing
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -183,26 +184,17 @@ class AcrossPullRequests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, scratch)
         self.repo = os.path.join(scratch, "repo")
         shutil.copytree(ROOT, self.repo, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        self.env = dict(os.environ, HOME=scratch, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C",
-                        GIT_AUTHOR_NAME="Ratchet test", GIT_AUTHOR_EMAIL="test@example.invalid",
-                        GIT_COMMITTER_NAME="Ratchet test", GIT_COMMITTER_EMAIL="test@example.invalid",
-                        PYTHONDONTWRITEBYTECODE="1")
-        for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-            self.env.pop(name, None)
+        self.env = testing.environment(HOME=scratch, LC_ALL="C", PYTHONDONTWRITEBYTECODE="1",
+                                       **testing.identity("Ratchet test"))
         self.git("init", "-q", "-b", "main")
         self.git("config", "commit.gpgsign", "false")
         self.base = self.commit("the base")
 
     def git(self, *args):
-        result = subprocess.run(["git", "-C", self.repo] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                universal_newlines=True, env=self.env)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        return result.stdout.strip()
+        return testing.git(self.repo, *args, env=self.env)
 
     def commit(self, message):
-        self.git("add", "-A")
-        self.git("commit", "-q", "--allow-empty", "-m", message)
-        return self.git("rev-parse", "HEAD")
+        return testing.commit(self.repo, message, self.env)
 
     def edit(self, name, change):
         path = os.path.join(self.repo, name)

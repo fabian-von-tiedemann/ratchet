@@ -21,6 +21,7 @@ import unittest.mock
 import release
 import test_checks
 import test_release
+import testing
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -48,36 +49,18 @@ def changelog(*versions):
     return TITLE + "".join(ENTRIES[version] for version in versions)
 
 
-# No automatic gc or maintenance in a repository a test makes. git starts them in the background after a commit or a
-# fetch, and one still writing in .git is a likely, not a proven, cause of an intermittent "could not parse HEAD" and
-# of a removal that finds .git/objects/pack not empty. For this call, and, for init and clone, in the new repository's
-# own config, so that a script under test that runs git there starts none either.
-QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
-
-
 def git_environment(home):
     """git with no configuration but its own, so that a person's settings, such as signing, change nothing."""
-    environment = dict(os.environ, HOME=home, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, LC_ALL="C",
-                       GIT_CONFIG_COUNT=str(len(QUIET)))
-    for number, (name, value) in enumerate(QUIET):
+    environment = testing.environment(HOME=home, LC_ALL="C", GIT_CONFIG_COUNT=str(len(testing.QUIET)))
+    for number, (name, value) in enumerate(testing.QUIET):
         environment["GIT_CONFIG_KEY_%d" % number], environment["GIT_CONFIG_VALUE_%d" % number] = name, value
-    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
-        environment.pop(name, None)
     return environment
 
 
 def git(root, *args):
-    result = subprocess.run(
-        ["git", "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
-         "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"] + list(args),
-        cwd=root, env=git_environment(root), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
-    )
-    if result.returncode != 0:
-        raise AssertionError("git %s: %s" % (" ".join(args), result.stdout))
-    if args[:1] == ("init",):
-        for name, value in QUIET:
-            git(root, "config", name, value)
-    return result.stdout
+    return testing.git(root, *args, env=git_environment(root), options=[
+        "-c", "user.name=Ratchet test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false",
+        "-c", "tag.gpgsign=false", "-c", "init.defaultBranch=main"])
 
 
 # How long one script may run before the test fails it as hung. A script on its own takes seconds. The run of the whole
