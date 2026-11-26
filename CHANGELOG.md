@@ -2,7 +2,7 @@
 
 ## 0.17 (unreleased)
 
-In short: trying Ratchet on a repo with rules of its own now takes one page, and a new report tells how far 1.0 is. No project needs to do anything, and no form changes.
+In short: trying Ratchet on a repo with rules of its own now takes one page, a new report tells how far 1.0 is, and `upgrade.py --behind` tells a project it has fallen behind. No project needs to do anything, and no form changes.
 
 - `TRYING.md` gives the map-only mode as four steps on one page, with the form of `ratchet-map.json` and an example ([#174](https://github.com/fabian-von-tiedemann/ratchet/pull/174)).
 - `README.md` and `TRYING.md` say that Ratchet holds no opinion on how code looks: your own rules go in your register ([#175](https://github.com/fabian-von-tiedemann/ratchet/pull/175)).
@@ -10,6 +10,8 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, and
 - New, for this repo: `repo.short-pages` caps the words of `README.md`, `TRYING.md`, `STARTING.md`, `UPGRADING.md` and `HANDOVER.md`, and of "In short" and each bullet in the changelog from 0.17 on ([#176](https://github.com/fabian-von-tiedemann/ratchet/pull/176)).
 - `map.py` prints under each rule its `source` in `ratchet.json`, the skill or work it draws on, and `--json` gives it as a new field `source` ([#179](https://github.com/fabian-von-tiedemann/ratchet/pull/179)).
 - The command that copies `run_pinned.py` refuses, before it writes, anything at `<target>.new` and a target that is not a regular file, and the data reader refuses a FIFO rather than wait; `upgrade.py` prints the new command ([#184](https://github.com/fabian-von-tiedemann/ratchet/pull/184)).
+- New: `upgrade.py register.json --behind` says how many releases came after the register's version, and the workflow template runs it weekly in a job `behind`, which a project gets by copying the additions into its workflow ([#183](https://github.com/fabian-von-tiedemann/ratchet/pull/183)).
+- `upgrade.py` lists new rules by key under their part, `--new-rules full` prints their entries, and a JSON register from 0.3 through 0.11 gets the commands of its first leg, through `v0.11` ([#183](https://github.com/fabian-von-tiedemann/ratchet/pull/183)).
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
