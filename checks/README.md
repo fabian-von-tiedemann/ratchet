@@ -750,13 +750,13 @@ This one checks no rule. It is the report for criterion 1 of [D-2026-11-19-one-p
 2. **`register.json` and `templates/register.json`**: the field paths they use, at the top, in a row of `adopted`, copied or by reference, in its `translation`, and in a row of `own`. The two files are each read with `registry.parse_json`, which refuses a field twice, a byte order mark, NaN and Infinity, and the form at a tag is the union of the two. The registers under `fixtures/` are not read: the failing ones hold faults on purpose.
 3. **The changelog's own record**: the entries of the two newer tags, as `CHANGELOG.md` at the newest tag holds them, have no line that is exactly `Changes of form:`, the line under which AGENTS.md ("How to write the changelog", point 3) lists every change of form. The entry of the oldest tag may: it is the change that started the count.
 
-The date of a tag is the date in its heading, `## X.Y (YYYY-MM-DD)`, in `CHANGELOG.md` at the newest tag, as [released_text.py](#released_textpy) holds released entries to their tags. It says:
+The date of a tag is the date in its heading, `## X.Y (YYYY-MM-DD)`, in `CHANGELOG.md` at the newest tag, as [released_text.py](#released_textpy) holds released entries to their tags. Every release from `v0.16` on up to the newest that this changelog dates must have its tag in ROOT, and git must list the tags without a warning, so that a tag not fetched, or one whose ref git cannot read and leaves out, never makes the two tags around it look like neighbours. It says:
 
 - **holds**, exit 0, when the form is the same at all three tags and the oldest is dated at least 30 days before the newest;
 - **does not hold**, exit 1, naming each reason: each difference of form between two neighbouring tags, each entry that lists a change of form, and the days short. Fewer than three tags from `v0.16` on is also "does not hold", naming how many there are, since the answer is known;
-- **cannot tell**, exit 2, naming what it could not read: ROOT is not the top of a git checkout, there are no tags, a tag is of another form, a file at a counted tag is missing, not strict UTF-8, or does not read strictly, or a counted tag has no entry, more than one, or one with no date or a date that does not exist.
+- **cannot tell**, exit 2, naming what it could not read: ROOT is not the top of a git checkout, ROOT is a partial clone, git warns while it lists the tags, a release from `v0.16` on that the newest changelog dates has no tag, there are no tags, a tag is of another form, a file at a counted tag is missing, not strict UTF-8, or does not read strictly, or a counted tag has no entry, more than one, or one with no date or a date that does not exist.
 
-Every run ends with two lines: that the count starts at `v0.16`, and that parts 1 and 2 compare the fields the files use and part 3 sees a change of form that was recorded, not whether the record is complete. It writes nothing, reaches no network, writes no bytecode, and runs git only as `rev-parse`, `tag --list` and `show <tag>:<path>`, through `released_text.git`.
+Every run ends with two lines: that the count starts at `v0.16`, and that parts 1 and 2 compare the fields the files use and part 3 sees a change of form that was recorded, not whether the record is complete. It writes nothing, reaches no network, writes no bytecode, and runs git only as `rev-parse`, `config --get-regexp`, `tag --list` and `show <tag>:<path>`, each with `GIT_NO_LAZY_FETCH=1`. A partial clone, marked by `extensions.partialClone` or a `remote.<name>.promisor`, could fetch a file a tag holds as it is read, on a git that does not honour that variable, so it is refused before anything is read.
 
 **Against which threat.** Mistakes in bookkeeping, as [the threat model](#the-threat-model) says of every check: a field added or dropped in a minor version that no one listed, or a change of form listed in the changelog and forgotten when someone says the criterion holds. Parts 1 and 2 see only fields, so a change in what a field means, as in 0.12, when a row by reference of a text-only rule took a `where`, keeps them equal: part 3 is the bookkeeping that names it.
 
@@ -790,7 +790,11 @@ Every run ends with two lines: that the count starts at `v0.16`, and that parts 
 | `ratchet.json` at a tag with a field twice, a byte order mark, a field in a rule `load_older` does not know, bytes that are not UTF-8, or no `ratchet.json` | Cannot tell, without a traceback |
 | A register at a tag with a field twice, a byte order mark, NaN, or a row that is not an object | Cannot tell |
 | ROOT a folder inside a checkout, or a folder outside any | Cannot tell |
-| A run | The seeded repo is left as it was, and git runs only as `rev-parse`, `tag --list` and `show` |
+| A middle tag of four, `v0.18`, whose entry lists a change of form, with its ref broken so that git leaves it out of the list and warns | Cannot tell, naming the warning, never "holds" from `v0.17` to `v0.19` |
+| The same four tags with `v0.18` not here, while the changelog at `v0.19` dates 0.18 | Cannot tell, naming the release with no tag |
+| A partial clone, `--filter=blob:none` | Cannot tell, and no object is fetched |
+| A run | The seeded repo is left as it was, and git runs only as `rev-parse`, `config --get-regexp`, `tag --list` and `show` |
+| A run from a copy of the checks, with bytecode allowed | No file is written beside the script |
 
 The run on this repo's own checkout is not a test: it changes with every tag. On 2026-11-26, with one tag from `v0.16` on, it says "does not hold".
 

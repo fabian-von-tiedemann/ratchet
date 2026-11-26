@@ -130,9 +130,62 @@ class Holds(Seeded):
         with unittest.mock.patch.object(released_text.subprocess, "run", recorded), \
                 unittest.mock.patch.dict(os.environ, test_released_text.git_environment(self.root)):
             self.assertEqual(form_age.judge(self.root)[0], 0)
-        self.assertEqual(set(command[0] for command in commands), {"rev-parse", "tag", "show"})
+        self.assertEqual(set(command[0] for command in commands), {"rev-parse", "config", "tag", "show"})
         self.assertIn(["tag", "--list"], commands)
         self.assertTrue(all(command == ["tag", "--list"] for command in commands if command[0] == "tag"))
+        self.assertTrue(all(command == ["config", "--get-regexp"] for command in commands if command[0] == "config"))
+
+    def test_writes_no_bytecode_beside_the_script(self):
+        """The script, run from a copy of the checks with bytecode allowed, leaves that copy as it was."""
+        self.seed()
+        here = os.path.dirname(os.path.abspath(__file__))
+        copied = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, copied)
+        for name in os.listdir(here):
+            if name.endswith(".py"):
+                shutil.copy(os.path.join(here, name), copied)
+        before = sorted(os.listdir(copied))
+        environment = test_released_text.git_environment(self.root)
+        environment.pop("PYTHONDONTWRITEBYTECODE", None)
+        result = subprocess.run([sys.executable, os.path.join(copied, SCRIPT), self.root], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, universal_newlines=True, cwd=self.root, env=environment)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(sorted(os.listdir(copied)), before)
+
+
+class TagsNotAllRead(Seeded):
+    FOUR = ("v0.16", "v0.17", "v0.18", "v0.19")
+    DATES = ("2026-11-26", "2026-12-10", "2026-12-20", "2026-12-30")
+
+    def test_a_tag_git_cannot_read_cannot_tell(self):
+        """A middle tag whose ref is broken: git leaves it out of the list and warns, and the two tags around it are
+        never compared as neighbours."""
+        self.seed(tags=self.FOUR, dates=self.DATES, form=("0.18",))
+        self.assertReport(1, "form_age: does not hold.", "the entry of 0.18 lists a change of form")
+        with open(os.path.join(self.root, ".git", "refs", "tags", "v0.18"), "w"):
+            pass
+        self.assertReport(2, "form_age: cannot tell.", "git warned while it listed the tags")
+
+    def test_a_dated_release_with_no_tag_cannot_tell(self):
+        """A tag not fetched: the newest changelog dates 0.18, and v0.18 is not here."""
+        self.seed(tags=self.FOUR, dates=self.DATES, form=("0.18",))
+        git(self.root, "tag", "-d", "v0.18")
+        self.assertReport(2, "form_age: cannot tell.", "the release 0.18 is dated there and has no tag v0.18 here")
+
+    def test_a_partial_clone_cannot_tell_and_fetches_nothing(self):
+        """A partial clone could fetch each file the report asks for. It is refused before anything is read."""
+        self.seed()
+        git(self.root, "config", "uploadpack.allowFilter", "true")
+        clone = tempfile.mkdtemp(prefix="ratchet-test-")
+        self.addCleanup(shutil.rmtree, clone)
+        git(clone, "clone", "-q", "--no-checkout", "--filter=blob:none", "file://" + self.root, "partial")
+        partial = os.path.join(clone, "partial")
+        packs = os.path.join(partial, ".git", "objects", "pack")
+        before = sorted(os.listdir(packs))
+        found, out = run(SCRIPT, partial, cwd=partial)
+        self.assertEqual(found, 2, out)
+        self.assertIn("is a partial clone", out)
+        self.assertEqual(sorted(os.listdir(packs)), before)
 
 
 class FormDiffers(Seeded):

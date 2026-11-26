@@ -16,19 +16,25 @@ the form at each with the form at the tag before it:
 3. The changelog's own record: the entries of the two newer tags, as CHANGELOG.md at
    the newest tag holds them, have no line that is exactly "Changes of form:".
 
-The date of a tag is the date in its heading in CHANGELOG.md at the newest tag.
+The date of a tag is the date in its heading in CHANGELOG.md at the newest tag. Every
+release from v0.16 on that changelog dates must have its tag here, so that a tag not
+fetched, or one git cannot read, never makes two other tags look like neighbours.
 
 Exit 0: holds. The form is the same at all three tags, and the oldest is dated at
 least 30 days before the newest.
 Exit 1: does not hold, with each reason: a difference of form between two
 neighbouring tags, an entry that lists a change of form, the days short, or fewer
 than three tags from v0.16 on.
-Exit 2: cannot tell. ROOT is not the top of a git checkout, there are no tags, a tag
-is not of the form vMAJOR.MINOR, or a file at a counted tag is missing, not strict
-UTF-8, or does not read strictly, or a counted tag has no dated heading.
+Exit 2: cannot tell. ROOT is not the top of a git checkout, it is a partial clone, git
+warns while it lists the tags, there are no tags, a tag is not of the form
+vMAJOR.MINOR, a release from v0.16 on that the changelog dates has no tag, or a file
+at a counted tag is missing, not strict UTF-8, or does not read strictly, or a counted
+tag has no dated heading.
 
 It is a report for the maintainer's decision on 1.0, in no required job. It writes
-nothing, reaches no network, and runs git only as rev-parse, tag --list and show.
+nothing, reaches no network, and runs git only as rev-parse, config --get-regexp, tag --list
+and show, with GIT_NO_LAZY_FETCH=1. A partial clone, which could fetch an object that
+a read asks for, is refused before anything is read.
 
 Standard library only. Run on Python 3.9 and 3.12.
 """
@@ -46,6 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import argparse  # noqa: E402
 import datetime  # noqa: E402
 import re  # noqa: E402
+import subprocess  # noqa: E402
 
 import registry  # noqa: E402
 import released_text  # noqa: E402
@@ -75,11 +82,21 @@ class CannotTell(Exception):
     """The run cannot read what it needs."""
 
 
-def git(root, *args):
+def run_git(root, *args):
+    """(exit code, stdout bytes, stderr bytes) of a read-only git command. GIT_NO_LAZY_FETCH=1 keeps git from fetching
+    an object it lacks, where the git in use honours it. Raises CannotTell when git cannot run."""
     try:
-        return released_text.git(root, *args)
-    except released_text.GitError as error:
+        result = subprocess.run(["git", "-C", root] + list(args), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+    except OSError as error:
         raise CannotTell("cannot run git: %s" % error)
+    return result.returncode, result.stdout, result.stderr
+
+
+def git(root, *args):
+    """The bytes git prints, or None when it fails."""
+    code, out, _ = run_git(root, *args)
+    return out if code == 0 else None
 
 
 def counted_tags(root):
@@ -87,9 +104,20 @@ def counted_tags(root):
     toplevel = git(root, "rev-parse", "--show-toplevel")
     if toplevel is None or os.path.realpath(toplevel.decode("utf-8", "replace").strip()) != os.path.realpath(root):
         raise CannotTell("%s is not the top of a git checkout" % root)
-    listed = git(root, "tag", "--list")
-    if listed is None:
+    # A partial clone fetches an object it lacks when a read asks for it, on a git that does not honour
+    # GIT_NO_LAZY_FETCH. The report reaches no network, so it reads none.
+    # git marks one with extensions.partialClone, or, as newer versions write it, with remote.<name>.promisor.
+    code, promisor, _ = run_git(root, "config", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor)$")
+    if code == 0 and any(line.split(None, 1)[1:] != [b"false"] for line in promisor.splitlines() if line.strip()):
+        raise CannotTell("%s is a partial clone, which may fetch the files a tag holds as they are read. Run the report on "
+                         "a full clone with its tags" % root)
+    code, listed, warned = run_git(root, "tag", "--list")
+    if code != 0:
         raise CannotTell("cannot list the tags of %s" % root)
+    if warned.strip():
+        # git leaves out a tag it cannot read, and says so only here.
+        raise CannotTell("git warned while it listed the tags of %s: %s" % (
+            root, warned.decode("utf-8", "replace").strip().replace("\n", "; ")))
     found, wrong = [], []
     for tag in listed.decode("utf-8", "replace").split():
         match = TAG.match(tag)
@@ -156,19 +184,25 @@ def register_at(root, tag):
     return paths
 
 
-def changelog_at(root, tag, versions):
-    """{version: (date, entry)} for each version, from CHANGELOG.md at a tag. Raises CannotTell."""
+def changelog_at(root, tag, versions, tagged):
+    """{version: (date, entry)} for each version, from CHANGELOG.md at a tag. Raises CannotTell, also when the
+    changelog dates a release from FIRST on, up to the newest version, that is not among the tagged versions."""
     name = "CHANGELOG.md at %s" % tag
     try:
         text = released_text.text(show(root, tag, "CHANGELOG.md"), name)
     except ValueError as error:
         raise CannotTell(str(error))
-    found = {}
+    found, untagged = {}, []
+    newest = upgrade.version_key(versions[-1])
     for heading, entry in released_text.entries(text):
         version = released_text.version_of(heading)
         if version in versions:
             found.setdefault(version, []).append((heading, entry))
+        elif DATED.match(heading) and FIRST <= upgrade.version_key(version) <= newest and version not in tagged:
+            untagged.append(version)
     result, problems = {}, []
+    problems += ["%s: the release %s is dated there and has no tag v%s here, so the tags counted may not be neighbours. "
+                 "Fetch the tags: git fetch --tags" % (name, version, version) for version in untagged]
     for version in versions:
         held = found.get(version, [])
         if len(held) != 1:
@@ -200,6 +234,7 @@ def judge(root):
     if len(counted) < TAGS:
         return 1, "does not hold", ["%d tag(s) from %s on (%s), and %d are needed" % (
             len(counted), FIRST_TAG, ", ".join(tag for _, tag in reversed(counted)) or "none", TAGS)]
+    tagged = set(version for version, _ in counted)
     counted = list(reversed(counted[:TAGS]))
     versions = [version for version, _ in counted]
     tags = [tag for _, tag in counted]
@@ -211,7 +246,7 @@ def judge(root):
             except CannotTell as error:
                 problems += str(error).split("\n")
     try:
-        dated = changelog_at(root, tags[-1], versions)
+        dated = changelog_at(root, tags[-1], versions, tagged)
     except CannotTell as error:
         problems += str(error).split("\n")
     if problems:
