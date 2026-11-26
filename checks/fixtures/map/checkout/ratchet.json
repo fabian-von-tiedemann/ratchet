@@ -3,11 +3,13 @@
   "rules": [
     {
       "key": "ratchet.alpha",
-      "status": "core"
+      "status": "core",
+      "source": "example/skills `tdd`"
     },
     {
       "key": "ratchet.beta",
-      "status": "core"
+      "status": "core",
+      "source": ""
     },
     {
       "key": "ratchet.gamma",
