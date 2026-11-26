@@ -5,7 +5,7 @@ Generated from `register.json` by Ratchet's `check_register.py`. Never edit this
 
 ### Rules from Ratchet
 
-Ratchet version: 0.16. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
+Ratchet version: 0.17. The rows below are copied verbatim from Ratchet at that version. The project chooses which rows it adopts and never rewrites one.
 
 | Key | Rule | Ratchet | Source |
 |---|---|---|---|
@@ -20,7 +20,7 @@ Ratchet version: 0.16. The rows below are copied verbatim from Ratchet at that v
 
 ### Rules adopted by reference
 
-Ratchet version: 0.16. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
+Ratchet version: 0.17. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
 
 | Key | Stands in | Mode |
 |---|---|---|

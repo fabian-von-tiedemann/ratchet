@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17 (unreleased)
+
+In short: a new report, `checks/form_age.py`, says whether the form of `ratchet.json` and `register.json` has been unchanged for three tags and at least 30 days, the first criterion for 1.0. It is run by hand and blocks no merge. No project needs to do anything, and no form of `ratchet.json` or `register.json` changes.
+
+- New: `checks/form_age.py`, the report for the first criterion of [D-2026-11-19-one-point-oh](decisions/D-2026-11-19-one-point-oh.md). It reads the last three tags from `v0.16` on, compares the fields of `ratchet.json`, `register.json` and `templates/register.json` at each, and reads the line `Changes of form:` in the changelog entries of the two newer tags and the dates in their headings. It says "holds", "does not hold" with each reason, or "cannot tell" with what it could not read, and writes nothing. On the day it was built it says "does not hold": one tag from `v0.16` on ([#70](https://github.com/fabian-von-tiedemann/ratchet/issues/70)).
+
+<!-- generated:count -->
+Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
+<!-- /generated -->
+
 ## 0.16 (2026-11-26)
 
 In short: a repo with rules and checks of its own can now map Ratchet's rules to them in `ratchet-map.json`, which the new `checks/map.py` checks and prints for the owner, and `init.py` in a new repo says which path it takes, and why. This repo's test of the dry run on the landing page compares it with the tag that the page fetches. No project needs to do anything, and no form of `ratchet.json` or `register.json` changes.

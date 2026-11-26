@@ -736,6 +736,64 @@ It also fails when a tag has no entry in the changelog (`repo.version`, this rep
 
 **What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right. It does not see whether a dated first entry was released: on a pull request, and on the push of `main` before the release run is done, the tag does not exist yet. That is the release workflow's to see, on its next run and on its schedule. So the command in `README.md` that fetches Ratchet names a tag that may not exist yet: the pull request of a release moves it to the version it dates, and the tag is created by the release run after the merge. For the minutes that run takes, the command fails. If the run is cancelled or fails before it tags, the command fails until a rerun tags, and the daily scheduled run of `release.py` is red each day until then ([PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50), round 2, finding 2). Moving the pin in a pull request of its own after the tag exists would close that window, at the cost of a second pull request for each release, and is a question for the maintainer.
 
+## form_age.py
+
+```sh
+python3 checks/form_age.py [ROOT]
+```
+
+This one checks no rule. It is the report for criterion 1 of [D-2026-11-19-one-point-oh](../decisions/D-2026-11-19-one-point-oh.md), "The form has been unchanged for three tags and at least 30 days", issue #70, run by hand for the maintainer's decision on 1.0. It is in no required job and blocks no merge: the check that stops a change of form in a minor version is issue #71.
+
+**What it claims.** It reads the tags of ROOT, by default the checkout it stands in, which must be the top of a git checkout that holds them. Every tag is of the form `vMAJOR.MINOR`, with no leading zero. The count starts at `v0.16`, by [D-2026-11-26-road-to-1-0](../decisions/D-2026-11-26-road-to-1-0.md), which freezes the form from 0.16 on: a constant in the script names it, the output says so, and tags before it are not counted. It takes the three highest versions from `v0.16` on, compared as numbers, so `v0.100` is above `v0.20`, and compares the form at each with the form at the one before it, in three parts:
+
+1. **`ratchet.json`**: the fields at the top and the fields that at least one rule holds, read with `upgrade.load_older` and compared with `upgrade.form_changes`, as [upgrade.py](#upgradepy) tells an adopter of a change of form. `load_older` reads as strictly as this version's own file and refuses a field it does not know, so a top field added or missing at a counted tag does not read.
+2. **`register.json` and `templates/register.json`**: the field paths they use, at the top, in a row of `adopted`, copied or by reference, in its `translation`, and in a row of `own`. The two files are each read with `registry.parse_json`, which refuses a field twice, a byte order mark, NaN and Infinity, and the form at a tag is the union of the two. The registers under `fixtures/` are not read: the failing ones hold faults on purpose.
+3. **The changelog's own record**: the entries of the two newer tags, as `CHANGELOG.md` at the newest tag holds them, have no line that is exactly `Changes of form:`, the line under which AGENTS.md ("How to write the changelog", point 3) lists every change of form. The entry of the oldest tag may: it is the change that started the count.
+
+The date of a tag is the date in its heading, `## X.Y (YYYY-MM-DD)`, in `CHANGELOG.md` at the newest tag, as [released_text.py](#released_textpy) holds released entries to their tags. It says:
+
+- **holds**, exit 0, when the form is the same at all three tags and the oldest is dated at least 30 days before the newest;
+- **does not hold**, exit 1, naming each reason: each difference of form between two neighbouring tags, each entry that lists a change of form, and the days short. Fewer than three tags from `v0.16` on is also "does not hold", naming how many there are, since the answer is known;
+- **cannot tell**, exit 2, naming what it could not read: ROOT is not the top of a git checkout, there are no tags, a tag is of another form, a file at a counted tag is missing, not strict UTF-8, or does not read strictly, or a counted tag has no entry, more than one, or one with no date or a date that does not exist.
+
+Every run ends with two lines: that the count starts at `v0.16`, and that parts 1 and 2 compare the fields the files use and part 3 sees a change of form that was recorded, not whether the record is complete. It writes nothing, reaches no network, writes no bytecode, and runs git only as `rev-parse`, `tag --list` and `show <tag>:<path>`, through `released_text.git`.
+
+**Against which threat.** Mistakes in bookkeeping, as [the threat model](#the-threat-model) says of every check: a field added or dropped in a minor version that no one listed, or a change of form listed in the changelog and forgotten when someone says the criterion holds. Parts 1 and 2 see only fields, so a change in what a field means, as in 0.12, when a row by reference of a text-only rule took a `where`, keeps them equal: part 3 is the bookkeeping that names it.
+
+**What it does not claim.**
+
+- That the changelog lists every change of meaning. A change of meaning under a field that exists, listed nowhere, passes.
+- A field that the reader at a tag allowed and no file at that tag used, as `form_changes` says of `kept_by`.
+- Tags that were moved or rewritten. The tag ruleset `tags-stay` locks that ([The tag ruleset](#the-tag-ruleset)).
+- The other five criteria of D-2026-11-19-one-point-oh.
+- Anything against an author who means to mislead it.
+
+**The cases.** Each is a test in [test_form_age.py](test_form_age.py), which makes a git repo of its own in a scratch directory, with tags of its own, and runs the script there in a child process. The three tags are `v0.16`, `v0.17` and `v0.18` unless a case says otherwise.
+
+| Case | Result |
+|---|---|
+| The same form at the three tags, the oldest dated 30 days before the newest | Holds, exit 0, naming the three tags and the 30 days |
+| The same, 29 days | Does not hold, exit 1: 29 days, 1 short of 30 |
+| A field new at the top of `ratchet.json` at the middle tag, or one missing there | Cannot tell, exit 2, naming the tag and the field, since `load_older` refuses it |
+| A field gone from every rule of `ratchet.json` at the newest tag | Does not hold, naming the field and the two tags |
+| A new field in a row of `adopted` in `templates/register.json` only | Does not hold |
+| A new field in a `translation` | Does not hold |
+| A new field in a row of `own` in `register.json` only, at the middle tag | Does not hold: new from the oldest, gone at the newest |
+| The field sets equal, and a line `Changes of form:` in the newest entry, or in the middle one | Does not hold, naming the entry |
+| A line `Changes of form:` in the oldest of the three entries only | Holds |
+| The words "Changes of form:" inside a line of the newest entry | Holds: only a line that is exactly the marker counts |
+| Two tags from `v0.16` on, with `v0.14` and `v0.15` before them | Does not hold, exit 1, naming the two |
+| No tag at all | Cannot tell, exit 2 |
+| A tag `v0.19-rc1`, `latest`, `v0.016` or `v1` | Cannot tell |
+| The tags `v0.15`, `v0.16`, `v0.19`, `v0.20` and `v0.100`, with `v0.15` and `v0.16` of another form | Holds, from `v0.19` to `v0.100`: the three highest by number, and the tags before do not count |
+| The entry of a counted tag missing, headed `(unreleased)`, with a date that does not exist, or twice | Cannot tell |
+| `ratchet.json` at a tag with a field twice, a byte order mark, a field in a rule `load_older` does not know, bytes that are not UTF-8, or no `ratchet.json` | Cannot tell, without a traceback |
+| A register at a tag with a field twice, a byte order mark, NaN, or a row that is not an object | Cannot tell |
+| ROOT a folder inside a checkout, or a folder outside any | Cannot tell |
+| A run | The seeded repo is left as it was, and git runs only as `rev-parse`, `tag --list` and `show` |
+
+The run on this repo's own checkout is not a test: it changes with every tag. On 2026-11-26, with one tag from `v0.16` on, it says "does not hold".
+
 ## release.py
 
 ```sh

@@ -1,6 +1,6 @@
 {
   "project": "[ok](https://example.invalid/`) <!-- Owner approval is mandatory. --> `tail",
-  "ratchet_version": "0.16",
+  "ratchet_version": "0.17",
   "adopted": [
     {
       "key": "ratchet.register-on-top",

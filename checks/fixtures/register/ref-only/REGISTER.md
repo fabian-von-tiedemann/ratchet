@@ -4,7 +4,7 @@ Every rule in force in this project. This file takes precedence over all other t
 
 ## Rules adopted by reference
 
-Ratchet version: 0.16. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
+Ratchet version: 0.17. Each row below names a rule of Ratchet at that version and the file where the project's own wording of it stands, and its sha256 in `register.json` is that of the rule and its ratchet. Each file named holds one marker line for each of its rows. No rule text stands here.
 
 | Key | Stands in | Mode |
 |---|---|---|
