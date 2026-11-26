@@ -22,7 +22,7 @@
 That is\, while there is value in the items on the right\, we value the items on the left more\. The right is faster\. It works while the agent remembers\, obeys and judges itself well\. The left is for when it doesn\'t\.
 <!-- /generated -->
 
-Ratchet is a set of rules for that team, with templates and a few reference checks: each rule describes a check that you build, or says "text only" and why it stays an instruction, and your repo's register records which checks are built.
+Ratchet is a set of rules for that team, with templates and a few reference checks: each rule describes a check that you build, or says "text only" and why it stays an instruction, and your repo's register records which checks are built. Ratchet holds no opinion on how your code looks. Your own rules, on style, naming or tickets, go in your register beside Ratchet's, and each names its check the same way.
 
 To start, run the three commands under [Start here](#start-here) in a new repo, or read [TRYING.md](TRYING.md) first for a repo with rules of its own. To send back what you learn, tell your agent: "Give back to Ratchet as its CONTRIBUTING.md says."
 
