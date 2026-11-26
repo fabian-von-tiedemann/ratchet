@@ -2132,5 +2132,62 @@ class NestedTooDeeply(unittest.TestCase):
         self.assertEqual(self.run_reader('["\\\\",' + "[" * 99 + "]" * 99 + "]"), "read\n")
 
 
+class DataFileNotRegular(unittest.TestCase):
+    """The assessment of checks/ (D-2026-11-26-checks-assessment, section 4): registry.load_json opened a path without
+    looking at what it was, so generate.py --check hung on a FIFO in place of ratchet.json. Every path it reads is
+    opened without blocking and read only when it is a regular file. A link is followed, as before."""
+
+    VALID = b'{"a": 1}\n'
+
+    def test_generate_refuses_a_fifo_in_place_of_ratchet_json_and_does_not_wait_on_it(self):
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("no FIFOs on this system")
+        root = scratch(self)
+        os.mkfifo(os.path.join(root, "ratchet.json"))
+        try:
+            result = subprocess.run([sys.executable, "-B", os.path.join(HERE, "generate.py"), "--check", "--root", root],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
+                                    timeout=10)
+        except subprocess.TimeoutExpired:
+            self.fail("generate.py --check waited on a FIFO in place of ratchet.json for 10 seconds")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("ratchet.json: not a valid data file: it is not a regular file", result.stdout)
+        self.assertNotIn("Traceback", result.stdout)
+
+    def test_a_fifo_a_folder_and_a_device_are_refused(self):
+        # Each is read in a child process stopped after 10 seconds, so a reader that waits on a FIFO fails the test
+        # and never hangs the suite.
+        root = scratch(self)
+        paths = {"folder": root, "device": os.devnull}
+        if hasattr(os, "mkfifo"):
+            paths["fifo"] = os.path.join(root, "fifo.json")
+            os.mkfifo(paths["fifo"])
+        code = ("import sys\nsys.dont_write_bytecode = True\nsys.path.insert(0, sys.argv[1])\nimport registry\n"
+                "try:\n    registry.load_json(sys.argv[2])\nexcept registry.RegistryError as error:\n    print(error)\n"
+                "else:\n    print('read')\n")
+        for kind, path in sorted(paths.items()):
+            with self.subTest(kind=kind):
+                try:
+                    result = subprocess.run([sys.executable, "-B", "-c", code, HERE, path], stdout=subprocess.PIPE,
+                                            stderr=subprocess.STDOUT, universal_newlines=True, timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.fail("registry.load_json waited on a %s for 10 seconds" % kind)
+                self.assertEqual((result.returncode, result.stdout),
+                                 (0, "not a valid data file: it is not a regular file\n"))
+
+    def test_a_regular_file_and_a_link_to_one_are_read_as_before(self):
+        import registry
+        root = scratch(self)
+        path = os.path.join(root, "data.json")
+        with open(path, "wb") as handle:
+            handle.write(self.VALID)
+        self.assertEqual(registry.load_json(path), {"a": 1})
+        os.symlink(path, os.path.join(root, "link.json"))
+        self.assertEqual(registry.load_json(os.path.join(root, "link.json")), {"a": 1})
+        with self.assertRaises(registry.RegistryError) as raised:
+            registry.load_json(os.path.join(root, "missing.json"))
+        self.assertTrue(str(raised.exception).startswith("not a valid data file: [Errno 2]"), str(raised.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
