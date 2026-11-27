@@ -39,8 +39,13 @@ Standard library only.
 import datetime
 import os
 import re
+import sys
 
-import registry
+# checks/ and its own directory on the path, named explicitly, as in every script here, so that python3 -I finds them.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import registry  # noqa: E402
 
 FOLDER = "decisions"
 # The first date on which a decision must name what it replaces, amends or ends: the day after the pull request that
