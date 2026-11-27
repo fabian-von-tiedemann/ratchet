@@ -218,19 +218,27 @@ def expected(root):
     entries = entry_problems(folder)
     problems = [problem for _, problem in entries]
     bad = set(name for name, _ in entries)
-    texts, records = {}, {}
+    texts, records, refused = {}, {}, set()
     for name in sorted(os.listdir(folder)):
         if name in bad:
             continue
         ident = name[:-3]
         path = os.path.join(folder, name)
+        with open(path, "rb") as handle:
+            if b"\r" in handle.read():
+                # registry.read reads CRLF as LF, so a status written back would change the line endings of the
+                # verbatim text. A decision file has LF line endings only, and one with a carriage return is not
+                # read or written (review of #202).
+                problems.append("decisions/%s: holds a carriage return. A decision file has LF line endings only" % name)
+                refused.add(ident)
+                continue
         text = registry.read(path)
         texts[ident] = (path, text)
         record, found = parse(ident, text)
         problems += found
         if record is not None:
             records[ident] = record
-    known = set(texts)
+    known = set(texts) | refused
     before = len(problems)
     for ident in sorted(records):
         for field in RELATIONS:
@@ -243,8 +251,9 @@ def expected(root):
                     problems.append("decisions/%s.md: %s names %s, which is dated after it" % (ident, field, other))
     for cycle in cycles(records):
         problems.append("decisions/: these decisions name each other in a cycle: %s" % " -> ".join(cycle + cycle[:1]))
-    if len(problems) > before:
-        # A name that is wrong gives no status to write, so no decision file is written until the names are right.
+    if len(problems) > before or refused:
+        # A name that is wrong gives no status to write, and a file that is refused cannot take one, so no decision file
+        # is written until both are right.
         return {}, problems
     lines = status_lines(records)
     result = {}

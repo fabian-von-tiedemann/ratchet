@@ -204,6 +204,23 @@ class Decisions(FixtureTest):
         self.assertEqual((files, len(problems)), ({}, 1))
 
 
+    def test_a_carriage_return_is_refused_and_no_decision_is_written(self):
+        # Review of #202: a CRLF file read as LF and written back with its status changed the verbatim text's bytes.
+        root = self.folder({"D-2026-11-20-old": OLD,
+                            "D-2026-11-28-a": GOOD % "- Replaces: none\n- Amends: D-2026-11-20-old (a point)\n- Ends: none\n"})
+        path = os.path.join(root, "decisions", "D-2026-11-20-old.md")
+        with open(path, "rb") as handle:
+            data = handle.read()
+        for bad in (data.replace(b"\n", b"\r\n"), data.replace(b"## Answer", b"## Answer\r", 1)):
+            with self.subTest(crlf=bad.count(b"\r\n")):
+                with open(path, "wb") as handle:
+                    handle.write(bad)
+                files, problems = decisions.expected(root)
+                self.assertEqual(files, {})
+                self.assertEqual(problems, ["decisions/D-2026-11-20-old.md: holds a carriage return. A decision file has LF "
+                                            "line endings only"])
+
+
 class ThisRepo(RepoCopy, unittest.TestCase):
     """The decisions of this repo, through generate.py itself."""
 
