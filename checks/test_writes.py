@@ -9,8 +9,8 @@ registry.write_file, behind a gate that refuses while git tracks a symbolic link
 tree, or, outside a git work tree, while any entry is one, and refuses a root that
 passes through a link. init.py writes with its own functions, each of which refuses a
 link on the path it writes. Every script that runs as a program sets
-sys.dont_write_bytecode before it imports a module from checks/. The sweep below reads
-every script under checks/ with ast and fails on a call that writes anywhere but in
+sys.dont_write_bytecode before it imports a module from checks/ or maintain/. The sweep below reads
+every script under checks/ and maintain/ with ast and fails on a call that writes anywhere but in
 the places named in WRITERS. The trees with links, and the git work trees, are made
 here, in a directory of their own, and never committed: a link in this repo would make
 generate.py refuse to run on it. Standard library only.
@@ -37,7 +37,7 @@ import testing  # noqa: E402
 
 REFUSED = "Replace each link with a regular file"
 
-# The places each script under checks/ may write, by the name of the function that holds the call: a class's method
+# The places each script under checks/ or maintain/ may write, by the name of the function that holds the call: a class's method
 # as Class.method, a function inside another as outer.inner. A script that is not named here may not write at all.
 # check_register.py writes nothing, and generate.py writes only through registry.write_file, so neither is named. The test files,
 # test_*.py, are not swept: they are the suite, not the checks, they write only into directories they make with
@@ -182,8 +182,23 @@ def sweep(path):
     return found
 
 
+def code_names():
+    """The name of every .py file directly in checks/ and in maintain/, the two directories of the code of the checks
+    (D-2026-11-27-maintain-apart). A name stands in one of them only, so each name here is one file."""
+    names = [name for folder in (HERE, testing.MAINTAIN) for name in os.listdir(folder) if name.endswith(".py")]
+    doubled = sorted(set(name for name in names if names.count(name) > 1))
+    if doubled:
+        raise AssertionError("a name stands in both checks/ and maintain/: %s" % ", ".join(doubled))
+    return names
+
+
+def path(name):
+    """The path of the script with this name, in checks/ or in maintain/."""
+    return testing.script(ROOT, name)
+
+
 def scripts():
-    return sorted(name for name in os.listdir(HERE) if name.endswith(".py") and not name.startswith("test_"))
+    return sorted(name for name in code_names() if not name.startswith("test_"))
 
 
 def scratch_dir(case):
@@ -195,7 +210,7 @@ def scratch_dir(case):
 
 
 def checks_modules():
-    return set(name[:-3] for name in os.listdir(HERE) if name.endswith(".py"))
+    return set(name[:-3] for name in code_names())
 
 
 def no_bytecode_problem(path):
@@ -230,10 +245,11 @@ def no_bytecode_problem(path):
 
 
 def runnable():
-    """The scripts under checks/ that run as programs: each holds if __name__ == "__main__". The tests are not among them."""
+    """The scripts under checks/ and maintain/ that run as programs: each holds if __name__ == "__main__". The tests are
+    not among them."""
     found = []
     for name in scripts():
-        with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+        with open(path(name), encoding="utf-8") as handle:
             if 'if __name__ == "__main__":' in handle.read():
                 found.append(name)
     return found
@@ -241,7 +257,7 @@ def runnable():
 
 def run(script, *args, root=ROOT, cwd=None, env=None):
     result = subprocess.run(
-        [sys.executable, "-B", os.path.join(root, "checks", script)] + list(args),
+        [sys.executable, "-B", testing.script(root, script)] + list(args),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, env=env,
     )
     return result.returncode, result.stdout
@@ -284,21 +300,21 @@ class WriteSweep(unittest.TestCase):
         for name in scripts():
             with self.subTest(script=name):
                 allowed = WRITERS.get(name, set())
-                outside = [(where, line, what) for where, line, what in sweep(os.path.join(HERE, name)) if where not in allowed]
+                outside = [(where, line, what) for where, line, what in sweep(path(name)) if where not in allowed]
                 self.assertEqual(outside, [], "%s writes outside %s" % (name, ", ".join(sorted(allowed)) or "any place"))
 
     def test_check_register_writes_nothing(self):
         # The check that projects run prints what it generates and never writes, so no link can lead a write of it.
-        self.assertEqual(sweep(os.path.join(HERE, "check_register.py")), [])
-        with open(os.path.join(HERE, "check_register.py"), encoding="utf-8") as handle:
+        self.assertEqual(sweep(path("check_register.py")), [])
+        with open(path("check_register.py"), encoding="utf-8") as handle:
             text = handle.read()
         for name in ("write_file", "refuse_links", "guard_path"):
             self.assertNotIn(name, text)
 
     def test_generate_writes_only_through_the_one_function(self):
-        self.assertEqual(sweep(os.path.join(HERE, "generate.py")), [])
-        self.assertEqual(sorted(set(where for where, _, _ in sweep(os.path.join(HERE, "registry.py")))), ["write_file"])
-        with open(os.path.join(HERE, "generate.py"), encoding="utf-8") as handle:
+        self.assertEqual(sweep(path("generate.py")), [])
+        self.assertEqual(sorted(set(where for where, _, _ in sweep(path("registry.py")))), ["write_file"])
+        with open(path("generate.py"), encoding="utf-8") as handle:
             text = handle.read()
         self.assertIn("registry.write_file(", text)
         self.assertIn("registry.refuse_links(", text)
@@ -306,7 +322,7 @@ class WriteSweep(unittest.TestCase):
     def test_each_write_of_init_is_guarded(self):
         # init.py keeps its own writes, which never overwrite a file and put each in place whole. Each function that
         # writes a file there refuses a link on its path first, with registry.guard_path.
-        with open(os.path.join(HERE, "init.py"), "rb") as handle:
+        with open(path("init.py"), "rb") as handle:
             tree = ast.parse(handle.read())
         functions = dict((node.name, node) for node in tree.body if isinstance(node, ast.FunctionDef))
         for name in ("write_new", "add_line"):
@@ -322,7 +338,7 @@ class WriteSweep(unittest.TestCase):
         # A name left in WRITERS after its write is gone would let a new write in there unseen.
         for name, allowed in sorted(WRITERS.items()):
             with self.subTest(script=name):
-                self.assertEqual(sorted(set(where for where, _, _ in sweep(os.path.join(HERE, name)))), sorted(allowed))
+                self.assertEqual(sorted(set(where for where, _, _ in sweep(path(name)))), sorted(allowed))
 
     def test_the_sweep_finds_each_kind_of_write(self):
         source = "\n".join([
@@ -418,7 +434,7 @@ class NoBytecode(unittest.TestCase):
         self.assertIn("init.py", names)
         for name in names:
             with self.subTest(script=name):
-                self.assertIsNone(no_bytecode_problem(os.path.join(HERE, name)))
+                self.assertIsNone(no_bytecode_problem(path(name)))
 
     def test_the_sweep_for_bytecode_fails_on_each_wrong_order(self):
         scratch = scratch_dir(self)
@@ -450,7 +466,7 @@ class NoBytecode(unittest.TestCase):
         copy, prefix = os.path.join(scratch, "ratchet"), os.path.join(scratch, "prefix")
         shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         env, baseline = bytecode_env(prefix), startup_bytecode(self)
-        for args in ((os.path.join(copy, "checks", "generate.py"), "--check"),
+        for args in ((os.path.join(copy, "maintain", "generate.py"), "--check"),
                      (os.path.join(copy, "checks", "check_register.py"), "register.json", "--markdown", "REGISTER.md"),
                      (os.path.join(copy, "checks", "check_register.py"), "register.json", "--print-markdown")):
             with self.subTest(args=args[1:]):
@@ -1112,7 +1128,7 @@ class GitLinks(Trees):
         self.assertNotIn("LINKED", output)
         self.assertNotIn("Traceback", output)
         self.assertEqual(snapshot(self.base), before)
-        sys.path.insert(0, HERE)
+        sys.path.insert(0, testing.MAINTAIN)
         import generate
         self.assertNotIn(os.path.join(templates, "LINKED.md"), generate.markdown_files(self.repo))
         self.assertEqual([path for path in generate.markdown_files(self.repo) if path.startswith(templates + os.sep)], [])

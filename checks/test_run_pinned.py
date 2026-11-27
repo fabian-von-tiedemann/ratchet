@@ -21,6 +21,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import run_pinned  # noqa: E402
+import testing  # noqa: E402
 from test_init import git  # noqa: E402
 
 EDITED = "import sys\nprint('EDITED CHECK RAN')\nsys.exit(0)\n"
@@ -686,27 +687,40 @@ class RunPinned(unittest.TestCase):
 
 
 class Isolated(unittest.TestCase):
-    """Every script in checks/ runs under python3 -I, which leaves the script's directory out of sys.path: a project that
-    runs a check isolated, as the finding from a real adoption did, got ModuleNotFoundError: No module named 'registry'."""
+    """Every script in checks/ and in maintain/ runs under python3 -I, which leaves the script's directory out of
+    sys.path: a project that runs a check isolated, as the finding from a real adoption did, got ModuleNotFoundError: No
+    module named 'registry'."""
 
     INSERT = "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+    # A script in maintain/ also puts checks/ on the path, before its own directory (D-2026-11-27-maintain-apart).
+    INSERT_CHECKS = 'sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))\n'
 
     def scripts(self):
-        names = sorted(name for name in os.listdir(HERE) if name.endswith(".py") and not name.startswith("test_"))
-        self.assertIn("check_register.py", names)
-        return names
+        """(the directory, the name) of every script in checks/ and in maintain/ that is not a test."""
+        found = sorted((folder, name) for folder in (HERE, testing.MAINTAIN) for name in os.listdir(folder)
+                       if name.endswith(".py") and not name.startswith("test_"))
+        self.assertIn((HERE, "check_register.py"), found)
+        self.assertIn((testing.MAINTAIN, "generate.py"), found)
+        return found
 
     def test_every_script_that_imports_one_beside_it_puts_its_own_directory_on_the_path_first(self):
-        siblings = {name[:-3] for name in self.scripts()}
-        for name in self.scripts():
+        siblings = {name[:-3] for _, name in self.scripts()}
+        maintained = {name[:-3] for folder, name in self.scripts() if folder == testing.MAINTAIN}
+        for folder, name in self.scripts():
             with self.subTest(script=name):
-                with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
                     text = handle.read()
-                imports = [match.start() for match in re.finditer(r"(?m)^(?:import|from) (\w+)", text)
-                           if match.group(1) in siblings]
+                imported = [match for match in re.finditer(r"(?m)^(?:import|from) (\w+)", text) if match.group(1) in siblings]
+                imports = [match.start() for match in imported]
                 if imports:
                     self.assertIn(self.INSERT, text)
                     self.assertLess(text.index(self.INSERT), imports[0])
+                if folder == testing.MAINTAIN and imports:
+                    self.assertIn(self.INSERT_CHECKS, text)
+                    self.assertLess(text.index(self.INSERT_CHECKS), text.index(self.INSERT))
+                if folder == HERE:
+                    # What a project runs never needs Ratchet's own maintenance.
+                    self.assertEqual([match.group(1) for match in imported if match.group(1) in maintained], [])
         with open(os.path.join(HERE, "run_pinned.py"), encoding="utf-8") as handle:
             self.assertNotIn(self.INSERT, handle.read(),
                              "run_pinned.py imports nothing from beside it, so -I keeps a planted module out")
@@ -714,13 +728,13 @@ class Isolated(unittest.TestCase):
     def test_every_script_with_a_command_line_starts_under_python_minus_i(self):
         directory = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(shutil.rmtree, directory)
-        for name in self.scripts():
-            with open(os.path.join(HERE, name), encoding="utf-8") as handle:
+        for folder, name in self.scripts():
+            with open(os.path.join(folder, name), encoding="utf-8") as handle:
                 text = handle.read()
             if "\nimport argparse\n" not in text or "__main__" not in text:
                 continue
             with self.subTest(script=name):
-                result = subprocess.run([sys.executable, "-I", os.path.join(HERE, name), "--help"], cwd=directory,
+                result = subprocess.run([sys.executable, "-I", os.path.join(folder, name), "--help"], cwd=directory,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
                                         timeout=120)
                 self.assertEqual(result.returncode, 0, result.stdout)

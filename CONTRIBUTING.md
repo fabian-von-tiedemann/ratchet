@@ -43,7 +43,7 @@ Nothing is promised in advance. Feedback from one project, [issue #89](https://g
 
 1. Open an issue with the proposal form, as above. It asks for five things, each required ([D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md)). An issue opened with the form gets the label `proposal`.
 2. Ratchet's maintainer decides. A decision is written as a file in [decisions/](decisions/). Until then the issue is a proposal (P), not a rule.
-3. A new rule starts as experimental, outside the core, which is frozen: see [RATCHET.md](RATCHET.md#the-core-is-frozen). It counts against `experimental_cap` in [ratchet.json](ratchet.json). At the cap, a new rule replaces, merges or removes one, or a decision raises the cap. A new rule is already used by Ratchet itself, adopted in [register.json](register.json), or says in `not_used_because` why Ratchet cannot use it: `checks/generate.py --check` fails otherwise. A proposal may also remove a rule, as far as this repo's own rule `repo.subtract`, in [REGISTER.md](REGISTER.md), allows.
+3. A new rule starts as experimental, outside the core, which is frozen: see [RATCHET.md](RATCHET.md#the-core-is-frozen). It counts against `experimental_cap` in [ratchet.json](ratchet.json). At the cap, a new rule replaces, merges or removes one, or a decision raises the cap. A new rule is already used by Ratchet itself, adopted in [register.json](register.json), or says in `not_used_because` why Ratchet cannot use it: `maintain/generate.py --check` fails otherwise. A proposal may also remove a rule, as far as this repo's own rule `repo.subtract`, in [REGISTER.md](REGISTER.md), allows.
 
 ## A lesson from a project
 

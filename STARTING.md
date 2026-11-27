@@ -55,7 +55,7 @@ When your wording holds a rule's core but not every clause, you may still adopt 
 The first command prints a rule in the form `register.json` takes. Paste it into the list `adopted`. The second prints `REGISTER.md` again and puts it in place.
 
 ```sh
-python3 .ratchet/checks/generate.py --entries ratchet.simplest
+python3 .ratchet/checks/check_register.py --entries ratchet.simplest
 rm -f REGISTER.md.new && python3 .ratchet/checks/check_register.py register.json --print-markdown > REGISTER.md.new && rm -f REGISTER.md && mv REGISTER.md.new REGISTER.md
 ```
 

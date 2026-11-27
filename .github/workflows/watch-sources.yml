@@ -24,4 +24,4 @@ jobs:
       - name: Tell when a pinned source has moved
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 checks/watch_sources.py --data sources.json
+        run: python3 maintain/watch_sources.py --data sources.json

@@ -525,7 +525,7 @@ class TagRuleset(unittest.TestCase):
     def test_the_release_only_creates_a_tag_and_never_moves_or_deletes_one(self):
         # What the ruleset leaves open is what the release workflow needs: release.py writes a tag with one POST to
         # git/refs, and no PATCH or DELETE.
-        text = read("checks", "release.py")
+        text = read("maintain", "release.py")
         self.assertIn('api("POST", path, {"ref": ref, "sha": sha})', text)
         for method in ('"PATCH"', '"DELETE"', '"PUT"'):
             self.assertNotIn(method, text)

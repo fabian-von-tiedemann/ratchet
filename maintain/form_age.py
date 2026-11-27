@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Say whether the form has been unchanged for three tags and at least 30 days (issue #70).
 
-    python3 checks/form_age.py [ROOT]
+    python3 maintain/form_age.py [ROOT]
 
 Criterion 1 of D-2026-11-19-one-point-oh. ROOT, by default the checkout this script
 stands in, is the top of a git checkout that holds its tags. The script reads the last
@@ -43,10 +43,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
-# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
-# sys.path, still finds the modules beside it.
+# Its own directory and checks/ on the path, named explicitly, so that python3 -I, which leaves the script's directory
+# out of sys.path, still finds the modules beside it and the modules of the checks it uses.
 import os  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse  # noqa: E402

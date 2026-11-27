@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Judge a pull request by the base branch's checks (the job `base` of .github/workflows/checks.yml).
 
-    git show "HEAD^1:checks/from_base.py" > "$dir/from_base.py"
+    git show "HEAD^1:maintain/from_base.py" > "$dir/from_base.py"
     python3 -I "$dir/from_base.py" --base-sha BASE --head-sha HEAD
 
 Run in a checkout of the merge commit that GitHub makes for a pull request, with the full history and the tags.
@@ -12,20 +12,21 @@ directory of its own. It then:
   parent is the base, --base-sha, or a later commit of the base branch. The first parent is the base it judges by.
 - fails when the pull request changes .github/workflows/checks.yml, the job that runs this, or the runner of the
   suite, checks/expected_tests.py or checks/suite_runner.py: the base branch cannot judge what judges it.
-- makes the tree of the data: the merge commit, with the code of the checks taken from the base, and each file of
-  code that only the pull request has left empty, so that a link to it leads somewhere. It runs the base's
-  generate.py --check, check_register.py on register.json and REGISTER.md, and released_text.py there. So the base's
-  scripts read the pull request's ratchet.json, register.json, generated text and changelog.
-- makes the tree of the code: the base commit, with the pull request's code of the checks, but the base's tests and
-  the base's runner of the suite. It runs the base's expected_tests.py there, and then the base's
+- makes the tree of the data: the merge commit, with the code of the checks taken from the base, in checks/ and in
+  maintain/, and each file of code that only the pull request has left empty, so that a link to it leads somewhere.
+  It runs the base's maintain/generate.py --check, checks/check_register.py on register.json and REGISTER.md, and
+  maintain/released_text.py there. So the base's scripts read the pull request's ratchet.json, register.json,
+  generated text and changelog, and none of the pull request's code runs.
+- makes the tree of the code: the base commit, with the pull request's code of the checks, in checks/ and in
+  maintain/, but the base's tests and the base's runner of the suite. It runs the base's expected_tests.py there, and then the base's
   test_released_text.py --released-copy, which takes a copy of that tree through the release steps and runs the
   base's suite on it once more (D-2026-11-24-faster-suite). So the base's tests and fixtures, under the base's
   runner, judge the pull request's checks, on the base's data, before and after a release.
 
-The code of the checks is every file directly under checks/ whose name ends in .py, and every file in a directory
-under checks/ other than fixtures/. The tests are checks/test_*.py, and the runner is checks/expected_tests.py and
-checks/suite_runner.py. Everything else, checks/fixtures/ and checks/README.md among it, is data: generate.py writes
-part of it.
+The code of the checks is the same in each of its two directories, checks/ and maintain/ (D-2026-11-27-maintain-apart):
+every file directly in it whose name ends in .py, and every file in a directory in it other than fixtures/. The tests
+are the files test_*.py directly in either, and the runner is checks/expected_tests.py and checks/suite_runner.py.
+Everything else, checks/fixtures/ and checks/README.md among it, is data: generate.py writes part of it.
 
 When one of these fails, it prints why, and which paths the pull request changes that the base judges by. A pull
 request that changes a check or the form of a data file on purpose is one the base branch cannot judge. The job
@@ -49,15 +50,17 @@ import tempfile
 
 WORKFLOW = ".github/workflows/checks.yml"
 RUNNER = ("checks/expected_tests.py", "checks/suite_runner.py")
+# The directories that hold the code of the checks: what a project runs, and what only Ratchet's own maintenance runs.
+CODE = ("checks", "maintain")
 SHA = re.compile(r"^[0-9a-f]{40}\Z")
 # What the base runs in each tree, from the top of the tree. Each is a command that the job `own`, or the job
 # `released`, also runs on the pull request's own checks. The suite on a released copy runs in the tree of the code,
 # so that the base's tests judge the pull request's checks after a release too, as they did when that run was a
 # part of ReleaseSteps in the suite (D-2026-11-24-faster-suite).
 DATA_COMMANDS = (
-    ("checks/generate.py", "--check"),
+    ("maintain/generate.py", "--check"),
     ("checks/check_register.py", "register.json", "--markdown", "REGISTER.md"),
-    ("checks/released_text.py",),
+    ("maintain/released_text.py",),
 )
 CODE_COMMANDS = (
     ("checks/expected_tests.py",),
@@ -93,10 +96,10 @@ def files(repo, commit):
 
 
 def is_code(path):
-    """Whether a path is code of the checks: a .py file directly under checks/, or any file in a directory under checks/
-    other than fixtures/."""
+    """Whether a path is code of the checks: a .py file directly in checks/ or maintain/, or any file in a directory in
+    either other than fixtures/."""
     parts = path.split("/")
-    if parts[0] != "checks" or len(parts) < 2:
+    if parts[0] not in CODE or len(parts) < 2:
         return False
     if len(parts) == 2:
         return parts[1].endswith(".py")
@@ -105,7 +108,7 @@ def is_code(path):
 
 def is_test(path):
     parts = path.split("/")
-    return len(parts) == 2 and parts[0] == "checks" and parts[1].startswith("test_") and parts[1].endswith(".py")
+    return len(parts) == 2 and parts[0] in CODE and parts[1].startswith("test_") and parts[1].endswith(".py")
 
 
 def judged_by(path):
@@ -182,14 +185,16 @@ def judge(repo, base, head="HEAD", data_commands=DATA_COMMANDS, code_commands=CO
     scratch = os.path.realpath(tempfile.mkdtemp(prefix="ratchet-from-base-"))
     works = []
     try:
-        # The tree of the data: the merge, with the base's code of the checks.
+        # The tree of the data: the merge, with the base's code of the checks, from both directories. None of the pull
+        # request's code is left in it, so a softened maintain/generate.py of the pull request never judges its data.
         data = tree(repo, head, os.path.join(scratch, "data"))
         works.append(data)
         swap(data, [path for path in head_files if is_code(path)], base, [path for path in base_files if is_code(path)])
         # A file of code that only the pull request has is there, empty: a link to it from the data leads somewhere, and a
         # module that would stand in for one the base imports, such as json.py, has nothing in it.
         placeholders(data, sorted(set(path for path in head_files if is_code(path)) - set(base_files)))
-        # The tree of the code: the base, with the pull request's code of the checks but the base's tests and runner.
+        # The tree of the code: the base, with the pull request's code of the checks from both directories, file by file,
+        # but the base's tests and runner. Only code is taken from the pull request, never a whole directory.
         code = tree(repo, base, os.path.join(scratch, "code"))
         works.append(code)
         theirs = [path for path in head_files if is_code(path) and not is_test(path) and path not in RUNNER]

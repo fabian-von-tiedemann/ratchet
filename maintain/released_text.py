@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail when released text is not as it stood at its tag (repo.version, repo.tags-stay).
 
-    python3 checks/released_text.py
+    python3 maintain/released_text.py
 
 Reads the tags of this checkout, so the checkout must hold them: in CI,
 actions/checkout with fetch-depth: 0. Every tag is of the form vMAJOR.MINOR. Then it
@@ -37,10 +37,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
-# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
-# sys.path, still finds the modules beside it.
+# Its own directory and checks/ on the path, named explicitly, so that python3 -I, which leaves the script's directory
+# out of sys.path, still finds the modules beside it and the modules of the checks it uses.
 import os  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse

@@ -3,7 +3,7 @@
 Also the two things every check shares: a strict reader for JSON data files, and
 the comparison of a generated file with what its data file generates.
 
-sources.json is not part of what is released: checks/released_text.py does not compare it with a tag, so a
+sources.json is not part of what is released: maintain/released_text.py does not compare it with a tag, so a
 pin that moves needs no new version (D-2026-11-19-batched-releases).
 
 Standard library only. CI runs it on Python 3.9 and the newest Python 3.

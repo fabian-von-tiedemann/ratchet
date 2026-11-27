@@ -1,5 +1,6 @@
 """The git setup that the tests share: git run in a repository a test made, with no configuration of the user's or the
-system's.
+system's. And where a script stands: in checks/, what a project runs, or in maintain/, what only Ratchet's own
+maintenance runs (D-2026-11-27-maintain-apart).
 
 It is not named test_*, so the runner does not collect it. It keeps no state between calls: each call builds what it
 needs from os.environ and its arguments, and every difference between callers is an argument.
@@ -18,6 +19,21 @@ QUIET = (("gc.auto", "0"), ("maintenance.auto", "false"))
 # The variables that name a repository from outside, as a git hook sets them.
 LOCATION = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
 EMAIL = "test@example.invalid"
+# The two directories of the code of the checks, in this repo. A script's name stands in one of them, never in both.
+CHECKS = os.path.dirname(os.path.abspath(__file__))
+MAINTAIN = os.path.join(os.path.dirname(CHECKS), "maintain")
+CODE = ("checks", "maintain")
+
+
+def directory(name):
+    """The directory, "checks" or "maintain", that holds the script with this name in this repo. A name that is in
+    neither, such as a script a test writes, is in checks/."""
+    return "maintain" if os.path.isfile(os.path.join(MAINTAIN, name)) else "checks"
+
+
+def script(root, name):
+    """The path of the script with this name in the copy of this repo at root."""
+    return os.path.join(root, directory(name), name)
 
 
 def identity(name):

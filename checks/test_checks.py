@@ -22,6 +22,7 @@ import unicodedata
 import unittest
 import unittest.mock
 
+import testing
 from suite_runner import FixtureTest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -333,7 +334,7 @@ FAILING_MARKDOWN = (
 
 def run(script, *args, root=ROOT, cwd=None):
     result = subprocess.run(
-        [sys.executable, os.path.join(root, "checks", script)] + list(args),
+        [sys.executable, testing.script(root, script)] + list(args),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd,
     )
     return result.returncode, result.stdout
@@ -1206,6 +1207,37 @@ class RegisterInPart(FixtureTest):
         self.assertEqual(check_register.part_clauses(own.get("where", "")), None)
 
 
+class PrintedEntries(unittest.TestCase):
+    """check_register.py --entries, which a project runs to print a rule for its register.json. Until 0.17 it was
+    generate.py --entries, which moved to maintain/ (D-2026-11-27-maintain-apart). The output is the same, byte for byte."""
+
+    def test_each_rule_is_printed_as_an_entry_and_a_key_that_is_not_a_rule_prints_nothing(self):
+        sys.path.insert(0, HERE)
+        import check_register
+        import registry
+        code, out, err = printed("--entries", "ratchet.no-secrets", "ratchet.root-cause")
+        self.assertEqual((code, err), (0, ""))
+        rules = registry.rules_by_key(registry.load(registry.SOURCE))
+        entries = json.loads("[" + out.decode("utf-8") + "]")
+        self.assertEqual([entry["key"] for entry in entries], ["ratchet.no-secrets", "ratchet.root-cause"])
+        for entry in entries:
+            self.assertEqual(entry, check_register.entry(rules[entry["key"]]))
+            self.assertEqual(entry["status"], "text only for now")
+        self.assertTrue(out.endswith(b"}\n"), out[-20:])
+        code, out, err = printed("--entries", "ratchet.no-secrets", "ratchet.nope")
+        self.assertEqual((code, out), (2, b""))
+        self.assertIn("check_register: not a rule in Ratchet %s: ratchet.nope" % registry.load(registry.SOURCE)["version"], err)
+
+    def test_it_reads_no_register_and_takes_no_other_mode(self):
+        register = os.path.join(ROOT, "register.json")
+        for args in ((register, "--entries", "ratchet.no-secrets"), ("--entries", "ratchet.no-secrets", "--markdown", "REGISTER.md"),
+                     ("--entries", "ratchet.no-secrets", "--print-markdown"), ("--agents", "AGENTS.md", "--entries", "ratchet.no-secrets"), ()):
+            with self.subTest(args=args):
+                code, out, err = printed(*args)
+                self.assertEqual((code, out), (2, b""))
+                self.assertIn("usage:", err)
+
+
 class AdoptGuidance(unittest.TestCase):
     """What STARTING.md tells a project that adopts by reference, from an adoption report on 0.12
     (D-2026-11-23-new-rules-first). The words are text only; these tests keep them from being dropped."""
@@ -1946,7 +1978,7 @@ class StartPath(unittest.TestCase):
     def test_the_entry_that_is_printed_can_be_pasted(self):
         code, output = self.run_in_project("python3 .ratchet/checks/init.py")
         self.assertEqual(code, 0, output)
-        code, output = self.run_in_project("python3 .ratchet/checks/generate.py --entries ratchet.simplest ratchet.test-can-fail")
+        code, output = self.run_in_project("python3 .ratchet/checks/check_register.py --entries ratchet.simplest ratchet.test-can-fail")
         self.assertEqual(code, 0, output)
         path = os.path.join(self.project, "register.json")
         with open(path, encoding="utf-8") as handle:
@@ -2073,7 +2105,7 @@ class DataFileNotRegular(unittest.TestCase):
         root = scratch(self)
         os.mkfifo(os.path.join(root, "ratchet.json"))
         try:
-            result = subprocess.run([sys.executable, "-B", os.path.join(HERE, "generate.py"), "--check", "--root", root],
+            result = subprocess.run([sys.executable, "-B", testing.script(ROOT, "generate.py"), "--check", "--root", root],
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
                                     timeout=10)
         except subprocess.TimeoutExpired:

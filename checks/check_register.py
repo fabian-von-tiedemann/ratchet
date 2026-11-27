@@ -37,6 +37,7 @@ with their label and no rule text, there and in the block.
     python3 checks/check_register.py register.json --markdown REGISTER.md --agents AGENTS.md
     python3 checks/check_register.py register.json --print-markdown
     python3 checks/check_register.py register.json --print-instructions
+    python3 checks/check_register.py --entries ratchet.no-secrets ratchet.root-cause
 
 REGISTER.md is generated from the data file. With --markdown the check also fails
 unless REGISTER.md is, byte for byte, what the data file generates. The check
@@ -90,6 +91,11 @@ statuses and the version are not free text: each has its own exact form.
 Every file is read as strict UTF-8. Bytes that are not UTF-8 fail the check.
 Line endings: CRLF is read as LF. Generated files are printed with LF.
 
+--entries prints the rules it names, from Ratchet's ratchet.json or the one --source
+gives, as entries to paste into a register.json, and reads no register. A rule that
+names a check gets the status "text only for now". Until 0.17 this was
+generate.py --entries, which now stands in maintain/ (D-2026-11-27-maintain-apart).
+
 Exit code 0: the register is valid. 1: at least one problem. 2: the check could not run.
 Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
@@ -106,6 +112,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import hashlib
+import json
 import os
 import re
 
@@ -898,6 +905,24 @@ def generated_problems(register_path, register, markdown=None, planned=None):
     return problems + block_problems(block, data, register), block
 
 
+def entry(rule):
+    """A rule as it stands in a register.json."""
+    result = {field: rule[field] for field in RULE_FIELDS}
+    if rule["enforcement"] == "enforced":
+        result["status"] = "text only for now"
+    return result
+
+
+def entries_text(ratchet, keys):
+    """The rules of ratchet.json named by keys, as entries to paste into a register.json, joined by commas, with a final
+    line ending. Raises registry.RegistryError naming each key that is not a rule there."""
+    by_key = registry.rules_by_key(ratchet)
+    unknown = [key for key in keys if key not in by_key]
+    if unknown:
+        raise registry.RegistryError("not a rule in Ratchet %s: %s" % (ratchet["version"], ", ".join(unknown)))
+    return ",\n".join(json.dumps(entry(by_key[key]), indent=2, ensure_ascii=False) for key in keys) + "\n"
+
+
 def printed(args, register, problems):
     """Print the one file a print mode asks for to standard output, and nothing else, or, if there is a problem, nothing
     there and the problems to standard error. The exit code."""
@@ -921,9 +946,23 @@ def printed(args, register, problems):
     return 0
 
 
+def print_entries(source, keys):
+    """Print the rules named by keys as entries for a register.json, and nothing else. The exit code: 2 when ratchet.json
+    cannot be read or a key is not a rule in it."""
+    try:
+        text = entries_text(registry.load(source), keys)
+    except registry.RegistryError as error:
+        print("check_register: %s" % error, file=sys.stderr)
+        return 2
+    sys.stdout.flush()
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.buffer.flush()
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Check a project's register.json against Ratchet. It writes nothing.")
-    parser.add_argument("register", help="path to the project's register.json")
+    parser.add_argument("register", nargs="?", help="path to the project's register.json")
     parser.add_argument("--markdown", metavar="REGISTER.md", help="also fail unless this file is what the register generates")
     parser.add_argument("--agents", metavar="AGENTS.md", help="also fail while this file holds a placeholder of templates/AGENTS.md")
     group = parser.add_mutually_exclusive_group()
@@ -931,8 +970,16 @@ def main(argv=None):
                        help="print REGISTER.md as the register generates it, and nothing else")
     group.add_argument("--print-instructions", action="store_true",
                        help="print the instruction file that the register names, with the block brought up to date, and nothing else")
+    group.add_argument("--entries", nargs="+", metavar="KEY",
+                       help="print these rules as entries for a register.json, and read no register")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
+    if args.entries:
+        if args.register or args.markdown or args.agents:
+            parser.error("--entries reads no register, and takes neither a register nor --markdown nor --agents")
+        return print_entries(args.source, args.entries)
+    if not args.register:
+        parser.error("the following arguments are required: register")
     printing = args.print_markdown or args.print_instructions
     if printing and (args.markdown or args.agents):
         parser.error("--print-markdown and --print-instructions print one file, and take neither --markdown nor --agents")

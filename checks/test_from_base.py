@@ -1,12 +1,13 @@
-"""The job `base`: the base branch's checks judge a pull request (checks/from_base.py).
+"""The job `base`: the base branch's checks judge a pull request (maintain/from_base.py).
 
     python3 -m unittest discover -s checks -v
 
 Each case makes a small git repo of its own in a scratch directory, a dry run of the job: a base commit with checks
 of its own, a pull request's commit, and the merge commit that GitHub makes of the two, which the job checks out. Then
 it runs from_base.py as the workflow does, with python3 -I, on that merge. The checks of the small repo stand in for
-Ratchet's own under the same names: its generate.py fails when the value in data.json is above a limit, its
-check_register.py and released_text.py pass, and its expected_tests.py runs its tests with unittest. So no case runs
+Ratchet's own under the same names and in the same two directories, checks/ and maintain/: its maintain/generate.py
+fails when the value in data.json is above a limit, its checks/check_register.py and maintain/released_text.py pass,
+and its checks/expected_tests.py runs its tests with unittest. So no case runs
 this repo's suite, and the suite does not run itself. Standard library only.
 """
 
@@ -17,11 +18,13 @@ import sys
 import tempfile
 import unittest
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import from_base
 import testing
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "from_base.py")
+SCRIPT = os.path.join(testing.MAINTAIN, "from_base.py")
 
 # The base's rule: the value in data.json, or in the file it is given, is at most LIMIT.
 GENERATE = '''import json, sys
@@ -38,7 +41,8 @@ print("generate: %d is at most %d" % (value, LIMIT))
 TEST = '''import os, subprocess, sys, unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 def run(name):
-    return subprocess.call([sys.executable, "-B", os.path.join(HERE, "generate.py"), os.path.join(HERE, "fixtures", name)],
+    return subprocess.call([sys.executable, "-B", os.path.join(os.path.dirname(HERE), "maintain", "generate.py"),
+                            os.path.join(HERE, "fixtures", name)],
                            stdout=subprocess.DEVNULL)
 class Rule(unittest.TestCase):
     def test_fails_on_a_value_above_the_limit(self):
@@ -66,9 +70,9 @@ BASE = {
     "REGISTER.md": "# Register\n",
     "register.json": "{}\n",
     "checks/README.md": "The checks.\n",
-    "checks/generate.py": GENERATE,
+    "maintain/generate.py": GENERATE,
     "checks/check_register.py": PASS,
-    "checks/released_text.py": PASS,
+    "maintain/released_text.py": PASS,
     "checks/expected_tests.py": RUNNER,
     "checks/test_generate.py": TEST,
     "checks/test_released_text.py": RELEASED,
@@ -155,7 +159,7 @@ class DryRun(unittest.TestCase):
     def test_a_change_of_data_within_the_rules_passes(self):
         head = self.pull_request({"data.json": '{"value": 3}\n'})
         output = self.assertPasses(head)
-        self.assertIn("in the tree of the data: python3 checks/generate.py --check", output)
+        self.assertIn("in the tree of the data: python3 maintain/generate.py --check", output)
         self.assertIn("in the tree of the code: python3 checks/expected_tests.py", output)
         self.assertIn("in the tree of the code: python3 checks/test_released_text.py --released-copy", output)
         # The work trees are gone after the run.
@@ -164,17 +168,47 @@ class DryRun(unittest.TestCase):
     def test_a_check_softened_with_the_data_it_judges_fails_in_the_tree_of_the_data(self):
         # The threat: the pull request raises the limit and the value together, by less than the base's fixtures would
         # catch. Its own checks and the base's tests pass it. The base's rule, reading the pull request's data, does not.
-        head = self.pull_request({"checks/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 4"), "data.json": '{"value": 4}\n'})
-        self.assertEqual(self.own("checks/generate.py", "--check"), 0)
+        head = self.pull_request({"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 4"), "data.json": '{"value": 4}\n'})
+        self.assertEqual(self.own("maintain/generate.py", "--check"), 0)
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
-        output = self.assertFails(head, "the base's `python3 checks/generate.py --check` failed in the tree of the data",
-                                  "generate: 4 is above 3", "paths this pull request changes that the base judges by: checks/generate.py")
+        output = self.assertFails(head, "the base's `python3 maintain/generate.py --check` failed in the tree of the data",
+                                  "generate: 4 is above 3", "paths this pull request changes that the base judges by: maintain/generate.py")
         self.assertNotIn("in the tree of the code, with exit status", output)
+
+    def test_the_tree_of_the_data_takes_the_base_s_code_from_both_directories(self):
+        # D-2026-11-27-maintain-apart: the base's maintain/generate.py reads its limit from a module in checks/. The pull
+        # request softens both, and raises the value with them. In the tree of the data both are the base's again, and
+        # neither the pull request's maintain/generate.py nor its checks/limit.py is run.
+        reading = GENERATE.replace("LIMIT = 3", "import os\nsys.path.insert(0, os.path.join(os.getcwd(), 'checks'))\nfrom limit import LIMIT")
+        self.write({"maintain/generate.py": reading, "checks/limit.py": "LIMIT = 3\n"})
+        self.base = self.commit("the base reads its limit from checks/")
+        softened = reading.replace('print("generate: %d is above %d" % (value, LIMIT))', 'print("generate: softened")')
+        head = self.pull_request({"maintain/generate.py": softened.replace("    sys.exit(1)\n", ""), "checks/limit.py": "LIMIT = 4\n",
+                                  "data.json": '{"value": 5}\n'})
+        self.assertEqual(self.own("maintain/generate.py", "--check"), 0)
+        output = self.assertFails(head, "the base's `python3 maintain/generate.py --check` failed in the tree of the data",
+                                  "generate: 5 is above 3", "the base judges by: checks/limit.py, maintain/generate.py")
+        self.assertNotIn("softened", output)
+
+    def test_the_tree_of_the_code_takes_the_pull_request_s_code_from_both_directories(self):
+        # D-2026-11-27-maintain-apart: the pull request softens maintain/generate.py and leaves the data and the tests
+        # alone. The data passes the base's rule. In the tree of the code the pull request's maintain/generate.py runs
+        # under the base's tests in checks/, which catch it. A test the pull request adds in maintain/ is not the base's,
+        # and a test it softens in checks/ is the base's again.
+        test = TEST.replace('self.assertEqual(run("big.json"), 1)', 'pass')
+        head = self.pull_request({"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/test_generate.py": test,
+                                  "maintain/test_more.py": "import unittest\nclass More(unittest.TestCase):\n    def test_more(self):\n        pass\n"})
+        self.assertEqual(self.own("checks/expected_tests.py"), 0)
+        output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code",
+                                  "the base judges by: checks/test_generate.py, maintain/generate.py, maintain/test_more.py")
+        self.assertIn("test_fails_on_a_value_above_the_limit", output)
+        self.assertIn("in the tree of the data: python3 maintain/generate.py --check", output)
+        self.assertNotIn("in the tree of the data, with exit status", output)
 
     def test_a_check_softened_with_its_test_fails_in_the_tree_of_the_code(self):
         # The pull request softens the check and drops the test that would catch it. The data does not change.
         test = TEST.replace('self.assertEqual(run("big.json"), 1)', 'pass')
-        head = self.pull_request({"checks/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/test_generate.py": test})
+        head = self.pull_request({"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/test_generate.py": test})
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
         output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code")
         self.assertIn("test_fails_on_a_value_above_the_limit", output)
@@ -184,55 +218,56 @@ class DryRun(unittest.TestCase):
         # Round 1 of #147: a fault in the pull request's code of the checks that shows only on a released copy. The base's
         # tests pass it in the tree as it is, and fail it in the base's run of the suite on a released copy of that tree.
         softened = GENERATE.replace("LIMIT = 3", "import os\nLIMIT = 9 if os.environ.get('RELEASED') else 3")
-        head = self.pull_request({"checks/generate.py": softened})
+        head = self.pull_request({"maintain/generate.py": softened})
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
         output = self.assertFails(head, "the base's `python3 checks/test_released_text.py --released-copy` failed in the tree of the code",
-                                  "the base judges by: checks/generate.py")
+                                  "the base judges by: maintain/generate.py")
         self.assertIn("test_fails_on_a_value_above_the_limit", output)
         self.assertNotIn("the base's `python3 checks/expected_tests.py` failed", output)
 
     def test_a_check_softened_with_its_runner_fails_in_the_tree_of_the_code(self):
         # The pull request softens the check and makes its runner pass whatever happens. The base's runner runs.
-        head = self.pull_request({"checks/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/expected_tests.py": PASS})
+        head = self.pull_request({"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/expected_tests.py": PASS})
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
         self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code")
 
     def test_a_check_removed_fails_in_the_tree_of_the_code(self):
-        head = self.pull_request({"checks/generate.py": None, "checks/test_generate.py": None})
-        self.assertFails(head, "failed in the tree of the code", "checks/generate.py, checks/test_generate.py")
+        head = self.pull_request({"maintain/generate.py": None, "checks/test_generate.py": None})
+        self.assertFails(head, "failed in the tree of the code", "checks/test_generate.py, maintain/generate.py")
 
     def test_a_module_added_beside_the_checks_is_empty_in_the_tree_of_the_data(self):
         # A json.py beside the checks would be imported by the base's generate.py in place of the standard library's. In
         # the tree of the data it is there, empty, so the base's script fails on it and never passes on what it says.
         shadow = "def load(handle):\n    return {'value': 0}\n"
-        head = self.pull_request({"checks/json.py": shadow, "data.json": '{"value": 9}\n'})
-        self.assertEqual(self.own("checks/generate.py", "--check"), 0)
-        output = self.assertFails(head, "the base's `python3 checks/generate.py --check` failed in the tree of the data",
-                                  "the base judges by: checks/json.py")
+        head = self.pull_request({"maintain/json.py": shadow, "data.json": '{"value": 9}\n'})
+        self.assertEqual(self.own("maintain/generate.py", "--check"), 0)
+        output = self.assertFails(head, "the base's `python3 maintain/generate.py --check` failed in the tree of the data",
+                                  "the base judges by: maintain/json.py")
         self.assertIn("AttributeError", output)
         self.assertNotIn("is at most", output)
 
     def test_a_new_check_that_the_data_links_to_is_there_in_the_tree_of_the_data(self):
         # The base's generate.py fails on a link in the data that leads nowhere. A new check, linked from the data, is there.
-        linking = GENERATE.replace("LIMIT = 3", "LIMIT = 3\nimport os\nif not os.path.exists(open('checks/README.md').read().strip()):\n"
+        linking = GENERATE.replace("LIMIT = 3", "LIMIT = 3\nimport os\nif not all(os.path.exists(path) for path in open('checks/README.md').read().split()):\n"
                                    "    sys.exit('the link leads nowhere')")
-        self.write({"checks/generate.py": linking, "checks/README.md": "checks/generate.py\n"})
+        self.write({"maintain/generate.py": linking, "checks/README.md": "maintain/generate.py\n"})
         self.base = self.commit("the base checks its link")
-        head = self.pull_request({"checks/new.py": "print('new')\n", "checks/README.md": "checks/new.py\n"})
+        head = self.pull_request({"checks/new.py": "print('new')\n", "maintain/new.py": "print('new')\n",
+                                  "checks/README.md": "checks/new.py maintain/new.py\n"})
         self.assertPasses(head)
 
     def test_a_script_the_base_lacks_fails_even_when_the_pull_request_adds_it(self):
         # Without the check, the pull request's released_text.py would run, or the empty file in its place, and pass.
-        self.write({"checks/released_text.py": None})
+        self.write({"maintain/released_text.py": None})
         self.base = self.commit("the base without released_text.py")
-        head = self.pull_request({"checks/released_text.py": PASS})
-        output = self.assertFails(head, "the base has no checks/released_text.py, so its `python3 checks/released_text.py` "
-                                  "cannot judge the tree of the data", "the base judges by: checks/released_text.py")
-        self.assertNotIn("in the tree of the data: python3 checks/released_text.py", output)
+        head = self.pull_request({"maintain/released_text.py": PASS})
+        output = self.assertFails(head, "the base has no maintain/released_text.py, so its `python3 maintain/released_text.py` "
+                                  "cannot judge the tree of the data", "the base judges by: maintain/released_text.py")
+        self.assertNotIn("in the tree of the data: python3 maintain/released_text.py", output)
 
     def test_a_tightened_check_passes(self):
         tighter = GENERATE.replace("if value > LIMIT:", "if not isinstance(value, int) or value > LIMIT:")
-        head = self.pull_request({"checks/generate.py": tighter, "data.json": '{"value": 1}\n'})
+        head = self.pull_request({"maintain/generate.py": tighter, "data.json": '{"value": 1}\n'})
         self.assertPasses(head)
 
     def test_a_new_test_and_a_new_fixture_pass(self):
@@ -243,12 +278,12 @@ class DryRun(unittest.TestCase):
     def test_a_change_of_form_fails_closed_and_says_why(self):
         # The field is renamed in the data, the check and its fixtures together. The base cannot read the new form.
         renamed = GENERATE.replace('["value"]', '["amount"]')
-        head = self.pull_request({"checks/generate.py": renamed, "data.json": '{"amount": 2}\n',
+        head = self.pull_request({"maintain/generate.py": renamed, "data.json": '{"amount": 2}\n',
                                   "checks/fixtures/big.json": '{"amount": 5}\n', "checks/fixtures/small.json": '{"amount": 3}\n'})
-        self.assertEqual(self.own("checks/generate.py", "--check"), 0)
+        self.assertEqual(self.own("maintain/generate.py", "--check"), 0)
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
         output = self.assertFails(head, "failed in the tree of the data", "failed in the tree of the code",
-                                  "the base judges by: checks/generate.py")
+                                  "the base judges by: maintain/generate.py")
         self.assertIn("the form of a data file on purpose is one the base branch cannot judge", output)
 
     def test_a_change_to_the_workflow_fails_and_names_it(self):
@@ -264,7 +299,7 @@ class DryRun(unittest.TestCase):
 
     def test_a_base_that_moved_on_is_judged_by_its_newest_commit(self):
         # The base gains a stricter limit after the pull request branched. The merge is judged by the newer base.
-        head = self.pull_request({"data.json": '{"value": 3}\n'}, base_moves={"checks/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 2"),
+        head = self.pull_request({"data.json": '{"value": 3}\n'}, base_moves={"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 2"),
                                                                            "checks/fixtures/small.json": '{"value": 2}\n'})
         self.assertFails(head, "generate: 3 is above 2")
 
@@ -288,13 +323,17 @@ class DryRun(unittest.TestCase):
 
 class Paths(unittest.TestCase):
     def test_what_is_code_of_the_checks(self):
-        for path in ("checks/generate.py", "checks/test_checks.py", "checks/json.py", "checks/tool/__init__.py", "checks/tool/data.txt"):
+        for path in ("checks/generate.py", "checks/test_checks.py", "checks/json.py", "checks/tool/__init__.py", "checks/tool/data.txt",
+                     "maintain/generate.py", "maintain/json.py", "maintain/test_x.py", "maintain/tool/__init__.py", "maintain/tool/data.txt"):
             self.assertTrue(from_base.is_code(path), path)
         for path in ("checks/README.md", "checks/fixtures/register/register.json", "checks/fixtures/tests-ran/tree/test_a.py",
-                     "register.json", "checks.py", "templates/checks/x.py", ".github/workflows/checks.yml"):
+                     "register.json", "checks.py", "templates/checks/x.py", ".github/workflows/checks.yml",
+                     "maintain/README.md", "maintain/fixtures/x.py", "maintain.py", "templates/maintain/x.py"):
             self.assertFalse(from_base.is_code(path), path)
         self.assertTrue(from_base.is_test("checks/test_checks.py"))
+        self.assertTrue(from_base.is_test("maintain/test_x.py"))
         self.assertFalse(from_base.is_test("checks/tool/test_x.py"))
+        self.assertFalse(from_base.is_test("maintain/generate.py"))
         self.assertTrue(from_base.judged_by(".github/workflows/checks.yml"))
 
     def test_the_commands_are_the_ones_the_jobs_own_and_released_run(self):
