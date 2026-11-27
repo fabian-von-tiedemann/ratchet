@@ -136,7 +136,7 @@ Every check shares one threat model, [The threat model](checks/README.md#the-thr
 
 A check reads a data file, read strictly. It fails on what it does not know, and it never looks for rules in free Markdown ([D-2026-11-16-strict-forms](decisions/D-2026-11-16-strict-forms.md)). A value from a data file is text, never Markdown, and is written into a generated file as text. Its characters come from one fixed list, and every file a check reads is strict UTF-8 ([D-2026-11-17-latin-strict-utf8](decisions/D-2026-11-17-latin-strict-utf8.md)). Every way that has been found to hide something from a check is a copy under `checks/fixtures/` that must fail.
 
-A pull request is judged by the base branch's checks as well as its own: the job `base` of `.github/workflows/checks.yml` runs the base's scripts on the pull request's data, and the base's tests and runner on the pull request's checks ([checks/README.md](checks/README.md#from_basepy)). A pull request that changes a check, its workflow or the form of a data file on purpose is one the base cannot judge. Its job `checks` stays red, and the maintainer reads it and merges it as an administrator.
+A pull request is judged by the base branch's checks as well as its own: the job `base` of `.github/workflows/checks.yml` runs the base's scripts on the pull request's data, and the base's tests and runner on the pull request's checks ([maintain/README.md](maintain/README.md#from_basepy)). A pull request that changes a check, its workflow or the form of a data file on purpose is one the base cannot judge. Its job `checks` stays red, and the maintainer reads it and merges it as an administrator.
 
 Checks use Python's standard library only.
 
@@ -155,7 +155,7 @@ Show the commands and their results in the PR (`ratchet.evidence-before-done`).
 - English, American spelling, the terms in the glossary.
 - Nothing here identifies a project that uses Ratchet, its company, its vendors or its incidents.
 - Label what you write: decision (D), proposal (P), observation (O) or question (Q). A decision is a file in `decisions/`, written with [templates/DECISION.md](templates/DECISION.md).
-- A decision names each earlier decision it replaces, amends or ends, in its fields `Replaces`, `Amends` and `Ends`, and `python3 maintain/generate.py` writes the status into the earlier one ([checks/README.md](checks/README.md#decisions)).
+- A decision names each earlier decision it replaces, amends or ends, in its fields `Replaces`, `Amends` and `Ends`, and `python3 maintain/generate.py` writes the status into the earlier one ([maintain/README.md](maintain/README.md#decisions)).
 
 ## The main branch
 

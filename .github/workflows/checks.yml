@@ -42,7 +42,7 @@ jobs:
 
   # The full suite once more, on a copy of this repo taken through the release steps, with the version dated and
   # tagged. It runs once per pull request and push to main, beside own, and not inside own's suite
-  # (D-2026-11-24-faster-suite). See checks/README.md, "released_text.py".
+  # (D-2026-11-24-faster-suite). See maintain/README.md, "released_text.py".
   released:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -56,7 +56,7 @@ jobs:
         run: python3 checks/test_released_text.py --released-copy
 
   # The base branch's checks judge the pull request: maintain/from_base.py, taken from the base commit, never from the
-  # pull request. See checks/README.md, "from_base.py".
+  # pull request. See maintain/README.md, "from_base.py".
   base:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04

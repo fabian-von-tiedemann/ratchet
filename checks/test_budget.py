@@ -96,7 +96,7 @@ CORE_BATCH_C_OUT = {
 # Where a rule of core batch A, B or C could still be cited. The changelog and the decisions keep the old keys as history.
 CITING = ("AGENTS.md", "CONTRIBUTING.md", "CONTROL-ROOM.md", "GLOSSARY.md", "HANDOVER.md", "PRODUCT.md", "RATCHET.md",
           "README.md", "REGISTER.md", "SELF-IMPROVEMENT.md", "STARTING.md", "UPGRADING.md",
-          os.path.join("checks", "README.md"),
+          os.path.join("checks", "README.md"), os.path.join("maintain", "README.md"),
           os.path.join("docs", "index.html"), os.path.join("templates", "AGENTS.md"),
           os.path.join("templates", "CONTROL-ROOM-HANDBOOK.md"), os.path.join("templates", "GLOSSARY.md"))
 # The sentence D-2026-11-22-owner-reads-outside-gates puts back into ratchet.owner-paths, as the maintainer's second answer
@@ -125,7 +125,7 @@ ENFORCED = {
 }
 # What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
 POINT = ("Enforced at the merge: the required job `checks` (read back on ", ") needs `base` to pass, and `base` runs the base's ")
-# What checks/README.md says under from_base.py, which the short `where` leaves to it: the job checks is what the
+# What maintain/README.md says under from_base.py, which the short `where` leaves to it: the job checks is what the
 # ruleset on main requires, base takes the script from the base commit and never from the pull request, and when the
 # requirement was read back.
 EXPLAINED = ("The job `checks`, the status that the ruleset on `main` requires, waits for all three",
@@ -402,8 +402,8 @@ class Triage(RepoCopy, FixtureTest):
         self.assertEqual(problems, [])
         built = sorted(entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built")
         self.assertEqual(built, sorted(ENFORCED))
-        # The short `where` leaves the rest to checks/README.md, and the date it read back is the one each `where` names.
-        section = read("checks", "README.md").split("\n## from_base.py\n", 1)[1].split("\n## ", 1)[0]
+        # The short `where` leaves the rest to maintain/README.md, and the date it read back is the one each `where` names.
+        section = read("maintain", "README.md").split("\n## from_base.py\n", 1)[1].split("\n## ", 1)[0]
         for words in EXPLAINED:
             self.assertIn(words, section)
         date = section.split(EXPLAINED[-1], 1)[1][:10]

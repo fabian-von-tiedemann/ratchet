@@ -845,10 +845,10 @@ def reference_fixtures(data, clean, sourced, plain, soft):
 
 
 def markdown_files(root):
-    """The Markdown files in the root, in templates/ and in checks/. A file that is a symbolic link, or that stands in
-    a directory that is one, is not taken in, whether git tracks it or not (round 3 of #100)."""
+    """The Markdown files in the root, in templates/, in checks/ and in maintain/. A file that is a symbolic link, or that
+    stands in a directory that is one, is not taken in, whether git tracks it or not (round 3 of #100)."""
     paths = []
-    for directory in ("", "templates", "checks"):
+    for directory in ("", "templates", "checks", "maintain"):
         folder = os.path.join(root, directory) if directory else root
         if directory and (os.path.islink(folder) or not os.path.isdir(folder)):
             continue

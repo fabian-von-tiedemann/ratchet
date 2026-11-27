@@ -2,7 +2,7 @@ name: release
 
 # Tags and releases a new version when it reaches main (D-2026-11-17-release-on-merge,
 # D-2026-11-17-release-links). The logic is maintain/release.py, tested without network by
-# checks/test_release.py: see checks/README.md. It never moves, deletes or edits a tag (repo.tags-stay).
+# checks/test_release.py: see maintain/README.md. It never moves, deletes or edits a tag (repo.tags-stay).
 # The release text is one fixed line, with links to CHANGELOG.md and to the files at the tag.
 # The older versions are every version that ratchet.json has named on main, read with git from
 # the whole history, so the checkout is not shallow. One that is not finished fails the run, and
@@ -17,7 +17,7 @@ name: release
 # (D-2026-11-17-release-fail-closed). A scheduled run writes nothing. When the GitHub API answers, it
 # names the version, the commit of its tag and what is missing. That is not promised: when a read fails,
 # the run is red and may name only the request. It passes when every version is finished. GitHub may
-# start a scheduled run late or drop one: see checks/README.md. The script refuses every other event.
+# start a scheduled run late or drop one: see maintain/README.md. The script refuses every other event.
 
 on:
   push:

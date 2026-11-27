@@ -740,7 +740,7 @@ class Watch(Base):
                 self.assertEqual(issue["title"], "Source moved: " + "n" * 100)
                 for marker in ("@", "#", "<", "`", "::", "other/", "x/"):
                     self.assertNotIn(marker, issue["body"])
-        # The largest body, counted by hand from the lines in checks/README.md: 1390 bytes.
+        # The largest body, counted by hand from the lines in maintain/README.md: 1390 bytes.
         self.assertEqual(max(sizes.values()), 1390, sizes)
 
     # Round 1, finding 3, and round 2, finding 1: a source name with Markdown or a runner command is
