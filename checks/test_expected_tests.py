@@ -9,7 +9,8 @@ checks/fixtures/tests-ran/tree/, loaded through FixtureTest. The other cases giv
 reader of the records a file that no runner wrote. Standard library only.
 
 Every way found in review to drop a test without failing the run is a case here, and
-each case is turned red by one mutation: see the table in checks/README.md.
+each case is turned red by one mutation, which the pull request that adds it shows
+(checks/README.md#expected_testspy).
 """
 
 import json
