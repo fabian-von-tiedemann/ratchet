@@ -521,10 +521,9 @@ class Inventory:
         return note
 
     def walk_repo(self, layer):
-        # Each folder given with --exclude is listed as not read, also when a folder above it is given too and the walk
-        # never reaches it: every exclusion is printed.
-        for rel in self.excluded:
-            self.skipped.append({"path": layer.shown_path(rel), "why": EXCLUDED})
+        # The folders the walk never enters by itself and named with their own reason, so that one also given with
+        # --exclude is listed once.
+        named = set()
         for parts, entries, enter in guarded_walk(layer.top, [], self.folder_not_read(layer)):
             rel_folder = "".join(part + "/" for part in parts)
             for name, kind in entries:
@@ -536,6 +535,7 @@ class Inventory:
                 if kind == "dir":
                     if rel in NOT_ENTERED_PATHS:
                         self.skipped.append({"path": layer.shown_path(rel), "why": NOT_ENTERED_PATHS[rel]})
+                        named.add(rel)
                     elif rel in self.excluded:
                         continue
                     elif name not in NOT_ENTERED:
@@ -547,6 +547,12 @@ class Inventory:
                     continue
                 kind_found, harnesses = found if found is not None else ("unknown", (harness_folder,))
                 self.add_file(layer, rel, kind_found, harnesses)
+        # Each folder given with --exclude is listed as not read, also when a folder above it is given too and the walk
+        # never reaches it: every exclusion is printed. One the walk already named with its own reason, such as
+        # .ratchet, keeps that reason and is listed once.
+        for rel in self.excluded:
+            if rel not in named:
+                self.skipped.append({"path": layer.shown_path(rel), "why": EXCLUDED})
 
     def in_layer(self, rel):
         """Whether a link at rel stands where the repo's layer is: in a harness's folder, or where a kind is."""
@@ -1490,32 +1496,33 @@ def excluded_folders(root, given):
     A folder is named from the root as the repo's other paths are: its parts separated by single slashes, with no
     part "." or "..", no / at its start or its end, and no character of a glob. Each part is a folder that stands under
     the one before it under exactly that name, through no link: a name that differs only in case, which a file system
-    that ignores case would find, is not one, since the walk compares names as they are written."""
+    that ignores case would find, is not one, since the walk compares names as they are written. A fault holds the
+    value as given: main() escapes the whole message once, as it does every other fault."""
     folders = []
     for value in given:
         if value == "" or value == ".":
             raise Fault("--exclude %r names the root, which cannot be excluded: give a folder under it" % value)
         if value.startswith("/"):
-            raise Fault("--exclude %s starts with /: give the folder from the root, as checks/fixtures" % shown(value))
+            raise Fault("--exclude %s starts with /: give the folder from the root, as checks/fixtures" % value)
         if value.endswith("/"):
-            raise Fault("--exclude %s ends with /: give the folder without it, as checks/fixtures" % shown(value))
+            raise Fault("--exclude %s ends with /: give the folder without it, as checks/fixtures" % value)
         parts = value.split("/")
         if "" in parts or "." in parts or ".." in parts:
-            raise Fault("--exclude %s has an empty part, . or ..: give the folder from the root, as checks/fixtures" % shown(value))
+            raise Fault("--exclude %s has an empty part, . or ..: give the folder from the root, as checks/fixtures" % value)
         if any(char in GLOB_CHARACTERS for char in value):
-            raise Fault("--exclude %s holds a character of a glob: give one folder, not a pattern" % shown(value))
+            raise Fault("--exclude %s holds a character of a glob: give one folder, not a pattern" % value)
         kind, linked = guarded_look(root, parts)
         if kind == "link":
-            raise Fault("--exclude %s: %s is a link, which the walk does not follow: give a folder" % (shown(value), shown(linked)))
+            raise Fault("--exclude %s: %s is a link, which the walk does not follow: give a folder" % (value, linked))
         if kind == "missing":
-            raise Fault("--exclude %s names no folder in the repo" % shown(value))
+            raise Fault("--exclude %s names no folder in the repo" % value)
         if kind != "dir":
-            raise Fault("--exclude %s names a file, not a folder" % shown(value))
+            raise Fault("--exclude %s names a file, not a folder" % value)
         for index, part in enumerate(parts):
             entries, why = guarded_entries(root, parts[:index])
             if (part, "dir") not in entries:
                 raise Fault("--exclude %s names no folder in the repo under exactly that name%s" %
-                            (shown(value), "" if why is None else ": " + why))
+                            (value, "" if why is None else ": " + why))
         if value not in folders:
             folders.append(value)
     return folders
