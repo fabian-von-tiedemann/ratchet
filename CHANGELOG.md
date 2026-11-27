@@ -14,6 +14,7 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, a n
 - `upgrade.py` lists new rules by key under their part, `--new-rules full` prints their entries, and a JSON register from 0.3 through 0.11 gets the commands of its first leg, through `v0.11` ([#183](https://github.com/fabian-von-tiedemann/ratchet/pull/183)).
 - CI runs this repo's checks on Python 3.9 and the newest Python 3, and `README.md` says they need Python 3.9 or later and git, untried on Windows ([#185](https://github.com/fabian-von-tiedemann/ratchet/pull/185)).
 - `check_register.py` no longer hunts markers or the phrase "not stated here" disguised with characters outside ASCII or split by marks, a deliberate act outside the threat model; a project need do nothing ([#187](https://github.com/fabian-von-tiedemann/ratchet/pull/187)).
+- New: `inventory.py --exclude <folder>` leaves a folder, such as `checks/fixtures`, out of the walk and names it as not read; a folder that is not one of the repo stops the run ([#190](https://github.com/fabian-von-tiedemann/ratchet/pull/190)).
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.

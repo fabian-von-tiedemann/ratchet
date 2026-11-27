@@ -14,7 +14,7 @@ You need this page, and the rules in [RATCHET.md](RATCHET.md). You do not need t
 ## Map a repo that has rules of its own
 
 1. **Fetch Ratchet**, as in step 1 of [Start here](README.md#start-here). It goes into `.ratchet`, a folder you can delete.
-2. **Take inventory:** `python3 .ratchet/checks/inventory.py`. It lists your agent layer, the files each harness loads, and writes nothing.
+2. **Take inventory:** `python3 .ratchet/checks/inventory.py`. It lists your agent layer, the files each harness loads, and writes nothing. Add `--exclude <folder>` for a folder of test fixtures; it is named as not read.
 3. **Have your agent write the map**, `ratchet-map.json` at the root of your repo. It reads the rules in `.ratchet/RATCHET.md` against your repo and gives every rule a status:
 
    ```json
