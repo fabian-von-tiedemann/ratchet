@@ -31,11 +31,11 @@ jobs:
           python-version: ${{ matrix.python }}
           check-latest: ${{ matrix.python == '3.x' }}
       - name: Generated text matches the data files
-        run: python3 checks/generate.py --check
+        run: python3 maintain/generate.py --check
       - name: This repo's own register has not drifted
         run: python3 checks/check_register.py register.json --markdown REGISTER.md
       - name: Released text is as it stood at its tag
-        run: python3 checks/released_text.py
+        run: python3 maintain/released_text.py
       # The suite step: every check fails on the fixtures it claims to catch, and every expected test ran and passed.
       - name: Every expected test ran and passed, in a process of its own
         run: python3 checks/expected_tests.py
@@ -55,7 +55,7 @@ jobs:
       - name: The full suite passes on a released copy of this repo
         run: python3 checks/test_released_text.py --released-copy
 
-  # The base branch's checks judge the pull request: checks/from_base.py, taken from the base commit, never from the
+  # The base branch's checks judge the pull request: maintain/from_base.py, taken from the base commit, never from the
   # pull request. See checks/README.md, "from_base.py".
   base:
     if: github.event_name == 'pull_request'
@@ -73,12 +73,12 @@ jobs:
       - name: The base branch's checks pass the pull request's data and its checks
         run: |
           judge="$(mktemp -d "$RUNNER_TEMP/from-base.XXXXXX")"
-          if ! git cat-file -e "HEAD^1:checks/from_base.py"; then
-            echo "The base, HEAD^1, has no checks/from_base.py, so the base branch's checks cannot judge this pull request."
+          if ! git cat-file -e "HEAD^1:maintain/from_base.py"; then
+            echo "The base, HEAD^1, has no maintain/from_base.py, so the base branch's checks cannot judge this pull request."
             echo "So it is for the pull request that adds it. The maintainer reads it and merges it as an administrator."
             exit 1
           fi
-          git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"
+          git show "HEAD^1:maintain/from_base.py" > "$judge/from_base.py"
           python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"
 
   # The status that the ruleset on main requires. It passes only when the pull request's own checks and the suite on a

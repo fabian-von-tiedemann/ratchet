@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Generate everything that is derived from data files, or check that it is current.
 
-    python3 checks/generate.py            write the generated text
-    python3 checks/generate.py --check    fail if any generated text is out of date
-    python3 checks/generate.py --entries ratchet.no-secrets ratchet.root-cause
-                                          print rules to paste into a register.json
-    python3 checks/generate.py --count    print the count of rules
+    python3 maintain/generate.py            write the generated text
+    python3 maintain/generate.py --check    fail if any generated text is out of date
+    python3 maintain/generate.py --count    print the count of rules
+
+The rules to paste into a register.json are printed by checks/check_register.py --entries,
+which a project runs (D-2026-11-27-maintain-apart).
 
 From ratchet.json: the text between "<!-- generated:NAME -->" and "<!-- /generated -->"
 in the markdown files, templates/register.json and the registers under
@@ -25,7 +26,7 @@ never writes through a link on the path, and markdown_files() takes in no link (
 
 In CHANGELOG.md only the first entry is generated, the entry of the version that
 ratchet.json names. Every entry after it is released text and is never rewritten:
-checks/released_text.py compares it with its tag. The first entry is headed
+maintain/released_text.py compares it with its tag. The first entry is headed
 "## <version> (<date>)", or "## <version> (unreleased)" while its changes are being
 collected (D-2026-11-19-batched-releases). The date of a version is in that heading and
 nowhere else. The command in README.md that fetches Ratchet is one exact line, in a code
@@ -55,10 +56,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
-# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
-# sys.path, still finds the modules beside it.
+# Its own directory and checks/ on the path, named explicitly, so that python3 -I, which leaves the script's directory
+# out of sys.path, still finds the modules beside it and the modules of the checks it uses.
 import os  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
@@ -94,7 +96,7 @@ PAGE_COUNT_LINE = ('<p id="count" class="count"><strong>Ratchet today:</strong> 
 PAGE_COUNT = re.compile(re.escape(PAGE_COUNT_LINE).replace("%d", "[0-9]+") + r"\Z")
 # The page's one line that names the pinned sources, which the generator writes from sources.json: how many there are,
 # then each name with its license, as text. The watch it names is .github/workflows/watch-sources.yml, which runs
-# checks/watch_sources.py once a day; checks/test_pages.py holds that schedule to one run a day. No name is linked: the
+# maintain/watch_sources.py once a day; checks/test_pages.py holds that schedule to one run a day. No name is linked: the
 # page links to nothing outside the repo, so the count links to the table of sources in RATCHET.md.
 PAGE_SOURCES_LINE = ('<p id="sources" class="count"><strong>Kept current:</strong> '
                      '<a href="https://github.com/fabian-von-tiedemann/ratchet/blob/main/RATCHET.md#sources">%d pinned %s</a>, '
@@ -147,7 +149,7 @@ PRINCIPLE_MENTION = re.compile(r"(?<![\w/.-])principle\.[a-z0-9]+(?:-[a-z0-9]+)*
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 LINK_DEFINITION = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)")
 NOT_KEYS = {"json"}
-# The heading of a changelog entry, released or to be released when it is merged. checks/release.py reads the same form.
+# The heading of a changelog entry, released or to be released when it is merged. maintain/release.py reads the same form.
 HEADING = re.compile(r"^## ([0-9]+\.[0-9]+) \(([0-9]{4}-[0-9]{2}-[0-9]{2})\)\Z")
 # The heading of the first entry while its changes are being collected, which no run publishes.
 UNRELEASED = re.compile(r"^## ([0-9]+\.[0-9]+) \(unreleased\)\Z")
@@ -337,20 +339,12 @@ def required_blocks(data):
     return {name: sorted(blocks) for name, blocks in required.items()}
 
 
-def entry(rule):
-    """A rule as it stands in a register.json."""
-    result = {field: rule[field] for field in check_register.RULE_FIELDS}
-    if rule["enforcement"] == "enforced":
-        result["status"] = "text only for now"
-    return result
-
-
 def register_template(data):
     by_key = registry.rules_by_key(data)
     return {
         "project": "<project>",
         "ratchet_version": data["version"],
-        "adopted": [entry(by_key[key]) for key in data["start"]],
+        "adopted": [check_register.entry(by_key[key]) for key in data["start"]],
         "own": [],
     }
 
@@ -1394,7 +1388,6 @@ def fetch_problems(text, released):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Generate the text derived from the data files, or check it.")
     parser.add_argument("--check", action="store_true", help="change nothing, fail if anything is out of date")
-    parser.add_argument("--entries", nargs="+", metavar="KEY", help="print these rules as entries for a register.json")
     parser.add_argument("--count", action="store_true", help="print the count of rules")
     # The repo is the one above this script, by the path it was run by. The path of an imported module, registry.ROOT
     # among them, is resolved by Python, so a repo reached through a link would not be seen as one (round 3 of #100).
@@ -1410,14 +1403,6 @@ def main(argv=None):
         return 1
     try:
         data = registry.load(os.path.join(root, "ratchet.json"))
-        if args.entries:
-            by_key = registry.rules_by_key(data)
-            unknown = [key for key in args.entries if key not in by_key]
-            if unknown:
-                print("generate: not a rule in Ratchet %s: %s" % (data["version"], ", ".join(unknown)), file=sys.stderr)
-                return 2
-            print(",\n".join(json.dumps(entry(by_key[key]), indent=2, ensure_ascii=False) for key in args.entries))
-            return 0
         if args.count:
             print(count_text(data))
             return 0
@@ -1443,7 +1428,7 @@ def main(argv=None):
         for problem in problems:
             print(problem)
         if stale or problems:
-            print("FAIL: %d file(s) out of date, %d other problem(s). Edit the data file and run checks/generate.py" % (len(stale), len(problems)))
+            print("FAIL: %d file(s) out of date, %d other problem(s). Edit the data file and run maintain/generate.py" % (len(stale), len(problems)))
             return 1
         print("generated text matches the data files (%d files checked)" % len(files))
         return 0

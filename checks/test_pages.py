@@ -59,7 +59,7 @@ repo, not a reference check. The test reads the page strictly and fails on what 
   rule of the example names a secret scan in every PR, and while the page says Ratchet ships no scanner, the rule has
   no reference check
 - the watch that the line of the sources calls daily is one schedule of one run a day in
-  .github/workflows/watch-sources.yml, which runs checks/watch_sources.py on sources.json
+  .github/workflows/watch-sources.yml, which runs maintain/watch_sources.py on sources.json
 - what the top of the page says of the project is what the repo holds: the sample of the dry run, the one
   <pre class="sample">, is the command of README.md and lines that checks/init.py --check prints in an empty repo,
   at the tag the page's clone command fetches, or at the head in the release of that version (the test is in
@@ -107,6 +107,8 @@ import xml.etree.ElementTree
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import generate  # noqa: E402
 import init  # noqa: E402
 import registry  # noqa: E402
@@ -193,7 +195,7 @@ PAGE_KEY = re.compile(r"<code>(ratchet\.[a-z0-9-]+)</code>")
 # The watch that the line of the sources calls daily: one schedule of one run a day, which runs the watch on sources.json.
 WATCH = ".github/workflows/watch-sources.yml"
 WATCH_CRON = re.compile(r'    - cron: "(?:[0-9]|[1-5][0-9]) (?:[0-9]|1[0-9]|2[0-3]) \* \* \*"\Z')
-WATCH_RUN = "        run: python3 checks/watch_sources.py --data sources.json"
+WATCH_RUN = "        run: python3 maintain/watch_sources.py --data sources.json"
 # The list whose items the test reads one by one: the steps of how Ratchet works.
 ITEM_LISTS = {"ol": "flow"}
 CONTRAST = 4.5

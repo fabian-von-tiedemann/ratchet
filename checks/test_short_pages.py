@@ -16,6 +16,8 @@ import tempfile
 import unittest
 import unittest.mock
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import from_base
 import generate
 import registry
@@ -168,7 +170,7 @@ class ThisRepo(unittest.TestCase):
             count = len(handle.read().split())
         with open(path, "a", encoding="utf-8") as handle:
             handle.write("\n" + words(generate.PAGE_CAPS["HANDOVER.md"] - count + 1) + "\n")
-        result = subprocess.run([sys.executable, "-B", os.path.join(copy, "checks", "generate.py"), "--check"],
+        result = subprocess.run([sys.executable, "-B", os.path.join(copy, "maintain", "generate.py"), "--check"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("HANDOVER.md: %d words, over its cap of %d (repo.short-pages)"
@@ -208,13 +210,13 @@ class AcrossPullRequests(unittest.TestCase):
         self.git("switch", "-q", "-c", "pr", self.base)
         self.edit("HANDOVER.md", lambda text: text + "\n" + words(cap + 50 - len(text.split())) + "\n")
         old = '"HANDOVER.md": %d}' % cap
-        self.edit("checks/generate.py", lambda text: text.replace(old, '"HANDOVER.md": %d}' % (cap + 100), 1)
+        self.edit("maintain/generate.py", lambda text: text.replace(old, '"HANDOVER.md": %d}' % (cap + 100), 1)
                   if old in text else self.fail("the test expects %r in generate.py" % old))
         self.commit("the pull request")
         self.git("switch", "-q", "main")
         self.git("merge", "-q", "--no-ff", "-m", "the merge", "pr")
 
-        own = subprocess.run([sys.executable, "-B", "checks/generate.py", "--check"], cwd=self.repo, env=self.env,
+        own = subprocess.run([sys.executable, "-B", "maintain/generate.py", "--check"], cwd=self.repo, env=self.env,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(own.returncode, 0, own.stdout)
 
@@ -227,9 +229,9 @@ class AcrossPullRequests(unittest.TestCase):
             return result.returncode
 
         with unittest.mock.patch.object(from_base, "run", run), unittest.mock.patch("sys.stdout"):
-            problems = from_base.judge(self.repo, self.base, data_commands=(("checks/generate.py", "--check"),),
+            problems = from_base.judge(self.repo, self.base, data_commands=(("maintain/generate.py", "--check"),),
                                        code_commands=())
-        self.assertIn("the base's `python3 checks/generate.py --check` failed in the tree of the data, with exit status 1",
+        self.assertIn("the base's `python3 maintain/generate.py --check` failed in the tree of the data, with exit status 1",
                       problems)
         self.assertIn("HANDOVER.md: %d words, over its cap of %d (repo.short-pages)" % (cap + 50, cap), "".join(outputs))
 

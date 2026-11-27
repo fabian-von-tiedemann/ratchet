@@ -25,6 +25,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import check_register  # noqa: E402
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import from_base  # noqa: E402
 import registry  # noqa: E402
 
@@ -109,26 +111,26 @@ NOT_USED = "not_used_because"
 OVER = "experimental rules, which is more than the cap of"
 FORM = "experimental_cap must be a whole number from 0"
 
-# Every entry of this repo's register that is built, with the command of checks/from_base.py that the base branch runs
+# Every entry of this repo's register that is built, with the command of maintain/from_base.py that the base branch runs
 # for it (D-2026-11-22-second-redraw, built by enforcement point). An entry marked built that is not here fails.
 ENFORCED = {
     "ratchet.register-on-top": ("checks/check_register.py", "register.json", "--markdown", "REGISTER.md"),
     "ratchet.expected-tests-ran": ("checks/expected_tests.py",),
-    "repo.rules-as-data": ("checks/generate.py", "--check"),
+    "repo.rules-as-data": ("maintain/generate.py", "--check"),
     "repo.checks-fail-on-fixtures": ("checks/expected_tests.py",),
-    "repo.version": ("checks/released_text.py",),
-    "repo.new-rule-used": ("checks/generate.py", "--check"),
-    "repo.short-pages": ("checks/generate.py", "--check"),
+    "repo.version": ("maintain/released_text.py",),
+    "repo.new-rule-used": ("maintain/generate.py", "--check"),
+    "repo.short-pages": ("maintain/generate.py", "--check"),
 }
 # What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
 POINT = ("Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on ",
-         "and on a pull request that job passes only when the job `base` passes. The job `base` takes `checks/from_base.py` "
+         "and on a pull request that job passes only when the job `base` passes. The job `base` takes `maintain/from_base.py` "
          "from the base commit, never from the pull request, and it runs the base branch's ")
 # What the workflow must hold for that to be so: the job base takes from_base.py from the base commit and runs it in
 # isolation, and the job checks waits for it, runs whatever it did, and fails on a pull request unless it passed.
 SHOWN = (
     "  base:\n    if: github.event_name == 'pull_request'\n",
-    'git show "HEAD^1:checks/from_base.py" > "$judge/from_base.py"',
+    'git show "HEAD^1:maintain/from_base.py" > "$judge/from_base.py"',
     'python3 -I "$judge/from_base.py" --base-sha "$BASE_SHA" --head-sha "$HEAD_SHA"',
     "  checks:\n    needs: [own, base, released]\n    if: always()\n",
     'if [ "$EVENT" = pull_request ] && [ "$BASE" != success ]; then',
@@ -294,7 +296,7 @@ class Triage(RepoCopy, FixtureTest):
         for words in ("Ratchet is versioned `MAJOR.MINOR`", "Only a major version changes the form of `ratchet.json` or `register.json`",
                       "Before 1.0, a minor version may do these too"):
             self.assertIn(words, own["repo.version"]["rule"])
-        self.assertTrue(own["repo.version"]["ratchet"].startswith("Check: `checks/released_text.py`"))
+        self.assertTrue(own["repo.version"]["ratchet"].startswith("Check: `maintain/released_text.py`"))
 
     def released(self, version):
         """The bytes of ratchet.json as it stood at the tag of version, 0.3 or 0.9, kept under the fixtures of upgrade.py
@@ -387,7 +389,7 @@ class Triage(RepoCopy, FixtureTest):
     def test_every_built_entry_names_an_enforcement_point_that_the_repo_shows(self):
         # D-2026-11-22-second-redraw, built by enforcement point: a merge check is built only when it is required for the
         # merge and reads its rules from the base branch. Each entry marked built is in ENFORCED, with the command the
-        # base branch runs for it, its `where` names that enforcement point, and the workflow and checks/from_base.py
+        # base branch runs for it, its `where` names that enforcement point, and the workflow and maintain/from_base.py
         # show it. What is required for the merge is a setting of the host, which no check here can read: the `where`
         # says when it was read back.
         register = json.loads(read("register.json"))
@@ -411,18 +413,18 @@ class Triage(RepoCopy, FixtureTest):
         cases = {
             "a built entry with no enforcement point": (with_entry("ratchet.root-cause", status="built", where="In CI"), workflow, commands,
                                                         "ratchet.root-cause is built, and no enforcement point is stated for it"),
-            "a where that does not name the point": (with_entry("repo.version", where="`checks/released_text.py` runs in CI"), workflow, commands,
+            "a where that does not name the point": (with_entry("repo.version", where="`maintain/released_text.py` runs in CI"), workflow, commands,
                                                      "repo.version: its where does not say"),
             "a where that names another check": (with_entry("repo.version", where=register_where(register, "repo.rules-as-data")), workflow, commands,
-                                                 "repo.version: its where does not name `checks/released_text.py`"),
-            "a workflow with no job base": (register, workflow.replace('git show "HEAD^1:checks/from_base.py"', 'cat checks/from_base.py'), commands,
+                                                 "repo.version: its where does not name `maintain/released_text.py`"),
+            "a workflow with no job base": (register, workflow.replace('git show "HEAD^1:maintain/from_base.py"', 'cat maintain/from_base.py'), commands,
                                             "the workflow does not show"),
             "a job checks that does not wait for base": (register, workflow.replace("needs: [own, base, released]", "needs: [own, released]"), commands,
                                                          "the workflow does not show"),
             "a base that runs on pull_request_target": (register, workflow + "\n# pull_request_target\n", commands,
                                                         "pull_request_target"),
-            "a command the base does not run": (register, workflow, [c for c in commands if c[0] != "checks/released_text.py"],
-                                                "repo.version: the base branch does not run checks/released_text.py"),
+            "a command the base does not run": (register, workflow, [c for c in commands if c[0] != "maintain/released_text.py"],
+                                                "repo.version: the base branch does not run maintain/released_text.py"),
         }
         for name, (changed, text, given, words) in cases.items():
             with self.subTest(name):

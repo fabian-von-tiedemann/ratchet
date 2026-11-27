@@ -2,7 +2,7 @@
 
     python3 -m unittest discover -s checks -v
 
-checks/release.py tags and releases a version from the release workflow
+maintain/release.py tags and releases a version from the release workflow
 (D-2026-11-17-release-on-merge, D-2026-11-17-release-links). These tests never reach
 the network: the GitHub API is a fake, given to the script as a function, and the HTTP
 client is given a fake opener. The history of main is read from git repositories that the
@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -22,6 +23,8 @@ import urllib.request
 import zlib
 from unittest import mock
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import release
 import testing
 
@@ -2018,15 +2021,15 @@ class Workflow(unittest.TestCase):
         self.assertIn("          fetch-depth: 0", lines)
         runs = [l.strip(" ") for l in lines if l.strip(" ").startswith("run:")]
         self.assertEqual(runs, [
-            "run: python3 checks/generate.py --check",
+            "run: python3 maintain/generate.py --check",
             "run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "run: python3 -m unittest discover -s checks",
             "run: python3 checks/test_released_text.py --released-copy",
-            "run: python3 checks/release.py publish",
+            "run: python3 maintain/release.py publish",
         ])
         self.assertFalse([l for l in lines if "run:" in l and "${{" in l])
         self.assertEqual([l.strip(" ") for l in lines if "${{" in l], ["GITHUB_TOKEN: ${{ github.token }}"])
-        self.assertLess(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 checks/release.py publish"))
+        self.assertLess(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 maintain/release.py publish"))
         self.assertGreater(lines.index("          GITHUB_TOKEN: ${{ github.token }}"), lines.index("        run: python3 checks/test_released_text.py --released-copy"))
 
     # Round 1 of the new approach, finding 2: each part of the workflow that the design leans on has a test of
@@ -2094,11 +2097,11 @@ class Workflow(unittest.TestCase):
         steps = self.block("    steps:")
         runs = [l.strip(" ") for l in steps if l.strip(" ").startswith(("run:", "- run:"))]
         self.assertEqual(runs, [
-            "run: python3 checks/generate.py --check",
+            "run: python3 maintain/generate.py --check",
             "run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "run: python3 -m unittest discover -s checks",
             "run: python3 checks/test_released_text.py --released-copy",
-            "run: python3 checks/release.py publish",
+            "run: python3 maintain/release.py publish",
         ])
         self.assertFalse([l for l in self.code() if "continue-on-error" in l or "always()" in l or "failure()" in l])
 
@@ -2132,7 +2135,7 @@ class Workflow(unittest.TestCase):
             "          fetch-depth: 0",
             "          persist-credentials: false",
             "      - name: Generated text matches the data files",
-            "        run: python3 checks/generate.py --check",
+            "        run: python3 maintain/generate.py --check",
             "      - name: This repo's own register has not drifted",
             "        run: python3 checks/check_register.py register.json --markdown REGISTER.md",
             "      - name: Every check fails on the fixtures it claims to catch",
@@ -2142,7 +2145,7 @@ class Workflow(unittest.TestCase):
             "      - name: Tag and release the version in ratchet.json, if it is new",
             "        env:",
             "          GITHUB_TOKEN: ${{ github.token }}",
-            "        run: python3 checks/release.py publish",
+            "        run: python3 maintain/release.py publish",
         ])
 
 

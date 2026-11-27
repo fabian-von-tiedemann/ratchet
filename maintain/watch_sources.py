@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tell when a pinned source has moved, through one issue per source.
 
-    python3 checks/watch_sources.py                  read sources.json in this repo
-    python3 checks/watch_sources.py --data PATH      read another copy
+    python3 maintain/watch_sources.py                  read sources.json in this repo
+    python3 maintain/watch_sources.py --data PATH      read another copy
 
 For every source in the list "sources" of sources.json, the watch reads the head of the default branch of
 the source repository and compares the pinned commit with it, through the GitHub REST API. A source without
@@ -36,10 +36,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
-# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
-# sys.path, still finds the modules beside it.
+# Its own directory and checks/ on the path, named explicitly, so that python3 -I, which leaves the script's directory
+# out of sys.path, still finds the modules beside it and the modules of the checks it uses.
 import os  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json

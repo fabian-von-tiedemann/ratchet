@@ -13,12 +13,16 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 import threading
 import unittest
 import urllib.request
 
 import registry
+
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import watch_sources
 from suite_runner import FixtureTest
 

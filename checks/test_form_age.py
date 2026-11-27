@@ -1,4 +1,4 @@
-"""The report on the age of the form, checks/form_age.py (issue #70).
+"""The report on the age of the form, maintain/form_age.py (issue #70).
 
     python3 -m unittest discover -s checks -v
 
@@ -16,9 +16,12 @@ import tempfile
 import unittest
 import unittest.mock
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import form_age
 import released_text
 import test_released_text
+import testing
 from test_released_text import git, run
 
 SCRIPT = "form_age.py"
@@ -136,21 +139,22 @@ class Holds(Seeded):
         self.assertTrue(all(command == ["config", "--get-regexp"] for command in commands if command[0] == "config"))
 
     def test_writes_no_bytecode_beside_the_script(self):
-        """The script, run from a copy of the checks with bytecode allowed, leaves that copy as it was."""
+        """The script, run from a copy of the checks and of maintain/ with bytecode allowed, leaves that copy as it was."""
         self.seed()
-        here = os.path.dirname(os.path.abspath(__file__))
         copied = tempfile.mkdtemp(prefix="ratchet-test-")
         self.addCleanup(shutil.rmtree, copied)
-        for name in os.listdir(here):
-            if name.endswith(".py"):
-                shutil.copy(os.path.join(here, name), copied)
-        before = sorted(os.listdir(copied))
+        for folder, source in (("checks", testing.CHECKS), ("maintain", testing.MAINTAIN)):
+            os.mkdir(os.path.join(copied, folder))
+            for name in os.listdir(source):
+                if name.endswith(".py"):
+                    shutil.copy(os.path.join(source, name), os.path.join(copied, folder))
+        before = sorted((folder, sorted(os.listdir(os.path.join(copied, folder)))) for folder in os.listdir(copied))
         environment = test_released_text.git_environment(self.root)
         environment.pop("PYTHONDONTWRITEBYTECODE", None)
-        result = subprocess.run([sys.executable, os.path.join(copied, SCRIPT), self.root], stdout=subprocess.PIPE,
+        result = subprocess.run([sys.executable, testing.script(copied, SCRIPT), self.root], stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, universal_newlines=True, cwd=self.root, env=environment)
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertEqual(sorted(os.listdir(copied)), before)
+        self.assertEqual(sorted((folder, sorted(os.listdir(os.path.join(copied, folder)))) for folder in os.listdir(copied)), before)
 
 
 class TagsNotAllRead(Seeded):

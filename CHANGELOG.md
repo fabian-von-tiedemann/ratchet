@@ -2,11 +2,11 @@
 
 ## 0.17 (unreleased)
 
-In short: trying Ratchet on a repo with rules of its own now takes one page, a new report tells how far 1.0 is, and `upgrade.py --behind` tells a project it has fallen behind. No project needs to do anything, and no form changes.
+In short: trying Ratchet on a repo with rules of its own now takes one page, a new report tells how far 1.0 is, and `upgrade.py --behind` tells a project it has fallen behind. No form changes. The one command a project may run that moved: `generate.py --entries` is now `check_register.py --entries`.
 
 - `TRYING.md` gives the map-only mode as four steps on one page, with the form of `ratchet-map.json` and an example ([#174](https://github.com/fabian-von-tiedemann/ratchet/pull/174)).
 - `README.md` and `TRYING.md` say that Ratchet holds no opinion on how code looks: your own rules go in your register ([#175](https://github.com/fabian-von-tiedemann/ratchet/pull/175)).
-- New: `checks/form_age.py` says whether the form has stood unchanged for three tags and 30 days, the first criterion for 1.0 ([#173](https://github.com/fabian-von-tiedemann/ratchet/pull/173)).
+- New: `maintain/form_age.py` says whether the form has stood unchanged for three tags and 30 days, the first criterion for 1.0 ([#173](https://github.com/fabian-von-tiedemann/ratchet/pull/173)).
 - New, for this repo: `repo.short-pages` caps the words of `README.md`, `TRYING.md`, `STARTING.md`, `UPGRADING.md` and `HANDOVER.md`, and of "In short" and each bullet in the changelog from 0.17 on ([#176](https://github.com/fabian-von-tiedemann/ratchet/pull/176)).
 - `map.py` prints under each rule its `source` in `ratchet.json`, the skill or work it draws on, and `--json` gives it as a new field `source` ([#179](https://github.com/fabian-von-tiedemann/ratchet/pull/179)).
 - The command that copies `run_pinned.py` refuses, before it writes, anything at `<target>.new` and a target that is not a regular file, and the data reader refuses a FIFO rather than wait; `upgrade.py` prints the new command ([#184](https://github.com/fabian-von-tiedemann/ratchet/pull/184)).
@@ -15,6 +15,7 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, a n
 - CI runs this repo's checks on Python 3.9 and the newest Python 3, and `README.md` says they need Python 3.9 or later and git, untried on Windows ([#185](https://github.com/fabian-von-tiedemann/ratchet/pull/185)).
 - `check_register.py` no longer hunts markers or the phrase "not stated here" disguised with characters outside ASCII or split by marks, a deliberate act outside the threat model; a project need do nothing ([#187](https://github.com/fabian-von-tiedemann/ratchet/pull/187)).
 - New: `inventory.py --exclude <folder>` leaves a folder, such as `checks/fixtures`, out of the walk and names it as not read; a folder that is not one of the repo stops the run ([#190](https://github.com/fabian-von-tiedemann/ratchet/pull/190)).
+- The scripts only Ratchet's own maintenance runs move from `checks/` to `maintain/`. Print a rule's entry with `.ratchet/checks/check_register.py --entries <key>`, same output; `generate.py --entries` is gone ([#PR](https://github.com/fabian-von-tiedemann/ratchet/pull/PR)).
 - New: `map.py --partial` checks a map while it is written: a rule with no entry is listed as not yet mapped, not a problem, and the first line says the map is partial. Without it, nothing changes ([#191](https://github.com/fabian-von-tiedemann/ratchet/pull/191)).
 
 <!-- generated:count -->

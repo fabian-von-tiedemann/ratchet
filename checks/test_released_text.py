@@ -1,4 +1,4 @@
-"""The guard on released text, checks/released_text.py, and the steps of a release.
+"""The guard on released text, maintain/released_text.py, and the steps of a release.
 
     python3 -m unittest discover -s checks -v
 
@@ -18,6 +18,8 @@ import tempfile
 import unittest
 import unittest.mock
 
+# The scripts of Ratchet's own maintenance stand in maintain/, beside checks/ (D-2026-11-27-maintain-apart).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maintain"))
 import release
 import test_checks
 import test_release
@@ -73,7 +75,7 @@ SUITE_TIMEOUT = 3600
 
 def run(script, *args, root=ROOT, cwd=None, timeout=SCRIPT_TIMEOUT):
     result = subprocess.run(
-        [sys.executable, os.path.join(root, "checks", script)] + list(args),
+        [sys.executable, testing.script(root, script)] + list(args),
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, cwd=cwd, timeout=timeout,
         env=git_environment(cwd or root),
     )
@@ -113,7 +115,7 @@ class Guard(unittest.TestCase):
 
     def guard(self):
         result = subprocess.run(
-            [sys.executable, os.path.join(HERE, GUARD), "--root", self.root],
+            [sys.executable, testing.script(ROOT, GUARD), "--root", self.root],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, env=git_environment(self.root),
         )
         return result.returncode, result.stdout
@@ -333,7 +335,7 @@ class ReleaseSteps(unittest.TestCase):
     D-2026-11-19-batched-releases. Whichever state the repo is in, each test first heads the first entry of the
     changelog "(unreleased)", or gives it a date, as test_checks.first_entry does. While it is unreleased, a merge
     publishes nothing. The release is a pull request that gives the entry its date and moves the command in the README that
-    fetches Ratchet to the new tag; checks/generate.py writes the rest. Every step is release.py's own code, never a
+    fetches Ratchet to the new tag; maintain/generate.py writes the rest. Every step is release.py's own code, never a
     copy of it. The copy gets tags that hold the changelog of each released version as it stands in the copy, which
     the guard in CI shows to be the changelog at the real tags, and a ratchet.json as main had it: none at v0.1 and
     v0.2, and one from v0.3 on.
@@ -628,7 +630,7 @@ class ReleasedCopyJob(unittest.TestCase):
         with open(os.path.join(ROOT, ".github", "workflows", "release.yml"), encoding="utf-8") as handle:
             lines = handle.read().split("\n")
         self.assertEqual(lines.count("        run: %s" % RELEASED_COPY), 1)
-        self.assertLess(lines.index("        run: %s" % RELEASED_COPY), lines.index("        run: python3 checks/release.py publish"))
+        self.assertLess(lines.index("        run: %s" % RELEASED_COPY), lines.index("        run: python3 maintain/release.py publish"))
 
     def run_the_case(self, suite):
         """released_copy with the release steps and the run of the suite in the copy replaced: [what was called], exit status."""

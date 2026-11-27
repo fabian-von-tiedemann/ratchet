@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Tag and release the version in ratchet.json, from the release workflow.
 
-    python3 checks/release.py notes --repo OWNER/NAME   print the release text, with no token and no network
-    python3 checks/release.py publish                   tag and release, in the release workflow
+    python3 maintain/release.py notes --repo OWNER/NAME   print the release text, with no token and no network
+    python3 maintain/release.py publish                   tag and release, in the release workflow
 
 D-2026-11-17-release-on-merge, D-2026-11-17-release-verbatim, D-2026-11-17-release-links and
 D-2026-11-17-release-narrow-claim.
@@ -45,10 +45,11 @@ import sys
 
 # No bytecode is written next to the checks, where a link could lead it out of the repo (round 3 of #100).
 sys.dont_write_bytecode = True
-# Its own directory on the path, named explicitly, so that python3 -I, which leaves the script's directory out of
-# sys.path, still finds the modules beside it.
+# Its own directory and checks/ on the path, named explicitly, so that python3 -I, which leaves the script's directory
+# out of sys.path, still finds the modules beside it and the modules of the checks it uses.
 import os  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "checks"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
