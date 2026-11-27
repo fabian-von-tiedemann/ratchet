@@ -1,8 +1,15 @@
 # D-2026-11-22-second-redraw: ten principles, 54 rules to 29 and a product module of seven, adoption by reference as a weaker mode, "built" by enforcement point, and one threat model
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-owner-reads-outside-gates (step 8 keeps what ratchet.checks-owner-read covered); amended by D-2026-11-22-standing-approval (the steps of the migration merge under the standing approval); amended by D-2026-11-23-adopt-mode-no-copied-row (the floor of adopt mode in step 9b); amended by D-2026-11-23-values-and-principles (eleven principles of one or two sentences)
+<!-- /generated:status -->
+
 - Date: 2026-11-22
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-16-register-only (the core rules on decisions and on the glossary); D-2026-11-16-scope (point 1, a row by reference holds the project's wording); D-2026-11-17-pull-and-budget (the cap goes from 23 to 17); D-2026-11-19-one-point-oh (choice 2 counts ten start rules); D-2026-11-20-generated-block (adoption by reference is allowed as a weaker mode); D-2026-11-20-principles-and-obligations (the principles and the rules under them); D-2026-11-20-proposal-triage (choice 1, no product rules now); D-2026-11-21-release-and-redraw (settles what it left open on #78)
+- Ends: none
 
 The mark `[…]` shows where this file leaves out part of a message.
 

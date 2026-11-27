@@ -1,8 +1,15 @@
 # D-2026-11-17-release-links: the release links to the changelog entry instead of copying it
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-release-narrow-claim (the release script claims to catch mistakes in normal operation only)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-release-on-merge (technical choice 2, the release text); D-2026-11-17-release-verbatim (the release text, while the rule on unfinished versions stands)
+- Ends: none
 
 ## Question
 

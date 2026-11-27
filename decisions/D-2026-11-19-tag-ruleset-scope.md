@@ -3,6 +3,9 @@
 - Date: 2026-11-19
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-19-locks-not-parsing (item 2)
+- Ends: none
 
 ## Question
 

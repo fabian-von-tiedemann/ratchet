@@ -1,8 +1,15 @@
 # D-2026-11-19-batched-releases: changes are collected under an unreleased version and released together
 
+<!-- generated:status -->
+Status: amended by D-2026-11-26-road-to-1-0 (a release when a batch is ready, not each week)
+<!-- /generated:status -->
+
 - Date: 2026-11-19
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-new-approaches (item 3, an unreleased first entry comes back); D-2026-11-17-release-on-merge (a version not yet dated is not released)
+- Ends: none
 
 ## Question
 

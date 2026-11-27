@@ -1,5 +1,9 @@
 # D-2026-11-17-release-on-merge: a new version is tagged and released when it reaches main
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-release-links (technical choice 2, the release text); amended by D-2026-11-17-release-verbatim (technical choices 2 and 5); amended by D-2026-11-19-batched-releases (a version not yet dated is not released)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

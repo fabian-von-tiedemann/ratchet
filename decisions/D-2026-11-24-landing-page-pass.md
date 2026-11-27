@@ -1,8 +1,15 @@
 # D-2026-11-24-landing-page-pass: the landing page's first screen, its trust section and the word "Beta"
 
+<!-- generated:status -->
+Status: amended by D-2026-11-25-prompt-per-tool (the word cap of the page and the elements of the picker)
+<!-- /generated:status -->
+
 - Date: 2026-11-24
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-23-values-and-principles (the principles stand on the landing page)
+- Ends: none
 
 ## Question
 

@@ -3,6 +3,9 @@
 - Date: 2026-11-23
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-22-second-redraw (the floor of adopt mode in step 9b)
+- Ends: none
 
 ## Question
 

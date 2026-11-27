@@ -1,5 +1,9 @@
 # D-2026-11-17-pull-and-budget: how projects pull Ratchet, a budget against bloat, and contributions
 
+<!-- generated:status -->
+Status: amended by D-2026-11-20-proposal-triage (the cap goes from 25 to 23); amended by D-2026-11-22-second-redraw (the cap goes from 23 to 17)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

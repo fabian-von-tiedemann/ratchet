@@ -1,8 +1,15 @@
 # D-2026-11-18-approve-on-word: the control room submits the code owner's approval on the maintainer's word
 
+<!-- generated:status -->
+Status: amended by D-2026-11-19-review-by-risk (a word may cover a review still to come); amended by D-2026-11-22-standing-approval (a standing approval for the migration)
+<!-- /generated:status -->
+
 - Date: 2026-11-18
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-agent-merges-after-approval (the control room may submit the code owner's approval)
+- Ends: none
 
 ## Question
 

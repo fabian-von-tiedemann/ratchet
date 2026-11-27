@@ -3,6 +3,9 @@
 - Date: 2026-11-22
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-22-second-redraw (step 8 keeps what ratchet.checks-owner-read covered); D-2026-11-22-standing-approval (choice 3, the reviewers while Gemini 4 Neon is out)
+- Ends: none
 
 The mark `[…]` shows where this file leaves out part of a message.
 

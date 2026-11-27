@@ -1,8 +1,15 @@
 # D-2026-11-20-proposal-triage: what to do with the open proposals after two triages
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-second-redraw (choice 1, no product rules now)
+<!-- /generated:status -->
+
 - Date: 2026-11-20
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-pull-and-budget (the cap goes from 25 to 23)
+- Ends: none
 
 ## Question
 

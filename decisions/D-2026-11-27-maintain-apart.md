@@ -1,5 +1,9 @@
 # D-2026-11-27-maintain-apart: keep Ratchet's own maintenance apart from what an adopter runs, and fetch only what an adopter needs
 
+<!-- generated:status -->
+Status: amended by D-2026-11-27-no-sparse-fetch (point 2 is withdrawn)
+<!-- /generated:status -->
+
 - Date: 2026-11-27
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

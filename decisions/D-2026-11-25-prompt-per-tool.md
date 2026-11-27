@@ -3,6 +3,9 @@
 - Date: 2026-11-25
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-24-landing-page-pass (the word cap of the page and the elements of the picker)
+- Ends: none
 
 ## Question
 

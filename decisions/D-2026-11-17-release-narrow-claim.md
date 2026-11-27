@@ -1,8 +1,15 @@
 # D-2026-11-17-release-narrow-claim: the release script claims to catch mistakes in normal operation
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-release-fail-closed (naming the version is not promised)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-release-links (the release script claims to catch mistakes in normal operation only)
+- Ends: none
 
 ## Question
 

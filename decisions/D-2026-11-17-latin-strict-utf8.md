@@ -3,6 +3,9 @@
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-16-strict-forms (technical choice 4)
+- Ends: none
 
 Names are left out of this file. Where the original names a reviewer or a model, the name is replaced by a word in square brackets. Nothing else in the original is changed.
 

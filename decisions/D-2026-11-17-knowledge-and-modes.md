@@ -1,8 +1,15 @@
 # D-2026-11-17-knowledge-and-modes: what the first video gave, the knowledge layer, and the modes of the control room
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-harness-sandbox-risk (the instruction files are reviewed now, not at the next release)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-improvement-loop (the clean-out at a release also reviews the instruction files)
+- Ends: none
 
 ## Question
 

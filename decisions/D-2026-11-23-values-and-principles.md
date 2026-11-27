@@ -1,8 +1,15 @@
 # D-2026-11-23-values-and-principles: four values over the principles, and eleven principles of one or two sentences
 
+<!-- generated:status -->
+Status: amended by D-2026-11-24-landing-page-pass (the principles stand on the landing page)
+<!-- /generated:status -->
+
 - Date: 2026-11-23
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-22-second-redraw (eleven principles of one or two sentences)
+- Ends: none
 
 ## Question
 

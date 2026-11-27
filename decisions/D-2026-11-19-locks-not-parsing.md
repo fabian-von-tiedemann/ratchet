@@ -1,8 +1,15 @@
 # D-2026-11-19-locks-not-parsing: real locks at GitHub and in the sandbox, the hook as a tripwire, and the phases first
 
+<!-- generated:status -->
+Status: amended by D-2026-11-19-tag-ruleset-scope (item 2); amended by D-2026-11-19-tripwire-and-settings (item 3)
+<!-- /generated:status -->
+
 - Date: 2026-11-19
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-harness-sandbox-risk (the deny rules become a tripwire)
+- Ends: none
 
 ## Question
 

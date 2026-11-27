@@ -1,5 +1,9 @@
 # D-2026-11-17-auto-merge: the agents' account turns on auto-merge, and the code owner's approval merges
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-agent-merges-after-approval (auto-merge is dropped, and the summary in the pull request stays)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
