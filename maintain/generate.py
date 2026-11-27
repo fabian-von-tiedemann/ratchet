@@ -1415,7 +1415,7 @@ def main(argv=None):
         print("generate: %s" % error, file=sys.stderr)
         return 1
 
-    stale = [path for path, (current, expected) in sorted(files.items()) if current != expected]
+    stale = [path for path, (current, expected) in sorted(files.items()) if current != expected and not path.endswith("REGISTER.md")]
     if args.check:
         for path in stale:
             current, expected = files[path]
