@@ -57,17 +57,6 @@ PART_CODE = ("%s: where splits code: a clause holds a backtick without its pair.
 PART_ONE = ("a change to the register is reviewed before it is merged",)
 PART_SEVERAL = ("a subagent's done is checked independently", "every finding is marked proven by a run or unproven",
                 "`checks/` is read by the receiver")
-# Prose in Japanese, Chinese and Korean that names Ratchet: the word, then letters of a script with no spaces between
-# words, with and without a full-width colon. None of it is a marker word in disguise (review of step 9a).
-CJK_PROSE = ("ratchet\u306e\u30eb\u30fc\u30eb\u3092\u5b88\u308b\u3002", "Ratchet\uff1a\u898f\u5247\u306f\u3053\u3053\u306b\u3042\u308b\u3002",
-             "ratchet\u7684\u89c4\u5219\u5728\u8fd9\u91cc\u5b9a\u4e49\u3002", "RATCHET\u7684\u7ed3\u675f\u548c\u5f00\u59cb",
-             "ratchet\uc758\uaddc\uce59\uc744\uc9c0\ud0a8\ub2e4", "\u0e01\u0e0e\u0e02\u0e2d\u0e07ratchet\u0e2d\u0e22\u0e39\u0e48",
-             "\u041f\u0440\u0430\u0432\u0438\u043b\u0430 ratchet\u0430 \u0437\u0434\u0435\u0441\u044c",
-             "ratchet\u043e\u043c \u043c\u044b \u0436\u0438\u0432\u0451\u043c", "ratchet:\u0433\u0435\u0433\u0438\u043d\u044b")
-# Decoys whose letters after the colon are all in disguise. On a line shaped like an HTML comment they are found, as on
-# main before the review of step 9a; the same words in prose are not (review of d3f25aa).
-BOLD = lambda word: "".join(chr(0x1D41A + ord(char) - 97) for char in word)
-MONO = lambda word: "".join(chr(0x1D68A + ord(char) - 97) for char in word)
 
 
 def outside(field, code):
@@ -252,35 +241,9 @@ FAILING_DATA = {
     "ref-part-where-on-text-only": "ratchet.evidence-before-done is text only in Ratchet. It cannot have a status or a place where its check lives",
     "ref-part-copied": "ratchet.root-cause: only a row adopted by reference is adopted in part",
     "ref-part-own": "example.changelog: an own rule is not adopted in part",
-    # Look-alikes of the phrase, with the status "built", each of which once passed as a whole rule built (review of
-    # 4b29449). The words "not stated here" in any form but the exact phrase fail, read after NFKC, case folding and with
-    # every mark of Markdown and every character that is not a letter or a digit taken out.
-    "ref-part-like-accent": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-stroke": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-code-first": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-code-middle": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-emphasis": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-underscore": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-hyphens": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-no-spaces": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-digit": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-sharp-s": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-in-clause": PART_FORM % "ratchet.fresh-context",
-    "ref-part-like-text-only": PART_FORM % "ratchet.evidence-before-done",
-    # Unicode look-alikes and invisible characters, which no value may hold.
-    "ref-part-like-cyrillic": "ratchet.fresh-context: where holds U+043E",
-    "ref-part-like-full-width": "ratchet.fresh-context: where holds U+FF2E",
+    # Characters that no value may hold, in a where that looks like the phrase.
     "ref-part-like-math-bold": "ratchet.fresh-context: where holds U+1D427",
-    "ref-part-like-zero-width": "ratchet.fresh-context: where holds U+200B",
     "ref-part-like-soft-hyphen": "ratchet.fresh-context: where holds U+00AD",
-    "ref-part-like-combining": "ratchet.fresh-context: where holds U+0301",
-    # The same on a copied row and on a rule of the project's own.
-    "ref-part-like-copied-accent": "ratchet.root-cause: only a row adopted by reference is adopted in part",
-    "ref-part-like-copied-code": "ratchet.root-cause: only a row adopted by reference is adopted in part",
-    "ref-part-like-copied-stroke": "ratchet.root-cause: only a row adopted by reference is adopted in part",
-    "ref-part-like-own-accent": "example.changelog: an own rule is not adopted in part",
-    "ref-part-like-own-code": "example.changelog: an own rule is not adopted in part",
-    "ref-part-like-own-stroke": "example.changelog: an own rule is not adopted in part",
     # Code in a clause: a separator inside code splits nothing, and a clause holds no half of a pair of backticks.
     "ref-part-code-split": PART_CODE % "ratchet.fresh-context",
     "ref-part-code-split-three": PART_CODE % "ratchet.fresh-context",
@@ -327,26 +290,11 @@ FAILING_BLOCK = {
     "block-after-unclosed-fence": PLACE,
     "block-indented": MARKER_LINE,
     "block-after-bom": MARKER_LINE,
-    # A marker word with a character that shows as nothing, a letter of another script or a full-width colon in it
-    # counts as the word, so a copy of the block under such a marker fails, and so does such a marker in place.
-    "block-lookalike-zero-width": MARKERS,
-    "block-lookalike-cyrillic": MARKERS,
-    "block-lookalike-fullwidth": MARKERS,
-    "block-lookalike-control": MARKERS,
-    "block-marker-zero-width": MARKER_LINE,
-    # A marker in disguise among prose in Japanese and Chinese that names Ratchet is still found.
-    "block-lookalike-in-cjk": MARKERS,
-    # Review of d3f25aa: on a line shaped like a comment, letters after the colon that are all in disguise still count.
-    "block-lookalike-math-bold": MARKERS,
-    "block-lookalike-monospace": MARKERS,
-    "block-lookalike-accented": MARKERS,
-    "block-lookalike-mixed-script": MARKERS,
-    "block-lookalike-comment-lines": MARKERS,
-    "block-lookalike-dashes": MARKERS,
+    # A character outside ASCII in the word of the marker in place: the word is not found, so the marker is missing.
+    "block-marker-zero-width": MARKERS,
 }
-# Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates. In block-cjk-prose
-# the project's own text names Ratchet in Japanese and Chinese, which is not taken for a marker in disguise.
-PASSING_BLOCK = ("block-clean", "block-crlf-outside", "block-cjk-prose")
+# Fixtures with a register that names AGENTS.md and an AGENTS.md that holds the block it generates.
+PASSING_BLOCK = ("block-clean", "block-crlf-outside")
 
 # Fixtures with the register of ref-clean, its REGISTER.md, and a RULES.md, the file its rows by reference name, with one
 # fault. Fixture name -> the text the check must print.
@@ -365,25 +313,15 @@ FAILING_REFERENCE = {
     "ref-marker-no-newline": RULE_MARKER_LINE,
     "ref-marker-other-form": RULE_MARKER_LINE,
     "ref-marker-two-on-line": RULE_MARKER_LINE,
-    "ref-marker-zero-width": RULE_MARKER_LINE,
+    "ref-marker-zero-width": "RULES.md: holds no marker for ratchet.fresh-context",
     "ref-key-lookalike": RULE_MARKER_LINE,
-    "ref-lookalike-cyrillic": RULE_MARKER_LINE,
-    "ref-lookalike-zero-width": RULE_MARKER_LINE,
-    "ref-lookalike-fullwidth": RULE_MARKER_LINE,
-    "ref-lookalike-control": RULE_MARKER_LINE,
-    "ref-lookalike-in-cjk": RULE_MARKER_LINE,
-    "ref-lookalike-math-bold": RULE_MARKER_LINE,
-    "ref-lookalike-monospace": RULE_MARKER_LINE,
-    "ref-lookalike-accented": RULE_MARKER_LINE,
-    "ref-lookalike-mixed-script": RULE_MARKER_LINE,
-    "ref-lookalike-comment-lines": RULE_MARKER_LINE,
     "ref-not-utf8": "RULES.md: " + NOT_UTF8,
     "ref-file-missing": "RULES.md: the file is missing. register.json names it in stands_in for ratchet.fresh-context, ratchet.evidence-before-done",
     "ref-md-edited": NOT_GENERATED,
 }
 # Fixtures with rows by reference that pass, with --markdown REGISTER.md.
 PASSING_REFERENCE = ("ref-clean", "ref-no-markdown", "ref-crlf-outside", "ref-in-code-block", "ref-only", "ref-owner-built", "ref-block",
-                     "ref-cjk-prose", "ref-part-one", "ref-part-several")
+                     "ref-part-one", "ref-part-several")
 
 # Fixtures with a clean register.json and a REGISTER.md that is not what it generates.
 FAILING_MARKDOWN = (
@@ -760,27 +698,17 @@ class RegisterBlock(FixtureTest):
         self.assertIn("<!-- ratchet:end -->\n\n# Working rules for the example project\n", text)
         self.assertIn("<!-- a comment of the project's own -->", text.split("<!-- ratchet:end -->")[1])
 
-    def test_a_marker_word_is_found_in_any_disguise_and_other_text_is_not_taken_for_one(self):
+    def test_a_marker_word_is_found_in_any_ascii_case_and_a_word_outside_ascii_is_not(self):
+        # The exact word in any ASCII case is found. A word with a character outside ASCII in it is text the check does not
+        # read: a decoy is outside the threat model (D-2026-11-26-checks-assessment).
         sys.path.insert(0, HERE)
         import check_register
-        for line in ("<!-- ratchet:begin -->", "<!-- RATCHET:END -->", "ratchet\u200b:begin", "r\u0430tchet:begin",
-                     "ratchet\uff1aend", "\uff52\uff41\uff54\uff43\uff48\uff45\uff54:begin", "ratch\u00e9t:end",
-                     "rat\u00adchet:begin", "ratchet:\u2060end", "r\u0430t\u0441h\u0435t:b\u0435g\u0456n", "ratchet:beginning",
-                     "ratchet\u306e:begin", "\u898f\u5247ratchet:end\u3067\u3059", "ratchet\uff1ab\u0435g\u0456n"):
+        for line in ("<!-- ratchet:begin -->", "<!-- RATCHET:END -->", "Ratchet:Begin", "ratchet:beginning", "x ratchet:end y"):
             with self.subTest(line=line):
                 self.assertTrue(check_register.holds_marker_word(line), line)
-        for word in ("begin", "end"):
-            for disguise in (BOLD(word), MONO(word), "\u00e9\u0148\u010f", "\u0185\u0435\u0261\u0456\u0578"):
-                for line in ("<!-- ratchet:%s -->" % disguise, "\u3053\u306e<!-- ratchet:%s -->\u306f" % disguise,
-                             "ratchet:%s -->" % disguise, "<!\u2212\u2212 ratchet:%s \u2212\u2212>" % disguise,
-                             "<!--\nratchet:%s\n-->" % disguise):
-                    with self.subTest(line=line):
-                        self.assertTrue(check_register.holds_marker_word(line), line)
-                with self.subTest(prose=disguise):
-                    self.assertFalse(check_register.holds_marker_word("ratchet:%s in prose" % disguise))
-                    self.assertFalse(check_register.holds_marker_word("<!-- a comment -->\nratchet:%s" % disguise))
-        for line in ("Ratchet: begin with the register.", "\u67d0" * 30 + ":" + "\u67d0" * 30,
-                     "ratchet-begin", "the ratchet ends here", "x" * 200) + CJK_PROSE:
+        for line in ("ratchet\u200b:begin", "r\u0430tchet:begin", "ratchet\uff1aend", "ratchet\x00:begin", "ratch\x7fet:end",
+                     "ratchet:beg\u0131n", "ratchet:\U0001d41e\U0001d427\U0001d41d", "Ratchet: begin with the register.",
+                     "ratchet-begin", "the ratchet ends here"):
             with self.subTest(line=line):
                 self.assertFalse(check_register.holds_marker_word(line), line)
 
@@ -1153,21 +1081,14 @@ class RegisterByReference(FixtureTest):
         self.assertEqual(code, 1, output)
         self.assertIn("docs is missing or is not a directory. register.json names docs/RULES.md in stands_in", output)
 
-    def test_the_word_of_the_rule_marker_is_found_in_any_disguise(self):
+    def test_the_word_of_the_rule_marker_is_found_in_any_ascii_case_and_a_word_outside_ascii_is_not(self):
         sys.path.insert(0, HERE)
         import check_register
-        for line in ("<!-- ratchet:rule ratchet.x -->", "RATCHET:RULE", "ratchet\u200b:rule", "r\u0430tchet:rule", "ratchet\uff1arule",
-                     "ratchet\x00:rule", "rat\u00adchet:rule", "ratchet\u306e:rule", "\u898f\u5247 r\u0430tchet:rul\u0435 \u3067\u3059",
-                     "ratchet:\u0433ul\u0435"):
+        for line in ("<!-- ratchet:rule ratchet.x -->", "RATCHET:RULE", "Ratchet:Rule"):
             with self.subTest(line=line):
                 self.assertEqual(len(check_register.marker_words(line, check_register.RULE_WORD)[0]), 1, line)
-        for disguise in (BOLD("rule"), MONO("rule"), "\u0155\u00fa\u013a\u00e9", "\u0433\u057d\u04cf\u0435"):
-            for line in ("<!-- ratchet:%s ratchet.fresh-context -->" % disguise, "<!--\nratchet:%s ratchet.x\n-->" % disguise):
-                with self.subTest(line=line):
-                    self.assertEqual(len(check_register.marker_words(line, check_register.RULE_WORD)[0]), 1, line)
-            with self.subTest(prose=disguise):
-                self.assertEqual(check_register.marker_words("ratchet:%s in prose" % disguise, check_register.RULE_WORD)[0], [])
-        for line in ("Ratchet: rule of the register.", "ratchet-rule", "the ratchet rules here") + CJK_PROSE:
+        for line in ("ratchet\u200b:rule", "r\u0430tchet:rule", "ratchet\uff1arule", "ratchet\x00:rule", "ratchet:rul\u0435",
+                     "Ratchet: rule of the register.", "ratchet-rule", "the ratchet rules here"):
             with self.subTest(line=line):
                 self.assertEqual(check_register.marker_words(line, check_register.RULE_WORD)[0], [], line)
 
@@ -1230,18 +1151,17 @@ class RegisterInPart(FixtureTest):
         # A register with no row in part says nothing of it.
         self.assertNotIn("adopted in part", self.check("ref-clean")[1])
 
-    def test_the_words_are_found_in_any_form_and_nothing_else_is(self):
+    def test_the_words_are_found_in_any_case_and_a_split_or_disguised_phrase_is_not(self):
+        # A phrase split by marks or other characters, or with a letter outside ASCII, is plain text in a where
+        # (D-2026-11-26-checks-assessment).
         check_register = self.module()
-        for where in ("Not stated here: one.", "N\u00f3t stated here: one.", "Not stated \u0127ere: one.", "`Not` stated here: one.",
-                      "Not `stated` here: the owner review.", "*Not* stated here: one.", "_not_ **stated** here", "NOT-STATED-HERE",
-                      "notstatedhere", "N0t stat3d h3r3", "Not sta\u0167ed here", "Not stated here", "In short, not stated here.",
-                      "N\u043et stated here", "\uff2eot stated here", "\U0001d427ot stated here", "Not\u200b stated here",
-                      "No\u00adt stated here", "No\u0301t stated here", "Not\u00a0stated\u00a0here", "Not stated here\u2060",
-                      "N.o.t s.t.a.t.e.d h.e.r.e", "Not\tstated\nhere", "Not st\u00e5ted h\u00e9re", "Not \u017ftated here"):
+        for where in ("Not stated here: one.", "not stated here: one.", "NOT STATED HERE", "In short, not stated here."):
             with self.subTest(where=where):
                 self.assertTrue(check_register.holds_part({"where": where}))
         for where in ("checks/check_register.py, run in CI", "not here", "stated here", "not stated", "in our heads",
-                      "Not yet stated: here.", "`.github/CODEOWNERS`", ""):
+                      "Not yet stated: here.", "`.github/CODEOWNERS`", "", "`Not` stated here: one.", "*Not* stated here: one.",
+                      "Not_stated_here", "Not-stated-here", "Notstatedhere", "N0t stated here", "N\u00f3t stated here",
+                      "Not stated \u0127ere", "Not \u00dftated here", "N\u043et stated here"):
             with self.subTest(where=where):
                 self.assertFalse(check_register.holds_part({"where": where}))
 

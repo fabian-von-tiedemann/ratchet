@@ -25,9 +25,9 @@ does not state. Such a row is never "built", may stand on a rule that is text on
 and is labeled "Adopted in part" with its clauses. "not stated here" in a "where" in
 any other form, an empty list, an empty or doubled clause, and the phrase on a
 copied row or an own rule fail. The check sees the phrase, not whether the clauses
-are the true gaps. The words are found in any form: after NFKC and case folding, with
-every character that is not a letter or a digit left out, and with a letter that does not
-reduce to one of ASCII read as any letter. A clause never splits code. REGISTER.md may be left out by a register with rows by reference: with
+are the true gaps. The words are found in any case, as they stand: a phrase split by
+other characters or disguised with letters outside ASCII is not found
+(D-2026-11-26-checks-assessment). A clause never splits code. REGISTER.md may be left out by a register with rows by reference: with
 --markdown, a file that is not there is then not a failure. Where it is there, it is
 what the register generates, and the rows by reference stand in a table of their own,
 with their label and no rule text, there and in the block.
@@ -48,8 +48,9 @@ the rules from the register and fails unless the file starts with the line
 "<!-- ratchet:begin -->" and holds one line "<!-- ratchet:end -->", each alone on its
 line and ending in LF, and between them, byte for byte, the block. Nothing stands
 before the block, so no text can put it in a code block, a comment or an element that
-hides it. "ratchet:begin" or "ratchet:end" in any other form, in any case or in
-disguise, is a broken marker. Nothing else in the file is read: it must be UTF-8, and
+hides it. "ratchet:begin" or "ratchet:end" in any ASCII case, in any other line, is a
+broken marker. A word disguised with characters outside ASCII is not found
+(D-2026-11-26-checks-assessment). Nothing else in the file is read: it must be UTF-8, and
 the rest of it is the project's own (D-2026-11-20-generated-block). No part of the path
 of the file may be a symbolic link, and the file stays inside the directory of the
 register.
@@ -107,7 +108,6 @@ import argparse
 import hashlib
 import os
 import re
-import unicodedata
 
 import registry
 
@@ -126,21 +126,11 @@ PATH_PART = re.compile(r"^[A-Za-z0-9._-]+\Z")
 PATH_LENGTH = 200
 BEGIN = "<!-- ratchet:begin -->"
 END = "<!-- ratchet:end -->"
-# The words of the two markers, wherever they stand in the instruction file, in any case and in disguise. Each must
-# stand once. A character outside printable ASCII, a control character such as NUL or DEL among them (round 3 of
-# #100), may stand in place of each character of the word, and any number of them
-# between two, so a letter of another script, an accented letter, a mark that shows as nothing or a soft hyphen does
-# not hide the word. A full-width form of ASCII is read as its ASCII character first. At least SHARE of the characters
-# of the word must be the word's own, so text in another script is not taken for it. On a line that is not shaped like
-# an HTML comment (see comment_shaped), one of them must also be a letter after its colon, so prose that names Ratchet
-# in a script with no spaces between words, such as Japanese or Chinese, is not taken for it: "ratchet" is SHARE
-# characters (review of step 9a). On a line shaped like a comment that letter is not asked, so a decoy whose letters
-# after the colon are all in disguise, such as math-bold ones, is found there as before (review of d3f25aa). No table of
-# Unicode is asked, so the answer is the same on every version of Python (round 2 of #100).
-MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I)), ("ratchet:end", re.compile("ratchet:end", re.I)))
-SHARE = 7
-# The full-width forms of ASCII, U+FF01 to U+FF5E, each U+FEE0 above its ASCII character.
-FULL_WIDTH = dict((code, code - 0xFEE0) for code in range(0xFF01, 0xFF5F))
+# The words of the two markers, wherever they stand in the instruction file, in any ASCII case. Each must stand once.
+# A word disguised with characters outside ASCII is not found: a decoy is a deliberate act, outside the threat model
+# (D-2026-11-26-checks-assessment). re.ASCII keeps a dotless i or a Kelvin sign from matching a letter of the word.
+MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I | re.ASCII)),
+                ("ratchet:end", re.compile("ratchet:end", re.I | re.ASCII)))
 STATUSES = ("built", "text only for now")
 OWN_KEY = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*\.[a-z0-9]+(-[a-z0-9]+)*\Z")
 # A row adopted by reference, the weaker mode, from 0.11 (D-2026-11-22-second-redraw). It holds no rule text: the key,
@@ -151,10 +141,10 @@ SHA = "sha256"
 REFERENCE_FIELDS = ("key", STANDS_IN, SHA)
 TEXT_FIELDS = ("rule", "ratchet", "source")
 # The one line that stands for a rule adopted by reference in the file its row names, alone on its line. The word
-# "ratchet:rule" anywhere else in that file, in any case and in disguise, is a broken marker.
+# "ratchet:rule" anywhere else in that file, in any ASCII case, is a broken marker.
 MARKER = "<!-- ratchet:rule %s -->"
 MARKER_LINE = re.compile(r"\A<!-- ratchet:rule (ratchet\.[a-z0-9]+(?:-[a-z0-9]+)*) -->\Z")
-RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I)),)
+RULE_WORD = (("ratchet:rule", re.compile("ratchet:rule", re.I | re.ASCII)),)
 # The label of every row by reference, in the check's output and in REGISTER.md, as the decision has it but for one
 # word: it says "guarded" where the decision says "built", so that "built" means only a rule's enforcement on the same
 # screen (D-2026-11-23-new-rules-first). It says "guarded" only when the register itself copies the row of OWNER_PATHS
@@ -167,22 +157,15 @@ OWNER_PATHS = "ratchet.owner-paths"
 # A row by reference adopted in part, from 0.12: the project's wording states the rule's core but not every clause. Its
 # "where" is then exactly PART, the clauses the wording does not state joined by "; ", and one ".". No field is added,
 # but a row by reference of a text-only rule takes a "where" only as this phrase, which is a change of form of
-# register.json (D-2026-11-23-partial-adoption-form). The words "not stated here" anywhere else in a "where", in any form,
-# are a broken phrase: they are found in the skeleton of the text (part_skeleton), so a look-alike fails closed (review
-# of 4b29449). A clause is not empty, is text by itself, so a pair of backticks stands in one clause and no separator
+# register.json (D-2026-11-23-partial-adoption-form). The words "not stated here" anywhere else in a "where", in any
+# case, are a broken phrase. A phrase split by other characters or disguised with letters outside ASCII is not found
+# (D-2026-11-26-checks-assessment). A clause is not empty, is text by itself, so a pair of backticks stands in one clause and no separator
 # splits code, holds a letter or a digit, has no space at its ends, holds no ";" and no ". ", so no sentence follows the
 # list, does not end in ".", and no clause stands twice. Such a row is never "built", and may stand on a rule that is
 # text only, whose row has no "where" otherwise. The check sees the phrase, not whether the clauses are the true gaps.
 PART = "Not stated here: "
 PART_SEPARATOR = "; "
-PART_WORD = "notstatedhere"
-# In a skeleton: a letter or a digit that does not reduce to one of ASCII stands for any one letter, and any other
-# character outside ASCII that is not a space, a combining mark or a format character stands for one letter or none.
-PART_ANY_LETTER = "\x00"
-PART_ANY_OR_NONE = "\x01"
-# Digits that stand for the letters of the phrase.
-PART_DIGITS = {"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t"}
-PART_WORDS = re.compile((PART_ANY_OR_NONE + "*").join("[%s%s%s]" % (letter, PART_ANY_LETTER, PART_ANY_OR_NONE) for letter in PART_WORD))
+PART_WORDS = "not stated here"
 PART_CODE = ("%s: where splits code: a clause holds a backtick without its pair. A clause holds no semicolon, in code or out "
              "of it, so a pair of backticks stands in one clause")
 PART_LABEL = "Adopted in part. Not stated in the project's wording: %s. "
@@ -457,40 +440,13 @@ def instructions_problem(value, field=INSTRUCTIONS):
     return None
 
 
-def part_skeleton(text):
-    """The text as the words of the phrase of a row adopted in part are looked for in it, so that a look-alike fails
-    closed. It is read in NFKC. Each character is put in lower case and decomposed, and its combining marks are left
-    out. An ASCII letter stands as itself, and a digit that looks like a letter of the phrase as that letter. Any other
-    letter or digit stands for any one letter (PART_ANY_LETTER). Every other ASCII character is left out: spaces,
-    punctuation and every mark of Markdown, such as backticks, asterisks and underscores. Any other character outside
-    ASCII is left out when it is a space, a combining mark, a control or a format character, and otherwise stands for
-    one letter or none (PART_ANY_OR_NONE). A value holds only the characters of the fixed list, so the tables of
-    Unicode that the interpreter has decide nothing for a value that is valid."""
-    out = []
-    for character in unicodedata.normalize("NFKC", text):
-        for part in unicodedata.normalize("NFKD", character.lower()):
-            if unicodedata.combining(part):
-                continue
-            if "a" <= part <= "z":
-                out.append(part)
-            elif part in PART_DIGITS:
-                out.append(PART_DIGITS[part])
-            elif part < "\x80":
-                continue
-            elif part.isalnum():
-                out.append(PART_ANY_LETTER)
-            elif not part.isspace() and unicodedata.category(part) not in ("Cc", "Cf", "Mn", "Me", "Mc"):
-                out.append(PART_ANY_OR_NONE)
-    return "".join(out)
-
-
 def holds_words(text):
-    """Whether a text holds the words "not stated here", in any form (part_skeleton)."""
-    return bool(PART_WORDS.search(part_skeleton(text)))
+    """Whether a text holds the words "not stated here", in any case."""
+    return PART_WORDS in text.lower()
 
 
 def holds_part(entry):
-    """Whether a row's "where" holds the words of the phrase of a row adopted in part, in any form."""
+    """Whether a row's "where" holds the words of the phrase of a row adopted in part, in any case."""
     return isinstance(entry.get("where"), str) and holds_words(entry["where"])
 
 
@@ -689,90 +645,21 @@ def render_block(register):
     return "\n".join(lines) + "\n"
 
 
-def disguised(line, word, letter_after=True):
-    """The places in a line that holds characters outside printable ASCII where the word stands in disguise, read in one
-    pass. A control character of ASCII counts as one outside it.
-
-    best[j][h] is, for a part of the line that ends here and stands for the first j characters of the word, the most of
-    them that are the word's own, and where that part starts: h is 1 when one of them is a letter after the colon, and
-    0 when none is. The word is found when it has SHARE of its own characters and, if letter_after, one of them is such
-    a letter. Without letter_after it is found as it was before the review of step 9a, on SHARE alone. A word found
-    starts the search again after it.
-    """
-    after = word.index(":") + 1
-    none = (-1, 0)
-
-    def fresh(start):
-        return [[(0, start), none]] + [[none, none] for _ in word]
-
-    best, places = fresh(0), []
-    for at, char in enumerate(line):
-        # A control character of ASCII, such as NUL or DEL, shows as nothing, and counts as a character outside ASCII.
-        other = char >= "\x80" or char < "\x20" or char == "\x7f"
-        step = fresh(at + 1)
-        for j in range(len(word)):
-            for h in (0, 1):
-                count, start = best[j][h] if j else ((0, at) if h == 0 else none)
-                if count < 0:
-                    continue
-                if not other and char.lower() == word[j]:
-                    k = 1 if h or j >= after else 0
-                    if count + 1 > step[j + 1][k][0]:
-                        step[j + 1][k] = (count + 1, start)
-                elif other and count > step[j + 1][h][0]:
-                    step[j + 1][h] = (count, start)
-                if other and 0 < j and count > step[j][h][0]:
-                    step[j][h] = (count, start)
-        best = step
-        found = best[len(word)][1] if letter_after else max(best[len(word)], key=lambda part: part[0])
-        if found[0] >= SHARE:
-            places.append(found[1])
-            best = fresh(at + 1)
-    return places
-
-
-def comment_shaped(lines):
-    """For each line, already read with FULL_WIDTH, whether it is shaped like an HTML comment: it holds "<" or ">", or it
-    stands after a line that opens a comment with "<!--" and before the "-->" that closes it. No Markdown is read, so a
-    "<!--" in code opens one too, and the lines after it are read the stricter way (review of d3f25aa)."""
-    shaped, open_ = [], False
-    for line in lines:
-        shaped.append(open_ or "<" in line or ">" in line)
-        for mark in re.findall("<!--|-->", line):
-            open_ = mark == "<!--"
-    return shaped
-
-
 def marker_words(text, words=MARKER_WORDS):
-    """For each of the marker words, the two of the block by default, where it stands in the text, in any case and in
-    disguise (see MARKER_WORDS).
-
-    A line of printable ASCII alone is searched for the word as it is. A line with any other character, a control
-    character of ASCII among them, is read by disguised(): on a line shaped like an HTML comment (comment_shaped) as
-    strictly as before the review of step 9a, and on any other line with a letter after the colon asked of the word.
-    """
-    lines = text.translate(FULL_WIDTH).split("\n")
-    found = [[] for _ in words]
-    offset = 0
-    for line, shaped in zip(lines, comment_shaped(lines)):
-        for places, (word, pattern) in zip(found, words):
-            if all("\x20" <= char < "\x7f" for char in line):
-                places += [offset + match.start() for match in pattern.finditer(line)]
-            else:
-                places += [offset + start for start in disguised(line, word, letter_after=not shaped)]
-        offset += len(line) + 1
-    return found
+    """For each of the marker words, the two of the block by default, where it stands in the text, in any ASCII case
+    (see MARKER_WORDS)."""
+    return [[match.start() for match in pattern.finditer(text)] for _, pattern in words]
 
 
 def holds_marker_word(text):
-    """Whether the text holds either marker word, in any case and in disguise."""
+    """Whether the text holds either marker word, in any ASCII case."""
     return any(marker_words(text))
 
 
 def find_block(text, name):
     """(start, end) of the block with its two markers in the text of an instruction file, or (None, problems).
 
-    The file holds "ratchet:begin" and "ratchet:end" once each, in any case and in disguise, and each stands in its
+    The file holds "ratchet:begin" and "ratchet:end" once each, in any ASCII case, and each stands in its
     exact marker line, alone, ending in LF. The begin marker is the first line of the file, so nothing before it can
     put the block in a code block, a comment or an element that hides it. Nothing else of the file is read.
     """
@@ -828,7 +715,7 @@ def marker_problems(name, data, keys):
     """Every problem with the marker lines in the bytes of a file that rows by reference name, for the keys of those
     rows, or nothing.
 
-    The word "ratchet:rule" is found wherever it stands, in any case and in disguise, as the words of the block are.
+    The word "ratchet:rule" is found wherever it stands, in any ASCII case, as the words of the block are.
     Each line that holds it must be exactly "<!-- ratchet:rule <key> -->", alone on its line and ending in LF. When
     every such line is exact, the marker of each key given stands once, and no marker names a key that no row names
     this file for. Nothing else in the file is read.
