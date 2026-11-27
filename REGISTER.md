@@ -1,4 +1,4 @@
-# Register for Ratchet
+# Register for Ratchet, edited by hand
 
 Every rule in force in this project. This file takes precedence over all other text in the repo. It is generated from `register.json`: change that file, never this one.
 
