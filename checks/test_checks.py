@@ -1673,7 +1673,7 @@ class GeneratedText(RepoCopy, unittest.TestCase):
                 self.assert_check_fails("CHANGELOG.md: %r is not the heading of an entry" % heading)
 
     def test_the_first_entry_may_be_unreleased_and_then_the_readme_fetches_the_newest_release(self):
-        # D-2026-11-19-batched-releases, choice 1. The README never fetches a tag that does not exist yet.
+        # D-2026-11-19-batched-releases, choice 1 and round 2. The README fetches the newest version with a date, not the unreleased one.
         version, fetched = first_entry(self.copy)
         self.assertNotEqual(version, fetched)
         code, output = run("generate.py", "--check", root=self.copy)
