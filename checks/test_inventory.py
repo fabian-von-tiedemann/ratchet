@@ -1103,6 +1103,8 @@ class Inventory(FixtureTest):
             "checks/*": "a character of a glob",
             "checks/fixture?": "a character of a glob",
             "checks/[f]ixtures": "a character of a glob",
+            # A backslash is a character of a glob too (review of #190): without it, this is a folder that is not there.
+            "checks\\fixtures": "a character of a glob",
             "linked": "linked is a link",
             "linked/x": "linked is a link",
             # The walk compares names as written: on a file system that ignores case this folder is found, and is not it.
@@ -1115,6 +1117,40 @@ class Inventory(FixtureTest):
                 self.assertEqual(out, "")
                 self.assertIn("inventory: cannot run: --exclude ", err)
                 self.assertIn(message, err)
+
+    def test_an_exclude_fault_is_escaped_once(self):
+        # Review of #190: the value was escaped in the fault and again when printed, so one backslash showed as four.
+        os.makedirs(os.path.join(self.repo, "checks", "fixtures"))
+        cases = {
+            "checks\\fixtures": "--exclude checks\\\\fixtures holds a character of a glob: give one folder, not a pattern",
+            "bad\nname": "--exclude bad\\nname names no folder in the repo",
+            "checks/fixtures\x7f/": "--exclude checks/fixtures\\x7f/ ends with /: give the folder without it, as checks/fixtures",
+        }
+        for value, message in cases.items():
+            with self.subTest(value=value):
+                code, out, err = self.run_inventory(self.repo, "--exclude", value)
+                self.assertEqual((code, out, err), (2, "", "inventory: cannot run: %s\n" % message))
+
+    def test_exclude_of_a_folder_the_walk_never_enters_is_listed_once(self):
+        # Review of #190: .ratchet and .claude/worktrees, which the walk never enters anyway, were listed twice when
+        # given with --exclude, once with their own reason and once as excluded. They keep their own reason, once.
+        self.write(".ratchet/AGENTS.md", "Ratchet.\n")
+        self.write(".claude/worktrees/one/AGENTS.md", "A worktree.\n")
+        for args in ([], ["--exclude", ".ratchet", "--exclude", ".claude/worktrees"]):
+            with self.subTest(args=args):
+                facts = self.facts(*args)
+                listed = [item for item in facts["skipped"] if item["path"] in (".ratchet", ".claude/worktrees")]
+                self.assertEqual(listed, [{"path": ".claude/worktrees", "why": "a folder of worktrees, not walked"},
+                                          {"path": ".ratchet", "why": "Ratchet's own copy, not walked"}])
+                skipped = self.text(*args).split("\nSkipped, not read\n", 1)[1].split("\n\n", 1)[0].split("\n")
+                self.assertEqual([line for line in skipped if line.startswith(("  .ratchet", "  .claude/worktrees"))],
+                                 ["  .claude/worktrees: a folder of worktrees, not walked",
+                                  "  .ratchet: Ratchet's own copy, not walked"])
+        # Under a folder given too, the walk never reaches it, so it is listed as excluded, also once.
+        facts = self.facts("--exclude", ".claude", "--exclude", ".claude/worktrees")
+        self.assertEqual([item for item in facts["skipped"] if item["path"].startswith(".claude")],
+                         [{"path": ".claude", "why": "excluded with --exclude"},
+                          {"path": ".claude/worktrees", "why": "excluded with --exclude"}])
 
     def test_exclude_changes_nothing_but_its_own_line(self):
         # An empty folder holds nothing of the layer: excluding it adds its one line and changes nothing else.
