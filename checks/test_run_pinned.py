@@ -716,6 +716,25 @@ class Isolated(unittest.TestCase):
                 found.append((node.lineno, node.module.split(".")[0]))
         return sorted(found)
 
+    @staticmethod
+    def relative_imports(text):
+        """The lines of every relative import in the text, such as `from . import x` or `from .x import y`. A script in
+        checks/ or maintain/ is not a package, so it has none, and the guard above would not see where one points
+        (review of #200)."""
+        return sorted(node.lineno for node in ast.walk(ast.parse(text))
+                      if isinstance(node, ast.ImportFrom) and node.level)
+
+    def test_the_guard_finds_a_relative_import(self):
+        text = "import os\nfrom . import generate\ndef f():\n    from .generate import main\nfrom ..x import y\n"
+        self.assertEqual(self.relative_imports(text), [2, 4, 5])
+        self.assertEqual(self.relative_imports("import os\nfrom json import loads\n"), [])
+
+    def test_no_script_has_a_relative_import(self):
+        for folder, name in self.scripts():
+            with self.subTest(script=name):
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    self.assertEqual(self.relative_imports(handle.read()), [])
+
     def test_the_guard_reads_every_import_statement(self):
         text = ("import os, sys\nfrom json import loads\nimport xml.dom\n'import docstring'\n"
                 "def f():\n    import generate\n    if True:\n        from release import main\n")
