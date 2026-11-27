@@ -224,22 +224,24 @@ def expected(root):
             continue
         ident = name[:-3]
         path = os.path.join(folder, name)
-        with open(path, "rb") as handle:
-            if b"\r" in handle.read():
-                # registry.read reads CRLF as LF, so a status written back would change the line endings of the
-                # verbatim text. A decision file has LF line endings only, and one with a carriage return is not
-                # read or written (review of #202).
-                problems.append("decisions/%s: holds a carriage return. A decision file has LF line endings only" % name)
-                refused.add(ident)
-                continue
-        text = registry.read(path)
+        # One read, without following a link at the last part, as generate.py reads.
+        data = registry.read_plain(path)
+        if b"\r" in data:
+            # A status written back would change the line endings of the verbatim text. A decision file has LF line
+            # endings only, and one with a carriage return is not read or written (review of #202).
+            problems.append("decisions/%s: holds a carriage return. A decision file has LF line endings only" % name)
+            refused.add(ident)
+            continue
+        try:
+            text = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise registry.RegistryError("%s: %s. Every file a check reads is UTF-8" % (path, registry.not_utf8(error)))
         texts[ident] = (path, text)
         record, found = parse(ident, text)
         problems += found
         if record is not None:
             records[ident] = record
     known = set(texts) | refused
-    before = len(problems)
     for ident in sorted(records):
         for field in RELATIONS:
             for other, _ in records[ident]["relations"][field]:
@@ -251,9 +253,10 @@ def expected(root):
                     problems.append("decisions/%s.md: %s names %s, which is dated after it" % (ident, field, other))
     for cycle in cycles(records):
         problems.append("decisions/: these decisions name each other in a cycle: %s" % " -> ".join(cycle + cycle[:1]))
-    if len(problems) > before or refused:
-        # A name that is wrong gives no status to write, and a file that is refused cannot take one, so no decision file
-        # is written until both are right.
+    if problems:
+        # A name that is wrong gives no status to write, a file that is refused cannot take one, and a decision whose form
+        # is wrong would drop the status it gives, so no decision file is written while any decision has a problem
+        # (review of #202).
         return {}, problems
     lines = status_lines(records)
     result = {}
@@ -261,8 +264,4 @@ def expected(root):
         path, current = texts[ident]
         block = "%s\n%s\n%s\n\n" % (START, lines[ident], END) if ident in lines else ""
         result[path] = (current, record["title"] + "\n\n" + block + record["head"])
-    for ident in sorted(set(lines) - set(records)):
-        if ident in texts:
-            problems.append("decisions/%s.md: a later decision names it, and its status cannot be written until its form "
-                            "is right" % ident)
     return result, problems

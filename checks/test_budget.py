@@ -748,7 +748,7 @@ class Triage(RepoCopy, FixtureTest):
         self.assertNotIn("when that the", where)
         self.assertNotIn("that act outside the repo", where)
         # The evidence of 2026-11-17 stands here, not in text of AGENTS.md that no longer holds it (D-2026-11-27-cleanup).
-        self.assertIn("both read back on 2026-11-17", where)
+        self.assertIn("the agents' account has the role Write, both read back on 2026-11-17", where)
         self.assertIn("the test pull request #1", where)
         self.assertNotIn("as AGENTS.md records", where)
 

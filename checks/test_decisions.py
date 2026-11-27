@@ -221,6 +221,19 @@ class Decisions(FixtureTest):
                                             "line endings only"])
 
 
+    def test_a_decision_in_the_wrong_form_writes_no_decision(self):
+        # Review of #202: a later decision with a broken field gave no status, and write mode then wrote the earlier file
+        # without the status another later decision gives it. No decision file is written while any decision has a problem.
+        root = self.folder({"D-2026-11-20-old": OLD,
+                            "D-2026-11-28-a": GOOD % "- Replaces: none\n- Amends: D-2026-11-20-old (a point)\n- Ends: none\n",
+                            "D-2026-11-28-b": GOOD.replace("D-2026-11-28-a", "D-2026-11-28-b")
+                            % "- Replaces: none\n- Amends: D-2026-11-20-old (another point)\n- Ends: none\n- Other: x\n"})
+        files, problems = decisions.expected(root)
+        self.assertEqual(files, {})
+        self.assertEqual(len(problems), 1)
+        self.assertIn("D-2026-11-28-b", problems[0])
+
+
 class ThisRepo(RepoCopy, unittest.TestCase):
     """The decisions of this repo, through generate.py itself."""
 
