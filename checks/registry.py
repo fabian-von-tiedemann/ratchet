@@ -126,11 +126,11 @@ class RegistryError(Exception):
     """ratchet.json is missing, unreadable or breaks its own format."""
 
 
-def _pairs(items):
+def _pairs(items, field=repr):
     result = {}
     for key, value in items:
         if key in result:
-            raise ValueError("the field %r appears twice in one object" % key)
+            raise ValueError("the field %s appears twice in one object" % field(key))
         result[key] = value
     return result
 
@@ -177,15 +177,17 @@ def nesting_too_deep(text):
     return False
 
 
-def strict_loads(text):
+def strict_loads(text, field=repr):
     """Parse JSON text strictly: no field twice in one object, no NaN or Infinity, no nesting deeper than MAX_DEPTH.
 
     Raises ValueError, or RecursionError("nested too deeply") for text nested too deeply, on every Python from 3.9
-    up. Every check that reads JSON parses it here.
+    up. Every check that reads JSON parses it here. field shows the name of a field given twice: repr escapes it for
+    a caller that prints the message as it stands, and a caller that escapes the whole message itself, as inventory.py
+    does, passes one that only quotes it, so that the name is escaped once (review of #194).
     """
     if nesting_too_deep(text):
         raise RecursionError("nested too deeply")
-    return json.loads(text, object_pairs_hook=_pairs, parse_constant=_constant)
+    return json.loads(text, object_pairs_hook=lambda items: _pairs(items, field), parse_constant=_constant)
 
 
 def load_json(path):
@@ -214,11 +216,11 @@ def load_json(path):
     return parse_json(b"".join(chunks))
 
 
-def parse_json(data):
-    """The bytes of a JSON data file, read strictly as load_json reads a file."""
+def parse_json(data, field=repr):
+    """The bytes of a JSON data file, read strictly as load_json reads a file. field is as strict_loads takes it."""
     try:
         text = data.decode("utf-8", errors="strict")
-        return strict_loads(text)
+        return strict_loads(text, field)
     except RecursionError:
         raise RegistryError("not a valid data file: it is nested too deeply")
     except UnicodeDecodeError as error:

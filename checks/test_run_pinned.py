@@ -6,8 +6,8 @@ Each test makes a project of its own: a git repo with a register.json, the copy 
 pinned commit, and a store, a clone of a copy of this checkout with one commit. Standard library only.
 """
 
+import ast
 import json
-import re
 import os
 import shutil
 import subprocess
@@ -703,6 +703,43 @@ class Isolated(unittest.TestCase):
         self.assertIn((testing.MAINTAIN, "generate.py"), found)
         return found
 
+    @staticmethod
+    def imports(text):
+        """(the line, the top-level name) of every module that an import statement anywhere in the text imports, in a
+        function or a block too, in the order of the lines. Read with ast, not by lines: an indented import got past a
+        pattern that matched only the start of a line (review of #195)."""
+        found = []
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.Import):
+                found += [(node.lineno, alias.name.split(".")[0]) for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                found.append((node.lineno, node.module.split(".")[0]))
+        return sorted(found)
+
+    @staticmethod
+    def relative_imports(text):
+        """The lines of every relative import in the text, such as `from . import x` or `from .x import y`. A script in
+        checks/ or maintain/ is not a package, so it has none, and the guard above would not see where one points
+        (review of #200)."""
+        return sorted(node.lineno for node in ast.walk(ast.parse(text))
+                      if isinstance(node, ast.ImportFrom) and node.level)
+
+    def test_the_guard_finds_a_relative_import(self):
+        text = "import os\nfrom . import generate\ndef f():\n    from .generate import main\nfrom ..x import y\n"
+        self.assertEqual(self.relative_imports(text), [2, 4, 5])
+        self.assertEqual(self.relative_imports("import os\nfrom json import loads\n"), [])
+
+    def test_no_script_has_a_relative_import(self):
+        for folder, name in self.scripts():
+            with self.subTest(script=name):
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    self.assertEqual(self.relative_imports(handle.read()), [])
+
+    def test_the_guard_reads_every_import_statement(self):
+        text = ("import os, sys\nfrom json import loads\nimport xml.dom\n'import docstring'\n"
+                "def f():\n    import generate\n    if True:\n        from release import main\n")
+        self.assertEqual(self.imports(text), [(1, "os"), (1, "sys"), (2, "json"), (3, "xml"), (6, "generate"), (8, "release")])
+
     def test_every_script_that_imports_one_beside_it_puts_its_own_directory_on_the_path_first(self):
         siblings = {name[:-3] for _, name in self.scripts()}
         maintained = {name[:-3] for folder, name in self.scripts() if folder == testing.MAINTAIN}
@@ -710,17 +747,16 @@ class Isolated(unittest.TestCase):
             with self.subTest(script=name):
                 with open(os.path.join(folder, name), encoding="utf-8") as handle:
                     text = handle.read()
-                imported = [match for match in re.finditer(r"(?m)^(?:import|from) (\w+)", text) if match.group(1) in siblings]
-                imports = [match.start() for match in imported]
-                if imports:
+                imported = [(line, module) for line, module in self.imports(text) if module in siblings]
+                if imported:
                     self.assertIn(self.INSERT, text)
-                    self.assertLess(text.index(self.INSERT), imports[0])
-                if folder == testing.MAINTAIN and imports:
+                    self.assertLess(text[:text.index(self.INSERT)].count("\n") + 1, imported[0][0])
+                if folder == testing.MAINTAIN and imported:
                     self.assertIn(self.INSERT_CHECKS, text)
                     self.assertLess(text.index(self.INSERT_CHECKS), text.index(self.INSERT))
                 if folder == HERE:
                     # What a project runs never needs Ratchet's own maintenance.
-                    self.assertEqual([match.group(1) for match in imported if match.group(1) in maintained], [])
+                    self.assertEqual([module for _, module in imported if module in maintained], [])
         with open(os.path.join(HERE, "run_pinned.py"), encoding="utf-8") as handle:
             self.assertNotIn(self.INSERT, handle.read(),
                              "run_pinned.py imports nothing from beside it, so -I keeps a planted module out")

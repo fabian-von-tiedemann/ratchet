@@ -1237,6 +1237,23 @@ class PrintedEntries(unittest.TestCase):
                 self.assertEqual((code, out), (2, b""))
                 self.assertIn("usage:", err)
 
+    def test_an_empty_path_is_refused_and_never_read_as_no_path(self):
+        # Review of #195: an empty register or --markdown passed the guard of --entries, which tested truthiness, and an
+        # empty --markdown in a check skipped the comparison it asks for.
+        register = os.path.join(ROOT, "register.json")
+        for args, name in ((("", "--entries", "ratchet.no-secrets"), "register"),
+                           (("--entries", "ratchet.no-secrets", "--markdown", ""), "--markdown"),
+                           (("--entries", "ratchet.no-secrets", "--agents", ""), "--agents"),
+                           ((register, "--markdown", ""), "--markdown"),
+                           ((register, "--agents", ""), "--agents"),
+                           ((register, "--source", ""), "--source"),
+                           (("",), "register")):
+            with self.subTest(args=args):
+                code, out, err = printed(*args)
+                self.assertEqual((code, out), (2, b""))
+                self.assertIn("usage:", err)
+                self.assertIn("%s is empty: give a path, or leave the argument out" % name, err)
+
 
 class AdoptGuidance(unittest.TestCase):
     """What STARTING.md tells a project that adopts by reference, from an adoption report on 0.12

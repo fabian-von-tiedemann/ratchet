@@ -195,6 +195,13 @@ class Fault(Exception):
     """The inventory cannot run."""
 
 
+def quoted(value):
+    """A value as given, in the quotes repr would choose, for a fault: main() escapes the whole message once, so the
+    value is not escaped here, as %r would escape it (review of #194)."""
+    quote = '"' if "'" in value and '"' not in value else "'"
+    return quote + value + quote
+
+
 def shown(value):
     """A name as text on one line: a backslash, a control character and a character that is not text escaped."""
     out = []
@@ -1222,7 +1229,8 @@ def read_ruleset(path):
             why += ". " + NO_LINK
         raise Fault("%s: %s" % (path, why))
     try:
-        value = registry.parse_json(data)
+        # A fault holds the name as given, in quotes: main() escapes the whole message once (review of #194).
+        value = registry.parse_json(data, field=quoted)
     except registry.RegistryError as error:
         raise Fault("%s: %s" % (path, error))
     items = value if isinstance(value, list) else [value]
@@ -1539,7 +1547,7 @@ def build(args):
             raise Fault("--uses names no harness: give the harnesses the project uses, such as --uses claude,codex")
         for name in uses:
             if name not in HARNESSES:
-                raise Fault("unknown harness %r: the harnesses this inventory knows are %s" % (name, ", ".join(HARNESSES)))
+                raise Fault("unknown harness %s: the harnesses this inventory knows are %s" % (quoted(name), ", ".join(HARNESSES)))
         uses = sorted(set(uses))
     if args.home is not None and not args.use_global:
         raise Fault("--home names the home folder for --global, and --global was not given")

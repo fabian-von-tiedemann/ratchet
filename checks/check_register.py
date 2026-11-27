@@ -974,6 +974,11 @@ def main(argv=None):
                        help="print these rules as entries for a register.json, and read no register")
     parser.add_argument("--source", default=registry.SOURCE, help="path to ratchet.json (default: the one next to this check)")
     args = parser.parse_args(argv)
+    # An empty path is refused, never read as no path: `--markdown ""` would otherwise skip the comparison it asks for,
+    # and `"" --entries KEY` would pass the guard below.
+    for name, value in (("register", args.register), ("--markdown", args.markdown), ("--agents", args.agents), ("--source", args.source)):
+        if value == "":
+            parser.error("%s is empty: give a path, or leave the argument out" % name)
     if args.entries:
         if args.register or args.markdown or args.agents:
             parser.error("--entries reads no register, and takes neither a register nor --markdown nor --agents")
