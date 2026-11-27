@@ -548,6 +548,192 @@ class Map(FixtureTest):
         for path in (".github/workflows/ci.yml", "AGENTS.md", "docs/rules.md"):
             self.assertIn(path.split("/"), looks)
 
+    # 15. --partial: a rule with no entry is listed as not yet mapped, not named as a problem; all else as without it.
+
+    # Spelled out here, not read from map.py, so that a notice emptied or reworded there fails.
+    PARTIAL_NOTICE = ("This run is partial: a rule missing from the map is listed as not yet mapped, not named as a "
+                      "problem. Run map.py without --partial once every rule is mapped.")
+    PARTIAL_HEAD = "ratchet-map.json, for Ratchet %s: partial, not yet a map of the whole Ratchet: "
+    # The first line of a full pass, which a partial run never prints.
+    FULL_PASS = re.compile(r"(?m)^ratchet-map\.json, for Ratchet [0-9]+\.[0-9]+: [0-9]+ rules, [0-9]+ covered, ")
+    FULL_KEYS = ["counts", "map", "ok", "proposal", "ratchet", "rules"]
+
+    def this_checkout(self):
+        """A checkout whose ratchet.json is this repo's, a repo with AGENTS.md, and the keys of its rules in order."""
+        with open(os.path.join(ROOT, "ratchet.json"), "rb") as handle:
+            data = json.loads(handle.read().decode("utf-8"))
+        repo = self.scratch()
+        with open(os.path.join(repo, "AGENTS.md"), "w", encoding="utf-8") as handle:
+            handle.write("# Rules\n")
+        return self.make_checkout(json.dumps(data).encode("utf-8")), repo, data["version"], [r["key"] for r in data["rules"]]
+
+    def assert_partial_text(self, out, version="0.9"):
+        """The first line of a partial run says it is partial, the notice follows, and no line of a full pass stands."""
+        first, second = out.split("\n")[:2]
+        self.assertTrue(first.startswith(self.PARTIAL_HEAD % version), first)
+        self.assertEqual(second, self.PARTIAL_NOTICE)
+        self.assertIsNone(self.FULL_PASS.search(out), out)
+
+    def test_partial_one_rule_given_passes_and_lists_every_other_rule_as_not_yet_mapped(self):
+        checkout, repo, version, keys = self.this_checkout()
+        rest = keys[1:]
+        self.write_map(json.dumps({"ratchet": version, "rules": {
+            keys[0]: {"status": "covered", "by": ["AGENTS.md"], "note": "Assessed."}}}), top=repo)
+        code, out, err = self.run_map(repo, "--partial", checkout=checkout)
+        self.assertEqual((code, err), (0, ""), out + err)
+        self.assert_partial_text(out, version)
+        self.assertIn("1 rule given, 1 covered, 0 gaps; %d rules not yet mapped: %s\n" % (len(rest), ", ".join(rest)), out)
+        self.assertEqual(len(rest), len(keys) - 1)
+        facts = json.loads(self.run_map(repo, "--partial", "--json", checkout=checkout)[1])
+        self.assertEqual(facts["unmapped"], rest)
+        self.assertEqual(facts["counts"], {"covered": 1, "gap": 0})
+        self.assertEqual([entry["key"] for entry in facts["rules"]], keys[:1])
+        # Without --partial: exit 1, each missing rule named, and nothing of a partial run.
+        code, out, err = self.run_map(repo, checkout=checkout)
+        self.assertEqual((code, err), (1, ""), out + err)
+        self.assertTrue(out.startswith("ratchet-map.json, for Ratchet %s: %d problems\n" % (version, len(rest))), out)
+        for key in rest:
+            self.assertIn("  rules has no entry for %s, a rule of Ratchet %s\n" % (key, version), out)
+        self.assertNotIn("partial", out)
+        self.assertNotIn("not yet mapped", out)
+
+    def test_partial_one_rule_given_with_a_bad_path_fails(self):
+        self.write_map(json.dumps({"ratchet": "0.9", "rules": {
+            "ratchet.alpha": {"status": "covered", "by": ["docs/gone.md"], "note": "Assessed."}}}))
+        code, out, err = self.run_map(self.repo, "--partial")
+        self.assertEqual((code, err), (1, ""), out + err)
+        self.assert_partial_text(out)
+        self.assertIn("1 problem\n", out.split("\n")[0] + "\n")
+        self.assertIn('rules.ratchet.alpha.by: "docs/gone.md" does not exist', out)
+        self.assertNotIn("no entry", out)
+
+    def test_partial_an_unknown_key_fails(self):
+        value = self.valid_map()
+        value["rules"] = {"ratchet.delta": value["rules"]["ratchet.alpha"]}
+        self.write_map(json.dumps(value))
+        code, out, err = self.run_map(self.repo, "--partial")
+        self.assertEqual((code, err), (1, ""), out + err)
+        self.assert_partial_text(out)
+        self.assertIn('rules has an entry for "ratchet.delta", which is not a rule of Ratchet 0.9', out)
+
+    def test_partial_with_every_rule_given_is_the_full_result_with_none_not_yet_mapped(self):
+        full_code, full_out, _ = self.run_map(self.repo, "--json")
+        code, out, err = self.run_map(self.repo, "--partial", "--json")
+        self.assertEqual((code, err), (full_code, ""))
+        self.assertEqual(code, 0)
+        full, partial = json.loads(full_out), json.loads(out)
+        self.assertEqual(partial.pop("unmapped"), [])
+        self.assertEqual(partial.pop("partial"), self.PARTIAL_NOTICE)
+        self.assertEqual(partial, full)
+        code, text, _ = self.run_map(self.repo, "--partial")
+        self.assertEqual(code, 0)
+        self.assert_partial_text(text)
+        self.assertEqual(text.split("\n")[0], self.PARTIAL_HEAD % "0.9" + "3 rules given, 1 covered, 2 gaps; 0 rules not yet mapped")
+        # Under the two notices, the same rules as a full run: the gaps first, then the covered.
+        self.assertEqual(text.split("\n")[2:], self.run_map(self.repo)[1].split("\n")[1:])
+
+    def test_partial_an_empty_rules_passes_with_every_rule_not_yet_mapped(self):
+        self.write_map(json.dumps({"ratchet": "0.9", "rules": {}}))
+        code, out, err = self.run_map(self.repo, "--partial")
+        self.assertEqual((code, err), (0, ""), out + err)
+        self.assert_partial_text(out)
+        self.assertIn("0 rules given, 0 covered, 0 gaps; 3 rules not yet mapped: ratchet.alpha, ratchet.beta, "
+                      "ratchet.gamma\n", out)
+        self.assertEqual(blocks(out), {})
+        facts = json.loads(self.run_map(self.repo, "--partial", "--json")[1])
+        self.assertEqual((facts["ok"], facts["unmapped"], facts["rules"]), (True, ["ratchet.alpha", "ratchet.beta", "ratchet.gamma"], []))
+        self.assertEqual(self.run_map(self.repo)[0], 1)
+
+    def test_json_holds_unmapped_and_partial_only_with_partial(self):
+        self.write_map(self.fixture_bytes("map/faults/key-missing.json"))
+        facts = json.loads(self.run_map(self.repo, "--partial", "--json")[1])
+        self.assertEqual(sorted(facts), sorted(self.FULL_KEYS + ["partial", "unmapped"]))
+        self.assertEqual(facts["unmapped"], ["ratchet.gamma"])
+        self.write_map(self.fixture_bytes("map/repo/ratchet-map.json"))
+        code, out, _ = self.run_map(self.repo, "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(json.loads(out)), self.FULL_KEYS)
+        self.assertNotIn("partial", out)
+        self.assertNotIn("unmapped", out)
+
+    def test_without_partial_the_text_is_as_before_byte_for_byte(self):
+        # The text of the valid map and of key-missing as map.py printed it before --partial, spelled out in full.
+        proposal = ("This map is the agent's proposal, for the owner to review. map.py checks its form and that each "
+                    "path it cites is a plain file under the root, not whether a path covers a rule.")
+        valid = "\n".join([
+            "ratchet-map.json, for Ratchet 0.9: 3 rules, 1 covered, 2 gaps", proposal, "", "Gaps (2):",
+            "  ratchet.beta (core): gap  <-- GAP", "    by: docs/rules.md",
+            "    note: Covered in part: docs/rules.md names decisions, with no id and no check.",
+            "  ratchet.gamma (experimental): gap  <-- GAP", "    by: (no path)", "    note: Nothing in the repo covers it.",
+            "", "Covered (1):", "  ratchet.alpha (core): covered", "    by: .github/workflows/ci.yml, AGENTS.md",
+            "    note: The job `test` runs on every pull request, and AGENTS.md says so.",
+            "    source: example/skills `tdd`", ""])
+        self.assertEqual(self.run_map(self.repo), (0, valid, ""))
+        self.write_map(self.fixture_bytes("map/faults/key-missing.json"))
+        missing = "\n".join(["ratchet-map.json, for Ratchet 0.9: 1 problem", proposal,
+                             "  rules has no entry for ratchet.gamma, a rule of Ratchet 0.9", ""])
+        self.assertEqual(self.run_map(self.repo), (1, missing, ""))
+
+    def test_every_fault_fixture_fails_with_partial_as_without_it_but_for_a_missing_rule(self):
+        passed = []
+        for name, expected in sorted(FAULTS.items()):
+            with self.subTest(fault=name):
+                self.write_map(self.fixture_bytes("map/faults/%s.json" % name))
+                full = json.loads(self.problems("--json"))
+                code, out, err = self.run_map(self.repo, "--partial", "--json")
+                self.assertEqual(err, "")
+                partial = json.loads(out)
+                self.assertEqual(partial["partial"], self.PARTIAL_NOTICE)
+                left = [problem for problem in full["problems"] if not problem.startswith("rules has no entry for ")]
+                if not left:
+                    passed.append(name)
+                    self.assertEqual((code, partial["ok"]), (0, True))
+                    continue
+                self.assertEqual(code, 1, out)
+                self.assertEqual(partial["problems"], left)
+                self.assertEqual(sorted(partial), ["map", "ok", "partial", "problems", "proposal", "ratchet"])
+                code, text, _ = self.run_map(self.repo, "--partial")
+                self.assertEqual(code, 1)
+                self.assert_partial_text(text)
+                self.assertIn(expected, text)
+                self.assertNotIn("Covered (", text)
+        self.assertEqual(passed, ["key-missing"])
+
+    def test_the_partial_notice_stands_on_a_pass_a_failure_with_none_unmapped_and_when_it_cannot_run(self):
+        cases = (("key-missing", 0), ("path-missing", 1), (None, 0))
+        for name, expected in cases:
+            self.write_map(self.fixture_bytes("map/faults/%s.json" % name if name else "map/repo/ratchet-map.json"))
+            with self.subTest(fault=name, format="text"):
+                code, out, _ = self.run_map(self.repo, "--partial")
+                self.assertEqual(code, expected, out)
+                self.assert_partial_text(out)
+            with self.subTest(fault=name, format="json"):
+                code, out, _ = self.run_map(self.repo, "--partial", "--json")
+                self.assertEqual(code, expected, out)
+                self.assertEqual(json.loads(out)["partial"], self.PARTIAL_NOTICE)
+        for args in (["--partial"], ["--partial", "--json"]):
+            with self.subTest(cannot_run=args):
+                code, out, err = self.run_map(os.path.join(self.repo, "gone"), *args)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("map: cannot run: ", err)
+                self.assertIn("\n%s\n" % self.PARTIAL_NOTICE, err)
+                code, out, err = self.run_map(self.repo, *args, checkout=self.make_checkout(None))
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("\n%s\n" % self.PARTIAL_NOTICE, err)
+        code, out, err = self.run_map(os.path.join(self.repo, "gone"))
+        self.assertEqual((code, out), (2, ""))
+        self.assertNotIn("partial", err)
+
+    def test_partial_text_is_made_from_the_same_facts_as_json(self):
+        for name in (None, "key-missing", "path-missing"):
+            with self.subTest(fault=name):
+                if name:
+                    self.write_map(self.fixture_bytes("map/faults/%s.json" % name))
+                code, text, _ = self.run_map(self.repo, "--partial")
+                json_code, data, _ = self.run_map(self.repo, "--partial", "--json")
+                self.assertEqual(code, json_code)
+                self.assertEqual(map_check.text_report(json.loads(data)), text)
+
 
 if __name__ == "__main__":
     unittest.main()

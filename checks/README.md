@@ -1686,6 +1686,7 @@ Each rule of the rules for a branch must have its `type`, `ruleset_source_type` 
 ```sh
 python3 .ratchet/checks/map.py           # the map at the root of the repo in the folder it runs in
 python3 .ratchet/checks/map.py --json    # the same facts, as JSON
+python3 .ratchet/checks/map.py --partial # while the map is written: a rule with no entry is listed, not a problem
 ```
 
 This one checks no rule in a register. It is the map-only mode of [D-2026-11-23-new-rules-first](../decisions/D-2026-11-23-new-rules-first.md), new in 0.16: a repo with rules and checks of its own maps Ratchet's rules to them before it adopts anything, as the second path of [TRYING.md](../TRYING.md) says. The agent writes the map, `ratchet-map.json` at the root of the repo and only there. Ratchet never writes it, and the map puts nothing in a required job. Its name ends in `.json`, so it can never be a register's instruction or reference file, which end in `.md`.
@@ -1712,7 +1713,9 @@ This one checks no rule in a register. It is the map-only mode of [D-2026-11-23-
 
 **What it claims.** A map that passes names every rule of the `ratchet.json` beside `map.py`, each once, with `covered` or `gap`, in the form above, and every path it cites exists as a regular file under the root, reached through no link. It prints every assessment for the owner to review, rule by rule with its status, paths and note, the gaps first under a heading of their own and each marked `<-- GAP`, with a count for each status. Under each rule whose `source` in the `ratchet.json` beside `map.py` is not empty, it prints that text as it stands, on a line `source:` and as the field `source` in `--json`. One line says the map is the agent's proposal and that `map.py` checks its form and paths, not whether a path covers a rule; it stands in the text and in `--json`, whether the map passes or not. With `--json` it prints the same facts as JSON, and the text is made from those facts and nothing else. It writes nothing, reaches no network, runs no program and writes no bytecode. It reads the map, and looks at each path it cites, only through the guarded reader of [inventory.py](#inventorypy), `guarded_read` and `guarded_look`, imported with no change to `inventory.py`: a link at any part of a path below the root is refused, and a path it cites is looked at for its kind and never read. The root is resolved as `inventory.py` resolves its own: the folder given, or the folder it runs in, may itself be reached through a link, as `/tmp` and `/var` are on macOS, and nothing below it is. Exit code 0 when the map is of its form and every path exists as stated; 1 when not, with every problem named, the map file missing, a link, a folder, a FIFO or unreadable among them; 2 when it could not run: no valid `ratchet.json` beside it, or a root that is not a folder.
 
-**Against which threat.** Mistakes and drift, as [the threat model](#the-threat-model) says of every check: an agent forgets a rule, misspells a key, maps against another checkout's version, cites a file that is not there or one through a link, writes a malformed file, or marks a rule covered with no path.
+**With `--partial`**, new in 0.17, a rule of that `ratchet.json` with no entry in `rules` is not a problem. Everything else is checked as without it: the top fields, `ratchet` against the checkout's version, each entry given with its paths, and an entry for a key that is not a rule. The first line says that the run is partial and not yet a map of the whole Ratchet, with the count of rules given, covered and gaps, and how many rules are not yet mapped, with their keys in the order of `ratchet.json`. A second line says that the run is partial and to run `map.py` without `--partial` once every rule is mapped. It stands in the text and as the field `partial` in `--json`, on a pass and on a failure, and on standard error when `map.py` cannot run. Under them, the rules given are printed as without it, the gaps first. A partial run never prints the first line of a full pass. On a pass, `--json` gives the keys not yet mapped as the field `unmapped`; a run with problems gives only its problems, as without it. The counts count only the rules given. The exit codes are as without it. Without `--partial`, the output and the exit codes are as before, byte for byte.
+
+**Against which threat.** Mistakes and drift, as [the threat model](#the-threat-model) says of every check: an agent forgets a rule, misspells a key, maps against another checkout's version, cites a file that is not there or one through a link, writes a malformed file, or marks a rule covered with no path. With `--partial`, an agent that reads a partial pass as a full one: so the first line says it is partial, and no line of a full pass is printed.
 
 **What it does not claim.**
 
@@ -1752,6 +1755,15 @@ This one checks no rule in a register. It is the map-only mode of [D-2026-11-23-
 | A source with backticks, a semicolon and parentheses | Printed exactly as it stands |
 | A map that fails, text and `--json` | Its problems only: no rule and no source |
 | A run with several paths in `by`, every read recorded | `guarded_read` is given `ratchet-map.json` and nothing else: a path it cites is never read |
+| `--partial`, one rule of this repo's `ratchet.json` given and valid | Exit 0, every other rule not yet mapped, by key, in the text and as `unmapped`; without `--partial`, exit 1 with each missing rule named and nothing of a partial run |
+| `--partial`, one rule given with a path that does not exist; an entry for a key that is not a rule | Exit 1, each named |
+| `--partial`, every rule given | The facts of a full run, with `partial` and `unmapped` empty; "0 rules not yet mapped"; the same rules under the notices |
+| `--partial`, `rules` an empty object | Exit 0, all three rules not yet mapped |
+| `--json` with and without `--partial` | `partial` and `unmapped` only with it |
+| Without `--partial`, the valid map and `key-missing` | The text exactly as before `--partial`, spelled out in the test |
+| Every fault fixture, with `--partial`, text and `--json` | Exit 1 with the problems of a run without it, less "rules has no entry"; only `key-missing` passes |
+| `--partial` on a pass, a failure, a pass with none unmapped, and when it cannot run, text and `--json` | The partial first line and notice, as the test spells it out, and never the first line of a full pass; on standard error when it cannot run |
+| The text and `--json` with `--partial`, for a valid map and two with faults | The text is the text made from the JSON's facts, with the same exit code |
 
 ## tripwire.py
 
