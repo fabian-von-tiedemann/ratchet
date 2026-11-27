@@ -81,7 +81,7 @@ class AgeForm(FixtureTest):
 
 class Age(FixtureTest):
     def project(self, changelog="CHANGELOG.md", ratchet="ratchet.json"):
-        """A scratch root with the fixture's ratchet.json, the two decisions, and the changelog given."""
+        """A scratch root with the fixture's ratchet.json and decisions, and the changelog given."""
         root = self.scratch()
         os.makedirs(os.path.join(root, "decisions"))
         for name in ("D-2026-01-15-keep.md", "D-2025-12-31-keep-early.md", "D-2026-05-01-keep-again.md"):
@@ -204,7 +204,7 @@ class RepoAge(RepoCopy, unittest.TestCase):
         # In 0.11 five rules since 0.2 and ratchet.phases left (D-2026-11-22-second-redraw, step 2), and three more
         # rules since 0.2 left (step 3).
         later["ratchet.one-exact-form"] = "0.10"
-        # The seven rules of the product module enter in 0.12, which has no tag yet (D-2026-11-22-second-redraw, step 12).
+        # The seven rules of the product module enter in 0.12 (D-2026-11-22-second-redraw, step 12).
         for key in ("ratchet.release-what-was-tested", "ratchet.accepted-by-who-can-judge", "ratchet.boundaries-have-tests",
                     "ratchet.production-health", "ratchet.measure-real-use", "ratchet.platform-lifecycle",
                     "ratchet.dependencies-pinned"):
