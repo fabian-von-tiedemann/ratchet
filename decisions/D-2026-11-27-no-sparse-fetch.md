@@ -3,6 +3,9 @@
 - Date: 2026-11-27
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-27-maintain-apart (point 2 is withdrawn)
+- Ends: none
 
 ## Question
 

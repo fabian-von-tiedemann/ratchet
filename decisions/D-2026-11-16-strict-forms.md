@@ -1,5 +1,9 @@
 # D-2026-11-16-strict-forms: checks read data and strict forms, and refuse everything else
 
+<!-- generated:status -->
+Status: amended by D-2026-11-16-register-only (the strict line format of decisions and the glossary data set aside); amended by D-2026-11-17-latin-strict-utf8 (technical choice 4)
+<!-- /generated:status -->
+
 - Date: 2026-11-16
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

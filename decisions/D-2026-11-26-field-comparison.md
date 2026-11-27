@@ -1,8 +1,15 @@
 # D-2026-11-26-field-comparison: what Ratchet takes from the field of skill sets and spec frameworks, and what it leaves
 
+<!-- generated:status -->
+Status: amended by D-2026-11-26-skills-eval (the recipe also counts how often a skill runs)
+<!-- /generated:status -->
+
 - Date: 2026-11-26
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-26-road-to-1-0 (two goals and two pieces of work join the order)
+- Ends: none
 
 ## Question
 

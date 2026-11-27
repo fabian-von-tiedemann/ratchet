@@ -3,6 +3,9 @@
 - Date: 2026-11-27
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: none
+- Ends: D-2026-11-22-standing-approval
 
 ## Question
 

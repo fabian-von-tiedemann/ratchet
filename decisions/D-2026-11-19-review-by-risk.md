@@ -1,8 +1,15 @@
 # D-2026-11-19-review-by-risk: review by risk, a word that covers a review still to come, and no new round for a finding that does not block
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-standing-approval (a standing approval for the migration); amended by D-2026-11-23-two-reviewers-for-check-code (two reviewers for a change to a check's code)
+<!-- /generated:status -->
+
 - Date: 2026-11-19
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-18-approve-on-word (a word may cover a review still to come)
+- Ends: none
 
 ## Question
 

@@ -121,6 +121,7 @@ ENFORCED = {
     "repo.version": ("maintain/released_text.py",),
     "repo.new-rule-used": ("maintain/generate.py", "--check"),
     "repo.short-pages": ("maintain/generate.py", "--check"),
+    "ratchet.decision-as-file": ("maintain/generate.py", "--check"),
 }
 # What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
 POINT = ("Enforced at the merge: the required job `checks` (read back on ", ") needs `base` to pass, and `base` runs the base's ")
@@ -875,13 +876,19 @@ class Triage(RepoCopy, FixtureTest):
                          "Check: a strict lint of the form chosen, each decision file's name and format or each record's id and "
                          "format in the log")
         adopted = dict((item["key"], item) for item in self.register["adopted"])
-        self.assertEqual(adopted["ratchet.decision-as-file"]["status"], "text only for now")
+        # D-2026-11-27-stale-text, point 2: the base's generate.py --check reads the names and the format of every
+        # decision, from the pull request after the one that built it, and fails on the seeded folders of test_decisions.
+        self.assertEqual(adopted["ratchet.decision-as-file"]["status"], "built")
         where = adopted["ratchet.decision-as-file"]["where"]
-        self.assertIn("one file per decision in `decisions/`", where)
-        # The review of step 8: the names are checked by a test in the required job, and the format is not.
-        self.assertIn("a test in the job `checks`, which is required, fails on a file in `decisions/` whose name is not an id",
-                      where)
-        self.assertIn("nothing checks their format", where)
+        self.assertIn("one file per decision there", where)
+        for words in ("on the pull request's `decisions/`, from the pull request after the one that built it on.",
+                      "`base` runs the base's `maintain/generate.py --check`, with its `maintain/decisions.py`, on the pull "
+                      "request's `decisions/`",
+                      "an entry that is not a plain file named `D-YYYY-MM-DD-<slug>.md` with a date that exists",
+                      "the headings `## Question` and `## Answer`", "dated 2026-11-28 or later",
+                      "a status line that is missing, stale or edited by hand", "`checks/fixtures/decisions/`",
+                      "It does not see a relation that nobody writes down"):
+            self.assertIn(words, where)
         # Every entry of decisions/, not only the .md files (the review at 18d1ce8), as the where says.
         self.assertTrue(os.listdir(os.path.join(ROOT, "decisions")))
         self.assertEqual(decision_name_problems(os.path.join(ROOT, "decisions")), [])

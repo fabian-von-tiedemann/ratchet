@@ -1,5 +1,9 @@
 # D-2026-11-19-one-point-oh: what 1.0 promises, when it comes, and how experimental rules move in or out
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-second-redraw (choice 2 counts ten start rules)
+<!-- /generated:status -->
+
 - Date: 2026-11-19
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

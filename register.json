@@ -24,8 +24,8 @@
       "rule": "Each decision by the owner is written with the question and the answer verbatim and an id of the form `D-YYYY-MM-DD-<slug>`, as a file of its own or as a record in one log the project names.",
       "ratchet": "Check: a strict lint of the form chosen, each decision file's name and format or each record's id and format in the log",
       "source": "",
-      "status": "text only for now",
-      "where": "Not built. This repo keeps one file per decision in `decisions/`, written with `templates/DECISION.md`. Their names are checked: a test in the job `checks`, which is required, fails on a file in `decisions/` whose name is not an id of the form `D-YYYY-MM-DD-<slug>` with a date that exists. Their format is not: nothing checks their format, the heading, the fields, the question and the answer. The age check reads the file a rule's `kept_by` names, and nothing more"
+      "status": "built",
+      "where": "Enforced at the merge: the required job `checks` (read back on 2026-11-22) needs `base` to pass, and `base` runs the base's `maintain/generate.py --check`, with its `maintain/decisions.py`, on the pull request's `decisions/`, from the pull request after the one that built it on. This repo keeps one file per decision there, written with `templates/DECISION.md`. The check fails on an entry that is not a plain file named `D-YYYY-MM-DD-<slug>.md` with a date that exists, on a title, a field or the headings `## Question` and `## Answer` out of their form, on a decision dated 2026-11-28 or later that does not say what it replaces, amends and ends, and on a status line that is missing, stale or edited by hand. It fails on the seeded folders under `checks/fixtures/decisions/`, in `checks/test_decisions.py`. It does not see a relation that nobody writes down"
     },
     {
       "key": "ratchet.owner-paths",

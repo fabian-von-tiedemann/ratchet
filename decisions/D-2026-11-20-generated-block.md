@@ -1,5 +1,9 @@
 # D-2026-11-20-generated-block: a project adopts rules through a block generated into its own instruction file
 
+<!-- generated:status -->
+Status: amended by D-2026-11-21-release-and-redraw (0.10 is released without #78); amended by D-2026-11-22-second-redraw (adoption by reference is allowed as a weaker mode)
+<!-- /generated:status -->
+
 - Date: 2026-11-20
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

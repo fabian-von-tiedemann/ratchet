@@ -1,8 +1,15 @@
 # D-2026-11-17-harness-sandbox-risk: deny rules, a sandbox trial, review by risk, and an early audit of instruction files
 
+<!-- generated:status -->
+Status: amended by D-2026-11-19-locks-not-parsing (the deny rules become a tripwire)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-knowledge-and-modes (the instruction files are reviewed now, not at the next release)
+- Ends: none
 
 ## Question
 

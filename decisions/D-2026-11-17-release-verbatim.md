@@ -1,8 +1,15 @@
 # D-2026-11-17-release-verbatim: the release text is the entry verbatim, and an unfinished older version stops the run
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-release-links (the release text, while the rule on unfinished versions stands)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-release-on-merge (technical choices 2 and 5)
+- Ends: none
 
 ## Question
 

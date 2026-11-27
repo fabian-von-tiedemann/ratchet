@@ -3,6 +3,9 @@
 - Date: 2026-11-23
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-19-review-by-risk (two reviewers for a change to a check's code)
+- Ends: none
 
 ## Question
 

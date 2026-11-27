@@ -3,6 +3,9 @@
 - Date: 2026-11-26
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-26-field-comparison (the recipe also counts how often a skill runs)
+- Ends: none
 
 ## Question
 

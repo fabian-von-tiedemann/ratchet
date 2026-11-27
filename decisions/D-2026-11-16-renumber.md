@@ -1,8 +1,15 @@
 # D-2026-11-16-renumber: the published tag stays, and the new work is 0.3 and 0.4
 
+<!-- generated:status -->
+Status: amended by D-2026-11-16-register-only (the second build set aside)
+<!-- /generated:status -->
+
 - Date: 2026-11-16
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-16-scope (the version numbers move by one)
+- Ends: none
 
 Names are left out of this file. Where the original names the external tester, a model or a reviewer, the name is replaced by a word in square brackets. Nothing else in the original is changed.
 
