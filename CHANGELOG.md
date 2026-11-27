@@ -14,6 +14,7 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, a n
 - `upgrade.py` lists new rules by key under their part, `--new-rules full` prints their entries, and a JSON register from 0.3 through 0.11 gets the commands of its first leg, through `v0.11` ([#183](https://github.com/fabian-von-tiedemann/ratchet/pull/183)).
 - CI runs this repo's checks on Python 3.9 and the newest Python 3, and `README.md` says they need Python 3.9 or later and git, untried on Windows ([#185](https://github.com/fabian-von-tiedemann/ratchet/pull/185)).
 - `check_register.py` no longer hunts markers or the phrase "not stated here" disguised with characters outside ASCII or split by marks, a deliberate act outside the threat model; a project need do nothing ([#187](https://github.com/fabian-von-tiedemann/ratchet/pull/187)).
+- New: `inventory.py --exclude <folder>` leaves a folder, such as `checks/fixtures`, out of the walk and names it as not read; a folder that is not one of the repo stops the run ([#190](https://github.com/fabian-von-tiedemann/ratchet/pull/190)).
 - New: `map.py --partial` checks a map while it is written: a rule with no entry is listed as not yet mapped, not a problem, and the first line says the map is partial. Without it, nothing changes ([#191](https://github.com/fabian-von-tiedemann/ratchet/pull/191)).
 
 <!-- generated:count -->
