@@ -76,7 +76,7 @@ class ValuesFile(RepoCopy, unittest.TestCase):
                                              "values.json: value 1 must be an object with exactly the fields prefer and over"),
             "a value not text": (changed(lambda d: d["values"][2].update(prefer=["Shown results"])), "values.json: value 3: prefer must be text"),
             "a story not text": (changed(lambda d: d.update(story=1)), "values.json: story must be text"),
-            "a character outside the list": (changed(lambda d: d.update(lead="We value​:")), "values.json: lead holds U+200B"),
+            "a character outside the list": (changed(lambda d: d.update(lead="We value\u200b:")), "values.json: lead holds U+200B"),
             "two lines": (changed(lambda d: d.update(balance="The right is faster.\nThe left is not.")),
                           "values.json: balance must be one line"),
             "no words": (changed(lambda d: d.update(aims="...")), "values.json: aims holds no words"),

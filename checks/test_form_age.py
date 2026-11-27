@@ -306,7 +306,7 @@ class Unreadable(Seeded):
         """Case 14: a key twice, a byte order mark, a field load_older does not know, bytes that are not UTF-8."""
         for name, value, said in (
                 ("twice", '{"version": "0.17", "version": "0.17"}', "appears twice"),
-                ("bom", "﻿" + json.dumps(dict(RATCHET, version="0.17")), "BOM"),
+                ("bom", "\ufeff" + json.dumps(dict(RATCHET, version="0.17")), "BOM"),
                 ("rule field", dict(RATCHET, version="0.17", rules=[dict(RULE, note="x")]), "unknown field note"),
                 ("utf-8", b'{"version": "\xff"}', "not valid UTF-8"),
                 ("missing", None, "ratchet.json at v0.17: the file is missing")):
@@ -323,7 +323,7 @@ class Unreadable(Seeded):
         """A register at a tag with a key twice, a byte order mark, NaN, or a list where the rows are objects."""
         for name, path, value, said in (
                 ("twice", "register.json", '{"own": [], "own": []}', "appears twice"),
-                ("bom", "templates/register.json", "﻿{}", "BOM"),
+                ("bom", "templates/register.json", "\ufeff{}", "BOM"),
                 ("nan", "register.json", '{"own": NaN}', "NaN is not allowed"),
                 ("rows", "templates/register.json", '{"adopted": ["ratchet.new"]}', "adopted must be a list of objects")):
             with self.subTest(name):

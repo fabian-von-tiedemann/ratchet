@@ -746,7 +746,7 @@ class Watch(Base):
         good = ("Source moved: example/plain", MOVED_PLAIN)
         self.assertIsNone(watch_sources.check_plan([good], TOKEN))
         for mark in ("@someone", "#1", "<b>", ">", "[x]", "]", "!", "`x`", "|", "\\", "*", "_", "::", "##[error]",
-                     "www.example.invalid", "gh-12", "\t", "\r", "‮", "é", "%0A", "&amp;", "+", "="):
+                     "www.example.invalid", "gh-12", "\t", "\r", "\u202e", "é", "%0A", "&amp;", "+", "="):
             with self.subTest(mark=mark):
                 bad_body = MOVED_PLAIN.replace("- Source: example/plain", "- Source: example/" + mark)
                 with self.assertRaises(watch_sources.WatchError) as raised:

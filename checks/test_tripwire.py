@@ -407,7 +407,7 @@ class Tripwire(FixtureTest):
         odd = ["", " ", "'", '"', "\\", "$(", "`", "((", "))", "$((1+", "<<", "<<EOF", "a <<EOF\nb", "|", "&&", ";;", "{", "}",
                "git", "git push", "git push -", "git tag -", "gh api", "gh api -X", "gh api -X PATCH", "rm -rf", "rm -rf ''",
                "rm -rf \"\"", "cd", "cd -", "d=$(mktemp -d", "$(git push -f", "echo `git tag v2", "\x00", "git\x00push -f",
-               "x" * 100000, "(" * 2000, "$(" * 500, "git push " + "+a " * 2000, "é‮", "rm -rf /\udc80"]
+               "x" * 100000, "(" * 2000, "$(" * 500, "git push " + "+a " * 2000, "é\u202e", "rm -rf /\udc80"]
         for command in odd:
             with self.subTest(command=command[:40]):
                 code, message = self.hook({"tool_name": "Bash", "cwd": self.tree, "tool_input": {"command": command}})
