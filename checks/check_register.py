@@ -128,7 +128,7 @@ BEGIN = "<!-- ratchet:begin -->"
 END = "<!-- ratchet:end -->"
 # The words of the two markers, wherever they stand in the instruction file, in any ASCII case. Each must stand once.
 # A word disguised with characters outside ASCII is not found: a decoy is a deliberate act, outside the threat model
-# (D-2026-11-26-checks-assessment). re.ASCII keeps a dotless i or a Kelvin sign from matching a letter of the word.
+# (D-2026-11-26-checks-assessment). re.ASCII keeps a dotless i or a dotted capital I from matching a letter of the word.
 MARKER_WORDS = (("ratchet:begin", re.compile("ratchet:begin", re.I | re.ASCII)),
                 ("ratchet:end", re.compile("ratchet:end", re.I | re.ASCII)))
 STATUSES = ("built", "text only for now")
