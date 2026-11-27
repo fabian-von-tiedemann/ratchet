@@ -1,6 +1,6 @@
 # Contributing
 
-Ratchet improves from what projects that use it send back, from people and from agents in the same steps. The words are defined in [GLOSSARY.md](GLOSSARY.md).
+Ratchet improves from what the projects that use it send back, from people and from agents in the same steps. The words are defined in [GLOSSARY.md](GLOSSARY.md).
 
 | You have | Send it as |
 |---|---|
