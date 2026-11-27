@@ -1131,6 +1131,24 @@ class Inventory(FixtureTest):
                 code, out, err = self.run_inventory(self.repo, "--exclude", value)
                 self.assertEqual((code, out, err), (2, "", "inventory: cannot run: %s\n" % message))
 
+    def test_a_uses_fault_and_a_ruleset_fault_are_escaped_once(self):
+        # Review of #194: --uses and a field given twice in a --ruleset file were formatted with %r, and main() escaped
+        # the message again, so a newline showed as \\n. They hold the value as given, in quotes, as --exclude does.
+        ruleset = os.path.join(os.path.realpath(self.scratch()), "ruleset.json")
+        with open(ruleset, "w", encoding="utf-8") as handle:
+            handle.write('{"a\\nb\\\\c": 1, "a\\nb\\\\c": 2}')
+        cases = {
+            ("--uses", "bad\nname"): "unknown harness 'bad\\nname': the harnesses this inventory knows are "
+                                     "claude, codex, gemini, cursor, copilot, windsurf, cline",
+            ("--uses", "back\\slash"): "unknown harness 'back\\\\slash': the harnesses this inventory knows are "
+                                       "claude, codex, gemini, cursor, copilot, windsurf, cline",
+            ("--ruleset", ruleset): "%s: not a valid data file: the field 'a\\nb\\\\c' appears twice in one object" % ruleset,
+        }
+        for args, message in cases.items():
+            with self.subTest(args=args):
+                code, out, err = self.run_inventory(self.repo, *args)
+                self.assertEqual((code, out, err), (2, "", "inventory: cannot run: %s\n" % message))
+
     def test_exclude_of_a_folder_the_walk_never_enters_is_listed_once(self):
         # Review of #190: .ratchet and .claude/worktrees, which the walk never enters anyway, were listed twice when
         # given with --exclude, once with their own reason and once as excluded. They keep their own reason, once.

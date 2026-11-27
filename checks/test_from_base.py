@@ -56,6 +56,29 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.exit(subprocess.call([sys.executable, "-B", "-m", "unittest", "discover", "-q", "-s", HERE]))
 '''
 PASS = "import sys\nsys.exit(0)\n"
+# A runner of the suite that runs the tests in maintain/ as well as in checks/.
+RUNNER_BOTH = '''import os, subprocess, sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+status = [subprocess.call([sys.executable, "-B", "-m", "unittest", "discover", "-q", "-s", os.path.join(ROOT, folder)])
+          for folder in ("checks", "maintain")]
+sys.exit(1 if any(status) else 0)
+'''
+# A check in maintain/: the value in the file it is given is at most CAP. Its test reads fixtures in maintain/fixtures/.
+CAP = '''import json, sys
+CAP = 7
+with open(sys.argv[1]) as handle:
+    sys.exit(1 if json.load(handle)["value"] > CAP else 0)
+'''
+TEST_CAP = '''import os, subprocess, sys, unittest
+HERE = os.path.dirname(os.path.abspath(__file__))
+def run(name):
+    return subprocess.call([sys.executable, "-B", os.path.join(HERE, "cap.py"), os.path.join(HERE, "fixtures", name)])
+class Cap(unittest.TestCase):
+    def test_fails_over_the_cap(self):
+        self.assertEqual(run("over.json"), 1)
+    def test_passes_at_the_cap(self):
+        self.assertEqual(run("under.json"), 0)
+'''
 # The base's run of its suite on a released copy, a stand-in for test_released_text.py --released-copy: it runs the
 # base's runner once more, with RELEASED set as a copy after the release steps would be. It holds no test of its own.
 RELEASED = '''import os, subprocess, sys
@@ -191,16 +214,65 @@ class DryRun(unittest.TestCase):
         self.assertNotIn("softened", output)
 
     def test_the_tree_of_the_code_takes_the_pull_request_s_code_from_both_directories(self):
-        # D-2026-11-27-maintain-apart: the pull request softens maintain/generate.py and leaves the data and the tests
-        # alone. The data passes the base's rule. In the tree of the code the pull request's maintain/generate.py runs
-        # under the base's tests in checks/, which catch it. A test the pull request adds in maintain/ is not the base's,
-        # and a test it softens in checks/ is the base's again.
+        # D-2026-11-27-maintain-apart: the pull request softens maintain/generate.py and the test in checks/ that would
+        # catch it, adds a test in maintain/, and leaves the data alone. The data passes the base's rule. In the tree of
+        # the code the pull request's maintain/generate.py runs under the base's tests in checks/, which catch it: the
+        # test it softened is the base's again, and the test it added in maintain/ is not the base's.
         test = TEST.replace('self.assertEqual(run("big.json"), 1)', 'pass')
         head = self.pull_request({"maintain/generate.py": GENERATE.replace("LIMIT = 3", "LIMIT = 10"), "checks/test_generate.py": test,
                                   "maintain/test_more.py": "import unittest\nclass More(unittest.TestCase):\n    def test_more(self):\n        pass\n"})
         self.assertEqual(self.own("checks/expected_tests.py"), 0)
         output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code",
                                   "the base judges by: checks/test_generate.py, maintain/generate.py, maintain/test_more.py")
+        self.assertIn("test_fails_on_a_value_above_the_limit", output)
+        self.assertIn("in the tree of the data: python3 maintain/generate.py --check", output)
+        self.assertNotIn("in the tree of the data, with exit status", output)
+
+    def with_a_cap_in_maintain(self):
+        """The base gains a check in maintain/ with its own test and fixtures there, and a runner that runs the tests of
+        both directories, as Ratchet's own runner may."""
+        self.write({"maintain/cap.py": CAP, "maintain/test_cap.py": TEST_CAP, "maintain/fixtures/over.json": '{"value": 8}\n',
+                    "maintain/fixtures/under.json": '{"value": 7}\n', "checks/expected_tests.py": RUNNER_BOTH})
+        self.base = self.commit("the base checks a cap in maintain/")
+
+    def test_a_test_in_maintain_softened_with_its_check_is_the_base_s_in_the_tree_of_the_code(self):
+        # Review of #195: only code is taken from the pull request, never a whole directory. A test the pull request
+        # softens in maintain/ is the base's again in the tree of the code, and catches the check softened with it.
+        self.with_a_cap_in_maintain()
+        head = self.pull_request({"maintain/cap.py": CAP.replace("CAP = 7", "CAP = 100"),
+                                  "maintain/test_cap.py": TEST_CAP.replace('self.assertEqual(run("over.json"), 1)', "pass")})
+        self.assertEqual(self.own("checks/expected_tests.py"), 0)
+        output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code",
+                                  "the base judges by: maintain/cap.py, maintain/test_cap.py")
+        self.assertIn("test_fails_over_the_cap", output)
+        self.assertNotIn("in the tree of the data, with exit status", output)
+
+    def test_a_fixture_in_maintain_softened_with_its_check_is_the_base_s_in_the_tree_of_the_code(self):
+        # Review of #195: a file under maintain/ that is not code, such as a fixture, is the base's in the tree of the
+        # code. The pull request raises the cap and the value of the fixture that would catch it, and the base's fixture
+        # catches it.
+        self.with_a_cap_in_maintain()
+        head = self.pull_request({"maintain/cap.py": CAP.replace("CAP = 7", "CAP = 100"),
+                                  "maintain/fixtures/over.json": '{"value": 200}\n'})
+        self.assertEqual(self.own("checks/expected_tests.py"), 0)
+        output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code",
+                                  "the base judges by: maintain/cap.py")
+        self.assertIn("test_fails_over_the_cap", output)
+        self.assertNotIn("in the tree of the data, with exit status", output)
+
+    def test_a_module_softened_in_checks_is_the_pull_request_s_in_the_tree_of_the_code(self):
+        # Review of #195: the pull request's code is taken from checks/ as well as from maintain/. It softens
+        # checks/limit.py, which the base's maintain/generate.py reads its limit from, and the test that would catch it,
+        # and leaves maintain/ and the data alone. The data passes the base's rule. In the tree of the code the base's
+        # test catches the pull request's module.
+        reading = GENERATE.replace("LIMIT = 3", "import os\nsys.path.insert(0, os.path.join(os.getcwd(), 'checks'))\nfrom limit import LIMIT")
+        self.write({"maintain/generate.py": reading, "checks/limit.py": "LIMIT = 3\n"})
+        self.base = self.commit("the base reads its limit from checks/")
+        head = self.pull_request({"checks/limit.py": "LIMIT = 10\n",
+                                  "checks/test_generate.py": TEST.replace('self.assertEqual(run("big.json"), 1)', 'pass')})
+        self.assertEqual(self.own("checks/expected_tests.py"), 0)
+        output = self.assertFails(head, "the base's `python3 checks/expected_tests.py` failed in the tree of the code",
+                                  "the base judges by: checks/limit.py, checks/test_generate.py")
         self.assertIn("test_fails_on_a_value_above_the_limit", output)
         self.assertIn("in the tree of the data: python3 maintain/generate.py --check", output)
         self.assertNotIn("in the tree of the data, with exit status", output)
