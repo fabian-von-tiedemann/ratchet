@@ -1,5 +1,9 @@
 # D-2026-11-17-new-approaches: new approaches for PR #10 and PR #12, and how a new rule is released
 
+<!-- generated:status -->
+Status: amended by D-2026-11-19-batched-releases (item 3, an unreleased first entry comes back)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

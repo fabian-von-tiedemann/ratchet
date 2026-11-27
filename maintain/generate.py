@@ -73,6 +73,7 @@ import os
 import re
 
 import check_register
+import decisions
 import registry
 
 MAINTAINER = "@fabian-von-tiedemann"
@@ -972,6 +973,12 @@ def expected_files(data, root, context):
                                     "generator does not write together" % name)
                 else:
                     result[instructions] = (text, expected)
+
+    # The decision files: their form, and the status line in each one that a later decision names. They are read on
+    # their own, not through markdown_files, whose scan would refuse the old keys they cite and their status markers.
+    found_files, found = decisions.expected(root)
+    result.update(found_files)
+    problems += found
 
     path = os.path.join(root, *PAGE.split("/"))
     current = read(path)

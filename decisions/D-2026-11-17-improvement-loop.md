@@ -1,5 +1,9 @@
 # D-2026-11-17-improvement-loop: the parts of the improvement loop that are built next
 
+<!-- generated:status -->
+Status: amended by D-2026-11-17-knowledge-and-modes (the clean-out at a release also reviews the instruction files)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

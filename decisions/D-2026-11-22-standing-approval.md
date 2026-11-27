@@ -1,8 +1,15 @@
 # D-2026-11-22-standing-approval: a standing approval for the migration of the second redraw, releases left out, review by Codex and Gemini 4 Neon only where it matters, and steps in parallel
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-owner-reads-outside-gates (choice 3, the reviewers while Gemini 4 Neon is out); ended by D-2026-11-27-stale-text
+<!-- /generated:status -->
+
 - Date: 2026-11-22
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-18-approve-on-word (a standing approval for the migration); D-2026-11-19-review-by-risk (a standing approval for the migration); D-2026-11-22-second-redraw (the steps of the migration merge under the standing approval)
+- Ends: none
 
 ## Question
 

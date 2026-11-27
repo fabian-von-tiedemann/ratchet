@@ -1,5 +1,9 @@
 # D-2026-11-20-principles-and-obligations: eleven principles on top, the rules as obligations under them
 
+<!-- generated:status -->
+Status: amended by D-2026-11-21-release-and-redraw (the redraw aims at six or seven principles); amended by D-2026-11-22-second-redraw (the principles and the rules under them)
+<!-- /generated:status -->
+
 - Date: 2026-11-20
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)

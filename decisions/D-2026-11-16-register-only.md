@@ -1,8 +1,15 @@
 # D-2026-11-16-register-only: 0.3 ships the register check alone
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-second-redraw (the core rules on decisions and on the glossary)
+<!-- /generated:status -->
+
 - Date: 2026-11-16
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-16-renumber (the second build set aside); D-2026-11-16-strict-forms (the strict line format of decisions and the glossary data set aside)
+- Ends: none
 
 ## Question
 

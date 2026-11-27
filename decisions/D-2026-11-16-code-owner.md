@@ -3,6 +3,9 @@
 - Date: 2026-11-16
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-16-scope (point 3)
+- Ends: none
 
 Names are left out of this file. Where the original names an account or a user, the name is replaced by a word in square brackets. The mark `[...]` shows where this file leaves out part of a message. Nothing else in the original is changed.
 

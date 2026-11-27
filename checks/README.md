@@ -671,12 +671,54 @@ python3 maintain/generate.py --check    # fail if any generated text is out of d
 - an experimental rule has stood through three releases and 60 days with no decision, `since` or `kept_by` breaks its form, or a heading of the changelog has a date that does not exist or is earlier than that of the version before it (see [The age of an experimental rule](#the-age-of-an-experimental-rule)).
 - a principle or the principle of a rule breaks its form, or a markdown file in the root, in `templates/` or in `checks/` mentions a principle that is not in `ratchet.json` (see [The principles](#the-principles)).
 - an experimental rule enters in this version and this repo's register does not adopt it nor does the rule say why Ratchet cannot use it, or the register adopts a rule that says so (see [A rule that enters is used](#a-rule-that-enters-is-used)).
+- a file in `decisions/` breaks its form, or the status line of a decision that a later one replaces, amends or ends is missing, stale or edited by hand (see [Decisions](#decisions)).
 
 From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged with a date in its heading. While it is headed `(unreleased)`, changes are collected under it, and no merge publishes it. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
 **What it does not claim.** It compares what it generates with its data files, and the data files with their form. It does not judge whether the data is right beyond that form: the words of a rule, the cap or a pin in `sources.json`. The maintainer reads those in the pull request (`ratchet.owner-paths`). It reads no tags, so whether released text stayed as it was released is `released_text.py`'s to see. Its guards against links are a safety net, not a boundary: see [No write through a link](#no-write-through-a-link).
+
+## Decisions
+
+A decision file is a verbatim record and never changes, so a later decision that changes it says so in its own header, and the generator writes the status into the earlier file ([D-2026-11-27-stale-text](../decisions/D-2026-11-27-stale-text.md), point 2). The code is [maintain/decisions.py](../maintain/decisions.py), which `generate.py` runs on `decisions/`, apart from its scan of Markdown files.
+
+A decision names what it changes in three fields after `Kind`: `Replaces`, the decisions it takes the place of as a whole, `Amends`, the decisions it changes in part, each with what it changes in at most 15 words, and `Ends`, the time-bound decisions it records as over, such as a standing approval whose set of pull requests is done. Each field is `none` or the ids, separated by `; `, in the order of their text. An item of `Amends` is `<id> (<what>)`. In each decision that another one names, the generator writes one line under the title, between two HTML comments, `generated:status` and `/generated:status`, each alone on its line, such as `Status: amended by D-2026-11-27-no-sparse-fetch (point 2 is withdrawn)`, one part for each field that names it, ordered by the later decision's id. It changes no other byte of the file.
+
+**What it claims.** `generate.py --check` changes nothing and fails, naming the file, when:
+
+- an entry of `decisions/` is not a plain file named `D-YYYY-MM-DD-<slug>.md`, with a date that exists, or is a link
+- the first line is not `# <id>: <title>` with the file's own id, an empty line does not follow it, or the header is not the lines `- Date: `, `- Decided by: ` and `- Kind: decision (D)`, and then `- Replaces: `, `- Amends: ` and `- Ends: `, in that order, each once, followed by an empty line. `Date` is the id's date. A field it does not know fails
+- a decision dated 2026-11-28 or later lacks the three fields. One dated before may lack all three, and has all three or none
+- the lines `## Question` and `## Answer` do not stand once each, in that order
+- a field is not of its form, names an id twice or out of order, or names one decision in two fields
+- a field names a decision with no file, the decision itself, or one dated after it. Two decisions of the same day may name each other's way, so the date does not order them, and a cycle of names fails instead
+- the status line of a decision is missing, stale or edited by hand, a decision that no other one names holds one, or a status block stands anywhere but just under the title
+
+Without `--check`, the generator writes the status lines, and writes no decision file while a field names a decision wrongly.
+
+**Against which threat.** Drift: a later decision changes an earlier one, and an agent that reaches the earlier file, by a citation, by `ls` or by a search, reads an answer that no longer holds. And mistakes: a status edited by hand or gone stale, and a decision file in the wrong form.
+
+**What it does not claim.** It sees only the relations that are written down. A later decision that changes an earlier one and does not say so in its fields is not caught, and neither is a field that names the wrong decision or the wrong kind: the maintainer reads that in the pull request (`ratchet.owner-paths`). It reads nothing of the question and the answer but their two headings. The 55 decisions dated before 2026-11-28 may lack the fields. The relations between them that were found in their text were added to the later decision's header, and those that are a judgment were not. It does not refuse a citation of a decision that no longer holds: that is point 3 of the same decision.
+
+| Fixture under `decisions/` | Case | Result |
+|---|---|---|
+| `old-without-fields` | A decision dated 2026-11-27 with no fields | Passes |
+| `new-with-fields` | A decision dated 2026-11-28 with the three fields, each `none` | Passes |
+| `same-day` | A decision names another of the same day, whose id sorts after its own | Passes |
+| `two-kinds` | A decision amended and then replaced, and one that both replaces and amends | Passes, with the status line in order |
+| `new-without-fields` | A decision dated 2026-11-28 with no fields | Fails |
+| `unknown-id`, `later-id`, `own-id` | A field that names a decision with no file, one dated after it, or itself | Fails |
+| `one-id-two-fields` | One decision named in `Amends` and in `Ends` | Fails |
+| `cycle` | Two decisions of one day that name each other | Fails |
+| `status-missing`, `status-stale`, `status-edited` | A status line missing, of an earlier relation, or with words added | Fails |
+| `status-unnamed` | A status line in a decision that no other one names | Fails |
+| `status-misplaced` | A status block after the header | Fails |
+| `title-id`, `date` | A title whose id is not the file's, a `Date` that is not the id's | Fails |
+| `no-question`, `no-answer`, `answer-first` | `## Question` or `## Answer` missing, or the two in the wrong order | Fails |
+| `field-twice`, `field-unknown`, `fields-in-part` | A field twice, a field it does not know, and an old decision with one of the three fields | Fails |
+
+The tests are in [test_decisions.py](test_decisions.py). They also hold, written in the test, each form a field may take and the forms around it that fail, the cut-over on each side, and every entry of `decisions/` that is not a decision's file. On a copy of this repo, `--check` fails on each decision whose status block was taken out or put in where none belongs, and writes nothing. `generate.py` writes each one back, byte for byte, with no byte from `## Question` on changed, and a second run writes nothing.
 
 ## released_text.py
 

@@ -1,8 +1,15 @@
 # D-2026-11-21-release-and-redraw: release 0.10 without #78, redraw the principles from an outside judgment, and try Ratchet on a production application
 
+<!-- generated:status -->
+Status: amended by D-2026-11-22-second-redraw (settles what it left open on #78)
+<!-- /generated:status -->
+
 - Date: 2026-11-21
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-20-generated-block (0.10 is released without #78); D-2026-11-20-principles-and-obligations (the redraw aims at six or seven principles)
+- Ends: none
 
 ## Question
 

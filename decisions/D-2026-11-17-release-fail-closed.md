@@ -3,6 +3,9 @@
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-release-narrow-claim (naming the version is not promised)
+- Ends: none
 
 ## Question
 

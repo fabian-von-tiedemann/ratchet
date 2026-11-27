@@ -1,8 +1,15 @@
 # D-2026-11-17-agent-merges-after-approval: the agents' account merges a pull request after the code owner has approved its exact head
 
+<!-- generated:status -->
+Status: amended by D-2026-11-18-approve-on-word (the control room may submit the code owner's approval)
+<!-- /generated:status -->
+
 - Date: 2026-11-17
 - Decided by: Ratchet's maintainer
 - Kind: decision (D)
+- Replaces: none
+- Amends: D-2026-11-17-auto-merge (auto-merge is dropped, and the summary in the pull request stays)
+- Ends: none
 
 Names are left out of this file. Where the original names a reviewer, or the instruction file of the reviewer's tool, the name is replaced by words in square brackets. Nothing else in the original is changed.
 
