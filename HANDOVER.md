@@ -34,9 +34,9 @@ By [D-2026-11-26-road-to-1-0](decisions/D-2026-11-26-road-to-1-0.md) and [D-2026
 
 1. The checks for the criteria of 1.0: #71 and #72.
 2. Points 2 and 3 of [D-2026-11-27-stale-text](decisions/D-2026-11-27-stale-text.md), each in a pull request of its own.
-3. The start rules that are text only, as ready checks: `ratchet.no-secrets`, and `ratchet.decision-as-file`, whose format check point 2 builds.
+3. Checks for the start rules `ratchet.no-secrets` and `ratchet.decision-as-file`; point 2 builds the format check of the latter.
 4. A tried recipe.
 5. Questions for the maintainer (Q): #170, and what counts as the first red check in the map-only mode.
 6. Follow-ups, when the code they name is touched again: #162, #33, #35 and #21.
 
-Also open: the checks #73 and #74, the proposals and questions among the issues, building `ratchet.irreversible-waits` in every harness, the sandbox trial in #49, and the loop of [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md).
+After that: the checks #73 and #74, the proposals and questions among the issues, building `ratchet.irreversible-waits` in every harness, the sandbox trial in #49, and the loop of [D-2026-11-17-pull-and-budget](decisions/D-2026-11-17-pull-and-budget.md).
