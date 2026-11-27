@@ -5,7 +5,7 @@
 The fixtures are under checks/fixtures/map/: a checkout's ratchet.json with three rules, one with a source, under
 checkout/, a repo with a valid map under repo/, and maps with one fault each under faults/. A fixture's name cannot start with a dot, so a part
 that starts with dot- is renamed to start with . in the copy the test makes. Links, FIFOs and files that cannot be read
-are made in scratch directories at test time, never committed. Each case of checks/README.md#mappy is a test here.
+are made in scratch directories at test time, never committed. The cases are the tests here; checks/README.md#mappy states the claim.
 Standard library only.
 """
 

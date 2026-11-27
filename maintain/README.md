@@ -1,6 +1,6 @@
 # Maintenance checks
 
-The scripts that only Ratchet's own maintenance runs, `generate.py`, `from_base.py`, `released_text.py`, `release.py`, `watch_sources.py` and `form_age.py`, and the checks they make of this repo. A project that uses Ratchet runs none of them. Their tests stay in [checks/](../checks/) with the others, and they share the threat model of [checks/README.md](../checks/README.md#the-threat-model) (D-2026-11-27-maintain-apart, D-2026-11-27-cleanup).
+The scripts that only Ratchet's own maintenance runs, `generate.py`, `from_base.py`, `released_text.py`, `release.py`, `watch_sources.py` and `form_age.py`, and the checks they make of this repo. A project that uses Ratchet runs none of them. Their tests stay in [checks/](../checks/) with the others, and they share the threat model of [checks/README.md](../checks/README.md#the-threat-model).
 
 ## from_base.py
 
@@ -9,41 +9,20 @@ git show "HEAD^1:maintain/from_base.py" > "$dir/from_base.py"
 python3 -I "$dir/from_base.py" --base-sha BASE --head-sha HEAD
 ```
 
-The base branch's checks judge a pull request. The job `base` of [checks.yml](../.github/workflows/checks.yml) runs on `pull_request`, checks out the merge commit that GitHub makes, takes this script from the base commit, `HEAD^1`, never from the pull request, and runs it from a directory of its own. The job `own` runs the pull request's own checks, as the job `checks` did before. The job `released` runs the full suite on a released copy of the repo, as [released_text.py](#released_textpy) says. The job `checks`, the status that the ruleset on `main` requires, waits for all three, runs whatever they did, and passes only when `own` and `released` passed and, on a pull request, `base` passed too. On a push to `main`, `base` does not run, and `checks` passes when `own` and `released` do. This is how each entry of [REGISTER.md](../REGISTER.md) that is "built" is built by where it is enforced ([D-2026-11-22-second-redraw](../decisions/D-2026-11-22-second-redraw.md)): its `where` names the job `base`.
+The base branch's checks judge a pull request. The job `base` of [checks.yml](../.github/workflows/checks.yml) runs on `pull_request`, checks out the merge commit that GitHub makes, takes this script from the base commit, `HEAD^1`, never from the pull request, and runs it from a directory of its own. The job `own` runs the pull request's own checks, as the job `checks` did before. The job `released` runs the full suite on a released copy of the repo, as [released_text.py](#released_textpy) says. The job `checks`, the status that the ruleset on `main` requires, waits for all three, runs whatever they did, and passes only when `own` and `released` passed and, on a pull request, `base` passed too. On a push to `main`, `base` does not run, and `checks` passes when `own` and `released` do. This is how each entry of [REGISTER.md](../REGISTER.md) that is "built" is built by where it is enforced: its `where` names the job `base`.
 
-**What is the rule, and what is the data under test.** For Ratchet a pull request changes `ratchet.json`, `register.json` and the generated text as a matter of course: they are what it is judged on, not what it is judged by. The code of the checks is what it is judged by, the same in each of its two directories, `checks/` and `maintain/` (D-2026-11-27-maintain-apart): every file directly in it whose name ends in `.py`, and every file in a directory in it other than `fixtures/`. Everything else, `checks/fixtures/` and `checks/README.md` among it, is data, since `generate.py` writes part of it. So the script makes two work trees, beside the checkout, sharing its history and tags:
+**What is the rule, and what is the data under test.** For Ratchet a pull request changes `ratchet.json`, `register.json` and the generated text as a matter of course: they are what it is judged on, not what it is judged by. The code of the checks is what it is judged by, the same in each of its two directories, `checks/` and `maintain/`: every file directly in it whose name ends in `.py`, and every file in a directory in it other than `fixtures/`. Everything else, `checks/fixtures/` and `checks/README.md` among it, is data, since `generate.py` writes part of it. So the script makes two work trees, beside the checkout, sharing its history and tags:
 
 - **The tree of the data**: the merge commit, with the code of the checks taken from the base, from both directories, and none of the pull request's. A file of code that only the pull request has is there, empty, so that a link to it from the data leads somewhere and none of its code runs: a `json.py` beside the checks, which the base's scripts would import in place of the standard library's, has nothing in it. The base's `maintain/generate.py --check`, `checks/check_register.py register.json --markdown REGISTER.md` and `maintain/released_text.py` run there, on the pull request's data.
-- **The tree of the code**: the base commit, with the pull request's code of the checks from both directories, file by file and never a whole directory, but the base's tests, `test_*.py` directly in either, and the base's runner, `expected_tests.py` and `suite_runner.py`. The base's `expected_tests.py` runs the base's suite there, with the base's fixtures and data, and then the base's `test_released_text.py --released-copy` takes a copy of that tree through the release steps and runs the base's suite on it once more. So every fault the base's fixtures show must still be caught by the pull request's checks, under the base's runner, before and after a release. That second run was a part of `ReleaseSteps`, inside the base's suite, until [D-2026-11-24-faster-suite](../decisions/D-2026-11-24-faster-suite.md) moved it out, and it runs here so that the base still judges the released copy of the tree of the code.
+- **The tree of the code**: the base commit, with the pull request's code of the checks from both directories, file by file and never a whole directory, but the base's tests, `test_*.py` directly in either, and the base's runner, `expected_tests.py` and `suite_runner.py`. The base's `expected_tests.py` runs the base's suite there, with the base's fixtures and data, and then the base's `test_released_text.py --released-copy` takes a copy of that tree through the release steps and runs the base's suite on it once more. So every fault the base's fixtures show must still be caught by the pull request's checks, under the base's runner, before and after a release.
 
 **What it claims.** On a pull request, the job `checks` is red unless the base branch's scripts pass the pull request's data and the base branch's tests, under its runner, pass the pull request's checks, in the tree of the code and in a released copy of it. It is red when the pull request changes `.github/workflows/checks.yml` or the runner of the suite, `checks/expected_tests.py` or `checks/suite_runner.py`, since the base cannot judge what judges it, when the base lacks a script the job runs, and when the checkout is not the merge of the pull request's head into the base or a later commit of it. When it fails, it names each command that failed, in which tree, and the paths the pull request changes that the base judges by.
 
 **Against which threat.** The shared one: a pull request that softens a check, its test or its runner together with what the check judges, by mistake, so that its own checks pass it. A change of form is the same case seen from the other side: the base cannot judge it, and says so.
 
-**A change the base cannot judge fails closed.** A pull request that changes a check so that the base's tests no longer pass it, renames a field of a data file, changes what `generate.py` writes, or changes the workflow or the runner, fails `base`, and never passes silently. Its job `checks` stays red, so the agents' account cannot merge it. The maintainer reads the change and merges it as an administrator, who is exempt from the protection ([D-2026-11-16-code-owner](../decisions/D-2026-11-16-code-owner.md)). So it was for the pull request that added this job, whose base had no `checks/from_base.py`, and for the one that moved it to `maintain/`, whose base had no `maintain/from_base.py`: the step says so. A new script that writes files fails too, since the base's sweep in `test_writes.py` names every script that may write, and so does a new script that the base's tests read in another way. A check tightened so that the base's data and fixtures still pass, a new test, a new fixture and a new check that writes nothing pass `base`.
+**A change the base cannot judge fails closed.** A pull request that changes a check so that the base's tests no longer pass it, renames a field of a data file, changes what `generate.py` writes, or changes the workflow or the runner, fails `base`, and never passes silently. Its job `checks` stays red, so the agents' account cannot merge it. The maintainer reads the change and merges it as an administrator, who is exempt from the protection ([D-2026-11-16-code-owner](../decisions/D-2026-11-16-code-owner.md)). A new script that writes files fails too, since the base's sweep in `test_writes.py` names every script that may write, and so does a new script that the base's tests read in another way. A check tightened so that the base's data and fixtures still pass, a new test, a new fixture and a new check that writes nothing pass `base`.
 
 **What it does not claim.** GitHub runs the workflow of the pull request's merge commit on `pull_request`, so a pull request can change the workflow so that `base` does not run, or does not run this script. Such a change fails `base` as long as `base` still runs this script from the base, and nothing in the repo stands against a change that removes it: the owner's required review of `.github/` does (`ratchet.owner-paths`). It does not use `pull_request_target`, which would run the base's workflow with the base's rights on the pull request's code. It does not see what the host requires: that the ruleset on `main` requires the job `checks` was read back on 2026-11-22, and the register says so. The ruleset does not require a branch to be up to date before the merge, so the base it judges by is the one GitHub merged the pull request into when the job ran, and a later commit on `main` is not judged with it. The data it reads is the pull request's: a rule's `since` or text changed on purpose in `ratchet.json` is read by the owner, as before. The tests that run in the tree of the code run with the same rights as the checks, as `expected_tests.py` says. `templates/ratchet-checks.yml`, the workflow a project adopts, is not changed: it runs a tagged copy of Ratchet's checks, not the project's own.
-
-| Case | Result |
-|---|---|
-| The data changes within the base's rules | Passes, and the two work trees are gone after the run |
-| A check softened together with the data it judges, by less than the base's fixtures catch. The pull request's own checks pass it | Fails in the tree of the data |
-| A check softened together with the test that would catch it | Fails in the tree of the code |
-| A check softened together with its runner, which passes whatever happens | Fails in the tree of the code: the base's runner runs |
-| A check and its test removed | Fails in the tree of the code |
-| A check that fails only after a release: the base's tests pass it in the tree of the code and fail it in a released copy of that tree | Fails in the tree of the code, in the base's run of the suite on a released copy |
-| A `json.py` added beside the checks, which the base's script would import in place of the standard library's | Fails in the tree of the data: the file is there and empty |
-| A new check that the data links to | Passes: the link leads to the empty file |
-| A check tightened | Passes |
-| The base's `maintain/generate.py` reads its limit from a module in `checks/`, and the pull request softens both with the data | Fails in the tree of the data: both are the base's there |
-| `maintain/generate.py` softened with its test in `checks/`, and a test added in `maintain/` | Fails in the tree of the code: the pull request's `maintain/generate.py` runs under the base's tests |
-| A new test and a new fixture | Passes |
-| A field renamed in the data, the check and its fixtures together, a change of form | Fails in both trees, names the paths and says why |
-| A change to `.github/workflows/checks.yml` | Fails, and names it |
-| A change to the runner, `checks/expected_tests.py` or `checks/suite_runner.py`. Merged, it would be the base's runner for the next pull request | Fails, and names it |
-| A script the job runs that the base lacks, added by the pull request | Fails, and names it: the base cannot judge by a check it does not have |
-| The base moved on after the pull request branched, with a stricter limit | Fails: the merge is judged by the newer base |
-| A checkout that is not the merge: the head is not its second parent, the base is not an ancestor of its first parent, a commit id of another form, a commit with one parent | Fails, and says which |
 
 The cases are in [test_from_base.py](../checks/test_from_base.py), each a dry run of the job: a small repo of its own with a base commit, a pull request's commit and their merge, judged by this script as the workflow runs it, with `python3 -I`. The checks of the small repo stand in for Ratchet's under the same names, so no case runs this repo's suite. `test_budget.py` checks that every entry of the register marked "built" is in its table of enforcement points, that its `where` names the point and the command the base runs, that the workflow shows the job `base` and a job `checks` that waits for it, and that a claim the repo does not show fails.
 
@@ -54,7 +33,7 @@ python3 maintain/watch_sources.py
 python3 maintain/watch_sources.py --data sources.json
 ```
 
-This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [sources.json](../sources.json) that `RATCHET.md` shows under Sources. The data file is an object with the one field `sources`, and any other field fails the run before anything is read ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
+This is not a reference check for a rule. It is a tool this repo runs on its own sources, the list `sources` in [sources.json](../sources.json) that `RATCHET.md` shows under Sources. The data file is an object with the one field `sources`, and any other field fails the run before anything is read. Its tests run in this repo's CI with the others. The script itself is meant to run once a day in a workflow of its own, with the workflow's built-in token.
 
 **What it claims.** For each pinned source, the run reads the head of the source's default branch and compares the pinned commit with it, through the GitHub REST API. It reads the head as `commits/HEAD`, which GitHub resolves to the head of the default branch, so it never reads the name of the branch.
 
@@ -69,7 +48,7 @@ This is not a reference check for a rule. It is a tool this repo runs on its own
 2. Text from a source, from an answer of the API or from `sources.json` is written so that the issue pings someone, links somewhere, shows HTML or reads as an instruction (`ratchet.material-not-instructions`), or so that a line in the log is read by the runner as a command, such as `::warning::` or `##[error]`.
 3. The token is printed in a log or an error, written into an issue, or sent to another host.
 
-**No text from a source (`D-2026-11-17-new-approaches`, in PR #13).** Two review rounds found text from upstream that escaping did not make inert, and a token that got through an encoding the watch did not undo. So the watch no longer tries to make such text safe. No text from a source, and no text from an answer of the API, reaches an issue, a title or a printed line. An issue holds only these values:
+**No text from a source.** Escaping does not make text from upstream inert, and a token can get through an encoding, so the watch does not try to make such text safe. No text from a source, and no text from an answer of the API, reaches an issue, a title or a printed line. An issue holds only these values:
 
 | Value | From | Checked as |
 |---|---|---|
@@ -123,7 +102,7 @@ If one planned title or body fails, nothing is written. The error names the plan
 
 The gate cannot tell a token that is encoded, for example in hex, from a sha or a name. That is why nothing from an answer may reach a line, a path in an error included, and not a reason to undo encodings.
 
-**Why the token needs nothing more.** The earlier version replaced the token in every answer and looked for it behind escapes and encodings, because upstream text went into issues and logs. Now no text from an answer is written anywhere, so a token that an answer holds, in any encoding, has no way out. The only values that are written are checked for a form that a token of GitHub's does not have, and the gate refuses the token as it stands in case one ever did.
+**Why the token needs nothing more.** No text from an answer is written anywhere, so a token that an answer holds, in any encoding, has no way out. The only values that are written are checked for a form that a token of GitHub's does not have, and the gate refuses the token as it stands in case one ever did.
 
 **The size of a body.** No list from the API reaches a body, so its size does not depend on the source. The largest body has a name and a directory of 100 characters, an owner of 39 and a repository of 100, nine-digit counts, 300 changed files, all under the directory, and the notes on a `diverged` compare and on a capped list. It is 1390 bytes, and a test builds it. GitHub takes 65536 characters.
 
@@ -148,51 +127,10 @@ The watch updates only an open issue that it opened itself, as `github-actions[b
 
 **The cases.** Each is a test in [test_watch_sources.py](../checks/test_watch_sources.py). The API is answered by a fake that records every call, except in the class `Transport`, which runs the real transport against local servers on `127.0.0.1`. No test reaches the internet.
 
-| Test | What is tried | Result |
-|---|---|---|
-| `test_fixture_*`, one for each file under [fixtures/sources/](../checks/fixtures/sources/), each loaded through `FixtureTest` | 49 malformed sources: names with `##[`, `::`, `@`, `#`, `<`, a backtick, a space, a capital, `_`, a leading `.` or `-`, 101 characters, `www.` or `gh-12`; directories with `//`, `..`, a part `.`, a capital, `_`, 101 characters or `www.`; an owner with `_`; and the forms of round 1. | Fails, names the problem, or prints that a line was left out where the problem quotes `_` or `\|`; reads nothing |
-| `test_the_sources_in_sources_json_have_the_form` | This repo's own sources. | Passes |
-| `test_with_no_arguments_the_watch_reads_sources_json_in_this_repo` | No arguments: this repo's `sources.json`. | Passes, reads each source |
-| `test_a_data_file_with_any_field_but_sources_fails_before_any_read` | `ratchet.json` with sources, a field besides `sources`, no field, a list, a field twice. | Fails, reads nothing |
-| `test_an_unchanged_source_writes_nothing` | Two sources at their pins. | Nothing written |
-| `test_a_moved_source_opens_one_issue` | A source two commits ahead. | One issue, with exactly the expected body |
-| `test_a_second_run_updates_and_does_not_duplicate` | The same move twice, then a further move. | Nothing written the second time, then the open issue updated |
-| `test_an_api_error_fails_without_writing` | An error, a rate limit, a missing repo, an answer that is not JSON, a network failure and a failing list of issues, at the second source after the first has moved. | Fails with exactly the kind of the request and the status; writes nothing |
-| `test_a_missing_pin_gets_its_own_issue`, `test_a_missing_pin_and_a_move_are_different_issues` | The pinned commit is not found upstream. | Its own issue, with exactly the expected body |
-| `test_a_compare_that_fails_while_the_pin_exists_fails_the_run` | The compare is not found, but the pin is. | Fails, writes nothing |
-| `test_a_directory_source_with_changes_only_outside_its_directory_writes_nothing` | Changes beside the directory, in a name that starts like it, and in a directory of the same name elsewhere. | Nothing written |
-| `test_a_directory_source_with_a_change_inside_opens_an_issue` | Changes inside and outside, and a file renamed out of the directory. | Exactly the expected body: 4 changed files, 2 under the directory |
-| `test_a_directory_source_whose_branch_moved_without_a_changed_file_writes_nothing` | An empty commit, for a source with a directory. | Nothing written |
-| `test_a_diverged_or_behind_branch_opens_an_issue_also_with_nothing_under_the_directory` | The pinned commit is off the branch. | An issue that says so |
-| `test_a_capped_file_list_says_so`, `test_a_directory_source_whose_capped_file_list_has_nothing_under_it_counts_as_moved`, `test_a_directory_source_whose_compare_lists_no_files_counts_as_moved` | 300 files, and no list of files. | An issue that says what the watch cannot tell |
-| `test_without_a_token_the_reads_run_and_the_writes_are_refused`, `test_an_empty_token_counts_as_no_token`, `test_without_a_token_and_nothing_moved_the_run_passes` | No token, or an empty one. | Fails and names the titles if anything moved, passes if not; sends no token |
-| `test_a_target_that_is_not_owner_and_repo_fails_without_writing` | `GITHUB_REPOSITORY` missing, empty or not of the form owner/repo. | Fails, writes nothing |
-| `test_an_issue_by_someone_else_with_the_same_title_is_not_edited`, `test_two_open_issues_of_its_own_with_one_title_fail_without_writing` | Issues by others, and two of its own, with the title. | Theirs left alone; two of its own fail the run |
-| `test_an_answer_of_an_unknown_form_fails_without_writing`, `test_a_head_of_an_unknown_form_fails_without_writing` | An unknown status, counts that are text, a boolean, below zero or above the cap, files that are not a list, names that are not text; a head that is `HEAD`, uppercase, 39 or 41 characters, a number, missing or a list. | Fails with a fixed message, writes nothing; nothing is read after a bad head |
-| `test_every_read_comes_before_any_write` | Two moved sources. | Every read, then both writes |
-| `test_the_pinned_directory_is_written_as_before_in_ratchet_md` | The structured fields. | `RATCHET.md` shows the same repo text as before |
-| `test_a_compare_that_disagrees_with_the_head_fails_without_writing` | `identical` with a head that is not the pin, and `ahead` with a head that is. | Fails, writes nothing |
-| `test_an_ahead_compare_with_no_changed_file_is_a_move` | Round 1, finding 1: a source with no directory, one empty commit ahead. | An issue |
-| `test_the_largest_body_is_small_and_holds_nothing_from_the_answer` | Round 1, finding 2: every value at its cap, with 250 commits and 300 files whose names hold mentions, runner commands, HTML and backticks. | 1390 bytes at most, none of that text in it |
-| `test_the_gate_refuses_every_mark_outside_its_set`, `test_the_gate_refuses_a_line_of_a_kind_the_watch_does_not_write` | Round 1, finding 3: each refused mark in a title, a body and a printed line, and lines and titles of kinds the watch does not write. | Refused, nothing written |
-| `test_a_plan_that_fails_the_gate_writes_nothing_at_all` | A second body that fails the gate. | Fails, names the issue and the line, writes neither issue |
-| `test_no_text_from_an_answer_reaches_an_issue_or_a_line` | Round 1, finding 4, and round 2, finding 2: an answer whose every text field holds mentions, runner commands, a link, HTML, and the token as it stands, as `\u` escapes, percent-encoded twice and as HTML entities. | The body is byte for byte the body of a clean answer; the output holds none of it |
-| `test_no_text_from_an_error_answer_or_a_network_error_reaches_a_line`, `test_an_error_the_watch_does_not_know_prints_only_its_kind_and_line` | The same text in an error answer, a network error and an unknown error. | Exactly the kind of the request and the status, or the kind of error and the line |
-| `test_the_gate_refuses_the_token_as_it_stands`, `test_the_token_is_sent_with_every_call_and_never_printed` | A token that would pass the form of a name. | Refused in a title, a body and a printed line |
-| `test_values_read_from_the_api_are_used_and_not_assumed` | Round 1, finding 5: a head, an owner, a repo, a target, issue numbers and counts that no other test uses. The head is read as `commits/HEAD`, so there is no branch name to assume. | Each value read is the value used |
-| `test_a_printed_line_that_fails_the_gate_is_left_out` | Round 2, finding 1: printed lines with `##[error]`, `::error::`, `@`, the token, a carriage return and `_`, and a line that names a path with `_`. | Each replaced by the fixed line |
-| `test_names_that_share_a_long_start_get_their_own_titles` | Round 2, finding 3: two names of 100 characters that differ in the last. | Two issues, each titled with the whole name |
-| `test_no_error_names_a_path_or_a_value_from_an_answer` | Round 1 of the new approach, finding 1: a repository whose default branch is the token in hex, and each request in turn failing with a status, a network error or an answer that is not JSON: the head, the compare, the pinned commit, the list of issues, opening and updating. | Exactly the kind and the status; no path, no sha, no issue number, no `HEAD`, and neither the token nor its hex |
-| `test_the_head_is_read_without_the_name_of_the_branch` | The same repository, moved. | Reads `commits/HEAD` and then the compare, and no request holds the branch |
-| `test_a_request_is_built_only_from_checked_values` | Paths of every form the watch builds, and 19 it does not: the repository alone, a branch, `main`, an owner with `_`, an uppercase or short sha, `..` instead of `...`, `HEAD/../x`, a query, an issue number below zero, of ten digits or with `%0A`, `..` or `.` as a part, a line break, a percent-encoded `/`, `//evil.invalid` and another query on the issues. | The first sent; each of the others fails with the kind, and nothing is sent |
-| `test_a_redirect_is_not_followed_and_the_token_goes_nowhere_else` | Round 2, finding 4: the real transport, against a local server that answers 301, 302, 303, 307 or 308 with an address on a second local server. | Fails with the status; the token reached the first server only, and the second got nothing |
-| `test_the_redirect_handler_makes_no_new_request`, `test_the_transport_sends_nothing_to_another_address`, `test_the_real_transport_reads_an_answer` | The redirect handler alone, a local address that is not the API, and a plain run through the real transport. | No new request; refused before connecting; read as through the fake |
-| `test_the_token_goes_only_to_the_exact_origin_of_the_api` | Round 1 of the new approach, finding 2: 23 addresses near the API, among them `api.github.com.evil.invalid`, `api.github.com@evil.invalid`, a userinfo part, the ports 443 and 8443, `http`, capitals, a trailing dot, a percent-encoded dot, a backslash, no path, a fragment, another scheme, a tab, a line break, a leading space and a character outside ASCII, with an opener that records what reaches it. | Each refused before an opener is built; the API itself reaches the opener with the token |
-
 **What it does not claim.**
 
 - It does not judge whether a move matters for a rule. That needs a reader, and the compare is material for one.
-- It sees only the default branch and only sources on GitHub. It takes the default branch to be what GitHub resolves `HEAD` to, as it did for the sources here and for a repository whose default branch is `master` when this was written.
+- It sees only the default branch and only sources on GitHub. It takes the default branch to be what GitHub resolves `HEAD` to.
 - It recognizes its own issues by the account `github-actions[bot]`. Run with another token, it does not find them and opens new ones.
 - A run writes all of its issues or none, unless GitHub fails a write after an earlier one went through. Then the issues before it are written and those after it are not, and the next run writes them.
 - GitHub may show a sha in an issue as a link to a commit of this repository, if this repository has one with that sha. That is a link to this repo, not a mention.
@@ -217,7 +155,7 @@ python3 maintain/generate.py --check    # fail if any generated text is out of d
 - a file that holds generated blocks could hide one: it has a comment that is not a marker, a line that starts with `<`, a generated block inside a code block, or a code block opened in any way but three backticks
 - a data file breaks its own format, for example a rule labeled `enforced` whose ratchet does not start with "Check:", a rule that is text only without its reason, or a value that holds a character outside the list or a name between two colons
 - a file it reads is not valid UTF-8
-- a markdown file in the root, in `templates/` or in `checks/` mentions a key that is not a rule
+- a markdown file in the root, in `templates/`, in `checks/` or in `maintain/` mentions a key that is not a rule
 - such a file links to a local file that does not exist, with an inline link or with a link definition at the start of a line. Links to the web and links inside a page are not followed.
 - the first entry in the changelog is not the version in `ratchet.json`, headed `## <version> (<date>)` or `## <version> (unreleased)`, an entry after the first is headed `(unreleased)`, or a heading of an entry is of another form
 - the entries in the changelog do not stand newest first: each version, compared as a pair of integers, must be higher than the one after it, so a version twice or an entry moved up fails
@@ -227,18 +165,18 @@ python3 maintain/generate.py --check    # fail if any generated text is out of d
 - the landing page does not hold the line `<section id="values" class="values">` exactly once, after the spaces that indent it, then lines of the six forms the generator writes only, each exactly as it writes it, with text that holds no `<` or `>`, then a line `</section>`, or another line of the page holds `id="values"`. The generator writes the story, the line that leads to the values, each value and the line that weighs them from `values.json`, each as text, so `--check` fails when a value is changed and the page is not written again. A line between the two that is not of those forms fails, with or without `--check`, and the file is not written: a link added inside one of its paragraphs, or a second paragraph added on the line of one
 - the landing page does not hold the line `<p id="sources" class="count"><strong>Kept current:</strong> <a href="…/RATCHET.md#sources">N pinned sources</a>, NAME (LICENSE), … and NAME (LICENSE). Each pin is a commit. A daily watch opens an issue when one moves.</p>` exactly once, with any number and any list as text, after the spaces that indent it, or another line of the page holds `id="sources"`, or `sources.json` holds no source. The generator writes the number, each name and each license from `sources.json`, in its order, so `--check` fails when a source is added, removed or changed and the page is not written again. A line of another form fails, with or without `--check`, and the file is not written: a name linked, markup in the list, or a reference or a character the generator never writes
 - the landing page does not hold the line `<section id="principles" class="principles">` exactly once, after the spaces that indent it, then lines of the forms the generator writes only, `<ol>`, `<ol start="N">`, `</ol>`, `<li>TITLE</li>`, `<p class="production"><strong>…</strong></p>` and `<p class="aims"><em>…</em></p>`, each text as text, then the line `</section>`, or another line holds `id="principles"`, or those lines are not the titles of the principles of `ratchet.json`, in order, with the two lines of `values.json` around them
-- the landing page does not hold the line `<pre id="prompt" class="prompt">` exactly once, not indented, then lines of ASCII with no `<`, `>` or `&` only, then the line `</pre>`, or another line holds `id="prompt"`, or those lines are not the prompt, `PROMPT` in `generate.py`, with the command that fetches Ratchet at the newest version with a date in `CHANGELOG.md` ([D-2026-11-25-prompt-per-tool](../decisions/D-2026-11-25-prompt-per-tool.md)). The prompt holds the one other `git clone` of the page, on one line of its own of the same form, indented by three spaces as text. Any other `git clone`, `id="count"` or `id="sources"` in the prompt counts as it does anywhere else on the page
-- `values.json` is not a valid data file: not strict JSON in UTF-8, a field twice, a field missing or one it does not know, a list of values that is empty or not a list, a value that is not an object of exactly `prefer` and `over`, or a text that is not one line from [the list](../checks/README.md#the-characters-a-value-may-hold), holds no words or holds code. Its story and values are text, not rules: no rule stands under a value, and nothing checks what a value says (`D-2026-11-23-values-and-principles`)
+- the landing page does not hold the line `<pre id="prompt" class="prompt">` exactly once, not indented, then lines of ASCII with no `<`, `>` or `&` only, then the line `</pre>`, or another line holds `id="prompt"`, or those lines are not the prompt, `PROMPT` in `generate.py`, with the command that fetches Ratchet at the newest version with a date in `CHANGELOG.md`. The prompt holds the one other `git clone` of the page, on one line of its own of the same form, indented by three spaces as text. Any other `git clone`, `id="count"` or `id="sources"` in the prompt counts as it does anywhere else on the page
+- `values.json` is not a valid data file: not strict JSON in UTF-8, a field twice, a field missing or one it does not know, a list of values that is empty or not a list, a value that is not an object of exactly `prefer` and `over`, or a text that is not one line from [the list](../checks/README.md#the-characters-a-value-may-hold), holds no words or holds code. Its story and values are text, not rules: no rule stands under a value, and nothing checks what a value says
 - `sources.json` is not a valid data file: not strict JSON in UTF-8, a field twice, any field but `sources`, a source of another form, a name twice
 - the source of a rule cites a name that is not a source in `sources.json`. The source of a rule is empty, or citations separated by `; `, each of which starts with the name of a source and then, after a space or a comma, says what is taken from it
 - `.github/CODEOWNERS` holds anything but the one rule that gives every path to the maintainer.
 - there are more experimental rules than `experimental_cap` in `ratchet.json`, or the cap is not a whole number from 0 (see [The budget](#the-budget)).
 - an experimental rule has stood through three releases and 60 days with no decision, `since` or `kept_by` breaks its form, or a heading of the changelog has a date that does not exist or is earlier than that of the version before it (see [The age of an experimental rule](#the-age-of-an-experimental-rule)).
-- a principle or the principle of a rule breaks its form, or a markdown file in the root, in `templates/` or in `checks/` mentions a principle that is not in `ratchet.json` (see [The principles](#the-principles)).
+- a principle or the principle of a rule breaks its form, or a markdown file in the root, in `templates/`, in `checks/` or in `maintain/` mentions a principle that is not in `ratchet.json` (see [The principles](#the-principles)).
 - an experimental rule enters in this version and this repo's register does not adopt it nor does the rule say why Ratchet cannot use it, or the register adopts a rule that says so (see [A rule that enters is used](#a-rule-that-enters-is-used)).
 - a file in `decisions/` breaks its form, or the status line of a decision that a later one replaces, amends or ends is missing, stale or edited by hand (see [Decisions](#decisions)).
 
-From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)).
+From [sources.json](../sources.json) it writes the table of sources in `RATCHET.md`, and the first line of `RATCHET.md` says the version and its date, or that it is not yet released. The date of a version is in the heading of its entry in the changelog, and nowhere else.
 
 In the changelog only the first entry is generated: the entry of the version that `ratchet.json` names, which is released when it is merged with a date in its heading. While it is headed `(unreleased)`, changes are collected under it, and no merge publishes it. Every entry after it is released text, and the generator never rewrites it. That it stays as it was released is checked against the tags, by `released_text.py`.
 
@@ -246,7 +184,7 @@ In the changelog only the first entry is generated: the entry of the version tha
 
 ## Decisions
 
-A decision file is a verbatim record and never changes, so a later decision that changes it says so in its own header, and the generator writes the status into the earlier file ([D-2026-11-27-stale-text](../decisions/D-2026-11-27-stale-text.md), point 2). The code is [maintain/decisions.py](../maintain/decisions.py), which `generate.py` runs on `decisions/`, apart from its scan of Markdown files.
+A decision file is a verbatim record and never changes, so a later decision that changes it says so in its own header, and the generator writes the status into the earlier file. The code is [maintain/decisions.py](../maintain/decisions.py), which `generate.py` runs on `decisions/`, apart from its scan of Markdown files.
 
 A decision names what it changes in three fields after `Kind`: `Replaces`, the decisions it takes the place of as a whole, `Amends`, the decisions it changes in part, each with what it changes in at most 15 words, and `Ends`, the time-bound decisions it records as over, such as a standing approval whose set of pull requests is done. Each field is `none` or the ids, separated by `; `, in the order of their text. An item of `Amends` is `<id> (<what>)`. In each decision that another one names, the generator writes one line under the title, between two HTML comments, `generated:status` and `/generated:status`, each alone on its line, such as `Status: amended by D-2026-11-27-no-sparse-fetch (point 2 is withdrawn)`, one part for each field that names it, ordered by the later decision's id. It changes no other byte of the file, and it reads and writes no decision file that holds a carriage return: such a file fails, since its line endings would change when the line is written. It writes no decision file while any decision has a problem of form.
 
@@ -264,24 +202,7 @@ Without `--check`, the generator writes the status lines.
 
 **Against which threat.** Drift: a later decision changes an earlier one, and an agent that reaches the earlier file, by a citation, by `ls` or by a search, reads an answer that no longer holds. And mistakes: a status edited by hand or gone stale, and a decision file in the wrong form.
 
-**What it does not claim.** It sees only the relations that are written down. A later decision that changes an earlier one and does not say so in its fields is not caught, and neither is a field that names the wrong decision or the wrong kind: the maintainer reads that in the pull request (`ratchet.owner-paths`). It reads nothing of the question and the answer but their two headings. Decisions dated before 2026-11-28 may lack the fields. The relations between them that were found in their text were added to the later decision's header, and those that are a judgment were not. It does not refuse a citation of a decision that no longer holds: that is point 3 of the same decision.
-
-| Fixture under `decisions/` | Case | Result |
-|---|---|---|
-| `old-without-fields` | A decision dated 2026-11-27 with no fields | Passes |
-| `new-with-fields` | A decision dated 2026-11-28 with the three fields, each `none` | Passes |
-| `same-day` | A decision names another of the same day, whose id sorts after its own | Passes |
-| `two-kinds` | A decision amended and then replaced, and one that both replaces and amends | Passes, with the status line in order |
-| `new-without-fields` | A decision dated 2026-11-28 with no fields | Fails |
-| `unknown-id`, `later-id`, `own-id` | A field that names a decision with no file, one dated after it, or itself | Fails |
-| `one-id-two-fields` | One decision named in `Amends` and in `Ends` | Fails |
-| `cycle` | Two decisions of one day that name each other | Fails |
-| `status-missing`, `status-stale`, `status-edited` | A status line missing, of an earlier relation, or with words added | Fails |
-| `status-unnamed` | A status line in a decision that no other one names | Fails |
-| `status-misplaced` | A status block after the header | Fails |
-| `title-id`, `date` | A title whose id is not the file's, a `Date` that is not the id's | Fails |
-| `no-question`, `no-answer`, `answer-first` | `## Question` or `## Answer` missing, or the two in the wrong order | Fails |
-| `field-twice`, `field-unknown`, `fields-in-part` | A field twice, a field it does not know, and an old decision with one of the three fields | Fails |
+**What it does not claim.** It sees only the relations that are written down. A later decision that changes an earlier one and does not say so in its fields is not caught, and neither is a field that names the wrong decision or the wrong kind: the maintainer reads that in the pull request (`ratchet.owner-paths`). It reads nothing of the question and the answer but their two headings. Decisions dated before 2026-11-28 may lack the fields. A relation between them that is a judgment is not written down. It does not refuse a citation of a decision that no longer holds.
 
 The tests are in [test_decisions.py](../checks/test_decisions.py). They also hold, written in the test, each form a field may take and the forms around it that fail, the cut-over on each side, and every entry of `decisions/` that is not a decision's file. On a copy of this repo, `--check` fails on each decision whose status block was taken out or put in where none belongs, and writes nothing. `generate.py` writes each one back, byte for byte, with no byte from `## Question` on changed, and a second run writes nothing.
 
@@ -294,47 +215,21 @@ python3 maintain/released_text.py
 **What it claims.** Released text is as it stood at its tag. It reads the tags of the checkout, every one of the form `vMAJOR.MINOR`, and compares:
 
 - every entry of `CHANGELOG.md` that a tag holds, from its heading to the next one, with the same entry at that tag, byte for byte after CRLF is read as LF. Every tag that holds a changelog is compared with every entry it holds, so an entry is compared with each later tag too.
-- `ratchet.json`, when it names a version that has a tag, with `ratchet.json` at that tag. A change to the rules raises the version (`D-2026-11-17-new-approaches`). It is read first as every check reads it, with `registry.strict_loads` and `registry.validate`, and fails when it is not a valid data file.
+- `ratchet.json`, when it names a version that has a tag, with `ratchet.json` at that tag. A change to the rules raises the version. It is read first as every check reads it, with `registry.strict_loads` and `registry.validate`, and fails when it is not a valid data file.
 
 It also fails when a tag has no entry in the changelog (`repo.version`, this repo's own rule), when an entry after the first has no tag, when a heading is not of the form `## <version> (<date>)` or a version stands twice, when there are no tags, when a tag is of another form, and when the tags cannot be read.
 
-**An unreleased first entry** ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). The first entry may be headed `## <version> (unreleased)`, exactly. It passes while its version has no tag, and `ratchet.json` may name that version and change: nothing of it is released. An entry after the first headed so fails, and so does the first when its version has a tag: a released version stays released. Once the heading has a date, the next push to `main` releases it, and from its tag on the entry and `ratchet.json` are compared as every released one is. `sources.json` is not read: the list of sources is not part of what is released, so a pin that moves needs no new version. The threat here is the one that item 3 of [D-2026-11-17-new-approaches](../decisions/D-2026-11-17-new-approaches.md) named: an unreleased heading was once how released text got rewritten. So the heading has one exact form, only the first entry may have it, and released text is compared from its tag on as before.
+**An unreleased first entry.** The first entry may be headed `## <version> (unreleased)`, exactly. It passes while its version has no tag, and `ratchet.json` may name that version and change: nothing of it is released. An entry after the first headed so fails, and so does the first when its version has a tag: a released version stays released. Once the heading has a date, the next push to `main` releases it, and from its tag on the entry and `ratchet.json` are compared as every released one is. `sources.json` is not read: the list of sources is not part of what is released, so a pin that moves needs no new version. An unreleased heading could rewrite released text, so the heading has one exact form, only the first entry may have it, and released text is compared from its tag on as before.
 
-**Against which threat.** Released text rewritten after its tag, as the count under the released heading of 0.3 was, by the generator, in the first round of PR #12. A record of the release kept in the repo does not protect it, because the same PR can change the record. The tag is published, and is never moved (`repo.tags-stay`).
+**Against which threat.** Released text rewritten after its tag. A record of the release kept in the repo does not protect it, because the same PR can change the record. The tag is published, and is never moved (`repo.tags-stay`).
 
 **In CI.** The checkouts of the jobs `own` and `base` fetch the tags, with `fetch-depth: 0`. A step of `own` runs this check, and on a pull request `base` runs the base branch's copy on the pull request's changelog ([from_base.py](#from_basepy)). Without the tags it fails, and says so: it is never skipped. The tests in [test_released_text.py](../checks/test_released_text.py) make a git repo of their own, with tags of their own, so they need none of this repo's tags.
 
-**The suite on a released copy.** That the full suite passes on the copy after its release is one test that the suite does not collect, `released_copy_case` in [test_released_text.py](../checks/test_released_text.py), so that the suite does not run itself again inside its own run ([D-2026-11-24-faster-suite](../decisions/D-2026-11-24-faster-suite.md)). It takes every step of `ReleaseSteps`' release test, with each of its assertions, on a copy, and then runs `expected_tests.py` in the copy, which runs the whole suite there, `test_released_text.py` among it. `python3 checks/test_released_text.py --released-copy` runs it and exits 0 only when that one test ran and passed. The job `released` of [checks.yml](../.github/workflows/checks.yml) runs it once on each pull request and each push to `main`, beside `own`, and the job `checks` needs `released` and is red unless it passed. On a pull request, the job `base` also runs the base branch's copy of it in the tree of the code, the base's tests with the pull request's code of the checks ([from_base.py](#from_basepy)), as `ReleaseSteps` did inside the base's suite. The release workflow runs it before it tags. `test_released_text.ReleasedCopyJob` fails when the job `checks` does not need `released`, does not fail unless it passed, or when `released` runs something else or has a condition, and when the case does not take the release steps and then run the suite in the copy, or passes on a suite that failed, said nothing or was skipped.
+**The suite on a released copy.** That the full suite passes on the copy after its release is one test that the suite does not collect, `released_copy_case` in [test_released_text.py](../checks/test_released_text.py), so that the suite does not run itself again inside its own run. It takes every step of `ReleaseSteps`' release test, with each of its assertions, on a copy, and then runs `expected_tests.py` in the copy, which runs the whole suite there, `test_released_text.py` among it. `python3 checks/test_released_text.py --released-copy` runs it and exits 0 only when that one test ran and passed. The job `released` of [checks.yml](../.github/workflows/checks.yml) runs it once on each pull request and each push to `main`, beside `own`, and the job `checks` needs `released` and is red unless it passed. On a pull request, the job `base` also runs the base branch's copy of it in the tree of the code, the base's tests with the pull request's code of the checks ([from_base.py](#from_basepy)), as `ReleaseSteps` did inside the base's suite. The release workflow runs it before it tags. `test_released_text.ReleasedCopyJob` fails when the job `checks` does not need `released`, does not fail unless it passed, or when `released` runs something else or has a condition, and when the case does not take the release steps and then run the suite in the copy, or passes on a suite that failed, said nothing or was skipped.
 
-| Case | Result |
-|---|---|
-| Released text as it stood at its tags | Passes |
-| The version not yet released changes | Passes |
-| A word changed in a released entry, its count regenerated, its date changed, or a line added at the end of the last entry | Fails |
-| A released entry removed | Fails |
-| A tag with no entry, also a tag that holds no changelog, as `v0.1` | Fails |
-| An entry after the first with no tag | Fails |
-| A heading of another form, such as `## Unreleased`, `## 0.4` or `## 0.4 (soon)`, or an entry twice | Fails |
-| The first entry headed `## 0.4 (unreleased)`, with no tag `v0.4`, and `ratchet.json` and the entry changed under it | Passes, and says that the first entry is unreleased |
-| That entry given its date, then tagged | Passes. From the tag on, the entry headed `(unreleased)` again fails |
-| An entry headed `(unreleased)` after the first, two such entries, or the first for a version that has a tag | Fails |
-| `(Unreleased)`, a space or a no-break space after it, no parentheses, no space before them, or one left open | Fails, not the heading of an entry |
-| `ratchet.json` with `sources` or `date`, which left it in 0.9 | Fails, an unknown field |
-| A changelog that is not UTF-8, or no changelog | Fails |
-| `ratchet.json` names a released version and is as it stood at its tag | Passes |
-| `ratchet.json` names a released version and its rules changed, or the tag holds no `ratchet.json`, or it cannot be read | Fails |
-| `ratchet.json` is not a valid data file, read as every check reads it: a field twice, `NaN` or `Infinity`, an unknown or a missing field, nested too deeply, not an object, not UTF-8. Finding 4 of round 1 of the new approach. | Fails |
-| A tag of another form, such as `v0.4-rc1` or `latest` | Fails |
-| An annotated tag | Passes |
-| No tags, or no git checkout | Fails |
-| The version that `ratchet.json` names, on a copy of this repo, with `release.py`'s own code and no copy of it, against a fake GitHub that holds the tags and releases from before it. First headed `(unreleased)`: `RATCHET.md` says it is not yet released, the README fetches the newest release, the checks pass, and a push and a scheduled run, on the history of `main` in the copy read with `release.main_history` and `release.read_pending`, write nothing and say why. Then given its date, with the README moved to its tag and `generate.py` run: the checks pass, `release.publish` tags the merge and releases it, the next scheduled run writes nothing, and the guard passes. Finding 3 of round 1 of the new approach | Passes |
-| The same steps on a copy, and then the full suite in the copy, run by `expected_tests.py`, in the job `released` | Passes |
-| A job `checks` that does not need the job `released` or does not fail on it, a job `released` that runs something else or has a condition, a case that does not run the suite in the copy or passes on one that failed, said nothing or was skipped | Fails |
-| While that version is unreleased, a rule changed | Passes |
-| After its release, a rule changed without a new version | Fails |
-| After its release, a pin moved in `sources.json` | Passes, with no new version. `generate.py` writes only `RATCHET.md` |
+The cases are in [test_released_text.py](../checks/test_released_text.py).
 
-**What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right. It does not see whether a dated first entry was released: on a pull request, and on the push of `main` before the release run is done, the tag does not exist yet. That is the release workflow's to see, on its next run and on its schedule. So the command in `README.md` that fetches Ratchet names a tag that may not exist yet: the pull request of a release moves it to the version it dates, and the tag is created by the release run after the merge. For the minutes that run takes, the command fails. If the run is cancelled or fails before it tags, the command fails until a rerun tags, and the daily scheduled run of `release.py` is red each day until then ([PR #50](https://github.com/fabian-von-tiedemann/ratchet/pull/50), round 2, finding 2). Moving the pin in a pull request of its own after the tag exists would close that window, at the cost of a second pull request for each release, and is a question for the maintainer.
+**What it does not claim.** It trusts the tags it is given. A tag deleted or moved on the server is outside what it can see: that is a setting of the repository. It does not see whether the text of the first entry, the version not yet released, is right. It does not see whether a dated first entry was released: on a pull request, and on the push of `main` before the release run is done, the tag does not exist yet. That is the release workflow's to see, on its next run and on its schedule. So the command in `README.md` that fetches Ratchet names a tag that may not exist yet: the pull request of a release moves it to the version it dates, and the tag is created by the release run after the merge. For the minutes that run takes, the command fails. If the run is cancelled or fails before it tags, the command fails until a rerun tags, and the daily scheduled run of `release.py` is red each day until then. Moving the pin in a pull request of its own after the tag exists would close that window, at the cost of a second pull request for each release, and is a question for the maintainer.
 
 ## form_age.py
 
@@ -370,34 +265,7 @@ Every run ends with two lines: that the count starts at `v0.16`, and that parts 
 
 **The cases.** Each is a test in [test_form_age.py](../checks/test_form_age.py), which makes a git repo of its own in a scratch directory, with tags of its own, and runs the script there in a child process. The three tags are `v0.16`, `v0.17` and `v0.18` unless a case says otherwise.
 
-| Case | Result |
-|---|---|
-| The same form at the three tags, the oldest dated 30 days before the newest | Holds, exit 0, naming the three tags and the 30 days |
-| The same, 29 days | Does not hold, exit 1: 29 days, 1 short of 30 |
-| A field new at the top of `ratchet.json` at the middle tag, or one missing there | Cannot tell, exit 2, naming the tag and the field, since `load_older` refuses it |
-| A field gone from every rule of `ratchet.json` at the newest tag | Does not hold, naming the field and the two tags |
-| A new field in a row of `adopted` in `templates/register.json` only | Does not hold |
-| A new field in a `translation` | Does not hold |
-| A new field in a row of `own` in `register.json` only, at the middle tag | Does not hold: new from the oldest, gone at the newest |
-| The field sets equal, and a line `Changes of form:` in the newest entry, or in the middle one | Does not hold, naming the entry |
-| A line `Changes of form:` in the oldest of the three entries only | Holds |
-| The words "Changes of form:" inside a line of the newest entry | Holds: only a line that is exactly the marker counts |
-| Two tags from `v0.16` on, with `v0.14` and `v0.15` before them | Does not hold, exit 1, naming the two |
-| No tag at all | Cannot tell, exit 2 |
-| A tag `v0.19-rc1`, `latest`, `v0.016` or `v1` | Cannot tell |
-| The tags `v0.15`, `v0.16`, `v0.19`, `v0.20` and `v0.100`, with `v0.15` and `v0.16` of another form | Holds, from `v0.19` to `v0.100`: the three highest by number, and the tags before do not count |
-| The entry of a counted tag missing, headed `(unreleased)`, with a date that does not exist, or twice | Cannot tell |
-| `ratchet.json` at a tag with a field twice, a byte order mark, a field in a rule `load_older` does not know, bytes that are not UTF-8, or no `ratchet.json` | Cannot tell, without a traceback |
-| A register at a tag with a field twice, a byte order mark, NaN, or a row that is not an object | Cannot tell |
-| ROOT a folder inside a checkout, or a folder outside any | Cannot tell |
-| A middle tag of four, `v0.18`, whose entry lists a change of form, with its ref broken so that git leaves it out of the list and warns | Cannot tell, naming the warning, never "holds" from `v0.17` to `v0.19` |
-| The same four tags with `v0.18` not here, while the changelog at `v0.19` dates 0.18 | Cannot tell, naming the release with no tag |
-| Three tags with `v0.17` not here, while the changelog at `v0.18` dates 0.17 | Cannot tell, not "does not hold" for too few tags: the check of the dated releases runs before any verdict |
-| A partial clone, `--filter=blob:none` | Cannot tell, and no object is fetched |
-| A run | The seeded repo is left as it was, and git runs only as `rev-parse`, `config --get-regexp`, `tag --list` and `show` |
-| A run from a copy of the checks, with bytecode allowed | No file is written beside the script |
-
-The run on this repo's own checkout is not a test: it changes with every tag. On 2026-11-26, with one tag from `v0.16` on, it says "does not hold".
+The run on this repo's own checkout is not a test: it changes with every tag.
 
 ## release.py
 
@@ -406,11 +274,11 @@ python3 maintain/release.py notes --repo OWNER/NAME   # print the release text, 
 python3 maintain/release.py publish                   # tag and release, in the release workflow; only report, on a schedule
 ```
 
-This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after `generate.py --check`, `check_register.py register.json --markdown REGISTER.md`, the suite and the suite on a released copy ([D-2026-11-17-release-on-merge](../decisions/D-2026-11-17-release-on-merge.md), [D-2026-11-17-release-links](../decisions/D-2026-11-17-release-links.md), [D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](../checks/test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
+This one checks no rule in a register. It is the script that the release workflow, [release.yml](../.github/workflows/release.yml), runs after `generate.py --check`, `check_register.py register.json --markdown REGISTER.md`, the suite and the suite on a released copy. The workflow holds no logic of its own, so that the logic can be tested. Its tests, in [test_release.py](../checks/test_release.py), run with the others and never reach the network: the GitHub API is a function given to the script, and the HTTP client is given a fake opener.
 
 The script reads no Markdown and copies nothing from the changelog. The versions that must already be released come from the history of `main`, read with git, and not from the changelog. It does not try to finish an older version. When anything older is unfinished, the run is red, nothing is written, and the message names the commit whose run the maintainer reruns.
 
-**What it claims, in short** ([D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md), [D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). It catches mistakes in normal operation, and it fails closed. With the history on `main` intact, a run is green only when it has confirmed, from git and from the answers of the GitHub API, that every version that was ever dated on `main`, up to the one in the checkout, has a tag and a published release (a version that `main` only named under a first entry headed `(unreleased)` needs nothing, see below), and, when the first entry of the changelog, the one of the version in the checkout, has a date, that the tag of that version is at this commit or at an earlier commit of it. While that entry is headed `(unreleased)`, the version in the checkout has no tag yet, nothing is written for it, and a run passes once every older version is finished. Every run, whether of a push, by hand or on the schedule, that cannot confirm that is red:
+**What it claims, in short.** It catches mistakes in normal operation, and it fails closed. With the history on `main` intact, a run is green only when it has confirmed, from git and from the answers of the GitHub API, that every version that was ever dated on `main`, up to the one in the checkout, has a tag and a published release (a version that `main` only named under a first entry headed `(unreleased)` needs nothing, see below), and, when the first entry of the changelog, the one of the version in the checkout, has a date, that the tag of that version is at this commit or at an earlier commit of it. While that entry is headed `(unreleased)`, the version in the checkout has no tag yet, nothing is written for it, and a run passes once every older version is finished. Every run, whether of a push, by hand or on the schedule, that cannot confirm that is red:
 
 - A scheduled run writes nothing at all.
 - A run of a push or by hand writes nothing when it cannot confirm that every older version is finished, or when any check before its writes fails. Its only writes are the tag and the release of the version in `ratchet.json`, made after every check has passed. If it cannot confirm either one, it is red.
@@ -439,7 +307,7 @@ It does not stand against someone who changes the runner's git data, such as a g
 - **A checkout that swaps objects or parents is refused.** Before it reads any history, the run fails when the checkout has `.git/info/grafts`, a ref under `refs/replace/`, loose or packed, a `.git/shallow` file, even an empty one, or a `.git/objects/info/alternates` file, even an empty one. git reads a graft as the parents of a commit, a replace ref as another object, a shallow file as the end of the history, and an alternate store as the source of an object the checkout lacks, without checking its hash: each changes what is read, and the tests show it. Beside the refusal, git runs with `GIT_NO_REPLACE_OBJECTS=1`, `--no-replace-objects` and `GIT_GRAFT_FILE` set to an empty file in a directory the script makes for each call, so that the reading ignores grafts and replace refs anyway. A fresh checkout on GitHub has none of these.
 - **The older versions are the ones `main` has had.** Before any request, it reads with git every commit on the first-parent history of `GITHUB_SHA` (`git rev-list --first-parent`) and the bytes of `ratchet.json` in each (`git cat-file`), and reads each as strictly as `registry.py` reads a data file: UTF-8, no field twice, no NaN, and a `version` of the form `MAJOR.MINOR`. Every commit is read, not only those git reports as changing the file. The run fails when the checkout is shallow, when it is not at `GITHUB_SHA`, when `ratchet.json` at `GITHUB_SHA` names another version than the checkout, when a commit names a version newer than the one being released, or when the file is missing at a commit after an earlier commit held it. Commits from before `ratchet.json` existed name no version. git runs with no `GIT_` variable of the environment, no system or global config, no replace refs and no graft file of the checkout, and it does not look for a repository above the checkout.
 - **Every tag has an entry, and every older version is finished.** Before any write, it lists the tags and the releases. A tag `vMAJOR.MINOR` up to this version with no line of its own fails the run, and so does a tag under `refs/tags/v` of another form, which is named. Each version that was dated on `main` and that is older than the one being released must have a tag and a published release, not a draft. Which versions those are is under "The versions that must be released" below. 0.1 needs only its tag, because it was tagged before Ratchet published releases (`BEFORE_RELEASES` in the script). If any is missing, the run fails, names each version, what it lacks and the commit whose run to rerun, and writes nothing. Tags and releases of versions newer than the one in `ratchet.json` are ignored, so that a rerun for 0.4 does not trip over a `v0.5`.
-- **An unreleased first entry publishes nothing** ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). A line `## MAJOR.MINOR (unreleased)`, matched as a whole line as the dated heading is, is an entry of a version that is not released. When the first entry is headed so, for the version in `ratchet.json`, the run reads the tags and the releases, fails as before when an older version is not finished, and otherwise passes, writes nothing and says: `Ratchet <version> is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. Nothing was written.` That holds for a push, a run by hand and a scheduled run. It fails and writes nothing when that version already has a tag or a release, when an entry after the first is headed `(unreleased)`, when a version has two headings, and when the checkout and its commit on `main` disagree on whether the entry is unreleased. A heading of any other form, such as `(Unreleased)`, is no entry at all, so the run fails as for a missing entry. The release is the push of the commit that gives the entry its date.
+- **An unreleased first entry publishes nothing.** A line `## MAJOR.MINOR (unreleased)`, matched as a whole line as the dated heading is, is an entry of a version that is not released. When the first entry is headed so, for the version in `ratchet.json`, the run reads the tags and the releases, fails as before when an older version is not finished, and otherwise passes, writes nothing and says: `Ratchet <version> is not released: its entry in CHANGELOG.md is headed "(unreleased)". Every older version is finished. Nothing was written.` That holds for a push, a run by hand and a scheduled run. It fails and writes nothing when that version already has a tag or a release, when an entry after the first is headed `(unreleased)`, when a version has two headings, and when the checkout and its commit on `main` disagree on whether the entry is unreleased. A heading of any other form, such as `(Unreleased)`, is no entry at all, so the run fails as for a missing entry. The release is the push of the commit that gives the entry its date.
 - **The versions that must be released are the ones `main` has named with a date.** Beside `ratchet.json`, the run reads with git the `CHANGELOG.md` of every commit on the first-parent history (`release.read_pending`), as strict UTF-8, and only its headings. A commit is pending when its first entry is the one exact unreleased heading for the version its `ratchet.json` names. A version must be released once a commit on `main` names it and is not pending, so a version merged with a date cannot be hidden by a later pull request, as before. A version that `main` only named as pending needs nothing. A version that a commit on `main` named and that was not pending must be released also when a later commit is pending for it again, with `(unreleased)` put back: the run of that later commit, on a push and on a schedule, fails, writes nothing and says `Ratchet <version> is not finished: commit <sha> on main gave its entry in CHANGELOG.md a date, and at commit <head> it is headed "(unreleased)" again.`, with the rerun. The commit that a message names for a rerun is the first commit on `main` that names the version and is not pending, since a rerun of a pending commit publishes nothing. A commit whose changelog is missing, or holds the heading in another form, counts as not pending: its version must be released. A changelog that is not UTF-8 at a commit on `main` fails the run and names the commit.
 - **A release is made only from `main`.** `GITHUB_REF` must be `refs/heads/main`, or the run fails before any request. A scheduled run is on the default branch, `main`, and passes this check like the others.
 - **The event is one of three.** `GITHUB_EVENT_NAME` must be exactly `push`, `workflow_dispatch` or `schedule`, or the run fails before any request. A push and a run by hand write as described below.
@@ -466,11 +334,11 @@ It does not stand against someone who changes the runner's git data, such as a g
 
 **Against which threat.** Mistakes in normal operation, as above:
 
-- A release that says something other than the entry that was approved. Two review rounds found that a script reading free Markdown could not know what a renderer will show ([D-2026-11-16-strict-forms](../decisions/D-2026-11-16-strict-forms.md)). Now no text is copied, so there is nothing to differ.
+- A release that says something other than the entry that was approved. A script that reads free Markdown cannot know what a renderer will show, so no text is copied, and there is nothing to differ.
 - A version that is merged and left unreleased, or made impossible to release, with no red run: a run that fails or is cancelled after it tags, a waiting run replaced in the concurrency group by a newer one, or a later pull request that takes the version's heading out of the changelog.
 - A release attached to a tag at another commit than the one approved, because the tag appeared between a check and a write.
 - A version hard-coded in the script instead of read from `ratchet.json`.
-- A version collected under an unreleased entry that is published before its pull request of release, or a version merged with a date that is then never released because the changelog says it was unreleased. Only the exact heading, as the first entry, holds a version back, and only at commits whose own changelog says so ([D-2026-11-19-batched-releases](../decisions/D-2026-11-19-batched-releases.md)). Once a commit on `main` has dated a version, a later commit that heads it `(unreleased)` again does not take the duty away: the run fails and names the commit that dated it (PR #50, round 2, finding 1).
+- A version collected under an unreleased entry that is published before its pull request of release, or a version merged with a date that is then never released because the changelog says it was unreleased. Only the exact heading, as the first entry, holds a version back, and only at commits whose own changelog says so. Once a commit on `main` has dated a version, a later commit that heads it `(unreleased)` again does not take the duty away: the run fails and names the commit that dated it.
 - The token sent somewhere else, or shown in a log.
 
 A version written in an odd form by mistake, such as `0.04`, fails the run and is named. The threats that are out of scope are under "What it does not claim".
@@ -492,112 +360,6 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 **The cases.** Each is a test in [test_release.py](../checks/test_release.py).
 
-| Case | Result |
-|---|---|
-| The release text for 0.4 of `owner/name`, and for 12.30 | Exactly the fixed line, with no `#` in it |
-| A changelog with a lone carriage return before a second heading, lines of a no-break space, an em space and an ideographic space, a link definition and a comment | The published body is the fixed line, and holds none of those bytes. `publish` and `notes` from a checkout give the same |
-| A line of the exact form | Names a version |
-| Seventeen lines that are not of the exact form: a space or a tab before or inside it, `v0.4`, no date, `###`, `#`, in a block quote or a list item, after a lone carriage return, a no-break space before or after it, digits of another script, a full-width digit, U+2028 after it | Passed over |
-| CRLF | Read as LF |
-| A line of the exact form in a code block | Counted. See the known limits |
-| No line for the version in `ratchet.json`, also when the heading is in one of the seventeen other forms | Fails before any request |
-| A tag for 0.2 and no line for it, also when its heading is in one of the other forms | Fails, writes nothing |
-| Bytes that are not UTF-8 | Fails |
-| Today's `CHANGELOG.md` | Every version from the one in `ratchet.json` down to 0.1 |
-| A new version | The tag, then the release, then the tag read back |
-| An older version without a tag, with a tag and no release, with only a draft, also when nothing is to be released | Fails, names it and what it lacks, writes nothing |
-| 0.1 with its tag and no release, 0.1 with no tag | Passes; fails |
-| 0.4 merged and never tagged, then 0.5 in a real git history, with 0.4's heading after a space, in a list item, with two spaces, or taken out | Fails, names 0.4 and the first commit with it, writes nothing. With 0.4 released, the same history releases 0.5 |
-| A history with commits before `ratchet.json`, and a commit that changes only the changelog | Every commit that holds the file, newest first |
-| A version only on a branch merged into `main` with `-s ours` | Not counted |
-| A merge commit that raises the version | Named as the first commit with it |
-| A shallow clone, a directory that is not a repository, a checkout not at `GITHUB_SHA` | Fails |
-| `ratchet.json` at an earlier commit with a field twice, NaN, bytes that are not UTF-8, a BOM, cut short, a version `0.3.1`, digits of another script, a number, no version, not an object | Fails, names the commit, and the value when there is one |
-| A version `00.4`, `0.04`, `+0.4`, ` 0.4`, `0.4 ` or `٠.٤` in the checkout, at a commit on `main`, or as a tag | Fails, names the value and where it came from: the checkout (also for `notes`), the commit, or the tag. Before any request, or writes nothing |
-| The history 0.3, then 0.4, never tagged, then `00.4` | Fails on `00.4` and writes nothing |
-| A heading `## 00.4 (…)` or `## 0.04 (…)` | Fails, names the line |
-| 0.9, then 0.10, in a real git history | With 0.9 released, releases 0.10. With 0.9 unfinished, fails and names 0.9. Versions compare as pairs of integers |
-| `.git/info/grafts` that makes 0.3 the parent of 0.5 | git reads 0.4 out of the history; the run refuses the file before any request. The reading ignores the file, and `GIT_GRAFT_FILE` from the environment |
-| A replace ref that swaps the commit of 0.4, loose or packed | The reading ignores it; the run refuses it and names the ref |
-| `.git/shallow` naming the commit of 0.4 in a full clone, or empty | git stops the history at 0.4; the run refuses it |
-| `.git/objects/info/alternates` naming a store with other bytes under the name of a blob the checkout lacks, or empty | git reads the other bytes, 0.4 is read as 0.3; the run refuses it |
-| A tag named with the token | Fails; the token is not in the output |
-| `ratchet.json` removed from `main` and added again | Fails, names both commits |
-| A commit on `main` that names a newer version | Fails before any request |
-| A checkout whose `ratchet.json` names another version than its commit | Fails before any request |
-| `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_REPLACE_REF_BASE` set to another repository | Change nothing |
-| An older version without a tag | The message names the first commit on `main` whose `ratchet.json` names it |
-| An older version whose tag is at a later commit than the first with it | The message names the commit of the tag, not the first. That rerun finishes it, and then the newer one releases |
-| An older version whose tag is not a plain tag of a commit | The message says to look at it by hand |
-| This version tagged at another commit, with no published release | The message names the commit of the tag |
-| A newer tag, a newer annotated tag, a newer draft | Ignored |
-| A tag up to this version without an entry, a tag that is not a version | Fails, writes nothing |
-| 0.4 fails after its tag, then 0.5 is merged | The run for 0.5 fails, names 0.4 and writes nothing. The rerun for 0.4 creates only its release. The rerun for 0.5 then releases 0.5 |
-| A rerun for 0.4 when `v0.5` exists | Creates the release for 0.4 |
-| A run cancelled right after its tag | A later run on 0.4 and the run for 0.5 fail and write nothing. The rerun of the cancelled run finishes it |
-| A run cancelled right after its tag, and nothing merged after it | The next scheduled run fails, names 0.4, the commit the tag points at and the missing release, and writes nothing. After the rerun, the scheduled run passes and writes nothing |
-| A version with no tag, at its own commit or at a later commit of `main` that keeps it, in a scheduled run | Fails, names the version, the head and the first commit with it, writes nothing |
-| A finished state in a scheduled run: the tag at the head, or at an earlier commit, with its release | Passes, writes nothing |
-| An unfinished older version, a draft, a tag at another commit, a release with no tag, in a scheduled run | Fails as in a run of a push, writes nothing |
-| A read of a scheduled run fails with HTTP 503, 500 or 502, no answer, an answer that is not JSON or one of the wrong form, at the list of tags, the first page of releases or the comparison, with 0.4 cancelled after its tag, never tagged, or released at an earlier commit | Red, sends only `GET`, writes nothing. The message of an HTTP error starts with the request and its status. An error the script does not expect is not caught. When the API answers again, the run names 0.4, or passes on the finished state |
-| `publish` told to report, in each case where a push would write | Fails, says that a scheduled run writes nothing, writes nothing |
-| The API of a scheduled run, asked for a `POST`, `PATCH`, `PUT`, `DELETE` or a `get` in lower case, also through `main()` with a `publish` that writes anyway | Not sent |
-| A push and a run by hand | Tag and release |
-| `GITHUB_EVENT_NAME` missing, empty, `pull_request`, `pull_request_target`, `release`, `Schedule`, or `schedule` with a line feed | Fails before any request |
-| A scheduled run with `GITHUB_REF` not `main`, or missing | Fails before any request |
-| The publication fails with no answer, an error the script does not expect, HTTP 500, an answer that is not JSON or one of the wrong form, after a new tag and on a rerun with the tag | The one message: the version, the commit of the tag, the release missing or not confirmed, the rerun. Then the scheduled run names it, and the rerun creates only the release |
-| The publication reaches GitHub and its answer is lost: no answer, an unexpected error, HTTP 500 | The one message. The scheduled run then passes, and the rerun writes nothing |
-| The read-back of the tag fails in each of the five ways | The one message: the release was created, the tag not confirmed at the commit, the rerun. The rerun writes nothing |
-| The creation of the tag fails with no answer, before or after it reaches GitHub, an unexpected error, HTTP 500, or an answer that is not JSON | The one message: the tag may have been created at the commit, no release, the rerun. The rerun finishes it |
-| The answer to the creation of the tag is of the wrong form | The one message: the tag was created, no release, look at it by hand, then the rerun |
-| `KeyError`, `TypeError`, `ValueError`, `AttributeError`, `IndexError`, `OSError` or a `ReleaseError` raised by the API at each request after the tag | The one message, each time |
-| No answer to a `GET` before the tag | Fails, names the request, says that nothing was written |
-| Each row of the table above | As the table says |
-| A refused ref creation | Fails, writes nothing more |
-| An answer to the creation that puts the tag elsewhere | Fails, creates no release |
-| A tag read back at another commit | Fails |
-| An API error at each of the four requests | Fails with method, path and status, writes nothing more |
-| An answer of the wrong form | Fails, writes nothing |
-| An answer to the publication that is a draft, has `draft` null, names another tag or none, is a list, or is empty | Fails, and the tag is not read back |
-| The release of 0.3 after 100 releases, or between 50 and 50; 98, 99, 100 and 201 releases | Found. Pages are read until one holds fewer than 100 |
-| This version's release on the second page | Found, nothing written |
-| A list of releases with no end | Fails after 100 pages, writes nothing |
-| The version is not the newest entry, or has none | Fails before any request |
-| The first entry headed `## 0.4 (unreleased)`, with every older version finished, on a push and on a schedule | Passes, says that 0.4 is not released, writes nothing |
-| The same, with 0.3 tagged and not released | Fails, names 0.3, writes nothing |
-| The same, with a tag `v0.4` at another commit or at this one with its release, or with a release `v0.4` and no tag | Fails, writes nothing |
-| An entry headed `(unreleased)` after the first, or a version with two headings | Fails before any request, names the line or the version |
-| `## 0.4 (Unreleased)`, a space or a no-break space after it, no parentheses, no space before them, one left open, `## Unreleased`, two spaces, more words | No entry: fails before any request |
-| The checkout heads 0.4 `(unreleased)` and its commit does not, or the other way round | Fails before any request |
-| In a real git history: 0.4 unreleased twice, then dated | Both unreleased commits are pending. The push of the dated one tags it and releases it |
-| In a real git history: a push of 0.4 unreleased, and the scheduled run after it | Pass, send only `GET`, write nothing |
-| 0.4 unreleased, then dated, then a later commit, with no tag, in a scheduled run | Fails, names the dated commit as the one to rerun |
-| 0.4 unreleased, then dated and never released, then 0.5 unreleased, on a push and on a schedule | Fails, names 0.4 and the dated commit |
-| 0.4 only ever unreleased, then 0.5 dated | 0.4 needs nothing. 0.5 is tagged and released |
-| 0.4 unreleased, then dated with its run cancelled before the tag, then headed `(unreleased)` again, on a push and on a schedule | Fails, names the dated commit and the head, writes nothing. Round 2, finding 1 |
-| The same, then the late run of the dated commit | Tags and releases 0.4 at the dated commit. The head then fails, since a released version is headed `(unreleased)`, until a commit dates it again, which passes as released at an earlier commit |
-| 0.4 dated, its late run releases it, then headed `(unreleased)` again | Fails on a push and on a schedule, writes nothing |
-| 0.4 dated, unreleased, dated again, unreleased again | Fails, names the first commit that dated it |
-| A commit on `main` whose changelog heads 0.4 `(Unreleased)`, with a space after, or with no date | Not pending: 0.4 must be released, and is named |
-| A changelog at a commit on `main` that is not UTF-8 | Fails, names the commit and the byte |
-| `ratchet.json` in another checkout names 9.7 | `publish` tags `v9.7` with the fixed line for 9.7, and `notes` prints it |
-| The token in five runs, with an answer that holds it | Never in the output, and sent only to `api.github.com` |
-| No token, a repository, a commit or a branch not of its form | Fails before any request |
-| A path outside the repository, a redirect | Not sent, not followed |
-| `notes` | Needs no token and no network, and prints the fixed line |
-| `.github/workflows/release.yml` | Runs on a push to `main`, on `workflow_dispatch` with no input and on a schedule, with read-only permissions but on its job, the checkout pinned by commit, no expression in a script, and the three commands before the script |
-| The concurrency group `release`, with `cancel-in-progress: false` | Exactly that, once |
-| The permissions | `contents: read` at the top and `contents: write` on the job, and no other |
-| The triggers | A push to `main`, `workflow_dispatch` and `schedule`, and no `if:` that could skip the job |
-| The schedule | One cron line, `23 4 * * *`: a fixed minute and hour, and every day of the month, every month and every day of the week. A weekly line fails |
-| `timeout-minutes: 30` on the job | Exactly that, once |
-| The steps | The three checks in order, then the script. No `continue-on-error`, `always()` or `failure()` |
-| The whole workflow, without its comments | The reviewed form line for line, and nothing else. The checkout may move to another pinned commit |
-| A no-break space, an em space, an ideographic space, U+2028 or a tab before `#`, or alone on a line | Kept as code, not read as a comment or a blank line |
-| A lone CR, NUL, backspace, VT, FF, ESC, U+001F, DEL, NEL, U+009F, U+2028 or U+2029 after a comment and before `if: false`, and bytes that are not UTF-8 | The workflow is not read, and the test fails |
-| The workflow with CRLF, a tab in it | Read as with LF; the tab is kept as code |
-| The checkout | `fetch-depth: 0` and `persist-credentials: false`, and no filter or sparse checkout |
-
 **What it does not claim.**
 
 - A line of the exact form counts wherever it stands, also where a renderer does not show it as a heading: in a code block, in an HTML comment. Then the script may take a version for one that has an entry when a reader sees none. No text is copied, so such a line can no longer put text into a release. The most it can do is let a tag or a release through for a version whose entry a reader cannot see, in a pull request the maintainer has approved.
@@ -607,12 +369,12 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 - It does not see branch protection or tag protection. Who may push a tag by hand is a setting of the repository.
 - It does not read the release text back after it is published.
 - It does not make GitHub start a scheduled run. GitHub may start one late, and at times of high load it may drop one. In a public repository, GitHub turns off a scheduled workflow after 60 days with no activity in the repository, and it stays off until someone turns it on again. Within those limits, while a version is unfinished, the scheduled run is red each day. A cancelled run prints nothing itself. The next run is red on it.
-- It does not promise to name the unfinished version ([D-2026-11-17-release-fail-closed](../decisions/D-2026-11-17-release-fail-closed.md)). When the GitHub API is down, or answers a read with an error such as HTTP 503, or with something that is not JSON or not of the form expected, the run is red and writes nothing. Its message may name only the request that failed, and not the version, the commit or the rerun. As long as the API fails that way on the scheduled runs, a version can stay unfinished with no run that names it. Each of those runs is still red.
+- It does not promise to name the unfinished version. When the GitHub API is down, or answers a read with an error such as HTTP 503, or with something that is not JSON or not of the form expected, the run is red and writes nothing. Its message may name only the request that failed, and not the version, the commit or the rerun. As long as the API fails that way on the scheduled runs, a version can stay unfinished with no run that names it. Each of those runs is still red.
 - A scheduled run has the same job, and so the same token with `contents: write`, as a run of a push. What keeps it to reading is the script, which sends nothing but a `GET` on a schedule, not the token. A second job with a read-only token would need an `if:` on the event, and the workflow has none.
 - A version that is collected under an unreleased entry can be dropped on purpose, by a later pull request that raises `ratchet.json` past it before the entry has a date. That is a choice made in a pull request, as a skipped version is. Once a commit on `main` has dated the entry, the version must be released, whatever the changelog says later.
 - A version may be skipped on purpose, from 0.4 to 0.6, by a pull request that never puts 0.5 in `ratchet.json` on `main`. That is a choice made in a pull request, not a version lost. A version that a pull request names only in its own commits, and that `main` never names, is not counted.
 - Versions from before `ratchet.json` was on `main`, 0.1 and 0.2, are not in that history. Both were tagged by hand. The script checks them only as tags with an entry.
-- It does not stand against someone who changes the runner's git data ([D-2026-11-17-release-narrow-claim](../decisions/D-2026-11-17-release-narrow-claim.md)). It refuses grafts, replace refs, a shallow file and alternates, and nothing more: a forged object written into the checkout's own store, a changed `HEAD` or ref, or a changed `git` binary are not looked for. On a fresh checkout on GitHub there is none, for the reasons under "Why that boundary holds".
+- It does not stand against someone who changes the runner's git data. It refuses grafts, replace refs, a shallow file and alternates, and nothing more: a forged object written into the checkout's own store, a changed `HEAD` or ref, or a changed `git` binary are not looked for. On a fresh checkout on GitHub there is none, for the reasons under "Why that boundary holds".
 - It does not stand against someone who deliberately writes a version in an unusual form. It refuses every form but one, so such a version makes the run red; a version skipped on purpose, as below, is still possible.
 - It trusts the history of `main` as the ruleset keeps it. An administrator who turns the ruleset off and force-pushes `main` could take a version out of that history.
 - `generate.py` and `check_register.py` read `version` in `ratchet.json` with the older form `^[0-9]+\.[0-9]+$`, so they accept `00.4`. Only the release script refuses it. Making `registry.py` as strict is a proposal (P) in the decision, not done here.
@@ -620,7 +382,7 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 ## The budget
 
-`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)). It is 23. It was 25: there were 20 experimental rules in `ratchet.json` at the commit on `main` that added that decision, and the decision put the cap at that number plus five. In 0.10 two rules that applied only to Ratchet moved into this repo's own register, and the cap went down by two, so that the move freed no place (`D-2026-11-20-proposal-triage`, choice 5).
+`ratchet.json` holds `experimental_cap`: the most rules outside the core there may be ([D-2026-11-17-pull-and-budget](../decisions/D-2026-11-17-pull-and-budget.md)).
 
 **What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when there are more experimental rules than the cap, so `generate.py --check` is red and nothing is generated. It fails the same way when the cap is missing, stands twice, or is anything but a whole number from 0: text, `true`, `2.0` or a negative number. The count of rules, in the README, `RATCHET.md`, `SELF-IMPROVEMENT.md` and the first entry of the changelog, states the cap.
 
@@ -628,62 +390,29 @@ A scheduled run is in the same group, `release`, with no expression, so it never
 
 **What it does not claim.** It does not count the core, which is frozen, and it does not judge whether a rule is worth its place. A PR can raise the cap in the same change that adds a rule. That is a change to `ratchet.json`, which the maintainer reads before it is merged (`ratchet.owner-paths`), and raising the cap is a decision.
 
-| Fixture | What is wrong | Result |
-|---|---|---|
-| `budget/at-cap.json` | Nothing. Two experimental rules under a cap of 2. | Passes |
-| `budget/over-cap.json` | Two experimental rules under a cap of 1. | Fails |
-| `budget/no-cap.json` | No cap. | Fails |
-| `budget/cap-text.json`, `budget/cap-true.json`, `budget/cap-fraction.json`, `budget/cap-negative.json` | A cap that is text, `true`, `2.0` or `-1`. | Fails |
-| `budget/cap-twice.json` | The cap twice, and the higher one would win. | Fails |
-
 The tests are in [test_budget.py](../checks/test_budget.py). Each runs `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, and the data file fails before anything else is read. Two more run on a copy of this repo: the cap in `ratchet.json` is 17, with 13 experimental rules under it, and one experimental rule over it fails the check.
 
 ## The age of an experimental rule
 
-Every experimental rule in `ratchet.json` names `since`, the version it entered Ratchet, and may name `kept_by`, the id of a decision that kept it once more ([D-2026-11-19-one-point-oh](../decisions/D-2026-11-19-one-point-oh.md), choice 4). How the age is counted is in [SELF-IMPROVEMENT.md](../SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule).
+Every experimental rule in `ratchet.json` names `since`, the version it entered Ratchet, and may name `kept_by`, the id of a decision that kept it once more. How the age is counted is in [SELF-IMPROVEMENT.md](../SELF-IMPROVEMENT.md#the-age-of-an-experimental-rule).
 
 **What it claims.** `generate.py --check` fails, with one line per rule that names it, when an experimental rule has stood through three releases and 60 days with no decision. The releases are the versions with a date in the changelog after `since`, and the days run from the date of `since` to the date of the newest of them. A rule with `kept_by` stands one age more, counted the same way from the release at which it first stood too long, and then fails with only three outcomes: move it into the core, merge it, or remove it. The date of the decision does not move the count, so naming a later decision in `kept_by` keeps the rule no longer: a rule is kept once. The age moves only when a release is dated, so the check first fails in the pull request of a release, and never on a day with no change. Every check that reads `ratchet.json` through `registry.load` fails when an experimental rule has no `since`, when a core rule has `since` or `kept_by`, when `since` is not a version, when `kept_by` is not the id of a decision with a date that exists, or names a decision with no file in `decisions/`, and, as before, on a field it does not know or a field twice. `generate.py --check` also fails when `since` does not name a version with an entry with a date in the changelog, or the version of the file, so a version later than the file's fails there. It fails, naming both entries, when a release is dated before the version before it, since the age is measured at the newest version, and a year mistyped there would hide every rule. Two versions may have the same date.
 
 **Against which threat.** A mistake in the bookkeeping of rules: an experimental rule that lingers release after release with no one deciding on it, and a field misspelled so that the reader passes over it.
 
-**What it does not claim.** It does not see whether `since` is true. It was read from the tags once, for 0.10, and a released `ratchet.json` cannot change after its tag (`released_text.py`), but between two releases a pull request can change it, as it can raise the cap, and the maintainer reads it (`ratchet.owner-paths`). A check that it stays as it was at the last tag is issue #74. It does not judge the decision in `kept_by`, only that it exists. A rule removed and added again under another key starts a new age, which the maintainer reads in the pull request. It reads no clock: a rule that has stood long since the last release is not caught until the next one is dated. It passes on the releases up to 0.10, which are dated from 2026-11-16 to 2026-11-21. The first release that can make it fail is one dated 2027-01-15 or later.
-
-| Fixture | What is wrong | Result |
-|---|---|---|
-| `age/ratchet.json` with `age/CHANGELOG.md` | One rule since a version three releases and 60 days before the newest, one with two releases and 60 days, two of the same age as the first and kept by a decision, one dated between the releases and one before the first, one that entered in the version not yet released | Fails, naming only the first |
-| `age/ratchet.json` with `age/CHANGELOG-day-59.md` | The same, with the newest release a day earlier: 59 days | Passes |
-| `age/ratchet.json` with `age/CHANGELOG-kept-out.md` | Three releases more, the newest 60 days after the release at which the kept rules first stood too long | Fails, naming the two kept rules too, with only move, merge or remove. With two releases more, or 59 days, the kept rules pass |
-| `age/second-keep.json` with `age/CHANGELOG-kept-out.md`, and the decision of one kept rule named for the other in the test | A kept rule whose keep has run out names a second, later decision in `kept_by` | Fails, as with the first decision |
-| `age/CHANGELOG-date-backwards.md`, and a copy of this repo with its newest release dated 2026-01-16 | A release dated before the version before it, a year mistyped, which leaves the age check silent | Fails, naming both entries |
-| `age/no-entry.json`, and `age/ratchet.json` with `since` set to 9.10 in the test | `since` names a version with no entry in the changelog, or one later than the version of the file | Fails |
-| `age/form/since-missing.json` | An experimental rule with no `since` | Fails, also as an older `ratchet.json`, which `upgrade.py` reads |
-| `age/form/since-on-core.json`, `age/form/kept-by-on-core.json` | A core rule with `since` or `kept_by` | Fails |
-| `age/form/since-not-a-version.json`, `age/form/since-number.json` | `since` is `9.8.1` or a number | Fails |
-| `age/form/kept-by-not-an-id.json`, `age/form/kept-by-no-such-date.json`, `age/form/kept-by-no-file.json` | `kept_by` is not the id of a decision, names 2026-02-30, or names a decision with no file | Fails |
-| `age/form/kept-by-misspelled.json`, `age/form/since-twice.json` | `keptby` in place of `kept_by`, and `since` twice | Fails |
-| This repo, and a copy with its newest release dated 2027-01-15 or 2027-01-14 | 60 days after 0.2, and 59 | Passes as it stands. Fails at 60 days, naming the six rules since 0.2 and no other, and passes at 59 |
+**What it does not claim.** It does not see whether `since` is true. A released `ratchet.json` cannot change after its tag (`released_text.py`), but between two releases a pull request can change it, as it can raise the cap, and the maintainer reads it (`ratchet.owner-paths`). A check that it stays as it was at the last tag is issue #74. It does not judge the decision in `kept_by`, only that it exists. A rule removed and added again under another key starts a new age, which the maintainer reads in the pull request. It reads no clock: a rule that has stood long since the last release is not caught until the next one is dated.
 
 The tests are in [test_age.py](../checks/test_age.py). The faults of form run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does. The age is tested on `registry.age_problems`, with the dates that `generate.release_dates` reads from the fixture's changelog, and on a copy of this repo.
 
 ## A rule that enters is used
 
-A new experimental rule is already used by Ratchet itself, or says why Ratchet cannot use it (`D-2026-11-20-proposal-triage`, choice 5). A rule says so in `not_used_because`, a field of an experimental rule in `ratchet.json`: text from the fixed list, with at least one letter or digit.
+A new experimental rule is already used by Ratchet itself, or says why Ratchet cannot use it. A rule says so in `not_used_because`, a field of an experimental rule in `ratchet.json`: text from the fixed list, with at least one letter or digit.
 
 **What it claims.** `generate.py --check` fails, with one line per rule that names it, when an experimental rule has `since` equal to the version of `ratchet.json`, this repo's `register.json` does not adopt it, and the rule has no `not_used_because`. It fails, naming the rule, when the register adopts a rule that has `not_used_because`, whatever its `since`, so a rule does not both claim to be used and give a reason it is not. Every check that reads `ratchet.json` through `registry.load` fails on a misspelling such as `not_used_becuase` in a rule, as an unknown field, when a core rule has `not_used_because`, and when the reason is not a string, holds a character outside the list, or holds no letter or digit. When `register.json` does not pass `check_register.py`, this part says nothing: the register is named as failing already.
 
 **Against which threat.** A mistake in the bookkeeping of rules: a rule enters Ratchet that Ratchet itself does not use, and nobody notices that it was never tried here, or a rule is said to be used when the register does not adopt it.
 
 **What it does not claim.** It reads the register, not the repo: it does not see whether Ratchet follows a rule that the register adopts, or whether a check marked "built" works. It does not judge the reason, only that it is words. It holds a rule only in the version it enters, as `since` gives it, so it does not see a rule that was in Ratchet before 0.10, and a rule whose `since` is changed to an older version passes, which the maintainer reads in the pull request (`ratchet.owner-paths`) and issue #74 would catch.
-
-| Case | Result |
-|---|---|
-| This repo: `ratchet.review-by-risk` and `ratchet.one-exact-form` entered in 0.10, and the register adopts both | Passes |
-| A copy in which `ratchet.review-by-risk` enters in the version of `ratchet.json`, and whose register does not adopt it | Fails, naming it |
-| The same, with `not_used_because` in the rule | Passes |
-| A copy in which `ratchet.one-exact-form`, which the register adopts, has `not_used_because` | Fails, naming it |
-| `ratchet.cr-handover`, since 0.2, which the register does not adopt | Passes |
-| `not_used_because` on a core rule, empty, `.`, with U+200B, or `true` | Fails |
-| `not_used_becuase` | Fails, as an unknown field |
 
 The tests are in [test_budget.py](../checks/test_budget.py), on a copy of this repo.
 
@@ -695,45 +424,17 @@ The tests are in [test_budget.py](../checks/test_budget.py), on a copy of this r
 
 **What it does not claim.** Whether a text is clear or true. The pages a capped page links to, `checks/README.md`, `RATCHET.md`, `AGENTS.md`, and the entries before 0.17, which are locked to their tags. Lines of an entry that are neither "In short" nor a bullet nor a table row.
 
-| Case | Result |
-|---|---|
-| Each page at its cap | Passes |
-| A page one word over its cap | Fails, naming it |
-| A page missing, or not UTF-8 | Fails |
-| "In short" at 60 words, a bullet at 40 | Passes |
-| "In short" at 61, a bullet at 41, also wrapped over two lines | Fails |
-| An entry from 0.17 on with no "In short" | Fails |
-| An entry at 0.16, 0.10 or 0.9 with a bullet of 184 words | Passes |
-| An entry at 0.18 or 1.0 with a bullet of 41 words | Fails |
-| An entry with a table and the generated count | Passes |
-| A pull request that lengthens `HANDOVER.md` past the base's cap and raises the cap | Passes its own check, fails the base's |
-| This repo | Passes |
-
 The tests are in [test_short_pages.py](../checks/test_short_pages.py).
 
 ## The principles
 
-`ratchet.json` holds a list `principles`, and every rule names one of them in `principle` (`D-2026-11-20-principles-and-obligations`). A principle is a question an agent asks when no rule fits, or an aim, never a claim that something is protected. It is guidance, text only, and what is checked is only the rules under it. A principle has exactly a `key`, `principle.` followed by lowercase words joined by hyphens, a `title`, the principle in one or two short sentences, and a `text`, the question (`D-2026-11-23-values-and-principles`). The generator writes each principle in `RATCHET.md`, under "The principles", with its number and title as a heading, its text, the mark "Guidance, text only", and the keys of the rules under it, each marked "names a check" or "text only", and "experimental" where it is. It writes the titles as a numbered list in `README.md`. In both, the line `production` of `values.json` stands before the first principle whose rules all stand in `PRODUCT.md`, and the line `aims` after the last.
+`ratchet.json` holds a list `principles`, and every rule names one of them in `principle`. A principle is a question an agent asks when no rule fits, or an aim, never a claim that something is protected. It is guidance, text only, and what is checked is only the rules under it. A principle has exactly a `key`, `principle.` followed by lowercase words joined by hyphens, a `title`, the principle in one or two short sentences, and a `text`, the question. The generator writes each principle in `RATCHET.md`, under "The principles", with its number and title as a heading, its text, the mark "Guidance, text only", and the keys of the rules under it, each marked "names a check" or "text only", and "experimental" where it is. It writes the titles as a numbered list in `README.md`. In both, the line `production` of `values.json` stands before the first principle whose rules all stand in `PRODUCT.md`, and the line `aims` after the last.
 
 **What it claims.** Every check that reads `ratchet.json` through `registry.load` fails when the list is missing or is not a list, a principle is not an object, lacks a field or has one it does not know, such as a `check`, a field is not text, a key is not of its form or is used twice, a title holds no words, has two spaces in a row or a space at an end, is longer than 120 characters, or is the title of another principle without regard to case, a text holds no words, does not end with a full stop, a question mark or an exclamation mark, or has more than three sentences, a title or a text holds a character outside [the list](../checks/README.md#the-characters-a-value-may-hold), a rule has no `principle`, names one that is not in the list, or has the field misspelled, or a principle has no rule under it. A sentence ends at a `.`, `?` or `!` followed by a space or the end of the text. `generate.py --check` fails when the section or the list is not what the data generates, and when a markdown file mentions a principle that does not exist. An older `ratchet.json`, which `upgrade.py` reads, is read as strictly as this one, the list included.
 
 **Against which threat.** A principle that reads as more than guidance: a heading with no rule under it, a principle that names a check of its own, a generated section that drops the mark "Guidance, text only", or a text rewritten in the generated file. And two titles that differ only in their spaces, which HTML shows as one. And the bookkeeping: a rule with no principle, or one that names a principle that is gone.
 
 **What it does not claim.** It does not judge whether a rule stands under the right principle, or whether a text is a question or an aim rather than a claim of protection. The pull request that adds or moves a principle shows the map, and the review and the maintainer read it. The principle of a rule is not part of a register: `check_register.py` and `upgrade.py` compare the key, the rule, the ratchet and the source, so moving a rule to another principle asks nothing of a project. It counts sentences by their marks, so a text that writes an abbreviation with a full stop is counted as more sentences, and one that leaves out a full stop between two sentences as fewer.
-
-| Fixture | What is wrong | Result |
-|---|---|---|
-| `principles/clean.json` | Nothing. Two principles, one over a core rule and one over two experimental rules. | Passes |
-| `principles/missing-principles.json`, `principles/principles-not-list.json`, `principles/principle-not-object.json` | No list, a list that is an object, a principle that is a text. | Fails |
-| `principles/principle-missing-field.json`, `principles/principle-unknown-field.json`, `principles/principle-not-text.json` | A principle with no text, one that names a check, one whose text is a list. | Fails |
-| `principles/key-form.json`, `principles/key-rule-prefix.json`, `principles/key-twice.json` | A key with capitals and `_`, a key with the prefix of a rule, a key used twice. | Fails |
-| `principles/title-twice.json`, `principles/title-twice-case.json` | Two principles with one title, the second in capitals. | Fails |
-| `principles/title-outside-list.json`, `principles/text-outside-list.json` | A zero-width space in a title, a control that changes the order of a line in a text. | Fails |
-| `principles/title-no-words.json`, `principles/text-no-words.json`, `principles/title-too-long.json` | A title or a text of marks alone, a title of 129 characters. | Fails |
-| `principles/title-repeated-space.json`, `principles/title-padded.json` | A title with two spaces in a row, and one with a space at its end, each of which HTML shows like a title without. | Fails |
-| `principles/text-four-sentences.json`, `principles/text-no-full-stop.json` | A text of four sentences, a text whose sentences cannot be counted. | Fails |
-| `principles/rule-without-principle.json`, `principles/rule-unknown-principle.json`, `principles/rule-principle-misspelled.json`, `principles/rule-principle-not-text.json` | A rule with no principle, one that names a principle that is not in the list, `principal` in its place, a list in its place. | Fails |
-| `principles/principle-without-rule.json` | A principle with no rule under it. | Fails |
 
 The tests are in [test_principles.py](../checks/test_principles.py). The faults run `generate.py --check` on a directory that holds only the fixture as `ratchet.json`, as the budget does, and the data file fails before anything else is read. The generated text is tested against a section typed by hand, and a title and a text that hold Markdown are written as text. On a copy of this repo, a principle edited by hand in `RATCHET.md`, a rule moved to another principle without running the generator, the list missing from `README.md`, and a principle mentioned that does not exist each fail the check. The line for production stands before the first principle whose rules all stand in `PRODUCT.md`, and a title of 120 characters passes where one of 121 fails. This repo's `ratchet.json` has eleven principles, the approved sentences in order, each over at least one rule, and every rule under one, with the rules of "Guard the boundaries" split between principles 6 and 7.
 
@@ -749,16 +450,6 @@ A proposal starts as an issue with the form [proposal.yml](../.github/ISSUE_TEMP
 
 **What it does not claim.** It does not claim that GitHub accepts the form or shows it, or that the label `proposal` exists in the repo, without which GitHub adds no label: that is seen on GitHub once the form is on `main`. It does not stop an issue opened without the form, from the blank issue or through the API.
 
-| Case | Result |
-|---|---|
-| The form as it stands | Passes |
-| A field left out, a field twice, a field renamed or relabeled | Fails |
-| A field not required, with no `validations`, cut short at the end, or of another type than `textarea` | Fails |
-| A value with a colon, quoted, a block scalar, or `Yes` | Fails |
-| The labels line left out or twice, a different label, a second label, the labels as a block list or as a string, the label quoted | Fails |
-| A comment, a key the test does not know, a line indented one more, a trailing space | Fails |
-| A tab, a carriage return, a letter that is not ASCII, no final newline | Fails |
-
 The cases are in [test_issue_form.py](../checks/test_issue_form.py). Each is the form with one change, so they follow the form when it changes.
 
 ## The landing page
@@ -769,14 +460,14 @@ The cases are in [test_issue_form.py](../checks/test_issue_form.py). Each is the
 
 - The page is strict UTF-8, starts with `<!DOCTYPE html>`, and holds no control character but the newline and no character that reorders or hides text.
 - `html.parser` reads it as well-formed: each element is one of a fixed list, with only the attributes listed for it, each once and with a value. Every element that is opened is closed, in order, and a void element is never closed. There is no comment, processing instruction or other declaration. No script, frame, object, form, button, base, style attribute or event handler is on the list.
-- The page holds one picker, the one `<fieldset class="tools">` ([D-2026-11-25-prompt-per-tool](../decisions/D-2026-11-25-prompt-per-tool.md)): a `<legend>`, then for each of six coding agents, in order, an `<input type="radio" name="tool">` with its id and a `<label>` for it, then one line for each, a `<p class="where for-…">`. The first radio is checked and no other, and the CSS holds, for each, the selector that shows the line of the radio that is checked. An `<input>` is such a radio, with only `type`, `name` and `checked` beside its id, and stands nowhere else, so the picker sends nothing anywhere and runs no script. A line names in `<code>` only the file its agent reads and `init.py`, and the line of Claude Code names `AGENTS.md` too, the file that the `CLAUDE.md` `init.py` writes in a new repo points at, which the test reads in `templates/CLAUDE.md`. It says `init.py` sees that file only while the file is one of `INSTRUCTION_FILES` in `checks/init.py`, which the test imports, and the one line that says `init.py` does not see its path, `.cursor/rules`, holds only while that path is not in the list, and links to `TRYING.md`.
+- The page holds one picker, the one `<fieldset class="tools">`: a `<legend>`, then for each of six coding agents, in order, an `<input type="radio" name="tool">` with its id and a `<label>` for it, then one line for each, a `<p class="where for-…">`. The first radio is checked and no other, and the CSS holds, for each, the selector that shows the line of the radio that is checked. An `<input>` is such a radio, with only `type`, `name` and `checked` beside its id, and stands nowhere else, so the picker sends nothing anywhere and runs no script. A line names in `<code>` only the file its agent reads and `init.py`, and the line of Claude Code names `AGENTS.md` too, the file that the `CLAUDE.md` `init.py` writes in a new repo points at, which the test reads in `templates/CLAUDE.md`. It says `init.py` sees that file only while the file is one of `INSTRUCTION_FILES` in `checks/init.py`, which the test imports, and the one line that says `init.py` does not see its path, `.cursor/rules`, holds only while that path is not in the list, and links to `TRYING.md`.
 - The page holds one prompt, the one `<pre id="prompt" class="prompt">`: the lines the test spells out, with the command that fetches Ratchet at the newest version with a date in `CHANGELOG.md`. Each of its commands, a line indented by three spaces, is a line of a code block marked `sh` in `README.md`, and the file it tells the agent to follow, `STARTING.md`, is in the checkout.
-- The page holds one inline SVG, the mark in the link to the repo ([D-2026-11-24-landing-page-pass](../decisions/D-2026-11-24-landing-page-pass.md)). An `<svg>` holds `<path>` and nothing else: no text, no other element of SVG and no element of the page. It has only the attributes `viewBox`, `width`, `height` and `aria-hidden`, and a `<path>` only `d`, beside `id` and `class`, and each value is letters, digits, spaces, `.`, `,` and `-`. A `<path>` stands directly in an `<svg>` and nowhere else, and the page holds `<svg>` once. No other element of SVG is on the list, so nothing comes in through one: no `use`, `image`, `foreignObject`, `animate`, script, `href`, `style` or event attribute. The only `<title>` is the one in `<head>`. Until 0.12 the page held figures in inline SVG, with a list of elements and attributes of their own.
+- The page holds one inline SVG, the mark in the link to the repo. An `<svg>` holds `<path>` and nothing else: no text, no other element of SVG and no element of the page. It has only the attributes `viewBox`, `width`, `height` and `aria-hidden`, and a `<path>` only `d`, beside `id` and `class`, and each value is letters, digits, spaces, `.`, `,` and `-`. A `<path>` stands directly in an `<svg>` and nowhere else, and the page holds `<svg>` once. No other element of SVG is on the list, so nothing comes in through one: no `use`, `image`, `foreignObject`, `animate`, script, `href`, `style` or event attribute. The only `<title>` is the one in `<head>`.
 - The page has one figure, `docs/ratchet-notch.svg`, a file of its own. One `<img>` loads it, once, with alt text, and nothing else on the page loads it. It brings a list of its own, and the test reads the file as strictly as the page. It is strict UTF-8 with no control character but the newline and no character that reorders or hides text. It holds no `<!`, `<?` or `&`, so no doctype, entity, comment, CDATA section, processing instruction or character reference, and it is never given to the XML parser when it holds one. It is well-formed XML of seven elements in the namespace of SVG, `svg`, `style`, `g`, `rect`, `path`, `circle` and `text`, each directly in the `<svg>` or in a `<g>`, which has only a `class` and groups what the animation turns, with only the attributes listed for it: no `id`, no `href`, no `style`, no event handler and no attribute of a color. A value is letters, digits, spaces, `.`, `,` and `-`, so it calls no function and names no file. Text stands only in `<text>` and `<style>`. The `<svg>` has `role="img"` and an `aria-label`. Its one `<style>` follows the rules of the page's CSS: no at-rule but `@media` and `@keyframes`, no function but `var()`, no backslash, no `url`, no motion outside the query, and two palettes, for light and for dark, with no hex color outside them. In each palette its text on its own background, the numbers on the wheel, `--ink` on `--signal`, and the muted text on its background have a contrast ratio of at least 4.5, and every color is the page's color of the same name, so the figure follows the page.
 - Nothing is loaded from another origin. What an element loads, `img src`, `source srcset` and `link href`, is the name of a file in `docs/`, and the one `link` is the icon. The CSS, all in one `<style>`, has no at-rule but `@media` and `@keyframes`, no function but `var()`, no backslash and no `url`, so it loads nothing and no escape can spell a word the test does not see.
 - The CSS moves the page only for a visitor who has not asked for less motion: every `animation`, `animation-*`, `transition`, `transition-*` and `scroll-behavior`, also with a vendor prefix such as `-webkit-`, `-moz-`, `-o-` or `-ms-`, stands in a block inside `@media (prefers-reduced-motion: no-preference)`, written so, or in a `@keyframes`, which only says how an animation moves. A prefixed at-rule such as `@-webkit-keyframes` is refused, as any at-rule but `@media` and `@keyframes` is. A brace that is not matched fails. The page as it stands does not move at all.
 - A link goes to a file in `docs/`, to an id on the page, or into the repo on GitHub: the repo, a file or a directory on `main` that exists in the checkout, a pull request, an issue, the list of issues (`/issues`, where a question is asked) or the latest release. A link elsewhere fails, and so does a path with a part that is `.` or `..`.
-- Nothing links out of the repo. The sources are credited in `RATCHET.md`, which the page links to, so a link to a source fails as any other site does. Until 0.12 the page listed the sources and linked to each. Since 0.14 it names them again, as text, in the line that `generate.py` writes, and that line links to the table in `RATCHET.md`.
+- Nothing links out of the repo. The sources are credited in `RATCHET.md`, which the page links to, so a link to a source fails as any other site does. It names them as text, in the line that `generate.py` writes, which links to the table in `RATCHET.md`.
 - The one example names a rule, `ratchet.no-secrets`, and says it names a secret scan in every pull request, and that Ratchet ships no scanner. Each key the page names in `<code>` is a rule in `ratchet.json`. The rule of the example names a check whose ratchet starts "Check: a secret scan in every PR", and while the page says "Ratchet ships no scanner", the rule has no reference check.
 - The line of the sources names a daily watch. `.github/workflows/watch-sources.yml` holds one line with `cron`, of the form `- cron: "M H * * *"`, one run a day, and the line that runs `maintain/watch_sources.py` on `sources.json`, once.
 - A link to the page, `#…` or `index.html#…`, names an id that is on the page, as `html.parser` reads it, character for character. The page is the one page in `docs/`, so a link to a logo has no fragment. The ids on the page stand once each.
@@ -786,9 +477,9 @@ The cases are in [test_issue_form.py](../checks/test_issue_form.py). Each is the
 - The colors are two palettes of custom properties, for light and for dark (`prefers-color-scheme`), and no hex color is written outside them. In each, the text, the muted text and the links on the background and on the background of a box, the accent on both, and the text on the background of code, have a contrast ratio of at least 4.5 (WCAG 2, level AA). The button is the background color on the accent, and on the text color under the pointer, the same pairs turned around. The figure does not name the accent, which stands only on what is clicked, and fails when it does. The border of a box, `--edge`, is not checked: a box says nothing that its text and its place in the list do not.
 - Every command on the page, a line of a `<pre><code>` block, is a line of a code block marked `sh` in `README.md`.
 - How Ratchet works is one ordered list of the class `flow`, in any order among its classes. Each step links to where the repo shows it: at least one of its links goes into this repo on GitHub.
-- The story and the values, the one `<section id="values">`, show the story in `<em>`, the line that leads to the values in `<strong>`, each value with the side it prefers in `<strong>`, then "over" and the other side, and the line that weighs them, as `values.json` holds them, in order. The test reads the section itself and does not ask `generate.py`. The principles are a link to `RATCHET.md`, not a list on the page (`D-2026-11-23-values-and-principles`).
+- The story and the values, the one `<section id="values">`, show the story in `<em>`, the line that leads to the values in `<strong>`, each value with the side it prefers in `<strong>`, then "over" and the other side, and the line that weighs them, as `values.json` holds them, in order. The test reads the section itself and does not ask `generate.py`. The principles are a link to `RATCHET.md`, not a list on the page.
 - The principles are on the page as `ratchet.json` holds them: the one `<section id="principles">` lists the title of each principle, in order, numbered from 1, with the two lines `values.json` gives around them, and the figure has one numbered tooth, a `<text class="tooth">`, for each principle. The test reads the section and the figure itself.
-- The page is short: under 1100 words outside its CSS, with one `h1` and four `h2`, and one link of the class `button`, the one thing to do. The cap was 450, then 400, then 560 before the principles were listed ([D-2026-11-24-landing-page-pass](../decisions/D-2026-11-24-landing-page-pass.md)), then 780 before the picker and the prompt ([D-2026-11-25-prompt-per-tool](../decisions/D-2026-11-25-prompt-per-tool.md)).
+- The page is short: under 1100 words outside its CSS, with one `h1` and four `h2`, and one link of the class `button`, the one thing to do.
 - What the top says of the project is what the repo holds: while the page says "Before 1.0", the version of `ratchet.json` is below 1.0; while it says the license is MIT, `LICENSE` starts "MIT License"; and the sample of the dry run, the one `<pre class="sample">`, is `$ ` and a command of `README.md`, then lines that `init.py --check` prints in an empty repo at the version the page fetches (`test_init.py` runs it, as [init.py](../checks/README.md#initpy) says).
 - Six parts of the page are written by `generate.py`, and `--check` fails when one is not current (see [generate.py](#generatepy)): the line that fetches Ratchet, the line that counts the rules of the core, the story and the values, the line that names the pinned sources, the principles, and the prompt. So the pull request of a release, which moves the command in `README.md` and runs `generate.py`, moves the page with it, and so does a rule that changes kind, a value that is changed and a source that is added. The test reads each line as `generate.py` does, after the spaces that indent it.
 
@@ -796,99 +487,5 @@ The cases are in [test_issue_form.py](../checks/test_issue_form.py). Each is the
 
 **What it does not claim.** It does not claim that a browser shows the page or the figure as intended, or that Pages is turned on and serves it. It does not claim that an agent does what the prompt asks, that a coding agent reads the file the page says it reads, or that Ratchet works in any of them: the prompt was followed once, by hand, in a new repo, as the pull request that added it shows. It does not draw the figure: that its labels fit where they stand, that each lies on the background it is checked against, and that the picture says what the alt text says, is read by the maintainer. The logos are not read at all, only compared with their copies in `assets/`. It reads hex colors only, so a named color is not checked for contrast. It reads the CSS by its braces after removing its comments, so a brace in a comment is not read, but a brace in a string is read as a brace. It does not check that the text is true: it is taken from `README.md` and the files the page links to, and read by the maintainer. A link into the repo is checked against the checkout, not against GitHub, so the fragment of such a link, as in `RATCHET.md#the-principles`, is checked for its form only.
 
-| Case | Result |
-|---|---|
-| The page as it stands, in this repo and in a copy | Passes |
-| A principle on the page that is not the title in `ratchet.json`, one left out or out of order, a list that starts at another number, or a figure with a tooth too few or a number twice | Fails |
-| The page with 780 words or more outside its CSS, with other headings than one `h1` and four `h2`, with a second link of the class `button`, or with none | Fails |
-| "Before 1.0" on the page with a version of 1.0 or more in `ratchet.json`, "MIT" with another `LICENSE`, a sample whose first line is not a command of `README.md`, a sample line that `init.py --check` does not print, or no sample | Fails |
-| No `docs/`, no `.nojekyll`, a file that is not known in `docs/` such as `CNAME` or `404.html`, or a logo that differs from its copy in `assets/` | Fails |
-| A byte that is not UTF-8, or a carriage return, a tab, a NUL, a right-to-left override, a zero-width space or a byte order mark | Fails |
-| No doctype | Fails |
-| A script, inline or loaded, also in capitals, a frame, an object, an embed, a base, a form, or audio | Fails |
-| A second `<svg>` on the page, one with `onload`, `style` or a role, a `<path>` with `href`, `xlink:href`, `fill` or an event handler, a value that is not numbers and words, a `title`, a link, an element of the page, an `image`, a `use`, a `g`, a `foreignObject`, an `animate` or text in an `<svg>`, or a `<path>` outside one | Fails |
-| The figure whose wheel does not turn one tooth for each principle: a stop of its turn left out, another angle where it comes to rest against the pawl, the same turned back for the numbers, or a number without its delay | Fails |
-| The figure as it stands, loaded once by an `<img>`, with its five labels | Passes |
-| The figure loaded by no image, by two, by the icon as well, or by a `source` only, or its image without alt text | Fails |
-| No figure, or a link in its place | Fails |
-| The figure with a byte that is not UTF-8, or a carriage return, a tab, a right-to-left override, a zero-width space or a byte order mark | Fails |
-| The figure with a doctype that declares an entity, an XML declaration, a stylesheet as a processing instruction, a comment, a CDATA section, a character reference or `&amp;` | Fails |
-| The figure not well-formed: not closed, an element left open, an attribute twice, text before the `<svg>` | Fails |
-| In the figure, a `script`, a `use`, an `image`, an `a`, a `foreignObject`, an `animate`, a `set`, a `g`, a `title`, a second `svg`, an element of another namespace, or no namespace at all | Fails |
-| In the figure, `onload`, `onclick`, `style`, `fill`, `stroke`, `id`, `href`, `xlink:href`, `filter` or `transform` as an attribute | Fails |
-| In the figure, a value that calls `url()` or `calc()`, that is empty, or that holds `;` or `:` | Fails |
-| In the figure, an element inside a `<text>`, or text outside `<text>` and `<style>` | Fails |
-| The figure without `role="img"`, without its `aria-label`, with two `<style>` or with none | Fails |
-| In the figure's CSS, `@import`, `@font-face`, `url(`, a backslash, `calc()`, a hex color outside the palettes, a `transition`, a brace left open, or no palette for dark | Fails |
-| In the figure, the accent named, or muted text, the text, the background or the wheel changed to a color under 4.5, a color with contrast enough that is not the page's, a border that is not the page's, or a color the page does not name | Fails |
-| A color of the page changed, and not in the figure | Fails |
-| A `title` in `main` or in the `h1`, or a second `title` in `head` | Fails |
-| The CSS of the page as it stands: no animation, no transition, no `scroll-behavior`, no `@keyframes` | Passes |
-| A `transition` inside `@media (prefers-reduced-motion: no-preference)`, and a `@keyframes` | Passes |
-| An `animation`, an `animation-name` or `scroll-behavior` outside that query, inside `prefers-reduced-motion: reduce`, inside another `@media`, or inside a list of queries that holds it | Fails |
-| `-webkit-animation`, `-webkit-animation-name`, `-moz-animation`, `-o-animation-duration`, `-MS-Animation` or `-webkit-scroll-behavior` outside that query | Fails |
-| A `transition`, a `transition-duration` or a `-webkit-transition` outside that query, also written without spaces | Fails |
-| A prefixed animation or transition inside that query | Passes |
-| `@-webkit-keyframes` or `@-moz-keyframes` | Fails |
-| A brace left open, or one closed twice | Fails |
-| `@supports`, `@property`, `@namespace` or `@layer` | Fails |
-| An event handler, a style attribute, a `srcset` or `loading` on an image | Fails |
-| An image, a source or the icon loaded from another origin, from `//`, with the scheme written as a character reference, from the repo's raw files, or from `../assets/` | Fails |
-| `@import`, `@font-face`, `url(`, `URL(`, `url` spelled with a CSS escape, `image-set()`, `calc()`, or a `link` that is a stylesheet | Fails |
-| A link to another site, to `http:`, to another repo of the same owner, to `javascript:`, also written as a character reference, to `mailto:`, to the Pages origin, to `//`, or to a source in `sources.json` | Fails |
-| A link into the repo to a file or a directory that is not there, to a directory as a file, through `..`, to another branch, to the settings | Fails |
-| A link to issue #49, to pull request #42 or to the latest release | Passes |
-| A link to an issue or a pull request numbered 0, through `..`, to the list of issues or of pull requests, or to a new issue | Fails |
-| A relative link to a file that is not in `docs/`, out of `docs/`, from the root, to `.nojekyll`, or to an id that is not on the page | Fails |
-| A link to `index.html#start-here` | Passes |
-| A link to the page whose fragment is not an id on it: `index.html#start-hree`, a typo for `start-here`, `index.html#Start-here`, `index.html#`, `#missing`, `#start-hree` or `#` | Fails |
-| A link with a fragment to a logo, `ratchet-light.svg#logo` | Fails |
-| An id twice on the page, here a second `start-here`, which a link names | Fails |
-| An element left open, closed out of order, a void element closed, a self-closed `p`, a comment, a CDATA section, a processing instruction, an attribute twice or one not on the list | Fails |
-| No `lang`, an empty or a missing alt text, an `h3` after the `h1`, no `h1` | Fails |
-| Muted text, links, the background, the background of a box, the accent, the background of code or the text of code changed to a color under 4.5, in light or in dark, a hex color outside the palettes, or no palette for dark | Fails |
-| A command on the page that is not in `README.md`, or a second line added to a command | Fails |
-| One list of four steps, every step with a link into the repo | Passes |
-| A step without a link, or whose only link goes to an id on the page | Fails |
-| The list of steps with `flow` after another class | Passes, and is counted |
-| The story and the values as they stand: the story, "We value:", the four values in order and the line that weighs them | Passes |
-| A value changed in values.json, before `generate.py` is run | The test fails, `generate.py --check` fails on `docs/index.html`, `README.md` and `RATCHET.md`, and `generate.py` writes them |
-| A value edited or left out on the page, a second line that weighs them, or the story changed | The test fails, and `generate.py --check` fails |
-| The section with another id, with a class beside its own, twice, with a `p` in it, with a value over two lines or split into two `strong`, another element with its id, a link added inside the line that weighs the values, a second paragraph after the story on its line, an `em` added to the lead, a list item without " over ", a line with a reference such as `&copy;` or a character such as `©` that the generator never writes, or without the line that closes it | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| A line added between the markers in one of the exact forms the generator writes, such as a fifth value | `generate.py --check` fails; `generate.py` writes the block from `values.json`, as for any generated block. Outside the claim: the block is generated text |
-| The section indented by two spaces | Passes |
-| A value with `&` or `<` in it | Written as `&amp;` and `&lt;` |
-| The count of the rules of the core as it stands, counted in the test from `ratchet.json` | Passes |
-| A text-only rule of the core given a check in `ratchet.json`, before `generate.py` is run | `generate.py --check` fails on `docs/index.html`, and `generate.py` writes it |
-| A number in the count edited by hand | `generate.py --check` fails |
-| The count removed, twice, with more on its line, changed in its words, its id moved to another element, a second element with its id, a number spelled out, or a word added after a number | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| The count or the fetch line indented by two spaces | Passes |
-| A release that dates the first entry and moves the README, before `generate.py` is run | `generate.py --check` fails on `docs/index.html`, and `generate.py` writes it |
-| The page moved to a version that the README does not fetch | `generate.py --check` fails |
-| The fetch line removed, twice, with more on its line, outside `<pre><code>`, another line that holds `git clone`, or a version of another form | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| No page, or a page that is not UTF-8 | `generate.py --check` fails, with no traceback |
-| The prompt as it stands, spelled out in the test, at the version the README fetches | Passes |
-| A release that dates the first entry and moves the README, before `generate.py` is run | The prompt moves with the command when `generate.py` writes the page |
-| A line of the prompt edited by hand: "Do not commit" turned around, "Stop there" removed, another version, the dry run without `--check`, a line left out, a line added, or a line indented | The test fails, `generate.py --check` fails, and `generate.py` writes the prompt again |
-| Markup, `&amp;` or a character outside ASCII in the prompt, a `</pre>` inside it, its first or last line indented, its attributes in another order, twice, or a second element with its id | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| A second `git clone` in the prompt, its own fetch line with another folder, or `id="count"` or `id="sources"` in it | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| A command of the prompt that is not in `README.md`, or no `STARTING.md` in the checkout | Fails |
-| The picker as it stands: six radios, the first checked, a label and a line for each | Passes |
-| `.cursor/rules` added to `INSTRUCTION_FILES` of `init.py`, or `GEMINI.md` taken out of it | Fails, until the page says what `init.py` does |
-| A line that names another file, a second file, or a file for "Other"; the line of Claude Code without `AGENTS.md` in `<code>`, or with a third file; the line of Cursor that says `init.py` sees its file, or without the link to `TRYING.md`; the line of Gemini CLI that says `init.py` does not see its file | Fails |
-| A second radio checked, none checked, a label for another radio or with other words, a line of another class, an agent left out, no legend or an empty one, text directly in the picker, a selector of the CSS left out or one more that reads `:checked ~`, a picker of another class, or a second `<fieldset>` | Fails |
-| An `<input>` of the type `text`, `submit` or `image`, with no type, with another name, with `checked` without a value or empty, with `formaction`, `onchange`, `value` or `src`, closed as an element, or outside the picker; a `<label>` outside the picker; a `<button>`, a `<textarea>`, a `<select>` or a `<form>` | Fails |
-| The line of the sources as it stands, spelled out in the test from `sources.json` | Passes |
-| A source added to `sources.json`, before `generate.py` is run | `generate.py --check` fails on `docs/index.html`, and `generate.py` writes it |
-| A name, a license or the number edited by hand, a source left out, or two sources swapped | `generate.py --check` fails |
-| The line of the sources removed, twice, with more on its line, changed in its words, its id moved to another element, a second element with its id, the number spelled out, a name linked out of the repo, an `em` in the list, `&copy;` or `©` in the list | `generate.py --check` fails, and `generate.py` writes nothing to the page |
-| The line of the sources indented by two spaces | Passes |
-| `sources.json` with no source | `generate.py --check` fails |
-| One source, and a license with `&` or `<` | Named in the singular, and written as `&amp;` and `&lt;` |
-| The example and the watch as they stand | Passes |
-| The rule of the example made text only, given another check, or given a reference check | Fails |
-| A key on the page that is not a rule in `ratchet.json`, the key of the example without its last letter | Fails |
-| The watch's cron weekly, every six hours, twice, with a comment after it, or removed, its run of another script or twice, or no workflow | Fails |
-
-Each case is the page with one change, so the cases follow the page when it changes.
+The cases are in [test_pages.py](../checks/test_pages.py). Each is the page with one change, so the cases follow the page when it changes.
 
