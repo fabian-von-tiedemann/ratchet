@@ -1630,8 +1630,8 @@ class GeneratedText(RepoCopy, unittest.TestCase):
         self.assert_check_fails("ratchet.owner-pathss is not a rule in ratchet.json")
 
     def test_an_inline_link_that_leads_nowhere_fails(self):
-        self.edit(os.path.join("checks", "README.md"), "](../ratchet.json)", "](ratchet.json)")
-        self.assert_check_fails("checks/README.md")
+        self.edit(os.path.join("maintain", "README.md"), "](../ratchet.json)", "](ratchet.json)")
+        self.assert_check_fails("maintain/README.md")
         self.assert_check_fails("the link to ratchet.json leads nowhere")
 
     def test_a_link_definition_that_leads_nowhere_fails(self):

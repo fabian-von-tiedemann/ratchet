@@ -36,7 +36,7 @@ publish reads GITHUB_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF and GITHUB
 environment. A scheduled run (GITHUB_EVENT_NAME schedule) writes nothing: it fails and names the version
 when the version at the head of main, or an older one, is not finished, and passes when all are.
 The token is sent only to https://api.github.com and is never printed. It never moves,
-deletes or edits a tag (repo.tags-stay). See checks/README.md for what it claims.
+deletes or edits a tag (repo.tags-stay). See maintain/README.md for what it claims.
 
 Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
