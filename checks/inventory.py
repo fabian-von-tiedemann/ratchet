@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The inventory: list a repo's agent layer as it stands, read only.
 
-    python3 checks/inventory.py [ROOT] [--global] [--home DIR] [--uses claude,codex] [--ruleset FILE]... [--json]
+    python3 checks/inventory.py [ROOT] [--global] [--home DIR] [--uses claude,codex] [--ruleset FILE]... [--exclude FOLDER]...
+                                [--json]
 
 It lists the files that make up the agent layer under ROOT (by default the folder it runs in), and, with --global,
 the user's own layer under the home folder: instruction files at any depth, skills, commands, agents, hooks,
@@ -27,6 +28,11 @@ prints names and short facts, never what a file holds: from settings and MCP con
 and servers. Judging what each part means is the agent's job, on this output, and its result is a proposal to the
 owner (D-2026-11-21-inventory-and-easy-upgrade, D-2026-11-22-second-redraw). The starting point for --ruleset is the
 folder of the path the user typed, resolved through its links once.
+
+--exclude names a folder of the repo, from the root, that the walk does not enter, once for each folder. Each one is
+listed among the paths not read, "excluded with --exclude", so nothing is left out silently. It must be a folder of the
+repo, named as the repo's other paths are, part by part with no link on its path; anything else stops the run. Nothing
+is excluded by default, and --exclude does not apply to --global.
 
 Exit code 0 when it ran, 2 when it could not. Standard library only. CI runs it on Python 3.9 and the newest Python 3.
 """
@@ -157,6 +163,10 @@ GLOBAL_FILES = (".claude.json",)
 NOT_ENTERED = {".git", "node_modules"}
 # The folders not entered at the root, each with why: worktrees, and Ratchet's own copy in a repo that adopted it.
 NOT_ENTERED_PATHS = {".claude/worktrees": "a folder of worktrees, not walked", ".ratchet": "Ratchet's own copy, not walked"}
+# Why a folder given with --exclude is listed among the paths not read.
+EXCLUDED = "excluded with --exclude"
+# The characters of a glob, which a folder given with --exclude may not hold: it names one folder, never a pattern.
+GLOB_CHARACTERS = "*?[]\\"
 
 # A name that looks like a credential. Such a file is named and never read.
 CREDENTIAL_NAMES = ("*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "*.jks", ".env", ".env.*", "*.env", ".netrc",
@@ -463,11 +473,13 @@ class Layer:
 
 
 class Inventory:
-    def __init__(self):
+    def __init__(self, excluded=()):
         self.files = []
         self.skipped = []
         self.links = []
         self.data = {}
+        # The folders of the repo given with --exclude, from the root, each checked by excluded_folders.
+        self.excluded = list(excluded)
 
     def add_link(self, layer, rel):
         if any(link["path"] == layer.shown_path(rel) for link in self.links):
@@ -509,6 +521,10 @@ class Inventory:
         return note
 
     def walk_repo(self, layer):
+        # Each folder given with --exclude is listed as not read, also when a folder above it is given too and the walk
+        # never reaches it: every exclusion is printed.
+        for rel in self.excluded:
+            self.skipped.append({"path": layer.shown_path(rel), "why": EXCLUDED})
         for parts, entries, enter in guarded_walk(layer.top, [], self.folder_not_read(layer)):
             rel_folder = "".join(part + "/" for part in parts)
             for name, kind in entries:
@@ -520,6 +536,8 @@ class Inventory:
                 if kind == "dir":
                     if rel in NOT_ENTERED_PATHS:
                         self.skipped.append({"path": layer.shown_path(rel), "why": NOT_ENTERED_PATHS[rel]})
+                    elif rel in self.excluded:
+                        continue
                     elif name not in NOT_ENTERED:
                         enter.append(name)
                     continue
@@ -1466,6 +1484,43 @@ def code_owners(inventory, layer):
     return {"file": owners_file, "lines": lines, "register_names": names, "note": "; ".join(notes) or None}
 
 
+def excluded_folders(root, given):
+    """The folders given with --exclude, each checked, in the order given and each once.
+
+    A folder is named from the root as the repo's other paths are: its parts separated by single slashes, with no
+    part "." or "..", no / at its start or its end, and no character of a glob. Each part is a folder that stands under
+    the one before it under exactly that name, through no link: a name that differs only in case, which a file system
+    that ignores case would find, is not one, since the walk compares names as they are written."""
+    folders = []
+    for value in given:
+        if value == "" or value == ".":
+            raise Fault("--exclude %r names the root, which cannot be excluded: give a folder under it" % value)
+        if value.startswith("/"):
+            raise Fault("--exclude %s starts with /: give the folder from the root, as checks/fixtures" % shown(value))
+        if value.endswith("/"):
+            raise Fault("--exclude %s ends with /: give the folder without it, as checks/fixtures" % shown(value))
+        parts = value.split("/")
+        if "" in parts or "." in parts or ".." in parts:
+            raise Fault("--exclude %s has an empty part, . or ..: give the folder from the root, as checks/fixtures" % shown(value))
+        if any(char in GLOB_CHARACTERS for char in value):
+            raise Fault("--exclude %s holds a character of a glob: give one folder, not a pattern" % shown(value))
+        kind, linked = guarded_look(root, parts)
+        if kind == "link":
+            raise Fault("--exclude %s: %s is a link, which the walk does not follow: give a folder" % (shown(value), shown(linked)))
+        if kind == "missing":
+            raise Fault("--exclude %s names no folder in the repo" % shown(value))
+        if kind != "dir":
+            raise Fault("--exclude %s names a file, not a folder" % shown(value))
+        for index, part in enumerate(parts):
+            entries, why = guarded_entries(root, parts[:index])
+            if (part, "dir") not in entries:
+                raise Fault("--exclude %s names no folder in the repo under exactly that name%s" %
+                            (shown(value), "" if why is None else ": " + why))
+        if value not in folders:
+            folders.append(value)
+    return folders
+
+
 def build(args):
     root = args.root
     if guarded_look(root, [])[0] != "dir":
@@ -1487,7 +1542,7 @@ def build(args):
     for path in args.ruleset or []:
         rulesets += read_ruleset(path)
 
-    inventory = Inventory()
+    inventory = Inventory(excluded_folders(root, args.exclude or []))
     layers = {"repo": Layer("repo", root, "")}
     inventory.walk_repo(layers["repo"])
     if args.use_global:
@@ -1711,6 +1766,9 @@ def main(argv=None):
     parser.add_argument("--home", help="the home folder for --global, in place of HOME")
     parser.add_argument("--uses", help="the harnesses the project uses, separated by commas: %s" % ", ".join(HARNESSES))
     parser.add_argument("--ruleset", action="append", help="a ruleset, branch protection or rules for a branch exported from the host, as JSON; may be given more than once")
+    parser.add_argument("--exclude", action="append", metavar="FOLDER",
+                        help="a folder of the repo, from the root, that is not walked and is listed as not read, such as "
+                             "checks/fixtures; may be given more than once; not applied to --global")
     parser.add_argument("--json", action="store_true", help="print JSON in place of text")
     args = parser.parse_args(argv)
     try:

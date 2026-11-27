@@ -364,7 +364,8 @@ class Inventory(FixtureTest):
 
     def test_writes_nothing(self):
         before = (snapshot(self.repo), snapshot(self.home))
-        for args in ([], ["--json"], ["--global", "--uses", "claude", "--ruleset", self.ruleset("ruleset")]):
+        for args in ([], ["--json"], ["--global", "--uses", "claude", "--ruleset", self.ruleset("ruleset")],
+                     ["--exclude", "sub", "--exclude", ".claude/skills"]):
             with self.subTest(args=args):
                 code, out, err = self.run_inventory(self.repo, *args)
                 self.assertEqual(code, 0, out + err)
@@ -1028,6 +1029,120 @@ class Inventory(FixtureTest):
         self.assertEqual(unused[".claude/hooks/old.sh"],
                          "a hook that no settings file names; .claude/settings.local.json is not UTF-8 at byte 13 and was not read for hooks")
 
+    # --- --exclude, from an outside reader's trial report of 0.16: the fixtures were counted as the agent layer. ---
+
+    def test_exclude_leaves_a_folder_out_and_lists_it_as_not_read(self):
+        self.write("checks/fixtures/repo/AGENTS.md", "A fixture.\n")
+        self.write("checks/fixtures/repo/.claude/commands/fixture.md", "A fixture.\n")
+        files = self.files(self.facts())
+        self.assertIn("checks/fixtures/repo/AGENTS.md", files)
+        facts = self.facts("--exclude", "checks/fixtures")
+        files = self.files(facts)
+        self.assertIn("AGENTS.md", files)
+        self.assertFalse([path for path in files if path.startswith("checks/fixtures/")])
+        self.assertIn({"path": "checks/fixtures", "why": "excluded with --exclude"}, facts["skipped"])
+        out = self.text("--exclude", "checks/fixtures")
+        skipped = out.split("\nSkipped, not read\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("  checks/fixtures: excluded with --exclude\n", skipped + "\n")
+        self.assertNotIn("checks/fixtures/repo", out)
+
+    def test_exclude_given_twice_and_overlapping(self):
+        self.write("checks/fixtures/repo/AGENTS.md", "A fixture.\n")
+        facts = self.facts("--exclude", "checks/fixtures", "--exclude", "sub")
+        self.assertFalse([path for path in self.files(facts) if path.startswith(("checks/fixtures/", "sub/"))])
+        excluded = [item["path"] for item in facts["skipped"] if item["why"] == "excluded with --exclude"]
+        self.assertEqual(excluded, ["checks/fixtures", "sub"])
+        # A folder under another one given is listed too, though the walk never reaches it; one given twice, once.
+        facts = self.facts("--exclude", "checks/fixtures/repo", "--exclude", "checks", "--exclude", "checks")
+        excluded = [item["path"] for item in facts["skipped"] if item["why"] == "excluded with --exclude"]
+        self.assertEqual(excluded, ["checks", "checks/fixtures/repo"])
+        self.assertFalse([path for path in self.files(facts) if path.startswith("checks/")])
+        self.assertIn("  checks/fixtures/repo: excluded with --exclude\n",
+                      self.text("--exclude", "checks", "--exclude", "checks/fixtures/repo"))
+
+    def test_an_excluded_folder_is_never_entered(self):
+        # Under the folder: a link where the layer is, which the walk names, and a folder it cannot read, which it
+        # names as not read. Excluded, the walk names neither: it never looked inside.
+        self.write("checks/fixtures/repo/notes.md", "A fixture.\n")
+        os.symlink("notes.md", os.path.join(self.repo, "checks", "fixtures", "repo", "AGENTS.md"))
+        locked = os.path.join(self.repo, "checks", "fixtures", "locked")
+        os.makedirs(locked)
+        unreadable = hasattr(os, "geteuid") and os.geteuid() != 0
+        if unreadable:
+            os.chmod(locked, 0)
+            self.addCleanup(os.chmod, locked, 0o755)
+        facts = self.facts()
+        self.assertIn("checks/fixtures/repo/AGENTS.md", [item["path"] for item in facts["links"]])
+        if unreadable:
+            self.assertIn("checks/fixtures/locked", [item["path"] for item in facts["skipped"]])
+        facts = self.facts("--exclude", "checks/fixtures")
+        self.assertEqual([item["path"] for item in facts["links"] if item["path"].startswith("checks/")], [])
+        self.assertEqual([item for item in facts["skipped"] if item["path"].startswith("checks/")],
+                         [{"path": "checks/fixtures", "why": "excluded with --exclude"}])
+
+    def test_exclude_that_names_no_folder_of_the_repo_cannot_run(self):
+        self.write("checks/fixtures/repo/AGENTS.md", "A fixture.\n")
+        outside = os.path.join(self.scratch(), "outside")
+        os.makedirs(outside)
+        os.symlink(outside, os.path.join(self.repo, "linked"))
+        cases = {
+            "no-such-folder": "names no folder in the repo",
+            "checks/no-such-folder": "names no folder in the repo",
+            "AGENTS.md": "names a file, not a folder",
+            "AGENTS.md/x": "names no folder in the repo",
+            "..": "has an empty part, . or ..",
+            "../outside": "has an empty part, . or ..",
+            "checks/../sub": "has an empty part, . or ..",
+            "./checks": "has an empty part, . or ..",
+            "checks//fixtures": "has an empty part, . or ..",
+            os.path.join(self.repo, "checks"): "starts with /",
+            "/checks": "starts with /",
+            ".": "names the root",
+            "": "names the root",
+            "checks/fixtures/": "ends with /",
+            "checks/*": "a character of a glob",
+            "checks/fixture?": "a character of a glob",
+            "checks/[f]ixtures": "a character of a glob",
+            "linked": "linked is a link",
+            "linked/x": "linked is a link",
+            # The walk compares names as written: on a file system that ignores case this folder is found, and is not it.
+            "Checks/Fixtures": "names no folder in the repo",
+        }
+        for value, message in cases.items():
+            with self.subTest(value=value):
+                code, out, err = self.run_inventory(self.repo, "--exclude", "sub", "--exclude", value)
+                self.assertEqual(code, 2, out + err)
+                self.assertEqual(out, "")
+                self.assertIn("inventory: cannot run: --exclude ", err)
+                self.assertIn(message, err)
+
+    def test_exclude_changes_nothing_but_its_own_line(self):
+        # An empty folder holds nothing of the layer: excluding it adds its one line and changes nothing else.
+        os.makedirs(os.path.join(self.repo, "empty"))
+        for args in ([], ["--uses", "claude"], ["--global"]):
+            with self.subTest(args=args):
+                plain = self.facts(*args)
+                excluded = self.facts("--exclude", "empty", *args)
+                excluded["skipped"].remove({"path": "empty", "why": "excluded with --exclude"})
+                self.assertEqual(excluded, plain)
+                lines = self.text(*args).split("\n")
+                lines.insert(lines.index("Skipped, not read") + 1 +
+                             sum(1 for item in plain["skipped"] if item["path"] < "empty"), "  empty: excluded with --exclude")
+                self.assertEqual(self.text("--exclude", "empty", *args), "\n".join(lines))
+
+    def test_exclude_does_not_apply_to_the_global_layer(self):
+        plain = self.facts("--global")
+        facts = self.facts("--global", "--exclude", ".claude/skills")
+        self.assertFalse([path for path in self.files(facts) if path.startswith(".claude/skills/")])
+        self.assertIn("~/.claude/skills/deploy/SKILL.md", self.files(facts))
+
+        def global_part(facts):
+            return ([entry for entry in facts["files"] if entry["layer"] == "global"],
+                    [item for key in ("skipped", "links") for item in facts[key] if item["path"].startswith("~/")])
+
+        self.assertEqual(global_part(facts), global_part(plain))
+        self.assertTrue(global_part(plain)[0])
+
     def test_this_repo(self):
         code, out, err = self.run_inventory(ROOT, "--json", "--uses", "claude,codex", home=self.scratch())
         self.assertEqual(code, 0, out + err)
@@ -1038,6 +1153,13 @@ class Inventory(FixtureTest):
         self.assertEqual([job["id"] for job in workflows[".github/workflows/checks.yml"]["jobs"]], ["own", "released", "base", "checks"])
         # The fixture repos under checks/fixtures/ hold AGENTS.md and CLAUDE.md too, as instruction files at depth.
         self.assertEqual(files["checks/fixtures/inventory/repo/AGENTS.md"]["kind"], "instructions")
+        # With --exclude checks/fixtures, as the trial report of 0.16 asked, they are left out and the folder is named.
+        code, out, err = self.run_inventory(ROOT, "--json", "--exclude", "checks/fixtures", home=self.scratch())
+        self.assertEqual(code, 0, out + err)
+        facts = json.loads(out)
+        self.assertIn("AGENTS.md", self.files(facts))
+        self.assertFalse([path for path in self.files(facts) if path.startswith("checks/fixtures/")])
+        self.assertIn({"path": "checks/fixtures", "why": "excluded with --exclude"}, facts["skipped"])
 
 
 if __name__ == "__main__":
