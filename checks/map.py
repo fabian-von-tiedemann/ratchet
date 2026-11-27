@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The map: check a repo's own map of Ratchet's rules, read only.
 
-    python3 .ratchet/checks/map.py [ROOT] [--json]
+    python3 .ratchet/checks/map.py [ROOT] [--json] [--partial]
 
 A repo with rules and checks of its own does not adopt Ratchet first. Its agent writes ratchet-map.json at the root of
 ROOT (by default the folder it runs in), with every rule of the ratchet.json beside this script, each marked "covered"
@@ -15,6 +15,10 @@ does not check whether a path covers a rule: every row is the agent's proposal, 
 It writes nothing, reaches no network and runs no program. It reads the map through the guarded reader of
 inventory.py, and looks at the kind of each path it cites, never at its content. ROOT itself may be reached through a
 link, as inventory.py's root may; nothing below it is.
+
+With --partial, a rule that has no entry in the map is not a problem: it is listed, by key, as not yet mapped, and
+everything else is checked as without it. The first line says that the map is partial and not yet a map of the whole
+Ratchet, and a partial run never prints the line of a full pass. It is for the map while it is written.
 
 Exit code 0 when the map is of its form and every path exists as stated, 1 when not, with each problem named, and 2
 when it could not run: no valid ratchet.json beside it, or a ROOT that is not a folder. Standard library only.
@@ -55,6 +59,12 @@ REFUSED_IN_PATH = ("\\", ":", "#", "?")
 
 PROPOSAL = ("This map is the agent's proposal, for the owner to review. map.py checks its form and that each path it "
             "cites is a plain file under the root, not whether a path covers a rule.")
+
+# The line a partial run prints second, and gives as the field "partial" in --json, whether the map passes or not.
+PARTIAL = ("This run is partial: a rule missing from the map is listed as not yet mapped, not named as a problem. Run "
+           "map.py without --partial once every rule is mapped.")
+# What the first line of a partial run says after the version, where a full run gives its counts or its problems.
+PARTIAL_HEAD = "partial, not yet a map of the whole Ratchet"
 
 KIND_NAMES = {type(None): "null", bool: "true or false", int: "a number", float: "a number", str: "text",
               list: "an array", dict: "an object"}
@@ -215,12 +225,15 @@ def rule_problems(root, key, entry, problems):
     return {"key": key, "status": status, "by": list(by), "note": note}
 
 
-def check(root):
-    """The facts of the map at root: a dict with "ok", and the assessments or the problems."""
+def check(root, partial=False):
+    """The facts of the map at root: a dict with "ok", and the assessments or the problems. With partial, a rule with no
+    entry is not a problem, the facts hold the field "partial", and on a pass the keys of those rules as "unmapped"."""
     version, rules = checkout()
     if inventory.guarded_look(root, [])[0] != "dir":
         raise CannotRun("%s is not a folder" % inventory.shown(root))
     facts = {"map": MAP_NAME, "ratchet": version, "proposal": PROPOSAL}
+    if partial:
+        facts["partial"] = PARTIAL
     data, why = read_map(root)
     if why:
         facts.update(ok=False, problems=[why])
@@ -244,7 +257,7 @@ def check(root):
         elif stated != version:
             problems.append("ratchet is %s, and the checkout map.py runs from is Ratchet %s: map the rules of the "
                             "version you run" % (json.dumps(stated), version))
-    entries = []
+    entries, unmapped = [], []
     if "rules" in data:
         given = data["rules"]
         if not isinstance(given, dict):
@@ -253,7 +266,10 @@ def check(root):
             known = [key for key, _, _ in rules]
             for key, part, source in rules:
                 if key not in given:
-                    problems.append("rules has no entry for %s, a rule of Ratchet %s" % (key, version))
+                    if partial:
+                        unmapped.append(key)
+                    else:
+                        problems.append("rules has no entry for %s, a rule of Ratchet %s" % (key, version))
                     continue
                 entry = rule_problems(root, key, given[key], problems)
                 if entry is not None:
@@ -270,6 +286,8 @@ def check(root):
         return facts
     counts = dict((status, sum(1 for entry in entries if entry["status"] == status)) for status in STATUSES)
     facts.update(ok=True, counts=counts, rules=entries)
+    if partial:
+        facts["unmapped"] = unmapped
     return facts
 
 
@@ -286,16 +304,27 @@ def text_report(facts):
     """The facts as text. It is made from the same facts as --json, and from nothing else. The line that the map is
     the agent's proposal stands in both, whether the map passes or not."""
     out = []
+    partial = "partial" in facts
+    head = "%s, for Ratchet %s: " % (facts["map"], facts["ratchet"]) + (PARTIAL_HEAD + ": " if partial else "")
     if not facts["ok"]:
-        out.append("%s, for Ratchet %s: %d problem%s" % (facts["map"], facts["ratchet"], len(facts["problems"]),
-                                                       "" if len(facts["problems"]) == 1 else "s"))
+        out.append("%s%d problem%s" % (head, len(facts["problems"]), "" if len(facts["problems"]) == 1 else "s"))
+        if partial:
+            out.append(facts["partial"])
         out.append(facts["proposal"])
         for problem in facts["problems"]:
             out.append("  %s" % problem)
         return "\n".join(out) + "\n"
     counts, rules = facts["counts"], facts["rules"]
-    out.append("%s, for Ratchet %s: %d rules, %d covered, %d gap%s" % (
-        facts["map"], facts["ratchet"], len(rules), counts["covered"], counts["gap"], "" if counts["gap"] == 1 else "s"))
+    if partial:
+        unmapped = facts["unmapped"]
+        out.append("%s%d rule%s given, %d covered, %d gap%s; %d rule%s not yet mapped%s" % (
+            head, len(rules), "" if len(rules) == 1 else "s", counts["covered"], counts["gap"],
+            "" if counts["gap"] == 1 else "s", len(unmapped), "" if len(unmapped) == 1 else "s",
+            ": " + ", ".join(unmapped) if unmapped else ""))
+        out.append(facts["partial"])
+    else:
+        out.append("%s%d rules, %d covered, %d gap%s" % (
+            head, len(rules), counts["covered"], counts["gap"], "" if counts["gap"] == 1 else "s"))
     out.append(facts["proposal"])
     for status, title in (("gap", "Gaps"), ("covered", "Covered")):
         out.append("")
@@ -313,11 +342,15 @@ def main(argv=None):
                                                  "Reads only; writes nothing.")
     parser.add_argument("root", nargs="?", default=".", help="the root of the repo, by default the folder it runs in")
     parser.add_argument("--json", action="store_true", help="print JSON in place of text")
+    parser.add_argument("--partial", action="store_true",
+                        help="list a rule with no entry as not yet mapped, not as a problem, while the map is written")
     args = parser.parse_args(argv)
     try:
-        facts = check(args.root)
+        facts = check(args.root, partial=args.partial)
     except CannotRun as error:
         print("map: cannot run: %s" % inventory.shown(str(error)), file=sys.stderr)
+        if args.partial:
+            print(PARTIAL, file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(facts, indent=2, sort_keys=True))

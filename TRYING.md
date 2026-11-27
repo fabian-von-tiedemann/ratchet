@@ -34,7 +34,7 @@ You need this page, and the rules in [RATCHET.md](RATCHET.md). You do not need t
    - `note` says how, in 1 to 300 characters of plain text.
 
    There is no "not wanted". Whether you want a rule is your decision, not the agent's.
-4. **Check the map:** `python3 .ratchet/checks/map.py`. It checks the map's form and that each file it cites exists, prints every rule with the gaps first, and writes nothing. Each row is the agent's proposal. You judge whether a file really covers its rule. From Ratchet 0.17, `map.py` also names the skill or work a rule draws on, so a gap shows what may help.
+4. **Check the map:** `python3 .ratchet/checks/map.py`. It checks the map's form and that each file it cites exists, prints every rule with the gaps first, and writes nothing. Each row is the agent's proposal. You judge whether a file really covers its rule. From Ratchet 0.17, `map.py` also names the skill or work a rule draws on, so a gap shows what may help, and `map.py --partial` checks the rules mapped so far while the map is written; run it without `--partial` when the map is done.
 
 `map.py` is in Ratchet 0.16 and later. To remove it all, delete `.ratchet` and `ratchet-map.json`.
 
