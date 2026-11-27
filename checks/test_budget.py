@@ -123,9 +123,13 @@ ENFORCED = {
     "repo.short-pages": ("maintain/generate.py", "--check"),
 }
 # What every such `where` says: the enforcement point, when it was read back, and that the base branch's script runs.
-POINT = ("Enforced at the merge: the ruleset on `main` requires the job `checks` of `.github/workflows/checks.yml`, read back on ",
-         "and on a pull request that job passes only when the job `base` passes. The job `base` takes `maintain/from_base.py` "
-         "from the base commit, never from the pull request, and it runs the base branch's ")
+POINT = ("Enforced at the merge: the required job `checks` (read back on ", ") needs `base` to pass, and `base` runs the base's ")
+# What checks/README.md says under from_base.py, which the short `where` leaves to it: the job checks is what the
+# ruleset on main requires, base takes the script from the base commit and never from the pull request, and when the
+# requirement was read back.
+EXPLAINED = ("The job `checks`, the status that the ruleset on `main` requires, waits for all three",
+             "takes this script from the base commit, `HEAD^1`, never from the pull request",
+             "that the ruleset on `main` requires the job `checks` was read back on ")
 # What the workflow must hold for that to be so: the job base takes from_base.py from the base commit and runs it in
 # isolation, and the job checks waits for it, runs whatever it did, and fails on a pull request unless it passed.
 SHOWN = (
@@ -397,6 +401,13 @@ class Triage(RepoCopy, FixtureTest):
         self.assertEqual(problems, [])
         built = sorted(entry["key"] for entry in register["adopted"] + register["own"] if entry.get("status") == "built")
         self.assertEqual(built, sorted(ENFORCED))
+        # The short `where` leaves the rest to checks/README.md, and the date it read back is the one each `where` names.
+        section = read("checks", "README.md").split("\n## from_base.py\n", 1)[1].split("\n## ", 1)[0]
+        for words in EXPLAINED:
+            self.assertIn(words, section)
+        date = section.split(EXPLAINED[-1], 1)[1][:10]
+        for key in ENFORCED:
+            self.assertIn(POINT[0] + date + POINT[1], register_where(register, key))
 
     def test_a_claim_of_built_that_the_repo_does_not_show_fails(self):
         register = json.loads(read("register.json"))
@@ -735,6 +746,10 @@ class Triage(RepoCopy, FixtureTest):
             self.assertIn(words, where)
         self.assertNotIn("when that the", where)
         self.assertNotIn("that act outside the repo", where)
+        # The evidence of 2026-11-17 stands here, not in text of AGENTS.md that no longer holds it (D-2026-11-27-cleanup).
+        self.assertIn("both read back on 2026-11-17", where)
+        self.assertIn("the test pull request #1", where)
+        self.assertNotIn("as AGENTS.md records", where)
 
     def test_owner_paths_holds_the_sentence_on_gates_outside_the_repo_by_the_maintainers_decision(self):
         # D-2026-11-22-owner-reads-outside-gates: the old ratchet.checks-owner-read said that checks, gates and automated
