@@ -1,7 +1,7 @@
 # Ratchet: the rules
 
 <!-- generated:version -->
-Version 0.17, not yet released. See [CHANGELOG.md](CHANGELOG.md).
+Version 0.17, 2026-11-28. See [CHANGELOG.md](CHANGELOG.md).
 <!-- /generated -->
 
 <!-- generated:values -->

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.17 (unreleased)
+## 0.17 (2026-11-28)
 
 In short: trying Ratchet on a repo with rules of its own now takes one page, a new report tells how far 1.0 is, and `upgrade.py --behind` tells a project it has fallen behind. No form changes. The one command a project may run that moved: `generate.py --entries` is now `check_register.py --entries`.
 
@@ -18,8 +18,7 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, a n
 - New: `map.py --partial` checks a map while it is written: a rule with no entry is not yet mapped, not a problem, the first line says the map is partial, and without the flag nothing changes ([#191](https://github.com/fabian-von-tiedemann/ratchet/pull/191)).
 - The scripts only Ratchet's own maintenance runs move from `checks/` to `maintain/`, and a rule's entry is printed with `.ratchet/checks/check_register.py --entries <key>`, with the same output, in place of `generate.py --entries` ([#195](https://github.com/fabian-von-tiedemann/ratchet/pull/195)).
 - `templates/DECISION.md` gains three fields, `Replaces`, `Amends` and `Ends`, so a decision names what it changes, and this repo writes a status into each earlier decision and checks their form; a project need do nothing ([#202](https://github.com/fabian-von-tiedemann/ratchet/pull/202)).
-- `checks/README.md` is shorter: what it said of the scripts and checks only Ratchet's own maintenance runs moves to `maintain/README.md`; a project need do nothing ([#205](https://github.com/fabian-von-tiedemann/ratchet/pull/205)).
-- `checks/README.md` and `maintain/README.md` are shorter: each check's tests now hold its list of cases, and each section keeps its claim, its threat and its limits; a project need do nothing ([#206](https://github.com/fabian-von-tiedemann/ratchet/pull/206)).
+- `checks/README.md` is shorter: what only Ratchet's own maintenance runs moves to `maintain/README.md`, and each check's tests now hold its list of cases; a project need do nothing ([#205](https://github.com/fabian-von-tiedemann/ratchet/pull/205), [#206](https://github.com/fabian-von-tiedemann/ratchet/pull/206)).
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
