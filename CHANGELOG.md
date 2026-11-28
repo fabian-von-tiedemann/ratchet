@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.17 (unreleased)
+## 0.17 (2026-11-28)
 
 In short: trying Ratchet on a repo with rules of its own now takes one page, a new report tells how far 1.0 is, and `upgrade.py --behind` tells a project it has fallen behind. No form changes. The one command a project may run that moved: `generate.py --entries` is now `check_register.py --entries`.
 
@@ -18,8 +18,16 @@ In short: trying Ratchet on a repo with rules of its own now takes one page, a n
 - New: `map.py --partial` checks a map while it is written: a rule with no entry is not yet mapped, not a problem, the first line says the map is partial, and without the flag nothing changes ([#191](https://github.com/fabian-von-tiedemann/ratchet/pull/191)).
 - The scripts only Ratchet's own maintenance runs move from `checks/` to `maintain/`, and a rule's entry is printed with `.ratchet/checks/check_register.py --entries <key>`, with the same output, in place of `generate.py --entries` ([#195](https://github.com/fabian-von-tiedemann/ratchet/pull/195)).
 - `templates/DECISION.md` gains three fields, `Replaces`, `Amends` and `Ends`, so a decision names what it changes, and this repo writes a status into each earlier decision and checks their form; a project need do nothing ([#202](https://github.com/fabian-von-tiedemann/ratchet/pull/202)).
-- `checks/README.md` is shorter: what it said of the scripts and checks only Ratchet's own maintenance runs moves to `maintain/README.md`; a project need do nothing ([#205](https://github.com/fabian-von-tiedemann/ratchet/pull/205)).
-- `checks/README.md` and `maintain/README.md` are shorter: each check's tests now hold its list of cases, and each section keeps its claim, its threat and its limits; a project need do nothing ([#206](https://github.com/fabian-von-tiedemann/ratchet/pull/206)).
+- `checks/README.md` is shorter: what only Ratchet's own maintenance runs moves to `maintain/README.md`, and each check's tests now hold its list of cases; a project need do nothing ([#205](https://github.com/fabian-von-tiedemann/ratchet/pull/205), [#206](https://github.com/fabian-von-tiedemann/ratchet/pull/206)).
+
+Measured for `ratchet.si-measure` on 2026-11-28, at `7418339`, the first commit of the pull request of this release, pushed with it, which differs from what is tagged only by this record. A script ran each path twice, in a new git repo under `mktemp -d` on macOS, with `.ratchet` cloned at `v0.16` from a local checkout, so no network is counted, and moved to `7418339` by hand, since `v0.17` does not exist yet. That move is timed and not counted. A step is one command, or one edit the output asks for: an agent's mechanics, not a person's time.
+
+| Path | Steps | Seconds, twice | Against 0.16, and what the run showed |
+|---|---|---|---|
+| Adopt in an empty repo | 4: the clone, `init.py --check`, `init.py`, `check_register.py register.json --markdown REGISTER.md` | 0.67, 0.68 | 0.6 to 0.7 in 0.16. The same six files, and the check passes with the ten rules to start with. |
+| Adopt a repo with an instruction file of its own | 9, the same as in 0.16: the clone, `inventory.py`, `init.py --check`, nine marker lines pasted into `AGENTS.md`, `init.py --adopt` with the nine keys, the printed command that copies `run_pinned.py`, `/.ratchet/` added to `.gitignore`, the printed line put in a local check script, and that script | 1.17, 1.20 | 1.3 to 1.6 in 0.16. The check script took 0.33 to 0.34, against 0.46 to 0.52. With one row's sha256 broken, it stops with exit 1 and names the row. |
+| Upgrade by one version, a register that `init.py` of 0.16 started | 7: a fetch and a checkout of `.ratchet`, `upgrade.py` with `--from` the `ratchet.json` of `v0.16`, `ratchet_version` set to 0.17, `REGISTER.md` printed again, the check, and the workflow pinned to the new commit | 0.32, 0.33 | 0.4 in 0.16. `upgrade.py` says no rule is new, changed or removed, and prints one step. Before the move, `upgrade.py register.json --behind` says the register is on the latest release, since `v0.17` is not tagged yet. |
+| The map-only mode, as `TRYING.md` tells it, in a repo with an instruction file, a check script and a folder of fixtures of its own | 6: the clone, `inventory.py --exclude tests/fixtures`, a map of 10 rules, `map.py --partial`, the map of all 36, and `map.py` | 0.51, 0.51 | 4 steps and 0.4 in 0.16. The two new steps are the check of a partial map. `map.py` exits 0 with "36 rules, 1 covered, 35 gaps". A path in `by` that does not exist exits 1. Judging each rule is the agent's own work and is not counted. |
 
 <!-- generated:count -->
 Ratchet 0.17, computed from `ratchet.json`: the core has 19 rules. 13 name a check and 6 are text only (32%). Ratchet ships a reference check for 1 of the 13. Outside the core there are 17 experimental rules, under a cap of 17: 14 name a check and 3 are text only. They are not counted in the share. The share counts what kind of ratchet a rule has, not whether a project has built the check: a project's register says that, and Ratchet's own is REGISTER.md.
